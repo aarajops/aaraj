@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Compilation & Build outputs
+dist/
+build/
+.next/
+out/
+
+# TypeScript Cache & Next.js generated typings
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs & OS
+*.log
+.DS_Store
+
+# Editor Settings (preserve shared team configs)
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
