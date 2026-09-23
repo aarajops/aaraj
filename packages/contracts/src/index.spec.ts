@@ -3,7 +3,6 @@ import {
   HealthCheckResponseSchema,
   OrderStatusSchema,
   ProductSchema,
-  MoneySchema,
 } from './index.js';
 
 describe('Contracts Schema Validation', () => {
