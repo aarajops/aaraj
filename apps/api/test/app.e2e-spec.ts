@@ -21,7 +21,7 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/api')
       .expect(200)
-      .expect('Hello World!');
+      .expect('Araz API v1.0.0');
   });
 
   it('/api/health (GET)', async () => {
