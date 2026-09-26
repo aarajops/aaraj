@@ -39,6 +39,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * Data Overview, TypeORM, Drizzle ORM, Prisma, MongoDB & Mongoose, MikroORM, Sequelize, Caching & Redis
 * **[Security & Threat Mitigation Index](../../docs/backend/security/README.md)**
   * Authentication, Authorization, Encryption & Hashing, Security Headers, CORS, CSRF Protection, Rate Limiting
+* **[HTTP Protocol & Web Platform Index](../../docs/backend/http/README.md)**
+  * Versioning, Cookies, Session, File Upload & Streaming, Compression, Server-Sent Events, Model-View-Controller, Performance (Fastify)
 
 ---
 

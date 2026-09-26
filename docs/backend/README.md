@@ -94,6 +94,23 @@ The [security/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/security/README.
 
 ---
 
+## HTTP Protocol & Web Platform Table of Contents
+
+The [http/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/README.md) directory documents web protocols, platform adapters, streaming, and performance:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Versioning](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/01-versioning.md) | URI, Header, Media Type (`Accept`), Custom extractors, `@Version()`, `VERSION_NEUTRAL`, default versions |
+| **02** | [Cookies](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/02-cookies.md) | Native NestJS 12.1+ cookie API, `@Cookies()`, `@SignedCookies()`, `setCookie()`, secret rotation, `SameSite` |
+| **03** | [Session](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/03-session.md) | `express-session`, `@fastify/secure-session`, `@Session()`, cookie signing, distributed Redis storage |
+| **04** | [File Upload & Streaming](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/04-file-upload-streaming.md) | Multipart uploads, `FileInterceptor`, `ParseFilePipe`, Fastify streaming (`FileStreamInterceptor`), `StreamableFile` |
+| **05** | [Compression](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/05-compression.md) | `compression` (Express), `@fastify/compress` (Brotli/Gzip), quality tuning, reverse proxy offloading |
+| **06** | [Server-Sent Events (SSE)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/06-server-sent-events.md) | `@Sse()`, `Observable<MessageEvent>`, `EventSource` protocol, client disconnection, `@SseSignal()` cleanup |
+| **07** | [Model-View-Controller (MVC)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/07-mvc.md) | Server-side templating with Handlebars (`hbs`), layouts, static assets (`useStaticAssets`), `@Render()` |
+| **08** | [Performance (Fastify)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/08-performance-fastify.md) | `FastifyAdapter`, extreme throughput, low overhead, body limits, route routing differences |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports

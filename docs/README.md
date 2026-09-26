@@ -66,6 +66,16 @@ docs/
         ├── 05-cors.md             # enableCors, origin allowlists, Fastify method parity
         ├── 06-csrf-protection.md  # Built-in Fetch Metadata CSRF, trusted origins
         └── 07-rate-limiting.md    # @nestjs/throttler, multi-tier limits, Redis storage
+    └── http/                      # HTTP protocol, platform adapters, streaming, and performance
+        ├── README.md              # HTTP platform guide index
+        ├── 01-versioning.md       # URI, Header, Media Type, Custom versioning
+        ├── 02-cookies.md          # Native NestJS 12.1+ cookie API, secret rotation
+        ├── 03-session.md          # express-session, @fastify/secure-session, Redis
+        ├── 04-file-upload-streaming.md # Multipart uploads, FileInterceptor, StreamableFile
+        ├── 05-compression.md      # Response compression, Brotli quality, reverse proxies
+        ├── 06-server-sent-events.md # SSE streaming, MessageEvent, @SseSignal() cleanup
+        ├── 07-mvc.md              # Model-View-Controller, Handlebars templates, layouts
+        └── 08-performance-fastify.md # FastifyAdapter, extreme throughput, migration
 ```
 
 ---
