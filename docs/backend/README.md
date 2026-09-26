@@ -287,6 +287,17 @@ The [faq/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/README.md) direct
 
 ---
 
+## Devtools & Architecture Governance Table of Contents
+
+The [devtools/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/devtools/README.md) directory documents live dependency graph introspection, partial graph debugging, and automated CI/CD architectural drift governance:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Overview & Graph Explorer](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/devtools/01-overview.md) | `snapshot: true`, `DevtoolsModule`, `PartialGraphHost` visual DI debugger, Routes explorer, sandbox Playground, startup profiler |
+| **02** | [CI/CD Integration](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/devtools/02-ci-cd-integration.md) | `GraphPublisher`, `preview: true` mode, GitHub Actions & GitLab CI pipelines, Pull Request structural diffing, drift prevention |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports

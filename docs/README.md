@@ -170,18 +170,22 @@ docs/
         │   ├── 09-serve-static.md     # Serving SPAs, wildcard routing fallthrough, cache control
         │   ├── 10-commander.md        # Standalone CLI tools, @Command, CommandRunner, CommandTestFactory
         │   └── 11-async-local-storage.md # AsyncLocalStorage, @nestjs/observe TracerService, nestjs-cls
-        └── faq/                       # Runtime FAQs, edge cases, transports & troubleshooting
-            ├── README.md              # FAQ architecture taxonomy & operational standards
-            ├── 01-serverless.md       # Serverless execution, cold starts, bundling benchmarks, Lambda
-            ├── 02-http-adapter.md     # HTTP adapter pattern, HttpAdapterHost, native Express/Fastify
-            ├── 03-keep-alive-connections.md # forceCloseConnections, Keep-Alive sockets, graceful exit
-            ├── 04-global-prefix.md    # Global path prefix, route exclusions, path-to-regexp wildcards
-            ├── 05-raw-body.md         # Raw body buffers, webhook HMAC signature verification
-            ├── 06-hybrid-application.md # Hybrid HTTP + Microservices, inheritAppConfig, lifecycle
-            ├── 07-multiple-servers.md # Dual-port HTTP/HTTPS binding, Fastify TLS, ShutdownObserver
-            ├── 08-request-lifecycle.md # Request lifecycle: Middleware -> Guard -> Interceptor -> Pipe -> Filter
-            ├── 09-common-errors.md    # Cannot resolve dependency, circular DI, NEST_DEBUG, watch loops
-            └── 10-examples.md         # Official sample repositories catalog & architectural archetypes
+        ├── faq/                       # Runtime FAQs, edge cases, transports & troubleshooting
+        │   ├── README.md              # FAQ architecture taxonomy & operational standards
+        │   ├── 01-serverless.md       # Serverless execution, cold starts, bundling benchmarks, Lambda
+        │   ├── 02-http-adapter.md     # HTTP adapter pattern, HttpAdapterHost, native Express/Fastify
+        │   ├── 03-keep-alive-connections.md # forceCloseConnections, Keep-Alive sockets, graceful exit
+        │   ├── 04-global-prefix.md    # Global path prefix, route exclusions, path-to-regexp wildcards
+        │   ├── 05-raw-body.md         # Raw body buffers, webhook HMAC signature verification
+        │   ├── 06-hybrid-application.md # Hybrid HTTP + Microservices, inheritAppConfig, lifecycle
+        │   ├── 07-multiple-servers.md # Dual-port HTTP/HTTPS binding, Fastify TLS, ShutdownObserver
+        │   ├── 08-request-lifecycle.md # Request lifecycle: Middleware -> Guard -> Interceptor -> Pipe -> Filter
+        │   ├── 09-common-errors.md    # Cannot resolve dependency, circular DI, NEST_DEBUG, watch loops
+        │   └── 10-examples.md         # Official sample repositories catalog & architectural archetypes
+        └── devtools/                  # Application architecture introspection & CI/CD governance
+            ├── README.md              # Devtools architectural taxonomy & governance standards
+            ├── 01-overview.md         # Graph explorer, partial graph DI debugger, routes & sandbox
+            └── 02-ci-cd-integration.md # CI/CD graph publisher, PR structural diffs & drift reports
 ```
 
 ---
