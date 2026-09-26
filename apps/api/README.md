@@ -41,6 +41,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * Authentication, Authorization, Encryption & Hashing, Security Headers, CORS, CSRF Protection, Rate Limiting
 * **[HTTP Protocol & Web Platform Index](../../docs/backend/http/README.md)**
   * Versioning, Cookies, Session, File Upload & Streaming, Compression, Server-Sent Events, Model-View-Controller, Performance (Fastify)
+* **[Observability & APM Index](../../docs/backend/observability/README.md)**
+  * NestJS Observe, SDK & Fastify Configuration, Manual Instrumentation, Distributed Tracing, Error Monitoring & Defect Fingerprinting, Dashboard & Profiler, MCP Server Integration
 
 ---
 

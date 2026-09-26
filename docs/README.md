@@ -76,6 +76,15 @@ docs/
         ├── 06-server-sent-events.md # SSE streaming, MessageEvent, @SseSignal() cleanup
         ├── 07-mvc.md              # Model-View-Controller, Handlebars templates, layouts
         └── 08-performance-fastify.md # FastifyAdapter, extreme throughput, migration
+    └── observability/             # NestJS Observe APM, distributed tracing, and metrics
+        ├── README.md              # Observability guide index
+        ├── 01-overview.md         # NestJS Observe overview, APM comparison, event metering
+        ├── 02-sdk.md              # @nestjs/observe SDK, createObserveModule, Fastify rules
+        ├── 03-manual-instrumentation.md # TracerService, custom spans, metrics (counters/gauges)
+        ├── 04-distributed-tracing.md # Trace propagation across HTTP, gRPC, and BullMQ queues
+        ├── 05-error-monitoring.md # Unhandled exceptions, source context, defect fingerprinting
+        ├── 06-dashboard.md        # 3-tier hierarchy, live Service Map, Profiler, SLO burn
+        └── 07-mcp-server.md       # Model Context Protocol server, agent diagnostic workflows
 ```
 
 ---

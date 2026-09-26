@@ -111,6 +111,22 @@ The [http/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/README.md) dire
 
 ---
 
+## Observability & APM Table of Contents
+
+The [observability/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/README.md) directory documents the official `@nestjs/observe` auto-instrumentation and APM platform:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Overview](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/01-overview.md) | APM comparison, request lifecycle hooks, teams/projects/applications hierarchy, Observability Events (OEs) |
+| **02** | [SDK Configuration](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/02-sdk.md) | `createObserveModule()`, `ObserveInstrument`, Fastify 3rd-argument rule, database/HTTP auto-instrumentation, redaction, sampling |
+| **03** | [Manual Instrumentation](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/03-manual-instrumentation.md) | `TracerService`, `createSpan()`, `activeSpan()`, `captureError()`, `setAttribute()`, metrics (`counter`, `gauge`, `summary`) |
+| **04** | [Distributed Tracing](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/04-distributed-tracing.md) | Trace context propagation, HTTP `x-request-id`, gRPC metadata, BullMQ queue job inheritance, self-time waterfalls |
+| **05** | [Error Monitoring](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/05-error-monitoring.md) | Unhandled exceptions, stack traces with `sourceContext`, server-side defect fingerprinting, release regressions |
+| **06** | [Dashboard & Analytics](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/06-dashboard.md) | 3-tier navigation (Analytics → Operation → Execution), live Service Map, Profiler, SLO error budget burn rates |
+| **07** | [MCP Server](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/07-mcp-server.md) | Streamable HTTP MCP endpoint (`POST /mcp`), personal tokens, automated AI agent root-cause analysis |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports
