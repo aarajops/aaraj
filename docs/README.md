@@ -85,6 +85,12 @@ docs/
         ├── 05-error-monitoring.md # Unhandled exceptions, source context, defect fingerprinting
         ├── 06-dashboard.md        # 3-tier hierarchy, live Service Map, Profiler, SLO burn
         └── 07-mcp-server.md       # Model Context Protocol server, agent diagnostic workflows
+    └── reliability/               # Fault tolerance, idempotency, transactional outbox, and locks
+        ├── README.md              # Reliability guide index
+        ├── 01-resilience.md       # @nestjs/resilience, retry, circuit breaker, bulkhead, fallbacks
+        ├── 02-idempotency-keys.md # @nestjs/idempotency, IETF standard, atomic stores, encryption
+        ├── 03-transactional-outbox.md # @nestjs/outbox, dual-write prevention, relay, consumer inboxes
+        └── 04-distributed-locks.md # @nestjs/locks, cron leases, fencing tokens, leader election
 ```
 
 ---

@@ -43,6 +43,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * Versioning, Cookies, Session, File Upload & Streaming, Compression, Server-Sent Events, Model-View-Controller, Performance (Fastify)
 * **[Observability & APM Index](../../docs/backend/observability/README.md)**
   * NestJS Observe, SDK & Fastify Configuration, Manual Instrumentation, Distributed Tracing, Error Monitoring & Defect Fingerprinting, Dashboard & Profiler, MCP Server Integration
+* **[Reliability & Fault Tolerance Index](../../docs/backend/reliability/README.md)**
+  * Resilience (`@nestjs/resilience`), Idempotency Keys (`@nestjs/idempotency`), Transactional Outbox (`@nestjs/outbox`), Distributed Locks (`@nestjs/locks`)
 
 ---
 

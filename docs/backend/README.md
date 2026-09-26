@@ -127,6 +127,19 @@ The [observability/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observabili
 
 ---
 
+## Reliability & Fault Tolerance Table of Contents
+
+The [reliability/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/README.md) directory documents system resilience, fault isolation, idempotency, transactional outbox, and distributed locks:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Resilience](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/01-resilience.md) | `@nestjs/resilience`, `@Retry()`, `@Timeout()`, `@CircuitBreaker()`, `@Bulkhead()`, `@Fallback()`, service policy objects, diagnostics channels |
+| **02** | [Idempotency Keys](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/02-idempotency-keys.md) | `@nestjs/idempotency`, IETF specification, request fingerprinting, atomic stores (Drizzle, TypeORM, Redis), AES-256-GCM encryption, event deduplication |
+| **03** | [Transactional Outbox](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/03-transactional-outbox.md) | `@nestjs/outbox`, dual-write problem, transactional messaging (`tx`), relay daemon (`SKIP LOCKED`), consumer inboxes, dead-letter queue |
+| **04** | [Distributed Locks](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/04-distributed-locks.md) | `@nestjs/locks`, `@OnOneInstance()`, `@WithoutOverlapping()`, monotonic fencing tokens (`fencingToken`), leader election, Postgres/Redis store contracts |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports
