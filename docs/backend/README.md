@@ -140,6 +140,33 @@ The [reliability/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/R
 
 ---
 
+## GraphQL API & Supergraphs Table of Contents
+
+The [graphql/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/README.md) directory documents type-safe data graphs, Apollo Server v5, Mercurius, subscriptions, and federation:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Quick Start](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/01-quick-start.md) | `@nestjs/graphql`, Apollo Server v5, Mercurius, GraphiQL IDE, request context, async config, multi-endpoints |
+| **02** | [Resolvers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/02-resolvers.md) | `@Resolver()`, `@Query()`, `@ResolveField()`, `@Parent()`, `@ArgsType()`, generic pagination |
+| **03** | [Mutations](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/03-mutations.md) | `@Mutation()`, `@InputType()`, nested inputs, schema-first mutation mapping |
+| **04** | [Subscriptions](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/04-subscriptions.md) | `graphql-ws`, `@Subscription()`, `PubSub`, payload filtering, WebSocket authentication |
+| **05** | [Scalars](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/05-scalars.md) | Built-in scalar modes, `@Scalar()`, `CustomScalar<T, K>`, `graphql-type-json` |
+| **06** | [Directives](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/06-directives.md) | `@Directive()`, schema transformers (`mapSchema`), custom field and query directives |
+| **07** | [Interfaces](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/07-interfaces.md) | `@InterfaceType()`, polymorphic types, `resolveType`, interface resolver inheritance |
+| **08** | [Unions and Enums](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/08-unions-and-enums.md) | `createUnionType()` with `as const`, `registerEnumType()`, deprecations |
+| **09** | [Field Middleware](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/09-field-middleware.md) | `FieldMiddleware`, field value interception, execution ordering vs enhancers |
+| **10** | [Mapped Types](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/10-mapped-types.md) | `PartialType()`, `PickType()`, `OmitType()`, `IntersectionType()`, target overrides |
+| **11** | [Plugins](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/11-plugins.md) | `@Plugin()`, `ApolloServerPlugin` lifecycle hooks, Mercurius plugins |
+| **12** | [Complexity](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/12-complexity.md) | `graphql-query-complexity`, `ComplexityPlugin`, field estimators, DoS mitigation |
+| **13** | [Extensions](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/13-extensions.md) | `@Extensions()`, custom metadata, field-level permissions and RBAC |
+| **14** | [CLI Plugin](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/14-cli-plugin.md) | AST transformer, automatic field inference, JSDoc introspection, ESM support |
+| **15** | [Generating SDL](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/15-generating-sdl.md) | `GraphQLSchemaBuilderModule`, headless schema extraction for CI/CD |
+| **16** | [Sharing Models](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/16-sharing-models.md) | `graphql-model-shim`, sharing models between NestJS and browser client bundles |
+| **17** | [Other Features](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/17-other-features.md) | `GqlExecutionContext`, guards, interceptors, custom `@User()` decorator, custom drivers |
+| **18** | [Federation](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/18-federation.md) | Apollo Federation 1 & 2 (`ApolloFederationDriver`), `@key`, `@ResolveReference()`, gateway supergraph |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports

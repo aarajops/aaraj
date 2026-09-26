@@ -45,6 +45,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * NestJS Observe, SDK & Fastify Configuration, Manual Instrumentation, Distributed Tracing, Error Monitoring & Defect Fingerprinting, Dashboard & Profiler, MCP Server Integration
 * **[Reliability & Fault Tolerance Index](../../docs/backend/reliability/README.md)**
   * Resilience (`@nestjs/resilience`), Idempotency Keys (`@nestjs/idempotency`), Transactional Outbox (`@nestjs/outbox`), Distributed Locks (`@nestjs/locks`)
+* **[GraphQL API & Supergraphs Index](../../docs/backend/graphql/README.md)**
+  * Quick Start, Resolvers, Mutations, Subscriptions, Scalars, Directives, Interfaces, Unions & Enums, Field Middleware, Mapped Types, Plugins, Complexity, Extensions, CLI Plugin, Generating SDL, Sharing Models, Other Features, Federation 2
 
 ---
 

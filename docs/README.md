@@ -91,6 +91,26 @@ docs/
         ├── 02-idempotency-keys.md # @nestjs/idempotency, IETF standard, atomic stores, encryption
         ├── 03-transactional-outbox.md # @nestjs/outbox, dual-write prevention, relay, consumer inboxes
         └── 04-distributed-locks.md # @nestjs/locks, cron leases, fencing tokens, leader election
+    └── graphql/                   # Type-safe data graphs, Apollo Server v5, Mercurius, federation
+        ├── README.md              # GraphQL guide index
+        ├── 01-quick-start.md      # Apollo v5 & Mercurius setup, GraphiQL IDE, context factory
+        ├── 02-resolvers.md        # Code-first @Resolver, @Query, @ResolveField, pagination
+        ├── 03-mutations.md        # @Mutation, @InputType, nested input validation
+        ├── 04-subscriptions.md    # Real-time subscriptions, graphql-ws, PubSub, WebSockets auth
+        ├── 05-scalars.md          # Custom scalars, Date modes, graphql-type-json
+        ├── 06-directives.md       # @Directive, schema transformations with mapSchema
+        ├── 07-interfaces.md       # @InterfaceType, polymorphic queries, resolveType
+        ├── 08-unions-and-enums.md # createUnionType (as const), registerEnumType
+        ├── 09-field-middleware.md # FieldMiddleware, intercepting field resolution
+        ├── 10-mapped-types.md     # PartialType, PickType, OmitType, IntersectionType
+        ├── 11-plugins.md          # ApolloServerPlugin lifecycle hooks, Mercurius plugins
+        ├── 12-complexity.md       # Query complexity analysis, DoS defense, estimators
+        ├── 13-extensions.md       # @Extensions, custom field metadata, field-level RBAC
+        ├── 14-cli-plugin.md       # AST compiler plugin, automatic @Field, ESM support
+        ├── 15-generating-sdl.md   # Headless schema generation with GraphQLSchemaFactory
+        ├── 16-sharing-models.md   # graphql-model-shim for frontend browser bundles
+        ├── 17-other-features.md   # GqlExecutionContext, guards, custom drivers
+        └── 18-federation.md       # Apollo Federation 1 & 2 subgraphs, supergraph gateway
 ```
 
 ---
