@@ -217,6 +217,20 @@ The [deployment/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/REA
 
 ---
 
+## CLI & Workspaces Table of Contents
+
+The [cli/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/README.md) directory documents developer tooling, project scaffolding, monorepo orchestration, and compilation backends:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [CLI Overview](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/01-overview.md) | Global vs local binary resolution, Node 24 runtime & ICU validation, ESM scaffolding (Vitest/oxlint), CLI syntax |
+| **02** | [Workspaces](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/02-workspaces.md) | Standard mode to monorepo conversion (`nest g app`), `nest-cli.json` schema, global & project compilerOptions, static assets |
+| **03** | [Libraries](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/03-libraries.md) | Monorepo internal libraries (`libs/`), `@app/*` path mapping, module exports (`index.ts`), Vitest/Jest resolver configs, Rspack bundling |
+| **04** | [Command Reference](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md) | Comprehensive command options (`new`, `generate`, `build`, `start`, `add`, `upgrade`, `deploy`, `info`), schematics reference, Mau integration |
+| **05** | [Scripts & Compilers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/05-scripts.md) | `package.json` script orchestration, builder comparison (`tsc` vs `swc` vs `rspack`), AST plugins (Swagger), legacy migration |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports

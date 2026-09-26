@@ -140,6 +140,13 @@ docs/
         ├── 02-docker.md           # Multi-stage Dockerfile (Node 24 + pnpm), dumb-init, non-root
         ├── 03-scaling-clustering.md # Kubernetes HPA, Nginx reverse proxy, ALB, stateless design
         └── 04-health-checks-terminus.md # @nestjs/terminus, liveness/readiness probes, indicators
+    └── cli/                       # Developer tooling, project scaffolding, and monorepo builds
+        ├── README.md              # CLI architecture & builder comparison overview
+        ├── 01-overview.md         # Global vs local binary resolution, ICU check, ESM scaffolding
+        ├── 02-workspaces.md       # Monorepo mode, nest-cli.json schema, assets, compilerOptions
+        ├── 03-libraries.md        # Monorepo internal libraries, @app/* paths, test runner configs
+        ├── 04-usage.md            # Exhaustive CLI command reference, schematics, Mau cloud deploy
+        └── 05-scripts.md          # package.json scripts, tsc vs swc vs rspack, legacy migrations
 ```
 
 ---
