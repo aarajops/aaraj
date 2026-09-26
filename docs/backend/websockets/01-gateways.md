@@ -6,7 +6,7 @@
 
 A **Gateway** in NestJS is a specialized class annotated with the `@WebSocketGateway()` decorator. Gateways act as the real-time counterpart to HTTP controllers: they listen for incoming client connections, subscribe to incoming message events, route payloads through pipes and guards, and dispatch responses back to individual sockets, rooms, or entire namespaces.
 
-Because gateways are platform-agnostic [providers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/03-providers.md), they participate fully in Nest's Dependency Injection (DI) container. They can inject repositories and services, and controllers or services can inject the gateway itself to trigger push notifications to connected clients.
+Because gateways are platform-agnostic [providers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/03-providers.md), they participate fully in Nest's Dependency Injection (DI) container. They can inject repositories and services, and controllers or services can inject the gateway itself to trigger push notifications to connected clients.
 
 ---
 

@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12 (`@nestjs/microservices`, `@nestjs/common`)  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-[Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/09-interceptors.md) in microservices wrap the execution of pattern handlers using RxJS observable streams, enabling Aspect-Oriented Programming (AOP) across distributed messaging topologies.
+[Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/09-interceptors.md) in microservices wrap the execution of pattern handlers using RxJS observable streams, enabling Aspect-Oriented Programming (AOP) across distributed messaging topologies.
 
 ---
 

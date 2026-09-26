@@ -6,7 +6,7 @@ This directory serves as the definitive reference guide and architectural playbo
 
 ## Overview Table of Contents
 
-The [overview/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/README.md) directory documents the ten foundational architectural primitives and execution pipeline of NestJS:
+The [overview/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/README.md) directory documents the eleven foundational architectural primitives and execution pipeline of NestJS:
 
 | Chapter | Topic | Key Focus Areas |
 | :--- | :--- | :--- |
@@ -20,7 +20,7 @@ The [overview/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/README.
 | **08** | [Guards](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/08-guards.md) | Authentication, RBAC authorization, `Reflector.createDecorator`, `ExecutionContext` |
 | **09** | [Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/09-interceptors.md) | AOP, RxJS stream manipulation, response wrapping, caching, timeouts |
 | **10** | [Custom Decorators](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/10-custom-decorators.md) | Param decorators, schema validation, composite decorators (`applyDecorators`) |
-| **11** | [Request Lifecycle](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/11-request-lifecycle.md) | End-to-end execution pipeline order, timing guarantees, and error bubbling |
+| **11** | [Request Lifecycle](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/11-request-lifecycle.md) | End-to-end execution pipeline order, timing guarantees, and error bubbling |
 
 ---
 

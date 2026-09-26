@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-The **Overview** tier documents the foundational architectural primitives of NestJS. These ten core building blocks form the backbone of all backend services across the monorepo, providing an expressive, modular, and strongly-typed architecture based on Dependency Injection (DI) and Aspect-Oriented Programming (AOP).
+The **Overview** tier documents the foundational architectural primitives of NestJS. These eleven core building blocks form the backbone of all backend services across the monorepo, providing an expressive, modular, and strongly-typed architecture based on Dependency Injection (DI) and Aspect-Oriented Programming (AOP).
 
 ```text
                            NESTJS CORE ARCHITECTURE
@@ -19,6 +19,7 @@ The **Overview** tier documents the foundational architectural primitives of Nes
 │ • Custom         │          │ • Platform       │          │ • Interceptors   │
 │   Decorators     │          │   Adapters       │          │ • Pipes (Schema) │
 │                  │          │                  │          │ • Exception Fltrs│
+│                  │          │                  │          │ • Req Lifecycle  │
 └──────────────────┘          └──────────────────┘          └──────────────────┘
 ```
 
@@ -38,6 +39,7 @@ The **Overview** tier documents the foundational architectural primitives of Nes
 | **[08 - Guards](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/08-guards.md)** | Authentication & RBAC | `CanActivate`, `@UseGuards()`, `Reflector`, role-based access control (RBAC). | Determining whether a request is authorized to proceed based on JWT tokens, permissions, or session state. |
 | **[09 - Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/09-interceptors.md)** | Aspect-Oriented Streams | `NestInterceptor`, `CallHandler`, RxJS operators (`map`, `catchError`, `timeout`). | Binding extra logic before/after method execution, transforming response payloads, and handling timeouts. |
 | **[10 - Custom Decorators](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/10-custom-decorators.md)** | Metadata & Composition | `createParamDecorator()`, `applyDecorators()`, declarative parameter injection. | Extracting user sessions (`@CurrentUser()`), validating tokens, and bundling complex decorator sets. |
+| **[11 - Request Lifecycle](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/11-request-lifecycle.md)** | Execution Pipeline | End-to-end execution order, timing guarantees, scope interactions. | Understanding deterministic phase traversal, middleware traps, and interceptor stream sequencing. |
 
 ---
 

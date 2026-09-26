@@ -11,7 +11,6 @@ docs/
 ├── README.md                      # Documentation portal entry point (this file)
 └── backend/                       # NestJS backend architectural standards & guides
     ├── README.md                  # Backend overview & design philosophy
-    ├── 11-request-lifecycle.md    # Deterministic end-to-end request execution pipeline
     ├── overview/                  # Foundational building blocks & core architecture
     │   ├── README.md              # Overview architecture & ingress pipeline
     │   ├── 01-first-steps.md      # Bootstrapping, runtime, platform adapters, and tooling
@@ -23,7 +22,8 @@ docs/
     │   ├── 07-pipes.md            # Data transformation, Standard Schema, and Zod validation
     │   ├── 08-guards.md           # Authentication, RBAC authorization, and metadata reflection
     │   ├── 09-interceptors.md     # AOP, RxJS stream manipulation, caching, and timeouts
-    │   └── 10-custom-decorators.md # Param decorators, schema parsing, and decorator composition
+    │   ├── 10-custom-decorators.md # Param decorators, schema parsing, and decorator composition
+    │   └── 11-request-lifecycle.md # Deterministic end-to-end request execution pipeline
     └── fundamentals/              # Advanced IoC container & runtime infrastructure
         ├── README.md              # Fundamentals guide index
         ├── 01-custom-providers.md # Dynamic DI, value/class/factory providers
@@ -211,6 +211,6 @@ docs/
 ## Quick Navigation
 
 * **Backend Standards Index**: [docs/backend/README.md](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/README.md)
-* **Request Lifecycle Reference**: [docs/backend/11-request-lifecycle.md](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/11-request-lifecycle.md)
+* **Request Lifecycle Reference**: [docs/backend/overview/11-request-lifecycle.md](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/11-request-lifecycle.md)
 * **Root Application Guide**: [README.md](file:///home/solo/JUNK/OFC/LK/araz/README.md)
 * **API Service Guide**: [apps/api/README.md](file:///home/solo/JUNK/OFC/LK/araz/apps/api/README.md)
