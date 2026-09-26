@@ -15,6 +15,10 @@ araz/
 ├── packages/
 │   └── contracts/             # Shared domain schemas & DTOs (@araz/contracts)
 │
+├── docs/                      # Architectural standards & official engineering documentation
+│   ├── README.md              # Documentation portal
+│   └── backend/               # NestJS core fundamentals & architectural reference
+│
 ├── pnpm-workspace.yaml        # Workspace definition
 ├── pnpm-lock.yaml             # Authoritative lockfile
 ├── package.json               # Root task orchestrator
@@ -22,6 +26,16 @@ araz/
 ├── .editorconfig
 └── .gitignore
 ```
+
+---
+
+## Engineering Documentation
+
+The repository maintains an authoritative, durable documentation portal under `/docs`:
+
+* **[Engineering Documentation Portal](docs/README.md)**: Monorepo architecture, boundaries, and standards.
+* **[NestJS Backend Standards & Reference](docs/backend/README.md)**: Deep architectural guide covering First Steps, Controllers, Providers, Modules, Middleware, Exception Filters, Pipes, Guards, Interceptors, Custom Decorators, and the Request Lifecycle.
+
 
 ---
 

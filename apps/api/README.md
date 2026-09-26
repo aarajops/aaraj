@@ -1,118 +1,81 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# @araz/api - Enterprise Backend Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+The core backend service for the **Araz** enterprise platform, built with **NestJS 12**, **TypeScript (ESM / NodeNext)**, and **Node.js 24 LTS**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Architecture & Conventions
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+* **Port**: Runs on port `3001` (configurable via `PORT` environment variable).
+* **Global Prefix**: All HTTP routes are served under `/api` (e.g. `http://localhost:3001/api`).
+* **Shared Contracts**: Validation DTOs and business schemas are consumed from `@araz/contracts`.
+* **Module System**: Pure ECMAScript Modules (`"type": "module"`). All relative imports require `.js` extensions.
+* **Testing**: Unit and End-to-End tests powered by **Vitest**.
+* **Linting & Formatting**: Enforced via **Oxlint** and **Prettier**.
 
-## Project setup
+---
 
-```bash
-$ bun install
-```
+## Architectural Reference Documentation
 
-## Compile and run the project
+Comprehensive architectural guidelines and official NestJS standards are maintained in the root `docs/` directory:
 
-```bash
-# development
-$ bun run start
+* **[Backend Standards & Architecture Index](../../docs/backend/README.md)**
+* **[01. First Steps & Bootstrapping](../../docs/backend/01-first-steps.md)**
+* **[02. Controllers & Routing](../../docs/backend/02-controllers.md)**
+* **[03. Providers & Dependency Injection](../../docs/backend/03-providers.md)**
+* **[04. Modules & Encapsulation Boundaries](../../docs/backend/04-modules.md)**
+* **[05. Middleware & Consumers](../../docs/backend/05-middleware.md)**
+* **[06. Exception Filters & Error Handling](../../docs/backend/06-exception-filters.md)**
+* **[07. Pipes & Standard Schema Validation](../../docs/backend/07-pipes.md)**
+* **[08. Guards & RBAC Authorization](../../docs/backend/08-guards.md)**
+* **[09. Interceptors & Aspect-Oriented Streams](../../docs/backend/09-interceptors.md)**
+* **[10. Custom Decorators & Composition](../../docs/backend/10-custom-decorators.md)**
+* **[11. Complete Request Lifecycle Pipeline](../../docs/backend/11-request-lifecycle.md)**
 
-# watch mode
-$ bun run start:dev
+---
 
-# production mode
-$ bun run start:prod
-```
+## Development Commands
 
-## Run tests
+All commands should be executed from the monorepo root:
 
 ```bash
-# unit tests
-$ bun run test
+# Start API in development watch mode
+pnpm dev:api
 
-# e2e tests
-$ bun run test:e2e
+# Run unit tests
+pnpm --filter @araz/api test
 
-# test coverage
-$ bun run test:cov
+# Run E2E tests
+pnpm --filter @araz/api test:e2e
+
+# Typecheck TypeScript
+pnpm --filter @araz/api typecheck
+
+# Lint with Oxlint
+pnpm --filter @araz/api lint
+
+# Production build
+pnpm --filter @araz/api build
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Directory Structure
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ bun install -g @nestjs/mau
-$ mau deploy
+```text
+apps/api/
+├── src/
+│   ├── app.controller.spec.ts   # Controller unit tests
+│   ├── app.controller.ts        # Health and status routes
+│   ├── app.module.ts            # Root application module
+│   ├── app.service.ts           # Root application service
+│   ├── configure-app.ts         # Shared app bootstrap configuration (prefix, CORS)
+│   └── main.ts                  # Entry point
+├── test/
+│   └── app.e2e-spec.ts          # End-to-end integration tests
+├── nest-cli.json                # Nest CLI configuration
+├── package.json                 # Workspace package configuration
+├── tsconfig.json                # TypeScript compiler options
+├── vitest.config.ts             # Vitest unit test configuration
+└── vitest.config.e2e.ts         # Vitest E2E test configuration
 ```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-This project is already instrumented. Create a free account at [observe.nestjs.com](https://observe.nestjs.com), add an application, and paste the generated app key and secret into the `ObserveModule.forRoot()` call in `src/app.module.ts`.
-
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
