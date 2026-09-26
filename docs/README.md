@@ -11,17 +11,19 @@ docs/
 ├── README.md                      # Documentation portal entry point (this file)
 └── backend/                       # NestJS backend architectural standards & guides
     ├── README.md                  # Backend overview & design philosophy
-    ├── 01-first-steps.md          # Bootstrapping, runtime, platform adapters, and tooling
-    ├── 02-controllers.md          # Routing, request/response lifecycle, DTOs, and decorators
-    ├── 03-providers.md            # Dependency injection, tokens, scopes, and custom providers
-    ├── 04-modules.md              # Encapsulation, boundaries, exports, and dynamic modules
-    ├── 05-middleware.md           # Middleware functions, consumers, and route exclusions
-    ├── 06-exception-filters.md    # Error handling layer, HTTP exceptions, and custom filters
-    ├── 07-pipes.md                # Data transformation, Standard Schema, and Zod validation
-    ├── 08-guards.md               # Authentication, RBAC authorization, and metadata reflection
-    ├── 09-interceptors.md         # AOP, RxJS stream manipulation, caching, and timeouts
-    ├── 10-custom-decorators.md    # Param decorators, schema parsing, and decorator composition
     ├── 11-request-lifecycle.md    # Deterministic end-to-end request execution pipeline
+    ├── overview/                  # Foundational building blocks & core architecture
+    │   ├── README.md              # Overview architecture & ingress pipeline
+    │   ├── 01-first-steps.md      # Bootstrapping, runtime, platform adapters, and tooling
+    │   ├── 02-controllers.md      # Routing, request/response lifecycle, DTOs, and decorators
+    │   ├── 03-providers.md        # Dependency injection, tokens, scopes, and custom providers
+    │   ├── 04-modules.md          # Encapsulation, boundaries, exports, and dynamic modules
+    │   ├── 05-middleware.md       # Middleware functions, consumers, and route exclusions
+    │   ├── 06-exception-filters.md # Error handling layer, HTTP exceptions, and custom filters
+    │   ├── 07-pipes.md            # Data transformation, Standard Schema, and Zod validation
+    │   ├── 08-guards.md           # Authentication, RBAC authorization, and metadata reflection
+    │   ├── 09-interceptors.md     # AOP, RxJS stream manipulation, caching, and timeouts
+    │   └── 10-custom-decorators.md # Param decorators, schema parsing, and decorator composition
     └── fundamentals/              # Advanced IoC container & runtime infrastructure
         ├── README.md              # Fundamentals guide index
         ├── 01-custom-providers.md # Dynamic DI, value/class/factory providers

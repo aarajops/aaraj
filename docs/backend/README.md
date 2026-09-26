@@ -6,18 +6,20 @@ This directory serves as the definitive reference guide and architectural playbo
 
 ## Overview Table of Contents
 
+The [overview/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/README.md) directory documents the ten foundational architectural primitives and execution pipeline of NestJS:
+
 | Chapter | Topic | Key Focus Areas |
 | :--- | :--- | :--- |
-| **01** | [First Steps](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/01-first-steps.md) | Bootstrap, `NestFactory`, Express vs. Fastify, Node 24 runtime, ESM rules |
-| **02** | [Controllers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/02-controllers.md) | Routing, HTTP verbs, route params, query parsing, DTO binding, status codes |
-| **03** | [Providers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/03-providers.md) | Dependency Injection, tokens, `Scope.DEFAULT` vs `Scope.REQUEST`, custom providers |
-| **04** | [Modules](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/04-modules.md) | Encapsulation boundaries, provider exports, shared modules, dynamic modules |
-| **05** | [Middleware](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/05-middleware.md) | Express middleware, `NestMiddleware`, `MiddlewareConsumer`, route exclusion |
-| **06** | [Exception Filters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/06-exception-filters.md) | Exceptions layer, built-in HTTP errors, machine-readable `errorCode`, custom filters |
-| **07** | [Pipes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/07-pipes.md) | Transformation, validation, Standard Schema V1, Zod contracts integration |
-| **08** | [Guards](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/08-guards.md) | Authentication, RBAC authorization, `Reflector.createDecorator`, `ExecutionContext` |
-| **09** | [Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/09-interceptors.md) | AOP, RxJS stream manipulation, response wrapping, caching, timeouts |
-| **10** | [Custom Decorators](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/10-custom-decorators.md) | Param decorators, schema validation, composite decorators (`applyDecorators`) |
+| **01** | [First Steps](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/01-first-steps.md) | Bootstrap, `NestFactory`, Express vs. Fastify, Node 24 runtime, ESM rules |
+| **02** | [Controllers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/02-controllers.md) | Routing, HTTP verbs, route params, query parsing, DTO binding, status codes |
+| **03** | [Providers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/03-providers.md) | Dependency Injection, tokens, `Scope.DEFAULT` vs `Scope.REQUEST`, custom providers |
+| **04** | [Modules](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/04-modules.md) | Encapsulation boundaries, provider exports, shared modules, dynamic modules |
+| **05** | [Middleware](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/05-middleware.md) | Express middleware, `NestMiddleware`, `MiddlewareConsumer`, route exclusion |
+| **06** | [Exception Filters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/06-exception-filters.md) | Exceptions layer, built-in HTTP errors, machine-readable `errorCode`, custom filters |
+| **07** | [Pipes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/07-pipes.md) | Transformation, validation, Standard Schema V1, Zod contracts integration |
+| **08** | [Guards](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/08-guards.md) | Authentication, RBAC authorization, `Reflector.createDecorator`, `ExecutionContext` |
+| **09** | [Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/09-interceptors.md) | AOP, RxJS stream manipulation, response wrapping, caching, timeouts |
+| **10** | [Custom Decorators](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/10-custom-decorators.md) | Param decorators, schema validation, composite decorators (`applyDecorators`) |
 | **11** | [Request Lifecycle](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/11-request-lifecycle.md) | End-to-end execution pipeline order, timing guarantees, and error bubbling |
 
 ---

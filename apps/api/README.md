@@ -20,17 +20,8 @@ The core backend service for the **Araz** enterprise platform, built with **Nest
 Comprehensive architectural guidelines and official NestJS standards are maintained in the root `docs/` directory:
 
 * **[Backend Standards & Architecture Index](../../docs/backend/README.md)**
-* **[01. First Steps & Bootstrapping](../../docs/backend/01-first-steps.md)**
-* **[02. Controllers & Routing](../../docs/backend/02-controllers.md)**
-* **[03. Providers & Dependency Injection](../../docs/backend/03-providers.md)**
-* **[04. Modules & Encapsulation Boundaries](../../docs/backend/04-modules.md)**
-* **[05. Middleware & Consumers](../../docs/backend/05-middleware.md)**
-* **[06. Exception Filters & Error Handling](../../docs/backend/06-exception-filters.md)**
-* **[07. Pipes & Standard Schema Validation](../../docs/backend/07-pipes.md)**
-* **[08. Guards & RBAC Authorization](../../docs/backend/08-guards.md)**
-* **[09. Interceptors & Aspect-Oriented Streams](../../docs/backend/09-interceptors.md)**
-* **[10. Custom Decorators & Composition](../../docs/backend/10-custom-decorators.md)**
-* **[11. Complete Request Lifecycle Pipeline](../../docs/backend/11-request-lifecycle.md)**
+* **[Overview & Core Building Blocks Index](../../docs/backend/overview/README.md)**
+  * First Steps, Controllers, Providers, Modules, Middleware, Exception Filters, Pipes, Guards, Interceptors, Custom Decorators, Request Lifecycle
 * **[Fundamentals & Advanced Architecture Index](../../docs/backend/fundamentals/README.md)**
   * Custom Providers, Async Providers, Dynamic Modules, Scopes, Circular Dependencies, ModuleRef, Lazy Loading, Execution Context, Lifecycles, Discovery, Testing
 * **[Application & Production Capabilities Index](../../docs/backend/application/README.md)**
