@@ -57,6 +57,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * CLI Architecture, Workspaces (Standard vs Monorepo), Monorepo Libraries, CLI Command Reference & Schematics, Scripts & Compilers (tsc, swc, rspack)
 * **[OpenAPI (Swagger) Architecture Index](../../docs/backend/openapi/README.md)**
   * Bootstrap, Standard Schema (Zod/Valibot), Types & Parameters, Operations, Security Schemes, Mapped Types, Decorators, CLI Plugin, Multi-Docs
+* **[Recipes & Specialized Architectures Index](../../docs/backend/recipes/README.md)**
+  * REPL Console, CRUD Generator, SWC Compiler, Passport Auth, Hot Reload (HMR), Router Module, Terminus Health Checks, CQRS Architecture, Serve Static, Nest Commander CLI, Async Local Storage (ALS)
 
 ---
 

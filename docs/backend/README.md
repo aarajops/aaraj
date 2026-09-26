@@ -248,6 +248,26 @@ The [openapi/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/README.md
 
 ---
 
+## Recipes & Specialized Architectures Table of Contents
+
+The [recipes/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/README.md) directory documents official patterns for developer tooling, speed, health, domain architectures, and contextual state:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [REPL Interactive Console](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/01-repl.md) | `repl(AppModule)`, inspection methods (`debug`, `$`, `methods`, `resolve`), command history (`.nestjs_repl_history`) |
+| **02** | [CRUD Generator Schematics](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/02-crud-generator.md) | `nest g resource`, REST, GraphQL (code/schema-first), Microservices, WebSockets, ORM-agnostic services |
+| **03** | [SWC Compiler Toolchain](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/03-swc.md) | Rust JIT builder (`--builder swc`), `--type-check`, circular relation types (`Relation<T>`), Vitest `unplugin-swc` |
+| **04** | [Passport Authentication](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/04-passport.md) | `PassportStrategy`, Local & JWT strategies, global `JwtAuthGuard`, `@Public()` decorator, GraphQL execution context |
+| **05** | [Hot Reload (HMR)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/05-hot-reload.md) | Webpack/Rspack HMR, `module.hot.dispose`, `closePromise` port release, `forceCloseConnections` |
+| **06** | [Router Module](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/06-router-module.md) | `RouterModule.register()`, hierarchical module path prefixes (`/admin/dashboard`), API gateway routing |
+| **07** | [Health Checks (Terminus)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/07-health-checks.md) | Kubernetes liveness/readiness, DB & memory indicators, `attempt()`, explicit `degraded()`, zero-downtime `gracefulShutdownTimeoutMs` |
+| **08** | [CQRS Architecture](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/08-cqrs.md) | `CommandBus`, `QueryBus`, `EventBus`, RxJS Sagas, flexible Aggregate Roots, `AsyncContext` request scoping, `UnhandledExceptionBus` |
+| **09** | [Serve Static Assets](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/09-serve-static.md) | `ServeStaticModule`, client SPA wildcard fallback (`index.html`), Fastify `fallthrough: true`, caching |
+| **10** | [Nest Commander CLI](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/10-commander.md) | Standalone CLI binaries, `@Command()`, `CommandRunner`, `@Option()`, `CommandFactory.run()`, testing with `CommandTestFactory` |
+| **11** | [Async Local Storage (ALS)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/11-async-local-storage.md) | `node:async_hooks`, middleware context propagation, `@nestjs/observe` `TracerService`, `nestjs-cls` continuation storage |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports

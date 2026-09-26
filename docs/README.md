@@ -147,16 +147,29 @@ docs/
         ├── 03-libraries.md        # Monorepo internal libraries, @app/* paths, test runner configs
         ├── 04-usage.md            # Exhaustive CLI command reference, schematics, Mau cloud deploy
         └── 05-scripts.md          # package.json scripts, tsc vs swc vs rspack, legacy migrations
-    └── openapi/                   # OpenAPI (Swagger) API documentation & contract schemas
-        ├── README.md              # OpenAPI architecture & pipeline overview
-        ├── 01-introduction.md     # Bootstrap, deferred factory, Fastify, Standard Schema (Zod/Valibot)
-        ├── 02-types-and-parameters.md # DTO reflection, enumName deduplication, extra models, oneOf
-        ├── 03-operations.md       # OpenAPI 3.2 hierarchical tags, responses, generic paginated DTOs
-        ├── 04-security.md         # Bearer, Basic, OAuth2 scopes, API keys, cookie sessions
-        ├── 05-mapped-types.md     # PartialType, PickType, OmitType, IntersectionType derivation
-        ├── 06-decorators.md       # Master OpenAPI decorators catalog & applyDecorators composition
-        ├── 07-cli-plugin.md       # AST compiler plugin, comment introspection, SWC/Jest e2e setup
-        └── 08-other-features.md   # Multi-specs, explorer dropdown, CI/CD static schema export
+        ├── openapi/                   # OpenAPI (Swagger) API documentation & contract schemas
+        │   ├── README.md              # OpenAPI architecture & pipeline overview
+        │   ├── 01-introduction.md     # Bootstrap, deferred factory, Fastify, Standard Schema (Zod/Valibot)
+        │   ├── 02-types-and-parameters.md # DTO reflection, enumName deduplication, extra models, oneOf
+        │   ├── 03-operations.md       # OpenAPI 3.2 hierarchical tags, responses, generic paginated DTOs
+        │   ├── 04-security.md         # Bearer, Basic, OAuth2 scopes, API keys, cookie sessions
+        │   ├── 05-mapped-types.md     # PartialType, PickType, OmitType, IntersectionType derivation
+        │   ├── 06-decorators.md       # Master OpenAPI decorators catalog & applyDecorators composition
+        │   ├── 07-cli-plugin.md       # AST compiler plugin, comment introspection, SWC/Jest e2e setup
+        │   └── 08-other-features.md   # Multi-specs, explorer dropdown, CI/CD static schema export
+        └── recipes/                   # Enterprise recipes, fast tooling & specialized patterns
+            ├── README.md              # Recipes architectural taxonomy & enterprise standards
+            ├── 01-repl.md             # Interactive REPL console, dependency inspection & history
+            ├── 02-crud-generator.md   # Resource generator for REST, GraphQL, Microservices, WebSockets
+            ├── 03-swc.md              # High-speed Rust SWC compiler, type checking, circular relations
+            ├── 04-passport.md         # Passport authentication: Local, JWT, @Public(), GraphQL context
+            ├── 05-hot-reload.md       # Webpack/Rspack HMR, closePromise port release, EADDRINUSE guard
+            ├── 06-router-module.md    # Hierarchical module path prefixes & API gateway routing
+            ├── 07-health-checks.md    # Terminus health probes, memory/disk checks, graceful shutdown
+            ├── 08-cqrs.md             # CQRS: CommandBus, QueryBus, EventBus, Sagas, Aggregate Roots
+            ├── 09-serve-static.md     # Serving SPAs, wildcard routing fallthrough, cache control
+            ├── 10-commander.md        # Standalone CLI tools, @Command, CommandRunner, CommandTestFactory
+            └── 11-async-local-storage.md # AsyncLocalStorage, @nestjs/observe TracerService, nestjs-cls
 ```
 
 ---
