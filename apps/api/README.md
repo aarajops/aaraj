@@ -51,6 +51,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * Gateways, Exception Filters, Pipes, Guards, Interceptors, Adapters (Socket.IO Redis Clustering & ws)
 * **[Microservices & Distributed Transporters Index](../../docs/backend/microservices/README.md)**
   * Transporter Architecture, TCP, Redis, MQTT, NATS (v3), RabbitMQ, Kafka, gRPC, Custom Transporters, Exception Filters, Pipes, Pre-Request Hooks, Guards, Interceptors
+* **[Deployment & Cloud Operations Index](../../docs/backend/deployment/README.md)**
+  * Production Builds, Multi-Stage Dockerfile (Node 24 + pnpm), Kubernetes Autoscaling, Nginx Reverse Proxy, Terminus Health Checks, Mau AWS Deployment
 
 ---
 

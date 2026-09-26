@@ -134,6 +134,12 @@ docs/
         ├── 11-pre-request-hooks.md # Middleware equivalent, AsyncLocalStorage correlation ID
         ├── 12-guards.md           # Authorization, RpcException, inter-service tokens
         └── 13-interceptors.md     # AOP streams, response envelopes, latency benchmarking
+    └── deployment/                # Production release, Docker multi-stage, scaling, and Mau
+        ├── README.md              # Production deployment & operations overview
+        ├── 01-deployment.md       # Compilation, NODE_ENV, Terminus, logging, Mau on AWS
+        ├── 02-docker.md           # Multi-stage Dockerfile (Node 24 + pnpm), dumb-init, non-root
+        ├── 03-scaling-clustering.md # Kubernetes HPA, Nginx reverse proxy, ALB, stateless design
+        └── 04-health-checks-terminus.md # @nestjs/terminus, liveness/readiness probes, indicators
 ```
 
 ---

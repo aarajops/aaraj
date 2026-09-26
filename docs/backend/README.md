@@ -204,6 +204,19 @@ The [microservices/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservic
 
 ---
 
+## Deployment & Cloud Operations Table of Contents
+
+The [deployment/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/README.md) directory documents release engineering, containerization, orchestration, and automated cloud deployments:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Deployment Guide](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/01-deployment.md) | `nest build`, `NODE_ENV=production`, process signals, Terminus health checks, JSON logging, Mau AWS deployment (`nest deploy`) |
+| **02** | [Enterprise Docker](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/02-docker.md) | Multi-stage Dockerfile (Node 24 Alpine + pnpm), non-root `node` user, `dumb-init` PID 1 signal forwarding, `.dockerignore` |
+| **03** | [Scaling & Clustering](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/03-scaling-clustering.md) | Kubernetes HPA, Nginx reverse proxy (HTTP/2, WebSockets, gRPC), AWS ALB, stateless design principles |
+| **04** | [Health Checks & Probes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/04-health-checks-terminus.md) | `@nestjs/terminus`, liveness vs readiness probe separation, database/redis pings, memory leak limits (`checkHeap`) |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports
