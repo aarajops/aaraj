@@ -47,6 +47,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * Resilience (`@nestjs/resilience`), Idempotency Keys (`@nestjs/idempotency`), Transactional Outbox (`@nestjs/outbox`), Distributed Locks (`@nestjs/locks`)
 * **[GraphQL API & Supergraphs Index](../../docs/backend/graphql/README.md)**
   * Quick Start, Resolvers, Mutations, Subscriptions, Scalars, Directives, Interfaces, Unions & Enums, Field Middleware, Mapped Types, Plugins, Complexity, Extensions, CLI Plugin, Generating SDL, Sharing Models, Other Features, Federation 2
+* **[WebSockets & Real-Time Gateways Index](../../docs/backend/websockets/README.md)**
+  * Gateways, Exception Filters, Pipes, Guards, Interceptors, Adapters (Socket.IO Redis Clustering & ws)
 
 ---
 

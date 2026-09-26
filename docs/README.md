@@ -111,6 +111,14 @@ docs/
         ├── 16-sharing-models.md   # graphql-model-shim for frontend browser bundles
         ├── 17-other-features.md   # GqlExecutionContext, guards, custom drivers
         └── 18-federation.md       # Apollo Federation 1 & 2 subgraphs, supergraph gateway
+    └── websockets/                # Real-time bidirectional gateways, Socket.IO, and ws
+        ├── README.md              # WebSockets guide index & architecture comparison
+        ├── 01-gateways.md         # @WebSocketGateway, namespaces, hooks, NestJS 12 scopes
+        ├── 02-exception-filters.md # WsException, BaseWsExceptionFilter, cause debugging
+        ├── 03-pipes.md            # WsException validation factory, Standard Schema V1
+        ├── 04-guards.md           # Handshake auth tokens, RBAC roles, WsAuthGuard
+        ├── 05-interceptors.md     # RxJS AOP benchmarking, response envelopes, emit bypass
+        └── 06-adapters.md         # WebSocketAdapter, Socket.IO Redis clustering, ws
 ```
 
 ---

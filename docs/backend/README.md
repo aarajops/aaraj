@@ -167,6 +167,21 @@ The [graphql/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/graphql/README.md
 
 ---
 
+## WebSockets & Real-Time Gateways Table of Contents
+
+The [websockets/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/websockets/README.md) directory documents real-time bidirectional communication, gateways, Socket.IO clustering, and native WS adapters:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Gateways](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/websockets/01-gateways.md) | `@WebSocketGateway()`, namespaces, `@SubscribeMessage()`, `@MessageBody()`, `@Ack()`, `WsResponse`, lifecycle hooks, NestJS 12 request-scoped gateways |
+| **02** | [Exception Filters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/websockets/02-exception-filters.md) | `WsException`, error frames, cause attribution, `BaseWsExceptionFilter`, gateway-level `@UseFilters()` vs global filter bypass |
+| **03** | [Pipes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/websockets/03-pipes.md) | Validation & transformation, `ValidationPipe` with `WsException` factory, Standard Schema V1 / Zod validation in `@MessageBody({ schema })` |
+| **04** | [Guards](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/websockets/04-guards.md) | WebSocket authentication & authorization, `context.switchToWs()`, handshake token extraction, RBAC roles, `handleConnection()` vs `@UseGuards()` |
+| **05** | [Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/websockets/05-interceptors.md) | Aspect-oriented programming, latency benchmarking, response enveloping, `client.emit()` direct emit bypass caveat |
+| **06** | [Adapters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/websockets/06-adapters.md) | `WebSocketAdapter`, Socket.IO Redis clustering (`@socket.io/redis-adapter`), sticky sessions vs websocket transport, `WsAdapter` with `ws`, custom `messageParser` |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports
