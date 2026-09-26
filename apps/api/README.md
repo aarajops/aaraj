@@ -63,6 +63,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * Serverless (AWS Lambda), HTTP Adapter (`HttpAdapterHost`), Keep-Alive Connections (`forceCloseConnections`), Global Path Prefix, Raw Body Buffers, Hybrid Applications, HTTPS Dual-Port Binding, Request Lifecycle, Common Dependency Errors & Debugging, Official Sample Catalog
 * **[Devtools & Architectural Governance Index](../../docs/backend/devtools/README.md)**
   * Graph Explorer, Partial Graphs (`PartialGraphHost`), Routes Explorer, Sandbox Playground, Bootstrap Performance Analyzer, CI/CD Graph Publishing (`GraphPublisher`), Pull Request Structural Diffs
+* **[NestJS 12 Migration Guide Index](../../docs/backend/migration/README.md)**
+  * Core Breaking Changes, Node 24/22.12+ Floors, `nest upgrade`, Rspack Monorepo Bundler, Vitest & Oxlint, Standard Schema V1, Zod Config, and Pure NodeNext ESM Migration
 
 ---
 

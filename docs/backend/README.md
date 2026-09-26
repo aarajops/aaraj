@@ -298,6 +298,19 @@ The [devtools/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/devtools/README.
 
 ---
 
+## Migration Guide (v11 to v12) Table of Contents
+
+The [migration/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/README.md) directory documents major version upgrades, breaking changes, Standard Schema adoption, and ESM transitions:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Core Breaking Changes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/01-breaking-changes.md) | Node 24/22 requirements, `@Optional()` inheritance drop, Terminus `HealthIndicatorService`, NATS v3, `graphql-ws` |
+| **02** | [CLI, Tooling & Compilers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/02-cli-tooling-and-compilers.md) | `nest upgrade`, Rspack default monorepo builder, Webpack deprecation, Vitest ESM testing, Oxlint linter |
+| **03** | [Standard Schema & New Features](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/03-standard-schema-and-features.md) | Standard Schema V1 (`StandardSchemaValidationPipe`), Zod Config, route conflict policies, machine-readable `errorCode` |
+| **04** | [ESM Migration Playbook](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/04-esm-migration-playbook.md) | `"type": "module"`, `NodeNext` resolution, mandatory `.js` relative imports, `import.meta.dirname`, Supertest defaults |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports

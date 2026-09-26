@@ -182,10 +182,16 @@ docs/
         │   ├── 08-request-lifecycle.md # Request lifecycle: Middleware -> Guard -> Interceptor -> Pipe -> Filter
         │   ├── 09-common-errors.md    # Cannot resolve dependency, circular DI, NEST_DEBUG, watch loops
         │   └── 10-examples.md         # Official sample repositories catalog & architectural archetypes
-        └── devtools/                  # Application architecture introspection & CI/CD governance
-            ├── README.md              # Devtools architectural taxonomy & governance standards
-            ├── 01-overview.md         # Graph explorer, partial graph DI debugger, routes & sandbox
-            └── 02-ci-cd-integration.md # CI/CD graph publisher, PR structural diffs & drift reports
+        ├── devtools/                  # Application architecture introspection & CI/CD governance
+        │   ├── README.md              # Devtools architectural taxonomy & governance standards
+        │   ├── 01-overview.md         # Graph explorer, partial graph DI debugger, routes & sandbox
+        │   └── 02-ci-cd-integration.md # CI/CD graph publisher, PR structural diffs & drift reports
+        └── migration/                 # NestJS 12 migration guide, breaking changes & ESM standards
+            ├── README.md              # Migration architecture overview & upgrade taxonomy
+            ├── 01-breaking-changes.md # Node 24/22, @Optional reflection, Terminus, NATS v3, GraphQL
+            ├── 02-cli-tooling-and-compilers.md # nest upgrade, Rspack monorepo builder, Vitest, Oxlint
+            ├── 03-standard-schema-and-features.md # Standard Schema, Zod Config, route conflicts, error codes
+            └── 04-esm-migration-playbook.md # NodeNext ESM, mandatory .js imports, import.meta.dirname
 ```
 
 ---
