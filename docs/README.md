@@ -57,6 +57,15 @@ docs/
         ├── 06-mikroorm.md         # @mikro-orm/nestjs, Unit of Work, Identity Map, forking
         ├── 07-sequelize.md        # @nestjs/sequelize, sequelize-typescript, models
         └── 08-caching.md          # @nestjs/cache-manager, Keyv, Redis, CacheInterceptor
+    └── security/                  # Threat mitigation, auth, and policy enforcement
+        ├── README.md              # Security guide index
+        ├── 01-authentication.md   # @nestjs/jwt, JwtService, Bearer tokens, @Public
+        ├── 02-authorization.md    # RBAC, Claims, CASL abilities, PoliciesGuard
+        ├── 03-encryption-hashing.md # AES-256-CTR, bcrypt, argon2, timing attack defense
+        ├── 04-security-headers.md # useSecurityHeaders, CSP, HSTS, frame protection
+        ├── 05-cors.md             # enableCors, origin allowlists, Fastify method parity
+        ├── 06-csrf-protection.md  # Built-in Fetch Metadata CSRF, trusted origins
+        └── 07-rate-limiting.md    # @nestjs/throttler, multi-tier limits, Redis storage
 ```
 
 ---
