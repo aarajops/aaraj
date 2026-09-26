@@ -231,6 +231,23 @@ The [cli/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/README.md) direct
 
 ---
 
+## OpenAPI (Swagger) Table of Contents
+
+The [openapi/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/README.md) directory documents API contract design, interactive documentation, AST schema inference, and Standard Schema integration:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Introduction & Bootstrap](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/01-introduction.md) | `DocumentBuilder`, deferred `documentFactory` closure, Fastify `@fastify/static`, Helmet CSP, Standard Schema (Zod/Valibot) |
+| **02** | [Types & Parameters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/02-types-and-parameters.md) | `@ApiProperty()`, arrays, circular references, `enumName` client SDK deduplication, `@ApiExtraModels()`, polymorphic schemas (`oneOf`) |
+| **03** | [Operations & Responses](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/03-operations.md) | OpenAPI 3.2 hierarchical tags (`parent`, `kind`), shorthand responses (`@ApiOkResponse`), multipart uploads, generic `ApiPaginatedResponse` |
+| **04** | [Security Schemes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/04-security.md) | `@ApiBearerAuth()`, `@ApiBasicAuth()`, `@ApiOAuth2()` scopes, `@ApiCookieAuth()`, controller vs public route overrides |
+| **05** | [Mapped Types](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/05-mapped-types.md) | DRY schema derivation, `PartialType()`, `PickType()`, `OmitType()`, `IntersectionType()`, critical import rule from `@nestjs/swagger` |
+| **06** | [Decorators Reference](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/06-decorators.md) | Exhaustive catalog of all 28+ `@Api*` decorators, targets (Method/Controller/Model), and composition via `applyDecorators()` |
+| **07** | [CLI Compiler Plugin](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/07-cli-plugin.md) | AST transforms, automatic `@ApiProperty` generation, JSDoc comment introspection (`@remarks`, `@param`), SWC & Jest e2e setup |
+| **08** | [Advanced Features & Multi-Docs](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/08-other-features.md) | Global parameters, global responses, multi-specification partitioning (`include: [Module]`), Explorer dropdown, CI/CD static file export |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports
