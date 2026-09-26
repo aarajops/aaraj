@@ -119,6 +119,21 @@ docs/
         ├── 04-guards.md           # Handshake auth tokens, RBAC roles, WsAuthGuard
         ├── 05-interceptors.md     # RxJS AOP benchmarking, response envelopes, emit bypass
         └── 06-adapters.md         # WebSocketAdapter, Socket.IO Redis clustering, ws
+    └── microservices/             # Distributed message brokers, patterns, and RPC
+        ├── README.md              # Microservices architecture & transporter matrix
+        ├── 01-overview.md         # Foundations, TCP, @MessagePattern, @EventPattern, ClientProxy
+        ├── 02-redis.md            # Redis Pub/Sub, wildcards, dual-connection unwrap
+        ├── 03-mqtt.md             # MQTT protocol, QoS 0/1/2, record builders, user properties
+        ├── 04-nats.md             # NATS v3 transport-node, queue groups, reply subjects
+        ├── 05-rabbitmq.md         # AMQP queues & exchanges, manual acks, topic routing
+        ├── 06-kafka.md            # Kafka streaming, reply partitions, NestJS 12 regex patterns
+        ├── 07-grpc.md             # Protobuf contracts, @GrpcMethod, streaming, GrpcExceptionFilter
+        ├── 08-custom-transporters.md # CustomTransportStrategy, Server, custom ClientProxy
+        ├── 09-exception-filters.md # RpcException, observable error streams, hybrid inheritance
+        ├── 10-pipes.md            # ValidationPipe with RpcException, Standard Schema Zod
+        ├── 11-pre-request-hooks.md # Middleware equivalent, AsyncLocalStorage correlation ID
+        ├── 12-guards.md           # Authorization, RpcException, inter-service tokens
+        └── 13-interceptors.md     # AOP streams, response envelopes, latency benchmarking
 ```
 
 ---

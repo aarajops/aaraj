@@ -182,6 +182,28 @@ The [websockets/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/websockets/REA
 
 ---
 
+## Microservices & Distributed Transporters Table of Contents
+
+The [microservices/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/README.md) directory documents the microservice architectural style, message patterns, and distributed transporters:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Overview](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/01-overview.md) | `createMicroservice()`, TCP transporter, `@MessagePattern()`, `@EventPattern()`, `ClientProxy`, lazy connections, request-scoping (`CONTEXT`), TLS, async config |
+| **02** | [Redis](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/02-redis.md) | Pub/Sub engine, fire-and-forget delivery, `RedisContext`, channel wildcards (`psubscribe`), `RedisStatus`, dual-socket driver unwrap (`[pub, sub]`) |
+| **03** | [MQTT](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/03-mqtt.md) | IoT messaging, topic wildcards (`+`, `#`), QoS levels (0/1/2), `MqttRecordBuilder`, user properties, `MqttContext` |
+| **04** | [NATS](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/04-nats.md) | NATS v3 `@nats-io/transport-node` driver, distributed queue groups, dynamic reply subjects, `NatsRecordBuilder`, JSON message deserialization |
+| **05** | [RabbitMQ](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/05-rabbitmq.md) | AMQP exchanges & queues, manual acknowledgments (`noAck: false`, `channel.ack()`), topic exchange wildcards, `RmqRecordBuilder` |
+| **06** | [Kafka](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/06-kafka.md) | Distributed log streaming, reply partition sizing, NestJS 12 RegExp patterns (`/^hero\..+$/`), keyed messages, offset commits, retries |
+| **07** | [gRPC](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/07-grpc.md) | Protocol Buffers (`.proto`), `@GrpcMethod()`, metadata headers, NestJS 12 status-specific exceptions (`GrpcExceptionFilter`), reflection, streaming |
+| **08** | [Custom Transporters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/08-custom-transporters.md) | `CustomTransportStrategy`, extending `Server`, `messageHandlers` map, `propagatesEventHandlerErrors`, custom `ClientProxy` |
+| **09** | [Exception Filters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/09-exception-filters.md) | `RpcException`, observable error streams, `BaseRpcExceptionFilter`, event handler error boundaries, `inheritAppConfig` |
+| **10** | [Pipes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/10-pipes.md) | Data validation, `ValidationPipe` with `RpcException` factory, Standard Schema V1 / Zod validation in `@Payload({ schema })` |
+| **11** | [Pre-Request Hooks](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/11-pre-request-hooks.md) | Middleware equivalent, pipeline order, `AsyncLocalStorage` correlation ID propagation, execution timing |
+| **12** | [Guards](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/12-guards.md) | Authorization, `RpcException('Forbidden resource')`, extracting RPC context headers, inter-service authentication |
+| **13** | [Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/13-interceptors.md) | Aspect-Oriented Programming (AOP), response enveloping, latency benchmarking, stream timeouts |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports
