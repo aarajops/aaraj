@@ -21,7 +21,21 @@ docs/
     ├── 08-guards.md               # Authentication, RBAC authorization, and metadata reflection
     ├── 09-interceptors.md         # AOP, RxJS stream manipulation, caching, and timeouts
     ├── 10-custom-decorators.md    # Param decorators, schema parsing, and decorator composition
-    └── 11-request-lifecycle.md    # Deterministic end-to-end request execution pipeline
+    ├── 11-request-lifecycle.md    # Deterministic end-to-end request execution pipeline
+    └── fundamentals/              # Advanced IoC container & runtime infrastructure
+        ├── README.md              # Fundamentals guide index
+        ├── 01-custom-providers.md # Dynamic DI, value/class/factory providers
+        ├── 02-async-providers.md  # Asynchronous bootstrapping & connection pools
+        ├── 03-dynamic-modules.md  # ConfigurableModuleBuilder, dynamic module APIs
+        ├── 04-injection-scopes.md # Singleton, Request, Transient, durable trees
+        ├── 05-circular-dependency.md # forwardRef(), module circularity, barrel fixes
+        ├── 06-module-reference.md # ModuleRef, dynamic instantiation, context IDs
+        ├── 07-lazy-loading-modules.md # LazyModuleLoader, serverless optimization
+        ├── 08-execution-context.md # ArgumentsHost, ExecutionContext, Reflector
+        ├── 09-lifecycle-events.md # OnModuleInit, OnApplicationShutdown, SIGTERM
+        ├── 10-discovery-service.md # DiscoveryService, runtime introspection
+        ├── 11-platform-agnosticism.md # Express, Fastify, microservices, CLI
+        └── 12-testing.md          # Unit testing with Vitest, auto-mocking, Supertest
 ```
 
 ---

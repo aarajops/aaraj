@@ -31,6 +31,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
 * **[09. Interceptors & Aspect-Oriented Streams](../../docs/backend/09-interceptors.md)**
 * **[10. Custom Decorators & Composition](../../docs/backend/10-custom-decorators.md)**
 * **[11. Complete Request Lifecycle Pipeline](../../docs/backend/11-request-lifecycle.md)**
+* **[Fundamentals & Advanced Architecture Index](../../docs/backend/fundamentals/README.md)**
+  * Custom Providers, Async Providers, Dynamic Modules, Scopes, Circular Dependencies, ModuleRef, Lazy Loading, Execution Context, Lifecycles, Discovery, Testing
 
 ---
 
