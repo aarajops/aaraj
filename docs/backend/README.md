@@ -268,6 +268,25 @@ The [recipes/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/README.md
 
 ---
 
+## FAQ & Runtime Internals Table of Contents
+
+The [faq/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/README.md) directory documents edge cases, low-level HTTP transport internals, serverless architectures, and dependency injection troubleshooting:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Serverless Computing](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/01-serverless.md) | AWS Lambda / `@codegenie/serverless-express`, cold start optimization, bundled benchmarks, standalone context, Swagger redirect |
+| **02** | [HTTP Adapter](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/02-http-adapter.md) | `HttpAdapterHost`, accessing Express/Fastify raw instances (`getInstance()`), engine-specific hooks, `listen$` stream |
+| **03** | [Keep-Alive Connections](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/03-keep-alive-connections.md) | `forceCloseConnections: true`, socket lifecycle, watch mode port release, Kubernetes rolling deployment graceful termination |
+| **04** | [Global Path Prefix](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/04-global-prefix.md) | `setGlobalPrefix()`, route exclusions (`exclude`), modern `path-to-regexp` rules, named wildcard parameters (`*splat`) |
+| **05** | [Raw Body Buffers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/05-raw-body.md) | `RawBodyRequest<T>`, unparsed buffers for webhook HMAC verification (Stripe, GitHub), Express/Fastify configs, parser limits |
+| **06** | [Hybrid Applications](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/06-hybrid-application.md) | `connectMicroservice()`, dual HTTP + message brokers (TCP, Redis, NATS), `inheritAppConfig: true`, initialization order |
+| **07** | [HTTPS & Multiple Servers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/07-multiple-servers.md) | TLS configuration, dual HTTP (80) & HTTPS (443) ports, Fastify TLS, custom `ShutdownObserver` socket teardown |
+| **08** | [Request Lifecycle](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/08-request-lifecycle.md) | Middleware ➔ Guards ➔ Interceptors (Pre) ➔ Pipes (reverse param) ➔ Handler ➔ Interceptors (Post) ➔ Exception Filters |
+| **09** | [Common Errors & Debugging](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/09-common-errors.md) | "Cannot resolve dependency", `import type` erasure, circular imports vs circular DI (`forwardRef`), `NEST_DEBUG=true` |
+| **10** | [Official Sample Catalog](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/faq/10-examples.md) | Curated architectural index of official NestJS sample repositories across HTTP, Microservices, WebSockets, and Security |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports

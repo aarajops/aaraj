@@ -59,6 +59,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * Bootstrap, Standard Schema (Zod/Valibot), Types & Parameters, Operations, Security Schemes, Mapped Types, Decorators, CLI Plugin, Multi-Docs
 * **[Recipes & Specialized Architectures Index](../../docs/backend/recipes/README.md)**
   * REPL Console, CRUD Generator, SWC Compiler, Passport Auth, Hot Reload (HMR), Router Module, Terminus Health Checks, CQRS Architecture, Serve Static, Nest Commander CLI, Async Local Storage (ALS)
+* **[FAQ & Runtime Internals Index](../../docs/backend/faq/README.md)**
+  * Serverless (AWS Lambda), HTTP Adapter (`HttpAdapterHost`), Keep-Alive Connections (`forceCloseConnections`), Global Path Prefix, Raw Body Buffers, Hybrid Applications, HTTPS Dual-Port Binding, Request Lifecycle, Common Dependency Errors & Debugging, Official Sample Catalog
 
 ---
 

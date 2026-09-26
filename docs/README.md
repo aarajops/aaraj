@@ -157,19 +157,31 @@ docs/
         │   ├── 06-decorators.md       # Master OpenAPI decorators catalog & applyDecorators composition
         │   ├── 07-cli-plugin.md       # AST compiler plugin, comment introspection, SWC/Jest e2e setup
         │   └── 08-other-features.md   # Multi-specs, explorer dropdown, CI/CD static schema export
-        └── recipes/                   # Enterprise recipes, fast tooling & specialized patterns
-            ├── README.md              # Recipes architectural taxonomy & enterprise standards
-            ├── 01-repl.md             # Interactive REPL console, dependency inspection & history
-            ├── 02-crud-generator.md   # Resource generator for REST, GraphQL, Microservices, WebSockets
-            ├── 03-swc.md              # High-speed Rust SWC compiler, type checking, circular relations
-            ├── 04-passport.md         # Passport authentication: Local, JWT, @Public(), GraphQL context
-            ├── 05-hot-reload.md       # Webpack/Rspack HMR, closePromise port release, EADDRINUSE guard
-            ├── 06-router-module.md    # Hierarchical module path prefixes & API gateway routing
-            ├── 07-health-checks.md    # Terminus health probes, memory/disk checks, graceful shutdown
-            ├── 08-cqrs.md             # CQRS: CommandBus, QueryBus, EventBus, Sagas, Aggregate Roots
-            ├── 09-serve-static.md     # Serving SPAs, wildcard routing fallthrough, cache control
-            ├── 10-commander.md        # Standalone CLI tools, @Command, CommandRunner, CommandTestFactory
-            └── 11-async-local-storage.md # AsyncLocalStorage, @nestjs/observe TracerService, nestjs-cls
+        ├── recipes/                   # Enterprise recipes, fast tooling & specialized patterns
+        │   ├── README.md              # Recipes architectural taxonomy & enterprise standards
+        │   ├── 01-repl.md             # Interactive REPL console, dependency inspection & history
+        │   ├── 02-crud-generator.md   # Resource generator for REST, GraphQL, Microservices, WebSockets
+        │   ├── 03-swc.md              # High-speed Rust SWC compiler, type checking, circular relations
+        │   ├── 04-passport.md         # Passport authentication: Local, JWT, @Public(), GraphQL context
+        │   ├── 05-hot-reload.md       # Webpack/Rspack HMR, closePromise port release, EADDRINUSE guard
+        │   ├── 06-router-module.md    # Hierarchical module path prefixes & API gateway routing
+        │   ├── 07-health-checks.md    # Terminus health probes, memory/disk checks, graceful shutdown
+        │   ├── 08-cqrs.md             # CQRS: CommandBus, QueryBus, EventBus, Sagas, Aggregate Roots
+        │   ├── 09-serve-static.md     # Serving SPAs, wildcard routing fallthrough, cache control
+        │   ├── 10-commander.md        # Standalone CLI tools, @Command, CommandRunner, CommandTestFactory
+        │   └── 11-async-local-storage.md # AsyncLocalStorage, @nestjs/observe TracerService, nestjs-cls
+        └── faq/                       # Runtime FAQs, edge cases, transports & troubleshooting
+            ├── README.md              # FAQ architecture taxonomy & operational standards
+            ├── 01-serverless.md       # Serverless execution, cold starts, bundling benchmarks, Lambda
+            ├── 02-http-adapter.md     # HTTP adapter pattern, HttpAdapterHost, native Express/Fastify
+            ├── 03-keep-alive-connections.md # forceCloseConnections, Keep-Alive sockets, graceful exit
+            ├── 04-global-prefix.md    # Global path prefix, route exclusions, path-to-regexp wildcards
+            ├── 05-raw-body.md         # Raw body buffers, webhook HMAC signature verification
+            ├── 06-hybrid-application.md # Hybrid HTTP + Microservices, inheritAppConfig, lifecycle
+            ├── 07-multiple-servers.md # Dual-port HTTP/HTTPS binding, Fastify TLS, ShutdownObserver
+            ├── 08-request-lifecycle.md # Request lifecycle: Middleware -> Guard -> Interceptor -> Pipe -> Filter
+            ├── 09-common-errors.md    # Cannot resolve dependency, circular DI, NEST_DEBUG, watch loops
+            └── 10-examples.md         # Official sample repositories catalog & architectural archetypes
 ```
 
 ---
