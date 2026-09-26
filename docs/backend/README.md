@@ -61,6 +61,23 @@ The [application/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/application/R
 
 ---
 
+## Data Persistence & Caching Table of Contents
+
+The [data/](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/README.md) directory documents database integrations, ORMs, and caching strategies:
+
+| Chapter | Topic | Key Focus Areas |
+| :--- | :--- | :--- |
+| **01** | [Data Overview](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/01-overview.md) | Database agnosticism, architectural paradigms (Data Mapper, Repository, Query Builder), picking the right engine |
+| **02** | [TypeORM](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/02-typeorm.md) | `@nestjs/typeorm`, repository pattern, entities, relations, `autoLoadEntities`, `QueryRunner` transactions, subscribers, testing |
+| **03** | [Drizzle ORM](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/03-drizzle.md) | `@nestjs/drizzle`, Drizzle v1, schema inference (`$inferSelect`), relational queries (`defineRelations`), read replicas, Drizzle Kit |
+| **04** | [Prisma](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/04-prisma.md) | Prisma Client, `PrismaService`, connection lifecycle hooks, `$transaction`, client extensions, mocking in Vitest |
+| **05** | [MongoDB & Mongoose](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/05-mongodb.md) | `@nestjs/mongoose`, `@Schema()`, `@Prop()`, subdocuments, hooks, replica set transactions, `@InjectModel()` |
+| **06** | [MikroORM](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/06-mikroorm.md) | `@mikro-orm/nestjs`, Unit of Work, Identity Map, request-scoped context forking, migrations |
+| **07** | [Sequelize](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/07-sequelize.md) | `@nestjs/sequelize`, `sequelize-typescript`, model decorators, associations, managed transactions |
+| **08** | [Caching](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/data/08-caching.md) | `@nestjs/cache-manager`, Keyv architecture, in-memory & Redis stores (`@keyv/redis`), `CacheInterceptor`, `@CacheKey()`, `@CacheTTL()` |
+
+---
+
 ## Workspace Conventions for `@araz/api`
 
 ### 1. ECMAScript Modules (ESM) & Relative Imports

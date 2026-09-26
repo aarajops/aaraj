@@ -35,6 +35,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
   * Custom Providers, Async Providers, Dynamic Modules, Scopes, Circular Dependencies, ModuleRef, Lazy Loading, Execution Context, Lifecycles, Discovery, Testing
 * **[Application & Production Capabilities Index](../../docs/backend/application/README.md)**
   * Configuration, Validation, Serialization, Logging, Events, Task Scheduling, Queues, HTTP Client, File Storage
+* **[Data Persistence & Caching Index](../../docs/backend/data/README.md)**
+  * Data Overview, TypeORM, Drizzle ORM, Prisma, MongoDB & Mongoose, MikroORM, Sequelize, Caching & Redis
 
 ---
 

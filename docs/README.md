@@ -47,6 +47,16 @@ docs/
         ├── 07-queues.md           # @nestjs/bullmq, Redis workers, retry backoff
         ├── 08-http-client.md      # @nestjs/http-client, native fetch, jitter retries
         └── 09-file-storage.md     # Multipart uploads, ParseFilePipe, pre-signed S3 URLs
+    └── data/                      # Data persistence, ORMs, and caching
+        ├── README.md              # Data guide index
+        ├── 01-overview.md         # Database agnosticism, architectural paradigms
+        ├── 02-typeorm.md          # @nestjs/typeorm, repositories, relations, QueryRunner
+        ├── 03-drizzle.md          # @nestjs/drizzle, Drizzle v1, schema inference, relations
+        ├── 04-prisma.md           # PrismaClient, PrismaService, transactions, extensions
+        ├── 05-mongodb.md          # @nestjs/mongoose, @Schema, @Prop, subdocuments, sessions
+        ├── 06-mikroorm.md         # @mikro-orm/nestjs, Unit of Work, Identity Map, forking
+        ├── 07-sequelize.md        # @nestjs/sequelize, sequelize-typescript, models
+        └── 08-caching.md          # @nestjs/cache-manager, Keyv, Redis, CacheInterceptor
 ```
 
 ---
