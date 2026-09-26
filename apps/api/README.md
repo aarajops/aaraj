@@ -33,6 +33,8 @@ Comprehensive architectural guidelines and official NestJS standards are maintai
 * **[11. Complete Request Lifecycle Pipeline](../../docs/backend/11-request-lifecycle.md)**
 * **[Fundamentals & Advanced Architecture Index](../../docs/backend/fundamentals/README.md)**
   * Custom Providers, Async Providers, Dynamic Modules, Scopes, Circular Dependencies, ModuleRef, Lazy Loading, Execution Context, Lifecycles, Discovery, Testing
+* **[Application & Production Capabilities Index](../../docs/backend/application/README.md)**
+  * Configuration, Validation, Serialization, Logging, Events, Task Scheduling, Queues, HTTP Client, File Storage
 
 ---
 

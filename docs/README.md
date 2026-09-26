@@ -36,6 +36,17 @@ docs/
         ├── 10-discovery-service.md # DiscoveryService, runtime introspection
         ├── 11-platform-agnosticism.md # Express, Fastify, microservices, CLI
         └── 12-testing.md          # Unit testing with Vitest, auto-mocking, Supertest
+    └── application/               # Enterprise integration patterns & infrastructure
+        ├── README.md              # Application guide index
+        ├── 01-configuration.md    # @nestjs/config, Zod validation, namespaced configs
+        ├── 02-validation.md       # StandardSchemaValidationPipe, contracts, coercion
+        ├── 03-serialization.md    # StandardSchemaSerializerInterceptor, response allowlists
+        ├── 04-logging.md          # ConsoleLogger, structured JSON logs, trace correlation
+        ├── 05-events.md           # @nestjs/event-emitter, wildcards, event readiness
+        ├── 06-task-scheduling.md  # @nestjs/schedule, Cron, distributed locks
+        ├── 07-queues.md           # @nestjs/bullmq, Redis workers, retry backoff
+        ├── 08-http-client.md      # @nestjs/http-client, native fetch, jitter retries
+        └── 09-file-storage.md     # Multipart uploads, ParseFilePipe, pre-signed S3 URLs
 ```
 
 ---
