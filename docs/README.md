@@ -2,6 +2,8 @@
 
 Welcome to the central documentation portal for the **Araz** platform. This repository contains the authoritative architecture standards, engineering guides, and technology reference documentation for building and scaling the enterprise monorepo.
 
+The **[Enterprise E-Commerce Architecture Blueprint](architecture/ecommerce-blueprint.md)** specifies the Bangladesh/South Asian platform design across 36 pillars, with [relational ERDs](architecture/ecommerce-data-model.md), [PostgreSQL schema](architecture/ecommerce-schema.sql), [Phase 0–8 roadmap and Day 1 checklist](architecture/ecommerce-implementation-roadmap.md), and [verified provider/NBR integration constraints](architecture/ecommerce-provider-register.md). These are proposed implementation specifications, not deployed application features.
+
 ---
 
 ## Documentation Structure
