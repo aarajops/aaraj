@@ -37,7 +37,7 @@ Asynchronous providers (`useFactory` returning a `Promise`) block the applicatio
 * **Pattern**: Defer expensive connections until the invocation requires them, or maintain warm connection pools across Lambda invocations via global context caching.
 
 ### B. Lazy Module Loading with `LazyModuleLoader`
-Load non-critical modules (e.g., PDF generation, image manipulation, external payment SDKs) on demand using [LazyModuleLoader](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/fundamentals/08-lazy-loading-modules.md):
+Load non-critical modules (e.g., PDF generation, image manipulation, external payment SDKs) on demand using [LazyModuleLoader](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/fundamentals/08-lazy-loading-modules.md):
 
 ```typescript
 import { Injectable, type RequestMethod } from '@nestjs/common';
@@ -77,7 +77,7 @@ pnpm add -D @types/aws-lambda serverless serverless-offline
 ### Step 2: Configure Serverless Framework (`serverless.yml`)
 
 ```yaml
-service: araz-serverless-api
+service: aaraj-serverless-api
 
 plugins:
   - serverless-offline

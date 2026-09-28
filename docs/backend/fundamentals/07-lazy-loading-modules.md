@@ -62,4 +62,4 @@ export class ReportDispatcherService {
 
 * **Serverless Functions**: Multiple lambda endpoints packaged in a single deployment artifact that only need specific providers per invocation.
 * **Background Queue Workers**: Workers that process rare, heavyweight jobs (e.g. video transcoding or financial report generation).
-* **Avoid in Monoliths**: For standard REST APIs (such as `@araz/api`), eager loading remains the recommended industry standard.
+* **Avoid in Monoliths**: For standard REST APIs (such as `@aaraj/api`), eager loading remains the recommended industry standard.

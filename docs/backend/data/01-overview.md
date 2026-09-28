@@ -89,7 +89,7 @@ bootstrap();
 
 ---
 
-## 4. Selecting the Right Persistence Engine for `@araz`
+## 4. Selecting the Right Persistence Engine for `@aaraj`
 
 | Requirement | Recommended Solution | Rationale |
 | :--- | :--- | :--- |

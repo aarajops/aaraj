@@ -11,7 +11,7 @@ NestJS provides the `@nestjs/event-emitter` package, built on the high-performan
 ## 1. Installation & Module Setup
 
 ```bash
-pnpm --filter @araz/api add @nestjs/event-emitter
+pnpm --filter @aaraj/api add @nestjs/event-emitter
 ```
 
 Import `EventEmitterModule.forRoot()` into the root `AppModule`:

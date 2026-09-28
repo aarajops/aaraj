@@ -2,7 +2,7 @@
 
 > **Source Reference**: [NestJS Official Documentation - CORS](https://docs.nestjs.com/security/cors)
 
-Cross-Origin Resource Sharing (CORS) is a browser security mechanism that restricts web applications running on one domain (e.g. `https://app.araz.io`) from requesting resources on a different domain (e.g. `https://api.araz.io`).
+Cross-Origin Resource Sharing (CORS) is a browser security mechanism that restricts web applications running on one domain (e.g. `https://app.aaraj.io`) from requesting resources on a different domain (e.g. `https://api.aaraj.io`).
 
 NestJS integrates with the underlying HTTP adapter's CORS implementation—using Express [cors](https://github.com/expressjs/cors) or Fastify [@fastify/cors](https://github.com/fastify/fastify-cors).
 
@@ -21,7 +21,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: ['https://araz.io', 'https://admin.araz.io'],
+    origin: ['https://aaraj.io', 'https://admin.aaraj.io'],
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
     credentials: true, // Allow cookies and authorization headers
@@ -81,5 +81,5 @@ app.enableCors({
 | Vulnerability | Mitigation |
 | :--- | :--- |
 | **Wildcard with Credentials** | Browsers reject `Access-Control-Allow-Origin: *` when `credentials: true`. Always specify explicit origins. |
-| **Over-permissive Origin Matching** | Avoid using loose regexes like `/araz\.io/` which unintentionally match malicious domains like `attacker-araz.io`. Use exact string arrays. |
+| **Over-permissive Origin Matching** | Avoid using loose regexes like `/aaraj\.io/` which unintentionally match malicious domains like `attacker-aaraj.io`. Use exact string arrays. |
 | **Preflight Overhead** | Set `maxAge: 86400` so browsers cache preflight `OPTIONS` checks, eliminating duplicate HTTP handshakes. |

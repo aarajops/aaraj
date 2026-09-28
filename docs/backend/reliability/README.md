@@ -52,10 +52,10 @@ NestJS provides an integrated suite of official reliability packages designed to
 
 | Package | Decorators & Core APIs | Primary Responsibility | Failure Boundary & Guarantees |
 | :--- | :--- | :--- | :--- |
-| **[`@nestjs/resilience`](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/01-resilience.md)** | `@Retry()`, `@Timeout()`, `@CircuitBreaker()`, `@Bulkhead()`, `@Fallback()`, `@Resilience()`, `ResilienceService` | Downstream failure containment, circuit breaking, concurrent rate-limiting, and graceful degradation. | Throws standard transport errors (`504 Gateway Timeout`, `503 Service Unavailable`, `RpcException`). Fails fast during outages. |
-| **[`@nestjs/idempotency`](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/02-idempotency-keys.md)** | `@Idempotent()`, `IdempotencyStorage`, `IdempotencyStore` | Deduplicating client retries of non-idempotent operations (such as payments or order creation) per IETF specifications. | Locks concurrent identical keys (`409 IDEMPOTENCY_KEY_IN_USE`), replays completed results (`Idempotent-Replayed: true`), encrypts receipts at rest (AES-256-GCM). |
-| **[`@nestjs/outbox`](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/03-transactional-outbox.md)** | `Outbox`, `@OnOutboxMessage()`, `OutboxStorage`, `OutboxInbox`, `OutboxDeadLetters` | Eliminating dual-writes by persisting events inside the database transaction of the entity mutation. | Guaranteed at-least-once delivery with guaranteed order per key. Exactly-once consumer processing via transactional inbox tables. |
-| **[`@nestjs/locks`](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/04-distributed-locks.md)** | `@OnOneInstance()`, `@WithoutOverlapping()`, `@LeaderElection()`, `Locks.withLock()` | Coordinating single-instance cron execution, preventing overlapping task executions, and managing cluster leader roles. | Distributed leases with monotonic fencing tokens (`fencingToken`) and cooperative `AbortSignal` cancellation upon lease expiration. |
+| **[`@nestjs/resilience`](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/reliability/01-resilience.md)** | `@Retry()`, `@Timeout()`, `@CircuitBreaker()`, `@Bulkhead()`, `@Fallback()`, `@Resilience()`, `ResilienceService` | Downstream failure containment, circuit breaking, concurrent rate-limiting, and graceful degradation. | Throws standard transport errors (`504 Gateway Timeout`, `503 Service Unavailable`, `RpcException`). Fails fast during outages. |
+| **[`@nestjs/idempotency`](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/reliability/02-idempotency-keys.md)** | `@Idempotent()`, `IdempotencyStorage`, `IdempotencyStore` | Deduplicating client retries of non-idempotent operations (such as payments or order creation) per IETF specifications. | Locks concurrent identical keys (`409 IDEMPOTENCY_KEY_IN_USE`), replays completed results (`Idempotent-Replayed: true`), encrypts receipts at rest (AES-256-GCM). |
+| **[`@nestjs/outbox`](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/reliability/03-transactional-outbox.md)** | `Outbox`, `@OnOutboxMessage()`, `OutboxStorage`, `OutboxInbox`, `OutboxDeadLetters` | Eliminating dual-writes by persisting events inside the database transaction of the entity mutation. | Guaranteed at-least-once delivery with guaranteed order per key. Exactly-once consumer processing via transactional inbox tables. |
+| **[`@nestjs/locks`](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/reliability/04-distributed-locks.md)** | `@OnOneInstance()`, `@WithoutOverlapping()`, `@LeaderElection()`, `Locks.withLock()` | Coordinating single-instance cron execution, preventing overlapping task executions, and managing cluster leader roles. | Distributed leases with monotonic fencing tokens (`fencingToken`) and cooperative `AbortSignal` cancellation upon lease expiration. |
 
 ---
 
@@ -118,7 +118,7 @@ export class AppModule {}
 
 Explore the comprehensive deep-dive guides for each reliability pillar:
 
-1. **[01 - Resilience (`@nestjs/resilience`)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/01-resilience.md)**
+1. **[01 - Resilience (`@nestjs/resilience`)](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/reliability/01-resilience.md)**
    - Stage-by-stage decorator composition (`@Retry()`, `@Timeout()`, `@CircuitBreaker()`, `@Bulkhead()`, `@Fallback()`).
    - Service-level policy execution using `ResilienceService.preset()` and `resilience.create()`.
    - Safe vs. unsafe HTTP method protection and `@Retry({ idempotent: true })`.
@@ -126,7 +126,7 @@ Explore the comprehensive deep-dive guides for each reliability pillar:
    - Observability via `ResilienceEvents.events$` and `node:diagnostics_channel`.
    - Unit and E2E testing strategies with fake timers.
 
-2. **[02 - Idempotency Keys (`@nestjs/idempotency`)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/02-idempotency-keys.md)**
+2. **[02 - Idempotency Keys (`@nestjs/idempotency`)](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/reliability/02-idempotency-keys.md)**
    - IETF Idempotency-Key specification compliance and request fingerprinting.
    - Scope-based tenant and user isolation (`scope: (req) => req.user?.id`).
    - Atomic Store Contract (`acquire`, `complete`, `release`, `extend`) with owner fencing tokens.
@@ -134,7 +134,7 @@ Explore the comprehensive deep-dive guides for each reliability pillar:
    - AES-256-GCM zero-downtime key rotation and encrypted receipts at rest.
    - GraphQL mutations, microservice event deduplication, and contract test suites.
 
-3. **[03 - Transactional Outbox (`@nestjs/outbox`)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/03-transactional-outbox.md)**
+3. **[03 - Transactional Outbox (`@nestjs/outbox`)](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/reliability/03-transactional-outbox.md)**
    - Eliminating the dual-write problem across database tables and message brokers.
    - Transactional event persistence (`outbox.add(tx, messages)`) sharing domain transaction context.
    - Concurrent relay polling with Postgres `SKIP LOCKED` and advisory key locks for ordered commits.
@@ -142,7 +142,7 @@ Explore the comprehensive deep-dive guides for each reliability pillar:
    - Multi-transport routing (local in-process and TCP microservices) and dead-letter queue management.
    - Drizzle, TypeORM, and Prisma store implementations.
 
-4. **[04 - Distributed Locks (`@nestjs/locks`)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/reliability/04-distributed-locks.md)**
+4. **[04 - Distributed Locks (`@nestjs/locks`)](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/reliability/04-distributed-locks.md)**
    - Multi-instance cluster synchronization for scheduled tasks (`@nestjs/schedule`).
    - Single-instance execution with `@OnOneInstance()` and self-concurrency prevention via `@WithoutOverlapping()`.
    - Programmatic locking (`Locks.withLock()`) with ECMAScript explicit resource management (`await using`).

@@ -11,7 +11,7 @@ NestJS provides the `@nestjs/schedule` package, which integrates with the Node.j
 ## 1. Installation & Module Initialization
 
 ```bash
-pnpm --filter @araz/api add @nestjs/schedule
+pnpm --filter @aaraj/api add @nestjs/schedule
 ```
 
 Import `ScheduleModule.forRoot()` into the root `AppModule`:

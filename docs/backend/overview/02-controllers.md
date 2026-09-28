@@ -151,7 +151,7 @@ dynamicDocsRedirect(@Query('version') version?: string) {
 The `@Controller()` decorator can match requests based on HTTP `Host` headers:
 
 ```typescript
-@Controller({ host: ':account.araz.com' })
+@Controller({ host: ':account.aaraj.com' })
 export class AccountController {
   @Get()
   getInfo(@HostParam('account') account: string) {
@@ -189,5 +189,5 @@ Nest automatically subscribes to returned Observables and sends the emitted valu
 ## 8. Best Practices for Controllers
 
 1. **Keep Controllers Thin**: Controllers should only handle routing, protocol-level translation (HTTP status codes, headers), and input validation. Business rules, database operations, and external API calls belong in **Providers**.
-2. **Contract-Driven DTOs**: Never accept arbitrary `any` payloads. Pair body arguments with validated schemas (e.g. from `@araz/contracts`).
+2. **Contract-Driven DTOs**: Never accept arbitrary `any` payloads. Pair body arguments with validated schemas (e.g. from `@aaraj/contracts`).
 3. **Avoid Stateful Controllers**: Controllers are singletons by default. Do not store request-specific state in controller class properties.

@@ -278,6 +278,6 @@ export class DatabaseModule {}
 
 If Nest fails to resolve dependencies during startup, enable deep resolution logging:
 ```bash
-NEST_DEBUG=true pnpm --filter @araz/api start:dev
+NEST_DEBUG=true pnpm --filter @aaraj/api start:dev
 ```
 This logs every step of the dependency graph analysis, pinpointing missing imports or circular dependencies.

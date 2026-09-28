@@ -15,8 +15,8 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Araz API v1.0.0"', () => {
-      expect(appController.getHello()).toBe('Araz API v1.0.0');
+    it('should return "Aaraj API v1.0.0"', () => {
+      expect(appController.getHello()).toBe('Aaraj API v1.0.0');
     });
   });
 });

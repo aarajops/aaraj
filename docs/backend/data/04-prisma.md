@@ -16,10 +16,10 @@ Unlike TypeORM or Drizzle, there is no official `@nestjs/prisma` wrapper package
 
 ```bash
 # Install runtime client:
-pnpm --filter @araz/api add @prisma/client
+pnpm --filter @aaraj/api add @prisma/client
 
 # Install development CLI:
-pnpm --filter @araz/api add -D prisma
+pnpm --filter @aaraj/api add -D prisma
 ```
 
 Initialize Prisma in the project:
@@ -244,7 +244,7 @@ describe('UsersService (Prisma)', () => {
 
   const mockPrisma = {
     user: {
-      findMany: vi.fn().mockResolvedValue([{ id: '1', email: 'alex@araz.io' }]),
+      findMany: vi.fn().mockResolvedValue([{ id: '1', email: 'alex@aaraj.io' }]),
       findUnique: vi.fn(),
       create: vi.fn(),
     },

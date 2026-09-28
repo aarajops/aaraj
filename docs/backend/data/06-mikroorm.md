@@ -14,7 +14,7 @@ The `@mikro-orm/nestjs` package (maintained directly by the MikroORM core team) 
 
 ```bash
 # Example for PostgreSQL:
-pnpm --filter @araz/api add @mikro-orm/core @mikro-orm/postgresql @mikro-orm/nestjs
+pnpm --filter @aaraj/api add @mikro-orm/core @mikro-orm/postgresql @mikro-orm/nestjs
 ```
 
 ### Module Registration in `AppModule`
@@ -29,7 +29,7 @@ import { PostgreSqlDriver } from '@mikro-orm/postgresql';
   imports: [
     MikroOrmModule.forRoot({
       driver: PostgreSqlDriver,
-      dbName: 'araz_db',
+      dbName: 'aaraj_db',
       clientUrl: process.env.DATABASE_URL,
       autoLoadEntities: true, // Loads entities registered via forFeature
       debug: process.env.NODE_ENV === 'development',

@@ -140,7 +140,7 @@ const tenantId = this.tracerService.getAttribute('tenantId');
 Pass an interface to `TracerService<T>` for compile-time property validation:
 
 ```typescript
-interface ArazRequestContext {
+interface AarajRequestContext {
   tenantId: string;
   userId: string;
   flags: {
@@ -150,7 +150,7 @@ interface ArazRequestContext {
 
 @Injectable()
 export class CheckoutService {
-  constructor(private readonly tracerService: TracerService<ArazRequestContext>) {}
+  constructor(private readonly tracerService: TracerService<AarajRequestContext>) {}
 
   execute() {
     this.tracerService.setAttribute('flags.enableV2Checkout', true);

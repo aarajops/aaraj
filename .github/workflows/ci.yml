@@ -42,7 +42,7 @@ jobs:
         run: pnpm run test
 
       - name: E2E Test (API)
-        run: pnpm --filter @araz/api run test:e2e
+        run: pnpm --filter @aaraj/api run test:e2e
 
       - name: Production Build
         run: pnpm run build

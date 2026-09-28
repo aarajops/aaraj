@@ -132,7 +132,7 @@ For complex rules involving dynamic runtime state (e.g. comparing `article.autho
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add @casl/ability
+pnpm --filter @aaraj/api add @casl/ability
 ```
 
 ### Defining Actions & Subject Types

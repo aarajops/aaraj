@@ -10,14 +10,14 @@ NestJS provides a versatile abstraction layer over Node.js HTTP servers, support
 
 | Chapter | Topic | Key Focus Areas |
 | :--- | :--- | :--- |
-| **01** | [Versioning](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/01-versioning.md) | URI, Header, Media Type (`Accept`), Custom extractors, `@Version()`, `VERSION_NEUTRAL`, default versions |
-| **02** | [Cookies](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/02-cookies.md) | Native NestJS 12.1+ cookie API, `@Cookies()`, `@SignedCookies()`, `setCookie()`, secret rotation, `SameSite` |
-| **03** | [Session](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/03-session.md) | `express-session`, `@fastify/secure-session`, `@Session()`, cookie signing, distributed session storage |
-| **04** | [File Upload & Streaming](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/04-file-upload-streaming.md) | Multipart uploads, `FileInterceptor`, `ParseFilePipe`, Fastify streaming (`FileStreamInterceptor`), `StreamableFile` |
-| **05** | [Compression](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/05-compression.md) | `compression` (Express), `@fastify/compress` (Brotli/Gzip), quality tuning, reverse proxy offloading |
-| **06** | [Server-Sent Events (SSE)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/06-server-sent-events.md) | `@Sse()`, `Observable<MessageEvent>`, `EventSource` protocol, client disconnection, `@SseSignal()` cleanup |
-| **07** | [Model-View-Controller (MVC)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/07-mvc.md) | Server-side templating with Handlebars (`hbs`), layouts, static assets (`useStaticAssets`), `@Render()` |
-| **08** | [Performance (Fastify)](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/08-performance-fastify.md) | `FastifyAdapter`, extreme throughput, low overhead, body limits, route routing differences |
+| **01** | [Versioning](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/01-versioning.md) | URI, Header, Media Type (`Accept`), Custom extractors, `@Version()`, `VERSION_NEUTRAL`, default versions |
+| **02** | [Cookies](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/02-cookies.md) | Native NestJS 12.1+ cookie API, `@Cookies()`, `@SignedCookies()`, `setCookie()`, secret rotation, `SameSite` |
+| **03** | [Session](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/03-session.md) | `express-session`, `@fastify/secure-session`, `@Session()`, cookie signing, distributed session storage |
+| **04** | [File Upload & Streaming](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/04-file-upload-streaming.md) | Multipart uploads, `FileInterceptor`, `ParseFilePipe`, Fastify streaming (`FileStreamInterceptor`), `StreamableFile` |
+| **05** | [Compression](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/05-compression.md) | `compression` (Express), `@fastify/compress` (Brotli/Gzip), quality tuning, reverse proxy offloading |
+| **06** | [Server-Sent Events (SSE)](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/06-server-sent-events.md) | `@Sse()`, `Observable<MessageEvent>`, `EventSource` protocol, client disconnection, `@SseSignal()` cleanup |
+| **07** | [Model-View-Controller (MVC)](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/07-mvc.md) | Server-side templating with Handlebars (`hbs`), layouts, static assets (`useStaticAssets`), `@Render()` |
+| **08** | [Performance (Fastify)](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/08-performance-fastify.md) | `FastifyAdapter`, extreme throughput, low overhead, body limits, route routing differences |
 
 ---
 
@@ -35,9 +35,9 @@ NestJS provides a versatile abstraction layer over Node.js HTTP servers, support
 
 ---
 
-## Architectural Commitments for `@araz`
+## Architectural Commitments for `@aaraj`
 
-1. **Explicit API Versioning**: All public endpoints exposed by `@araz/api` must use deterministic **URI Versioning** (`v1`, `v2`) to allow non-breaking backwards compatibility.
+1. **Explicit API Versioning**: All public endpoints exposed by `@aaraj/api` must use deterministic **URI Versioning** (`v1`, `v2`) to allow non-breaking backwards compatibility.
 2. **Platform-Agnostic Response Handling**: Route handlers should avoid library-specific response objects (`@Res() res: Response`) unless `passthrough: true` is configured. Always favor standard return values or `StreamableFile`.
 3. **Defense-in-Depth Cookie Security**: All sensitive cookies (auth tokens, session IDs) must enforce `httpOnly: true`, `secure: true`, and `sameSite: 'lax'` or `'strict'`.
 4. **Resilient SSE Connections**: Real-time push streams using `@Sse()` must bind `@SseSignal()` and RxJS `finalize()` operators to guarantee immediate resource deallocation when clients disconnect.

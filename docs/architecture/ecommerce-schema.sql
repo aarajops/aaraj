@@ -1,4 +1,4 @@
--- Araz proposed enterprise model, PostgreSQL 16+. DOCUMENTATION, NOT AN APPLIED MIGRATION.
+-- Aaraj proposed enterprise model, PostgreSQL 16+. DOCUMENTATION, NOT AN APPLIED MIGRATION.
 -- Target a disposable EMPTY database owned by a migration role with CREATE EXTENSION rights.
 -- Never execute against an existing application database; derive reviewed owner migrations.
 -- Values: bigint minor units; UUID external references; timestamptz UTC; encrypted bytea PII.

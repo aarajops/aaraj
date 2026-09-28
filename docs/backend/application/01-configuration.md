@@ -13,7 +13,7 @@ NestJS provides the `@nestjs/config` package to manage configuration loading, pr
 The `@nestjs/config` package sits on top of [dotenv](https://github.com/motdotla/dotenv) and [dotenv-expand](https://github.com/motdotla/dotenv-expand).
 
 ```bash
-pnpm --filter @araz/api add @nestjs/config
+pnpm --filter @aaraj/api add @nestjs/config
 ```
 
 ### Basic Setup in `AppModule`
@@ -49,7 +49,7 @@ In enterprise backend applications, allowing the server to boot with missing or 
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add zod
+pnpm --filter @aaraj/api add zod
 ```
 
 ### Defining the Validation Schema
@@ -119,7 +119,7 @@ export default registerAs('database', () => ({
   port: parseInt(process.env.DATABASE_PORT ?? '5432', 10),
   username: process.env.DATABASE_USER ?? 'postgres',
   password: process.env.DATABASE_PASSWORD ?? '',
-  database: process.env.DATABASE_NAME ?? 'araz_db',
+  database: process.env.DATABASE_NAME ?? 'aaraj_db',
   maxConnections: parseInt(process.env.DATABASE_MAX_CONN ?? '20', 10),
 }));
 ```
@@ -131,7 +131,7 @@ import { registerAs } from '@nestjs/config';
 export default registerAs('redis', () => ({
   host: process.env.REDIS_HOST ?? 'localhost',
   port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
-  keyPrefix: process.env.REDIS_PREFIX ?? 'araz:',
+  keyPrefix: process.env.REDIS_PREFIX ?? 'aaraj:',
 }));
 ```
 
@@ -240,7 +240,7 @@ This replaces the repetitive manual boilerplate:
 Enables nested referencing inside `.env` files using `${VARIABLE_NAME}` syntax:
 
 ```env
-APP_DOMAIN=api.araz.io
+APP_DOMAIN=api.aaraj.io
 AUTH_CALLBACK_URL=https://${APP_DOMAIN}/auth/callback
 SUPPORT_EMAIL=support@${APP_DOMAIN}
 ```

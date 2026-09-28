@@ -56,10 +56,10 @@ COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 
 # Build shared contracts package first
-RUN pnpm --filter @araz/contracts build
+RUN pnpm --filter @aaraj/contracts build
 
 # Build NestJS production application bundle
-RUN pnpm --filter @araz/api build
+RUN pnpm --filter @aaraj/api build
 
 # Prune devDependencies to keep only production packages for runtime
 RUN pnpm prune --prod
@@ -144,19 +144,19 @@ docs/
 ### 3.1 Building the Container Image
 
 ```bash
-docker build -t araz-api:latest -f Dockerfile .
+docker build -t aaraj-api:latest -f Dockerfile .
 ```
 
 ### 3.2 Running Locally with Environment Variables
 
 ```bash
 docker run -d \
-  --name araz-api \
+  --name aaraj-api \
   -p 3000:3000 \
   -e NODE_ENV=production \
   -e PORT=3000 \
-  -e DATABASE_URL="postgresql://user:pass@host:5432/araz" \
-  araz-api:latest
+  -e DATABASE_URL="postgresql://user:pass@host:5432/aaraj" \
+  aaraj-api:latest
 ```
 
 ---
@@ -170,10 +170,10 @@ docker run -d \
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # 2. Tag image with ECR repository URI
-docker tag araz-api:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/araz-api:v1.0.0
+docker tag aaraj-api:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/aaraj-api:v1.0.0
 
 # 3. Push container image
-docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/araz-api:v1.0.0
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/aaraj-api:v1.0.0
 ```
 
 ### 4.2 Google Artifact Registry (GAR)
@@ -183,6 +183,6 @@ docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/araz-api:v1.0.0
 gcloud auth configure-docker us-central1-docker.pkg.dev
 
 # 2. Tag and push
-docker tag araz-api:latest us-central1-docker.pkg.dev/my-project/araz-repo/araz-api:v1.0.0
-docker push us-central1-docker.pkg.dev/my-project/araz-repo/araz-api:v1.0.0
+docker tag aaraj-api:latest us-central1-docker.pkg.dev/my-project/aaraj-repo/aaraj-api:v1.0.0
+docker push us-central1-docker.pkg.dev/my-project/aaraj-repo/aaraj-api:v1.0.0
 ```

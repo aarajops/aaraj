@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12 (`@nestjs/microservices`)  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-The microservices exception handling layer parallels the HTTP [exception filter](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/06-exception-filters.md) architecture, with two critical architectural distinctions:
+The microservices exception handling layer parallels the HTTP [exception filter](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/06-exception-filters.md) architecture, with two critical architectural distinctions:
 1. **Exception Type**: Handlers must throw `RpcException` rather than `HttpException`.
 2. **Observable Return Contract**: The `catch()` method of an `RpcExceptionFilter` **must return an RxJS `Observable`** rather than writing directly to an HTTP response stream.
 

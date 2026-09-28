@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { CONTRACT_VERSION } from "@araz/contracts";
+import { CONTRACT_VERSION } from "@aaraj/contracts";
 
 export default function Home() {
   const schemaVersion = CONTRACT_VERSION;

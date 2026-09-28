@@ -11,7 +11,7 @@ It replaces the legacy Axios-based `@nestjs/axios` package, bringing native prom
 ## 1. Installation & Registration
 
 ```bash
-pnpm --filter @araz/api add @nestjs/http-client
+pnpm --filter @aaraj/api add @nestjs/http-client
 ```
 
 ### Module Registration
@@ -31,7 +31,7 @@ import { GithubService } from './github.service.js';
       baseUrl: 'https://api.github.com',
       headers: {
         accept: 'application/vnd.github+json',
-        'user-agent': 'araz-api-v1',
+        'user-agent': 'aaraj-api-v1',
       },
       timeout: '5s',
     }),
@@ -54,7 +54,7 @@ import { HttpClientModule } from '@nestjs/http-client';
 @Module({
   imports: [
     HttpClientModule.forRoot({
-      headers: { 'x-service-source': 'araz-api' },
+      headers: { 'x-service-source': 'aaraj-api' },
       timeout: '10s',
     }),
   ],

@@ -8,7 +8,7 @@ The repository inspected for this plan is an existing working monorepo, not an e
 
 | Evidence | Current state | Required treatment |
 | --- | --- | --- |
-| Root `package.json`, `pnpm-workspace.yaml` | Workspace `araz`; `pnpm@12.5.1`; Node `>=24.15.0 <25` | Preserve topology and lockfile; use the workspace package names below. |
+| Root `package.json`, `pnpm-workspace.yaml` | Workspace `aaraj`; `pnpm@12.5.1`; Node `>=24.15.0 <25` | Preserve topology and lockfile; use the workspace package names below. |
 | Execution environment | Node `v24.19.0`, pnpm `12.5.1` observed during blueprint preparation | Recheck on the implementation machine; an environment observation is not a promise about CI or production. |
 | `apps/api/package.json` | Nest packages declared `^12.0.1`; pure ESM; Vitest and Oxlint | Verify installed and locked versions, including peers, before adding framework extensions. |
 | `apps/api/tsconfig.build.json` | Production `rootDir` is `src`; compiled entry exists at `apps/api/dist/main.js` | Keep `start` / `start:prod` semantics. Do not use `dist/src/main.js`. |
@@ -203,7 +203,7 @@ Ordered backlog:
 2. Create `apps/api/test/{checkout,inventory-concurrency,payment-reconciliation,refund-rma,outbox-crash,migration-compatibility,pii-redaction}.e2e-spec.ts` or appropriately isolated integration files. Extend Vitest includes/excludes so real-service tests do not silently run against mocks or run twice. Set 100% coverage on the financial/state algorithm scope explicitly; use risk-based coverage elsewhere.
 3. Build `tests/load/` scenarios for catalog browsing, flash-sale contention, OTP abuse, checkout and webhook bursts. Establish a measured workload model and capacity target before asserting an SLO. Initial candidate targets for review: 99.9% monthly storefront/checkout availability, catalog p95 under 300 ms at origin and checkout acceptance p95 under 800 ms, excluding separately reported external payment latency. Measure p99, error budget, DB lock wait, pool saturation, replica lag, outbox age, queue age and provider error rates.
 4. Validate all outbound adapters' deadlines, retry safety, jitter, bulkheads, circuit-breaker recovery and graceful degradation under latency, DNS errors, 429s, inconsistent payloads and outage. Cached catalog can serve stale content within policy; checkout cannot invent available stock or payment success. Alert on reconciliation backlog and ambiguous payments independently of HTTP uptime.
-5. Build `apps/api/Dockerfile`, `apps/web/Dockerfile` and `.dockerignore` against actual workspace output. Copy `tsconfig.base.json`, build `@araz/contracts` first, retain runtime workspace exports and validate `node apps/api/dist/main.js`. Use a digest-pinned Node 24 image, non-root user, init/signal handling, read-only filesystem where supported and no embedded secrets. Test the final image, not just the builder stage.
+5. Build `apps/api/Dockerfile`, `apps/web/Dockerfile` and `.dockerignore` against actual workspace output. Copy `tsconfig.base.json`, build `@aaraj/contracts` first, retain runtime workspace exports and validate `node apps/api/dist/main.js`. Use a digest-pinned Node 24 image, non-root user, init/signal handling, read-only filesystem where supported and no embedded secrets. Test the final image, not just the builder stage.
 6. Separate API and worker process entrypoints, with independent autoscaling and concurrency/pool budgets. Add readiness for critical dependencies, liveness that does not restart every instance on a shared database outage, startup probes, graceful drain, queue lease handling and termination deadlines. Keep expensive provider checks out of liveness probes.
 7. Implement continuous encrypted WAL archiving and scheduled base backups into separate-account/offsite storage, measured archive lag, backup freshness and restore testing. Demonstrate **RPO <5 minutes and RTO <30 minutes** from incident declaration to verified service restoration at realistic data volume. Measure a restore; a successful backup upload is not evidence of the target.
 8. Create `docs/runbooks/{database-failover,pitr-restore,regional-disaster,read-only-mode,queue-replay,payment-reconciliation,courier-settlement,migration-rollback}.md`. Separate rapid multi-AZ failover from regional disaster recovery. Measure cross-region replication lag; fence old writers, promote deliberately, rotate endpoints/credentials and prevent split brain. Trigger read-only maintenance when authoritative writes cannot be trusted. Rebuild cache/search, resume outbox and reconcile provider-side actions after failover; do not blindly replay payments from restored snapshots.
@@ -274,7 +274,7 @@ The phase shown first introduces the capability; later phases extend or qualify 
 
 # Section 4: Day 1 Actionable Execution Checklist
 
-The following is a copyable **future implementation checklist**. It creates a small local foundation and starts Phase 1; it does not claim that Phase 0/1 exit gates fit in one day. All commands run from the repository root. The four templates below are new files; stop and review if any already exists rather than replacing it. PostgreSQL migrations affect the local `araz_local` development database only. Production/staging use separate reviewed migration jobs and credentials.
+The following is a copyable **future implementation checklist**. It creates a small local foundation and starts Phase 1; it does not claim that Phase 0/1 exit gates fit in one day. All commands run from the repository root. The four templates below are new files; stop and review if any already exists rather than replacing it. PostgreSQL migrations affect the local `aaraj_local` development database only. Production/staging use separate reviewed migration jobs and credentials.
 
 ## 1. Establish a clean baseline and preserve the scaffold
 
@@ -293,7 +293,7 @@ pnpm run build:packages
 pnpm run typecheck
 pnpm run lint
 pnpm run test
-pnpm --filter @araz/api run test:e2e
+pnpm --filter @aaraj/api run test:e2e
 pnpm run build
 ```
 
@@ -316,8 +316,8 @@ mkdir -p docs/delivery
 ```dotenv
 # Development-only values. Never use these in shared environments.
 # Keep these local database/user names unless also editing the local runner.
-POSTGRES_DB=araz_local
-POSTGRES_USER=araz_local_admin
+POSTGRES_DB=aaraj_local
+POSTGRES_USER=aaraj_local_admin
 POSTGRES_PASSWORD=local-development-password
 REDIS_PASSWORD=local-development-redis-password
 POSTGRES_PORT=5432
@@ -330,7 +330,7 @@ The existing root `.gitignore` already ignores `.env.local` and permits `.env.ex
 ### New file: `infrastructure/local/compose.yaml`
 
 ```yaml
-name: araz-local
+name: aaraj-local
 
 services:
   postgres:
@@ -482,8 +482,8 @@ const result = spawnSync(
     '--env-file', 'infrastructure/local/.env.local',
     'exec', '-T', 'postgres',
     'psql',
-    '--username=araz_local_admin',
-    '--dbname=araz_local',
+    '--username=aaraj_local_admin',
+    '--dbname=aaraj_local',
     '--set=ON_ERROR_STOP=1',
     `--set=migration_checksum=${checksum}`,
   ],
@@ -517,8 +517,8 @@ docker compose --file infrastructure/local/compose.yaml --env-file infrastructur
 docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local ps
 node scripts/db/local-bootstrap.mjs
 node scripts/db/local-bootstrap.mjs
-docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local exec -T postgres psql --username=araz_local_admin --dbname=araz_local --set=ON_ERROR_STOP=1 --command="SELECT version, applied_at FROM platform.schema_migrations;"
-docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local exec -T postgres psql --username=araz_local_admin --dbname=araz_local --set=ON_ERROR_STOP=1 --command="SELECT extname FROM pg_extension WHERE extname = 'pg_trgm';"
+docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local exec -T postgres psql --username=aaraj_local_admin --dbname=aaraj_local --set=ON_ERROR_STOP=1 --command="SELECT version, applied_at FROM platform.schema_migrations;"
+docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local exec -T postgres psql --username=aaraj_local_admin --dbname=aaraj_local --set=ON_ERROR_STOP=1 --command="SELECT extname FROM pg_extension WHERE extname = 'pg_trgm';"
 docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local exec -T redis-state sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping'
 docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local exec -T redis-cache sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping'
 ```
@@ -540,8 +540,8 @@ Do not add `down --volumes` to a routine stop or “retry” instruction.
 - [ ] Use the existing lockfile as evidence before proposing new packages:
 
 ```bash
-pnpm --filter @araz/api list --depth 0
-pnpm --filter @araz/contracts list --depth 0
+pnpm --filter @aaraj/api list --depth 0
+pnpm --filter @aaraj/contracts list --depth 0
 rg -n '@nestjs/(common|core|outbox|config|throttler)|drizzle-orm|pg:' pnpm-lock.yaml
 ```
 
@@ -565,13 +565,13 @@ These are the next files to author, with enough acceptance detail to make each t
 For every completed slice, run the existing focused checks below. The new integration script is intentionally absent from this executable command block until its implementation exists:
 
 ```bash
-pnpm --filter @araz/contracts run test
+pnpm --filter @aaraj/contracts run test
 pnpm run build:packages
-pnpm --filter @araz/api run typecheck
-pnpm --filter @araz/api run lint
-pnpm --filter @araz/api run test
-pnpm --filter @araz/api run test:e2e
-pnpm --filter @araz/api run build
+pnpm --filter @aaraj/api run typecheck
+pnpm --filter @aaraj/api run lint
+pnpm --filter @aaraj/api run test
+pnpm --filter @aaraj/api run test:e2e
+pnpm --filter @aaraj/api run build
 git diff --check
 git status --short
 ```

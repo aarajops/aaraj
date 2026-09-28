@@ -13,8 +13,8 @@ NestJS supports session management across both **Express** (`express-session`) a
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add express-session
-pnpm --filter @araz/api add -D @types/express-session
+pnpm --filter @aaraj/api add express-session
+pnpm --filter @aaraj/api add -D @types/express-session
 ```
 
 ### Application Configuration
@@ -60,8 +60,8 @@ await bootstrap();
 In containerized or horizontally scaled deployments, use `connect-redis` backed by `ioredis`:
 
 ```bash
-pnpm --filter @araz/api add connect-redis ioredis
-pnpm --filter @araz/api add -D @types/ioredis
+pnpm --filter @aaraj/api add connect-redis ioredis
+pnpm --filter @aaraj/api add -D @types/ioredis
 ```
 
 ```typescript
@@ -80,7 +80,7 @@ async function bootstrap() {
 
   const redisStore = new RedisStore({
     client: redisClient,
-    prefix: 'sess:araz:',
+    prefix: 'sess:aaraj:',
   });
 
   // When behind Nginx / Cloudflare / AWS ALB
@@ -93,7 +93,7 @@ async function bootstrap() {
       secret: [process.env.SESSION_SECRET_CURRENT!, process.env.SESSION_SECRET_OLD!],
       resave: false,
       saveUninitialized: false,
-      name: 'araz.sid',
+      name: 'aaraj.sid',
       cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -168,7 +168,7 @@ Fastify does not use `express-session`; instead, it provides `@fastify/secure-se
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add @fastify/secure-session
+pnpm --filter @aaraj/api add @fastify/secure-session
 ```
 
 ### Configuration in Fastify Bootstrap

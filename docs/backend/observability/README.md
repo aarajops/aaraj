@@ -12,13 +12,13 @@ Unlike generic Node.js APM agents that treat application code as a black box bet
 
 | Chapter | Topic | Key Focus Areas |
 | :--- | :--- | :--- |
-| **01** | [Overview](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/01-overview.md) | APM comparison, request lifecycle hooks, teams/projects/applications hierarchy, Observability Events (OEs) |
-| **02** | [SDK Configuration](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/02-sdk.md) | `createObserveModule()`, `ObserveInstrument`, Fastify 3rd-argument rule, database/HTTP auto-instrumentation, redaction, sampling |
-| **03** | [Manual Instrumentation](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/03-manual-instrumentation.md) | `TracerService`, `createSpan()`, `activeSpan()`, `captureError()`, `setAttribute()`, metrics (`counter`, `gauge`, `summary`) |
-| **04** | [Distributed Tracing](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/04-distributed-tracing.md) | Trace context propagation, HTTP `x-request-id`, gRPC metadata, BullMQ queue job inheritance, self-time waterfalls |
-| **05** | [Error Monitoring](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/05-error-monitoring.md) | Unhandled exceptions, stack traces with `sourceContext`, server-side defect fingerprinting, release regressions |
-| **06** | [Dashboard & Analytics](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/06-dashboard.md) | 3-tier navigation (Analytics → Operation → Execution), live Service Map, Profiler, SLO error budget burn rates |
-| **07** | [MCP Server](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/07-mcp-server.md) | Streamable HTTP MCP endpoint (`POST /mcp`), personal tokens, automated AI agent root-cause analysis |
+| **01** | [Overview](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/observability/01-overview.md) | APM comparison, request lifecycle hooks, teams/projects/applications hierarchy, Observability Events (OEs) |
+| **02** | [SDK Configuration](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/observability/02-sdk.md) | `createObserveModule()`, `ObserveInstrument`, Fastify 3rd-argument rule, database/HTTP auto-instrumentation, redaction, sampling |
+| **03** | [Manual Instrumentation](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/observability/03-manual-instrumentation.md) | `TracerService`, `createSpan()`, `activeSpan()`, `captureError()`, `setAttribute()`, metrics (`counter`, `gauge`, `summary`) |
+| **04** | [Distributed Tracing](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/observability/04-distributed-tracing.md) | Trace context propagation, HTTP `x-request-id`, gRPC metadata, BullMQ queue job inheritance, self-time waterfalls |
+| **05** | [Error Monitoring](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/observability/05-error-monitoring.md) | Unhandled exceptions, stack traces with `sourceContext`, server-side defect fingerprinting, release regressions |
+| **06** | [Dashboard & Analytics](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/observability/06-dashboard.md) | 3-tier navigation (Analytics → Operation → Execution), live Service Map, Profiler, SLO error budget burn rates |
+| **07** | [MCP Server](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/observability/07-mcp-server.md) | Streamable HTTP MCP endpoint (`POST /mcp`), personal tokens, automated AI agent root-cause analysis |
 
 ---
 
@@ -35,7 +35,7 @@ Unlike generic Node.js APM agents that treat application code as a black box bet
 
 ---
 
-## Architectural Commitments for `@araz`
+## Architectural Commitments for `@aaraj`
 
 1. **Non-Invasive Instrumentation**: The API gateway and backend microservices configure telemetry via `createObserveModule()` and `instrument: ObserveInstrument` without invasive global monkey-patching.
 2. **Defensive Redaction**: Sensitive attributes (passwords, tokens, authorization headers, session cookies) are scrubbed at source prior to leaving the Node.js process using built-in redaction rules.

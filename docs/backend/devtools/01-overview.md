@@ -150,7 +150,7 @@ The **Audit** engine runs static analysis over the serialized graph to flag ente
 * Controllers with excessive route counts (> 20 endpoints).
 * High fan-out modules with unconstrained dependency graphs.
 * Providers named `*Guard` or `*Interceptor` that were never registered in DI.
-* Request-scoped providers that should be converted to [durable providers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/fundamentals/03-injection-scopes.md#durable-providers).
+* Request-scoped providers that should be converted to [durable providers](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/fundamentals/03-injection-scopes.md#durable-providers).
 
 ---
 

@@ -6,7 +6,7 @@
 
 A **Gateway** in NestJS is a specialized class annotated with the `@WebSocketGateway()` decorator. Gateways act as the real-time counterpart to HTTP controllers: they listen for incoming client connections, subscribe to incoming message events, route payloads through pipes and guards, and dispatch responses back to individual sockets, rooms, or entire namespaces.
 
-Because gateways are platform-agnostic [providers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/03-providers.md), they participate fully in Nest's Dependency Injection (DI) container. They can inject repositories and services, and controllers or services can inject the gateway itself to trigger push notifications to connected clients.
+Because gateways are platform-agnostic [providers](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/03-providers.md), they participate fully in Nest's Dependency Injection (DI) container. They can inject repositories and services, and controllers or services can inject the gateway itself to trigger push notifications to connected clients.
 
 ---
 
@@ -55,7 +55,7 @@ If you do not need a custom port and wish to multiplex over the primary HTTP por
 ```typescript
 @WebSocketGateway({
   namespace: 'events',
-  cors: { origin: 'https://admin.araz.io' },
+  cors: { origin: 'https://admin.aaraj.io' },
 })
 export class EventsGateway {}
 ```
@@ -293,7 +293,7 @@ export class OrdersGateway {
 
 ## 7. NestJS 12 Request-Scoped Gateways
 
-Starting with **NestJS v12**, gateways support [request-scoped providers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/fundamentals/02-injection-scopes.md). In WebSockets, the "request" scope is bound to the **lifetime of the connected socket connection**, rather than individual message packets.
+Starting with **NestJS v12**, gateways support [request-scoped providers](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/fundamentals/02-injection-scopes.md). In WebSockets, the "request" scope is bound to the **lifetime of the connected socket connection**, rather than individual message packets.
 
 Nest instantiates a dedicated instance of every `Scope.REQUEST` provider per connected socket. That instance persists across all message events received on that socket, safely maintaining per-connection state until the client disconnects.
 

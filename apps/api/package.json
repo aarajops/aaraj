@@ -1,5 +1,5 @@
 {
-  "name": "@araz/api",
+  "name": "@aaraj/api",
   "version": "0.0.1",
   "description": "",
   "author": "",
@@ -24,7 +24,7 @@
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
   },
   "dependencies": {
-    "@araz/contracts": "workspace:*",
+    "@aaraj/contracts": "workspace:*",
     "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^12.0.1",
     "@nestjs/observe": "^0.3.0",

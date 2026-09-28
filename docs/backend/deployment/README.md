@@ -67,10 +67,10 @@ This guide details enterprise deployment standards for NestJS: compiled build ar
 
 Explore the 4 comprehensive guides covering the complete production deployment lifecycle:
 
-1. **[01 - Production Deployment Guide](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/01-deployment.md)**: Production compilation (`dist/`), `NODE_ENV=production` optimizations, process management, port binding, structured JSON logging, observability with `@nestjs/observe`, vertical vs. horizontal scaling, and **automated AWS deployment with Mau** (`nest deploy`).
-2. **[02 - Enterprise Docker Packaging](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/02-docker.md)**: Production multi-stage Dockerfile for Node.js 24 LTS and pnpm monorepos, minimal image footprint, security hardening (dropping root privileges, `dumb-init` PID 1 signal forwarding), `.dockerignore`, and registry workflows.
-3. **[03 - Scaling & Load Balancing](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/03-scaling-clustering.md)**: Horizontal pod autoscaling (HPA), reverse proxy configuration (Nginx, AWS ALB), HTTP/2, WebSocket connection upgrades, gRPC multiplexing, and stateless service design.
-4. **[04 - Health Checks & Probes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/deployment/04-health-checks-terminus.md)**: Health monitoring with `@nestjs/terminus`, Kubernetes liveness and readiness probe design, database indicators (Drizzle/TypeORM), Redis indicators, memory threshold protection (`checkHeap`, `checkRSS`), and custom probes.
+1. **[01 - Production Deployment Guide](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/deployment/01-deployment.md)**: Production compilation (`dist/`), `NODE_ENV=production` optimizations, process management, port binding, structured JSON logging, observability with `@nestjs/observe`, vertical vs. horizontal scaling, and **automated AWS deployment with Mau** (`nest deploy`).
+2. **[02 - Enterprise Docker Packaging](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/deployment/02-docker.md)**: Production multi-stage Dockerfile for Node.js 24 LTS and pnpm monorepos, minimal image footprint, security hardening (dropping root privileges, `dumb-init` PID 1 signal forwarding), `.dockerignore`, and registry workflows.
+3. **[03 - Scaling & Load Balancing](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/deployment/03-scaling-clustering.md)**: Horizontal pod autoscaling (HPA), reverse proxy configuration (Nginx, AWS ALB), HTTP/2, WebSocket connection upgrades, gRPC multiplexing, and stateless service design.
+4. **[04 - Health Checks & Probes](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/deployment/04-health-checks-terminus.md)**: Health monitoring with `@nestjs/terminus`, Kubernetes liveness and readiness probe design, database indicators (Drizzle/TypeORM), Redis indicators, memory threshold protection (`checkHeap`, `checkRSS`), and custom probes.
 
 ---
 

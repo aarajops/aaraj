@@ -166,7 +166,7 @@ Consuming modules can now configure the module asynchronously via factories or c
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
         apiKey: config.getOrThrow('SENDGRID_API_KEY'),
-        defaultSender: 'no-reply@araz.com',
+        defaultSender: 'no-reply@aaraj.com',
       }),
       inject: [ConfigService],
     }),
@@ -202,7 +202,7 @@ Consumers can now pass `isGlobal: true` to make the module global without pollut
   imports: [
     MailerModule.forRoot({
       apiKey: 'secret_123',
-      defaultSender: 'support@araz.com',
+      defaultSender: 'support@aaraj.com',
       isGlobal: true, // Configures module metadata, excluded from MODULE_OPTIONS_TOKEN
     }),
   ],

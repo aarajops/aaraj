@@ -11,7 +11,7 @@ NestJS provides the `@nestjs/throttler` package for declarative, multi-tier rate
 ## 1. Installation & Module Setup
 
 ```bash
-pnpm --filter @araz/api add @nestjs/throttler
+pnpm --filter @aaraj/api add @nestjs/throttler
 ```
 
 ### Module Registration in `AppModule`
@@ -151,7 +151,7 @@ In Kubernetes multi-replica deployments, each container replica maintains its ow
 Use Redis as the centralized distributed throttler store:
 
 ```bash
-pnpm --filter @araz/api add @nest-lab/throttler-storage-redis ioredis
+pnpm --filter @aaraj/api add @nest-lab/throttler-storage-redis ioredis
 ```
 
 ```typescript

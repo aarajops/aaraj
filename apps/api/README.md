@@ -1,6 +1,6 @@
-# @araz/api - Enterprise Backend Service
+# @aaraj/api - Enterprise Backend Service
 
-The core backend service for the **Araz** enterprise platform, built with **NestJS 12**, **TypeScript (ESM / NodeNext)**, and **Node.js 24 LTS**.
+The core backend service for the **Aaraj** enterprise platform, built with **NestJS 12**, **TypeScript (ESM / NodeNext)**, and **Node.js 24 LTS**.
 
 ---
 
@@ -8,7 +8,7 @@ The core backend service for the **Araz** enterprise platform, built with **Nest
 
 * **Port**: Runs on port `3001` (configurable via `PORT` environment variable).
 * **Global Prefix**: All HTTP routes are served under `/api` (e.g. `http://localhost:3001/api`).
-* **Shared Contracts**: Validation DTOs and business schemas are consumed from `@araz/contracts`.
+* **Shared Contracts**: Validation DTOs and business schemas are consumed from `@aaraj/contracts`.
 * **Module System**: Pure ECMAScript Modules (`"type": "module"`). All relative imports require `.js` extensions.
 * **Testing**: Unit and End-to-End tests powered by **Vitest**.
 * **Linting & Formatting**: Enforced via **Oxlint** and **Prettier**.
@@ -68,19 +68,19 @@ All commands should be executed from the monorepo root:
 pnpm dev:api
 
 # Run unit tests
-pnpm --filter @araz/api test
+pnpm --filter @aaraj/api test
 
 # Run E2E tests
-pnpm --filter @araz/api test:e2e
+pnpm --filter @aaraj/api test:e2e
 
 # Typecheck TypeScript
-pnpm --filter @araz/api typecheck
+pnpm --filter @aaraj/api typecheck
 
 # Lint with Oxlint
-pnpm --filter @araz/api lint
+pnpm --filter @aaraj/api lint
 
 # Production build
-pnpm --filter @araz/api build
+pnpm --filter @aaraj/api build
 ```
 
 ---

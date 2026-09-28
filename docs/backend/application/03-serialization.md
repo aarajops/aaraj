@@ -60,7 +60,7 @@ import {
   SerializeOptions,
 } from '@nestjs/common';
 import { StandardSchemaSerializerInterceptor } from '@nestjs/common';
-import { userResponseSchema, type UserResponse } from '@araz/contracts';
+import { userResponseSchema, type UserResponse } from '@aaraj/contracts';
 import { UsersService } from './users.service.js';
 
 @Controller('users')

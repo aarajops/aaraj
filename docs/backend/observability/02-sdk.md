@@ -9,7 +9,7 @@ The `@nestjs/observe` SDK connects a NestJS application to the **NestJS Observe*
 ## 1. Installation & Compatibility
 
 ```bash
-pnpm --filter @araz/api add @nestjs/observe
+pnpm --filter @aaraj/api add @nestjs/observe
 ```
 
 > [!WARNING]
@@ -46,7 +46,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule({
     ObserveModule.forRoot({
       appKey: process.env.OBSERVE_APP_KEY!,
       appSecret: process.env.OBSERVE_APP_SECRET!,
-      serviceId: 'araz-api',
+      serviceId: 'aaraj-api',
       serviceVersion: process.env.GIT_SHA ?? '1.0.0',
     }),
   ],
@@ -110,7 +110,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       useFactory: (config: ConfigService) => ({
         appKey: config.getOrThrow<string>('OBSERVE_APP_KEY'),
         appSecret: config.getOrThrow<string>('OBSERVE_APP_SECRET'),
-        serviceId: config.get<string>('SERVICE_ID', 'araz-api'),
+        serviceId: config.get<string>('SERVICE_ID', 'aaraj-api'),
         serviceVersion: config.get<string>('GIT_SHA', '1.0.0'),
         endpoint: config.get<string>('OBSERVE_ENDPOINT', 'https://observe-api.nestjs.com'),
       }),
@@ -143,7 +143,7 @@ ObserveModule.forRoot({
     database: true,
     http: {
       ignore: (url) => url.startsWith('https://internal-metrics.'),
-      propagateTraceId: (url) => url.includes('.internal.araz.io'),
+      propagateTraceId: (url) => url.includes('.internal.aaraj.io'),
     },
   },
 });

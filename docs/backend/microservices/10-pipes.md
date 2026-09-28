@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12 (`@nestjs/microservices`, `@nestjs/common`)  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-[Pipes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/07-pipes.md) in microservices operate identically to their HTTP counterparts, providing schema validation and data transformation before message payloads reach pattern handlers.
+[Pipes](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/07-pipes.md) in microservices operate identically to their HTTP counterparts, providing schema validation and data transformation before message payloads reach pattern handlers.
 
 The critical requirement: **Pipes must throw `RpcException` instead of `HttpException`**. Any uncaught `BadRequestException` is converted by the core exception filter into a generic `'Internal server error'`.
 

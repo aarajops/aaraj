@@ -88,7 +88,7 @@ app.setGlobalPrefix('api/v1', {
 
 ## 4. Architecture Interaction: Global Prefix vs. Versioning vs. RouterModule
 
-When combining global prefixes with [Versioning](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/01-versioning.md) and [RouterModule](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/06-router-module.md), the final URI path is resolved hierarchically:
+When combining global prefixes with [Versioning](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/01-versioning.md) and [RouterModule](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/recipes/06-router-module.md), the final URI path is resolved hierarchically:
 
 ```text
 Full URI Path = [Global Prefix] / [Version Prefix] / [Module Prefix] / [Controller Path] / [Route Method Path]

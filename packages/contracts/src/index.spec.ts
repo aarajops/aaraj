@@ -9,7 +9,7 @@ describe('Contracts Schema Validation', () => {
   it('validates health check schema correctly', () => {
     const validHealth = {
       status: 'ok',
-      service: 'araz-api',
+      service: 'aaraj-api',
       timestamp: new Date().toISOString(),
       version: '0.0.1',
     };

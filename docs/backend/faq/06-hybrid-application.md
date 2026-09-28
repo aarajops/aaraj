@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM)
 
-A **Hybrid Application** in NestJS is a single deployable service that concurrently listens on an HTTP server while acting as a listener on one or more [Microservice Transporters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/microservices/01-overview.md) (such as TCP, Redis, NATS, RabbitMQ, or Kafka).
+A **Hybrid Application** in NestJS is a single deployable service that concurrently listens on an HTTP server while acting as a listener on one or more [Microservice Transporters](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/microservices/01-overview.md) (such as TCP, Redis, NATS, RabbitMQ, or Kafka).
 
 This pattern is ideal for services that provide external REST/GraphQL APIs while simultaneously consuming internal asynchronous events from a message bus.
 

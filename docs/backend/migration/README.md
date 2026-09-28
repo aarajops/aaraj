@@ -28,10 +28,10 @@ NestJS version 12 marks a generational shift in the framework architecture: core
 
 | Guide | Focus Area | Core Technologies | Migration Impact |
 | :--- | :--- | :--- | :--- |
-| **[01 - Core Breaking Changes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/01-breaking-changes.md)** | Runtime, DI & Protocol Breaks | Node 24/22.12+, `@Optional()`, Hooks, Terminus, NATS v3, GraphQL | Breaking changes across DI reflection, lifecycle hook orders, and third-party transport packages. |
-| **[02 - CLI, Tooling & Compilers](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/02-cli-tooling-and-compilers.md)** | Build Toolchain & Bundlers | `nest upgrade`, Rspack, Webpack deprecation, Vitest, Oxlint | Transitioning monorepos to Rspack, adopting Vitest test runners, and automated upgrades. |
-| **[03 - Standard Schema & New Features](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/03-standard-schema-and-features.md)** | Schema-First Architecture & APIs | Standard Schema, Zod Config, Route Conflicts, Machine Error Codes | Native Zod validation pipes, response serializers, conflict detection, and structured logging. |
-| **[04 - ESM Migration Playbook](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/migration/04-esm-migration-playbook.md)** | Codebase ESM Transition | `"type": "module"`, `NodeNext`, `.js` relative imports, `import.meta` | Step-by-step guide for migrating legacy CommonJS codebases to modern pure ESM. |
+| **[01 - Core Breaking Changes](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/migration/01-breaking-changes.md)** | Runtime, DI & Protocol Breaks | Node 24/22.12+, `@Optional()`, Hooks, Terminus, NATS v3, GraphQL | Breaking changes across DI reflection, lifecycle hook orders, and third-party transport packages. |
+| **[02 - CLI, Tooling & Compilers](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/migration/02-cli-tooling-and-compilers.md)** | Build Toolchain & Bundlers | `nest upgrade`, Rspack, Webpack deprecation, Vitest, Oxlint | Transitioning monorepos to Rspack, adopting Vitest test runners, and automated upgrades. |
+| **[03 - Standard Schema & New Features](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/migration/03-standard-schema-and-features.md)** | Schema-First Architecture & APIs | Standard Schema, Zod Config, Route Conflicts, Machine Error Codes | Native Zod validation pipes, response serializers, conflict detection, and structured logging. |
+| **[04 - ESM Migration Playbook](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/migration/04-esm-migration-playbook.md)** | Codebase ESM Transition | `"type": "module"`, `NodeNext`, `.js` relative imports, `import.meta` | Step-by-step guide for migrating legacy CommonJS codebases to modern pure ESM. |
 
 ---
 

@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12 (`@nestjs/websockets`, `@nestjs/platform-socket.io`, `@nestjs/platform-ws`)  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-[Interceptors](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/09-interceptors.md) in WebSockets bring Aspect-Oriented Programming (AOP) to real-time messaging pipelines. They allow you to:
+[Interceptors](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/09-interceptors.md) in WebSockets bring Aspect-Oriented Programming (AOP) to real-time messaging pipelines. They allow you to:
 - Bind extra logic before and after message handler execution.
 - Measure execution duration and emit performance metrics.
 - Mutate or envelope the response returned by a message handler.

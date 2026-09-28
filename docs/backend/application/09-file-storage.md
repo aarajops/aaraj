@@ -17,7 +17,7 @@ NestJS integrates with [Multer](https://github.com/expressjs/multer) via platfor
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add -D @types/multer
+pnpm --filter @aaraj/api add -D @types/multer
 ```
 
 ### Single File Upload Endpoint
@@ -180,7 +180,7 @@ import { randomUUID } from 'node:crypto';
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly s3 = new S3Client({ region: 'us-east-1' });
-  private readonly bucketName = process.env.S3_BUCKET_NAME ?? 'araz-media-assets';
+  private readonly bucketName = process.env.S3_BUCKET_NAME ?? 'aaraj-media-assets';
 
   async generateUploadUrl(fileName: string, mimeType: string) {
     const extension = fileName.split('.').pop();

@@ -2,7 +2,7 @@
 
 > **Source Reference**: [NestJS Official Documentation - Model-View-Controller](https://docs.nestjs.com/http/mvc)
 
-The Model-View-Controller (MVC) architectural pattern separates data models, business logic (controllers), and user presentation (views). While modern single-page applications (like `@araz/web` built on Next.js) decouple frontend presentation, NestJS provides native support for server-side HTML rendering using template engines like **Handlebars (`hbs`)**, **EJS**, or **Pug**.
+The Model-View-Controller (MVC) architectural pattern separates data models, business logic (controllers), and user presentation (views). While modern single-page applications (like `@aaraj/web` built on Next.js) decouple frontend presentation, NestJS provides native support for server-side HTML rendering using template engines like **Handlebars (`hbs`)**, **EJS**, or **Pug**.
 
 ---
 
@@ -11,7 +11,7 @@ The Model-View-Controller (MVC) architectural pattern separates data models, bus
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add hbs
+pnpm --filter @aaraj/api add hbs
 ```
 
 ### Application Bootstrapping (`NestExpressApplication`)
@@ -79,8 +79,8 @@ export class AppController {
   @Render('index')
   root() {
     return {
-      title: 'Araz Platform',
-      message: 'Welcome to the Araz Application Portal',
+      title: 'Aaraj Platform',
+      message: 'Welcome to the Aaraj Application Portal',
       timestamp: new Date().toLocaleTimeString(),
     };
   }
@@ -111,7 +111,7 @@ Use triple curly braces `{{{body}}}` to inject unescaped page content:
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Araz Portal</title>
+    <title>Aaraj Portal</title>
   </head>
   <body>
     <header>
@@ -126,7 +126,7 @@ Use triple curly braces `{{{body}}}` to inject unescaped page content:
     </div>
 
     <footer>
-      <p>&copy; 2026 Araz Inc. All rights reserved.</p>
+      <p>&copy; 2026 Aaraj Inc. All rights reserved.</p>
     </footer>
   </body>
 </html>
@@ -165,7 +165,7 @@ export class DashboardController {
 To run MVC views under Fastify, install Fastify-specific static and view plugins:
 
 ```bash
-pnpm --filter @araz/api add @fastify/static @fastify/view handlebars
+pnpm --filter @aaraj/api add @fastify/static @fastify/view handlebars
 ```
 
 ### Fastify Bootstrap Configuration

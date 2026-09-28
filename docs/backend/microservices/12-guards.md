@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12 (`@nestjs/microservices`, `@nestjs/common`)  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-[Guards](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/08-guards.md) in microservices enforce authorization, verify inter-service authentication tokens, and inspect packet metadata before a message or event pattern handler executes.
+[Guards](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/08-guards.md) in microservices enforce authorization, verify inter-service authentication tokens, and inspect packet metadata before a message or event pattern handler executes.
 
 The core mechanics match HTTP guards, with two transport-specific behaviors:
 - **Exception Type**: Guards should throw `RpcException` rather than `HttpException`.

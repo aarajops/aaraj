@@ -15,14 +15,14 @@ NestJS supports two packages:
 - **`@nestjs/bullmq` (Recommended)**: Actively developed, TypeScript-first, supports job schedulers, flows (parent-child dependencies), and high-throughput Redis connections.
 - **`@nestjs/bull` (Legacy)**: In maintenance mode (bug fixes only).
 
-> **Architectural Standard**: All new projects in `@araz` should standardize on **BullMQ**.
+> **Architectural Standard**: All new projects in `@aaraj` should standardize on **BullMQ**.
 
 ---
 
 ## 2. Installation & Module Setup
 
 ```bash
-pnpm --filter @araz/api add @nestjs/bullmq bullmq
+pnpm --filter @aaraj/api add @nestjs/bullmq bullmq
 ```
 
 ### Module Registration in `AppModule`
@@ -157,7 +157,7 @@ export class TranscodingConsumer extends WorkerHost {
         // ... perform transcode operation ...
 
         await job.updateProgress(100);
-        return { outputUrl: `https://cdn.araz.io/media/${mediaId}-${targetResolution}.mp4` };
+        return { outputUrl: `https://cdn.aaraj.io/media/${mediaId}-${targetResolution}.mp4` };
       }
 
       default:

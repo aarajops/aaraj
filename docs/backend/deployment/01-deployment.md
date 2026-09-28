@@ -23,8 +23,8 @@ Before initiating deployment, verify:
 In development, TypeScript executes via ts-node, SWC, or Vite. In production, code must be pre-compiled into pure JavaScript:
 
 ```bash
-# In the Araz monorepo
-pnpm --filter @araz/api build
+# In the Aaraj monorepo
+pnpm --filter @aaraj/api build
 ```
 
 This command runs `nest build`, which invokes the TypeScript compiler (`tsc`) with configured NestJS AST transformers (e.g., Swagger or GraphQL CLI plugins) and copies configured static assets into the output directory.

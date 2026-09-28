@@ -12,7 +12,7 @@ import { AppService } from './app.service.js';
   //   ObserveModule.forRoot({
   //     appKey: 'YOUR_APP_KEY',
   //     appSecret: 'YOUR_APP_SECRET',
-  //     serviceId: 'araz-server',
+  //     serviceId: 'aaraj-server',
   //   }),
   // ],
   controllers: [AppController],

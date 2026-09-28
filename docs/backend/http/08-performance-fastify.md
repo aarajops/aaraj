@@ -11,7 +11,7 @@ NestJS is HTTP framework-independent. While **Express** is the default HTTP engi
 To use Fastify as the HTTP provider, install `@nestjs/platform-fastify`:
 
 ```bash
-pnpm --filter @araz/api add @nestjs/platform-fastify
+pnpm --filter @aaraj/api add @nestjs/platform-fastify
 ```
 
 ### Application Bootstrap (`NestFastifyApplication`)
@@ -174,7 +174,7 @@ describe('Fastify E2E Testing', () => {
 
 ## 5. Express to Fastify Migration Checklist
 
-When transitioning from Express to Fastify in `@araz/api`:
+When transitioning from Express to Fastify in `@aaraj/api`:
 
 1. **CORS Default Methods**: Express defaults to `GET, HEAD, PUT, PATCH, POST, DELETE`. Fastify defaults strictly to safelisted CORS methods (`GET, HEAD, POST`). Explicitly configure `methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']` when enabling CORS in Fastify.
 2. **Library-Specific Decorators**: Remove any imports of `Request` and `Response` from `express`. Replace them with `FastifyRequest` and `FastifyReply` from `fastify`, or preferably eliminate `@Res()` in favor of standard return types.

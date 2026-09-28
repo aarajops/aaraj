@@ -30,8 +30,8 @@ Beyond local development inspection, Devtools serves as an **automated architect
 
 | Guide | Focus Area | Core Technologies | Enterprise Production Scenario |
 | :--- | :--- | :--- | :--- |
-| **[01 - Devtools Overview](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/devtools/01-overview.md)** | Local Introspection & Graph Explorer | `@nestjs/devtools-integration` / `snapshot: true` | Visualizing DI graphs, debugging "Cannot resolve dependency" partial graphs, route execution flows, sandbox testing, and startup profiling. |
-| **[02 - CI/CD Integration](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/devtools/02-ci-cd-integration.md)** | Automated CI/CD Graph Snapshots | `GraphPublisher` / `preview: true` | Publishing architectural snapshots on push, automated PR structural difference reports, and preventing architectural drift. |
+| **[01 - Devtools Overview](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/devtools/01-overview.md)** | Local Introspection & Graph Explorer | `@nestjs/devtools-integration` / `snapshot: true` | Visualizing DI graphs, debugging "Cannot resolve dependency" partial graphs, route execution flows, sandbox testing, and startup profiling. |
+| **[02 - CI/CD Integration](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/devtools/02-ci-cd-integration.md)** | Automated CI/CD Graph Snapshots | `GraphPublisher` / `preview: true` | Publishing architectural snapshots on push, automated PR structural difference reports, and preventing architectural drift. |
 
 ---
 

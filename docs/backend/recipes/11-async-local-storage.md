@@ -98,7 +98,7 @@ export class UsersService {
 
 ## 2. Automated ALS with `@nestjs/observe`
 
-If your application is instrumented with [NestJS Observe](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/observability/01-overview.md), the `@nestjs/observe` SDK already maintains an internal `AsyncLocalStorage` store across every request, BullMQ background job, cron task, and microservice RPC call.
+If your application is instrumented with [NestJS Observe](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/observability/01-overview.md), the `@nestjs/observe` SDK already maintains an internal `AsyncLocalStorage` store across every request, BullMQ background job, cron task, and microservice RPC call.
 
 Instead of writing custom middleware, inject `TracerService`:
 

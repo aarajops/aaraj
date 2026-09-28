@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12 (`@nestjs/websockets`, `@nestjs/platform-socket.io`, `@nestjs/platform-ws`)  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-The WebSockets exception layer mirrors the architectural model of HTTP [exception filters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/06-exception-filters.md), but is tailored to bidirectional messaging protocols. When an unhandled error occurs within a gateway message handler, pipe, guard, or interceptor, Nest catches the error and serializes an exception frame back to the calling client over the open socket connection.
+The WebSockets exception layer mirrors the architectural model of HTTP [exception filters](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/06-exception-filters.md), but is tailored to bidirectional messaging protocols. When an unhandled error occurs within a gateway message handler, pipe, guard, or interceptor, Nest catches the error and serializes an exception frame back to the calling client over the open socket connection.
 
 The fundamental difference lies in the exception class: instead of throwing `HttpException`, real-time handlers must throw `WsException`.
 

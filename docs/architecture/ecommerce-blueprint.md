@@ -1,4 +1,4 @@
-# Araz enterprise e-commerce architecture and implementation blueprint
+# Aaraj enterprise e-commerce architecture and implementation blueprint
 
 Design baseline: 28 September 2026. Scope: Bangladesh launch, South Asian expansion, and a path to high-volume production. This is a proposed architecture and delivery specification; the application, migrations, integrations, and infrastructure described here have not been implemented by adding these documents.
 
@@ -14,7 +14,7 @@ The backend reference suite has **18 tiers and 147 numbered Markdown chapters** 
 | --- | --- | --- |
 | Application architecture | DDD modular monolith, independently scalable HTTP and worker processes from the same API codebase | Preserve module boundaries without premature network services |
 | Data | PostgreSQL 16+; `pg` and Drizzle behind module-owned repositories; reviewed SQL migrations | Explicit locks, constraints, partitions, and transaction handles remain visible |
-| Contracts | Zod / Standard Schema V1 in `@araz/contracts` | Transport models, events, enums, and validation have one public source; domain entities remain behavior-rich and private to their owner |
+| Contracts | Zod / Standard Schema V1 in `@aaraj/contracts` | Transport models, events, enums, and validation have one public source; domain entities remain behavior-rich and private to their owner |
 | Concurrency | PostgreSQL is authoritative; Redis accelerates admission and reads | A lost Redis key cannot create money, stock, or a second business operation |
 | Events | `@nestjs/outbox` with module-owned PostgreSQL stores and inboxes; `@nestjs/event-emitter` / CQRS for dispatch | Durable state changes never depend on an in-memory emit alone |
 | Jobs | `@nestjs/bullmq`, bounded worker pools, durable dispatch records | Queue retries are expected; every business handler deduplicates |
@@ -172,7 +172,7 @@ Register the built-in `StandardSchemaValidationPipe` globally and attach a schem
 ```ts
 // Illustrative addition to a module; create the referenced contract/use case first.
 import { Body, Controller, Post } from '@nestjs/common';
-import { PlaceOrderSchema, type PlaceOrderInput } from '@araz/contracts';
+import { PlaceOrderSchema, type PlaceOrderInput } from '@aaraj/contracts';
 import { PlaceOrderUseCase } from '../application/place-order.use-case.js';
 
 @Controller('orders')
@@ -290,7 +290,7 @@ Advance required → payment pending → verified advance → reservation/risk r
 
 Define `PaymentGatewayPort` with `createAttempt`, `executeIfRequired`, `queryAttempt`, `requestRefund`, `queryRefund`, and provider-specific webhook verification. Return normalized results (`PENDING`, `SUCCEEDED`, `FAILED`, `UNKNOWN`) plus redacted provider reference and supported capabilities. Each adapter owns strict request/response schemas, credential refresh, timeouts, retries, sandbox fixtures, and API-version/merchant-contract metadata.
 
-Use hosted payment pages/official MFS authorization flows; Araz never asks for an MFS PIN or customer OTP. Send decimal major-unit **strings** only when required by the provider, derived from integer subunits. Generate stable merchant attempt references before outbound calls. A new network retry does not create a new payment attempt or switch gateways while the first may have succeeded.
+Use hosted payment pages/official MFS authorization flows; Aaraj never asks for an MFS PIN or customer OTP. Send decimal major-unit **strings** only when required by the provider, derived from integer subunits. Generate stable merchant attempt references before outbound calls. A new network retry does not create a new payment attempt or switch gateways while the first may have succeeded.
 
 Verify webhook signatures over the required raw bytes where supported, and use provider status/validation APIs when that is the authentication mechanism. Check merchant identity, reference, currency, amount, transaction status, and replay uniqueness. Persist a minimally necessary encrypted inbox payload before acknowledging; process asynchronously. An IP allowlist is defense in depth, not proof of payment. A browser success/cancel/fail URL only triggers a status refresh.
 
@@ -344,7 +344,7 @@ Idempotency protocol:
 | Cache outage | Check durable receipts and use the DB fallback only when configured abuse controls remain safe; otherwise `503` before mutation, never unrestricted execution |
 | Retention | Durable order/payment/refund/stock uniqueness and receipt policy outlive the 24-hour cache; key expiry never authorizes charging the same business intent twice |
 
-Webhooks cannot be forced to send Araz's header: derive an internal idempotency key from verified provider event/transaction identity. Jobs and scheduled commands similarly use stable event/job/business IDs. Even a new client key cannot bypass order/capture/refund natural business uniqueness. Endpoints with secure one-time secrets return operation/session references or encrypted scoped replay responses; cache entries must not expose tokens or other customers' PII.
+Webhooks cannot be forced to send Aaraj's header: derive an internal idempotency key from verified provider event/transaction identity. Jobs and scheduled commands similarly use stable event/job/business IDs. Even a new client key cannot bypass order/capture/refund natural business uniqueness. Endpoints with secure one-time secrets return operation/session references or encrypted scoped replay responses; cache entries must not expose tokens or other customers' PII.
 
 Checkout is a persisted Order process manager, not a transaction spanning five schemas. The diagram shows checkout_sagas.state, not orders.state: DRAFT maps to an order draft/CHECKOUT_PENDING, AWAITING_PAYMENT maps to the matching order state, and COMPENSATING is a saga step while the order remains pending cancellation. Keep saga and customer-facing order states as separate versioned state machines:
 

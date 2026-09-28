@@ -114,7 +114,7 @@ To present a unified portal where developers can switch between different servic
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 const mainConfig = new DocumentBuilder()
-  .setTitle('Araz Unified Gateway')
+  .setTitle('Aaraj Unified Gateway')
   .setVersion('1.0.0')
   .build();
 
@@ -152,7 +152,7 @@ async function exportOpenApi() {
   const app = await NestFactory.create(AppModule, { logger: false });
 
   const config = new DocumentBuilder()
-    .setTitle('Araz Enterprise API')
+    .setTitle('Aaraj Enterprise API')
     .setVersion('1.0.0')
     .build();
 

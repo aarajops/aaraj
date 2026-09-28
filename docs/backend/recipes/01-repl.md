@@ -75,7 +75,7 @@ You can retrieve singleton instances by class token using `get()` (or its shorth
 > const usersService = $(UsersService)
 > const user = await usersService.findOneById(1)
 > console.log(user)
-{ id: 1, email: 'alex@araz.io', role: 'admin' }
+{ id: 1, email: 'alex@aaraj.io', role: 'admin' }
 ```
 
 ### Inspecting Available Methods

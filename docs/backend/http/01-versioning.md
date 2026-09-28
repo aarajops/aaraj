@@ -245,4 +245,4 @@ export class AppModule implements NestModule {
 
 1. **Standardize on URI Versioning for Public APIs**: URI versioning (`/api/v1/resource`) is transparent, human-readable, cacheable by CDNs without complex `Vary` headers, and directly linkable.
 2. **Dedicated Versioned Controllers**: Rather than scattering `@Version('1')` and `@Version('2')` across individual methods within the same class, create dedicated controllers (`users-v1.controller.ts` vs `users-v2.controller.ts`). This keeps DTOs and serialization transforms cleanly isolated.
-3. **Contract Alignment**: In `@araz`, API contracts in `packages/contracts` should export distinct types per version (e.g., `UserV1Dto` vs `UserV2Dto`) to prevent regressions across web and mobile consumers.
+3. **Contract Alignment**: In `@aaraj`, API contracts in `packages/contracts` should export distinct types per version (e.g., `UserV1Dto` vs `UserV2Dto`) to prevent regressions across web and mobile consumers.

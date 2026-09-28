@@ -37,7 +37,7 @@ async function bootstrap() {
 
   app.enableCsrfProtection({
     // Explicit list of trusted frontends that may perform cross-origin mutations:
-    trustedOrigins: ['https://admin.araz.io', 'http://localhost:3000'],
+    trustedOrigins: ['https://admin.aaraj.io', 'http://localhost:3000'],
 
     // Explicitly exclude external webhook callbacks:
     exclude: [
@@ -56,7 +56,7 @@ bootstrap();
 ## 3. Trusted Origins & Webhook Exclusions
 
 ### Trusted Origins
-Frontend applications hosted on sibling subdomains (e.g. `https://admin.araz.io` communicating with `https://api.araz.io`) are treated by browsers as cross-origin. List them in `trustedOrigins`:
+Frontend applications hosted on sibling subdomains (e.g. `https://admin.aaraj.io` communicating with `https://api.aaraj.io`) are treated by browsers as cross-origin. List them in `trustedOrigins`:
 
 - Format must be exact: `scheme://host[:port]` (no trailing slashes, paths, or query params).
 - Normalizes comparisons automatically against incoming `Origin` headers.
@@ -93,7 +93,7 @@ If your application must support legacy browsers that do not send Fetch Metadata
 
 ### Express Setup with `csrf-csrf`:
 ```bash
-pnpm --filter @araz/api add csrf-csrf cookie-parser
+pnpm --filter @aaraj/api add csrf-csrf cookie-parser
 ```
 
 ```typescript

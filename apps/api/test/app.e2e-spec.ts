@@ -21,7 +21,7 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/api')
       .expect(200)
-      .expect('Araz API v1.0.0');
+      .expect('Aaraj API v1.0.0');
   });
 
   it('/api/health (GET)', async () => {
@@ -31,7 +31,7 @@ describe('AppController (e2e)', () => {
 
     expect(response.body).toMatchObject({
       status: 'ok',
-      service: '@araz/api',
+      service: '@aaraj/api',
       version: '0.0.1',
     });
     expect(response.body.timestamp).toBeDefined();

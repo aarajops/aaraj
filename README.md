@@ -1,4 +1,4 @@
-# Araz - Enterprise E-Commerce Platform
+# Aaraj - Enterprise E-Commerce Platform
 
 Enterprise-grade full-stack TypeScript monorepo powered by **pnpm workspaces** and **Node.js 24 LTS**.
 
@@ -7,13 +7,13 @@ Enterprise-grade full-stack TypeScript monorepo powered by **pnpm workspaces** a
 ## Workspace Architecture
 
 ```text
-araz/
+aaraj/
 ├── apps/
-│   ├── api/                   # NestJS 12 backend service (@araz/api) -> Port 3001
-│   └── web/                   # Next.js 16 storefront (@araz/web) -> Port 3000
+│   ├── api/                   # NestJS 12 backend service (@aaraj/api) -> Port 3001
+│   └── web/                   # Next.js 16 storefront (@aaraj/web) -> Port 3000
 │
 ├── packages/
-│   └── contracts/             # Shared domain schemas & DTOs (@araz/contracts)
+│   └── contracts/             # Shared domain schemas & DTOs (@aaraj/contracts)
 │
 ├── docs/                      # Architectural standards & official engineering documentation
 │   ├── README.md              # Documentation portal
@@ -50,7 +50,7 @@ The repository maintains an authoritative, durable documentation portal under `/
    * `packages -> packages` (allowed)
    * `packages -> apps` (strictly forbidden)
 3. **Clean Exports**:
-   * External consumers import from `@araz/contracts` using its public exports.
+   * External consumers import from `@aaraj/contracts` using its public exports.
    * Deep imports into `packages/*/src/...` are strictly prohibited.
 4. **Toolchain & Runtime**:
    * **Package Manager**: `pnpm@12.5.1`
@@ -97,6 +97,6 @@ pnpm test
 
 ## Port & Proxy Configuration
 
-* **Storefront (`@araz/web`)**: Runs on `http://localhost:3000`
-* **API (`@araz/api`)**: Runs on `http://localhost:3001` with global `/api` prefix
+* **Storefront (`@aaraj/web`)**: Runs on `http://localhost:3000`
+* **API (`@aaraj/api`)**: Runs on `http://localhost:3001` with global `/api` prefix
 * **Development Rewrites**: In development, Next.js rewrites `/api/:path*` to the internal API URL (`process.env.API_INTERNAL_URL ?? 'http://localhost:3001'`), preventing browser CORS friction.

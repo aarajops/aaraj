@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service.js';
-import { CONTRACT_VERSION, type HealthCheckResponse } from '@araz/contracts';
+import { CONTRACT_VERSION, type HealthCheckResponse } from '@aaraj/contracts';
 
 @Controller()
 export class AppController {
@@ -15,7 +15,7 @@ export class AppController {
   getHealth(): HealthCheckResponse {
     return {
       status: 'ok',
-      service: '@araz/api',
+      service: '@aaraj/api',
       timestamp: new Date().toISOString(),
       version: CONTRACT_VERSION,
     };

@@ -8,7 +8,7 @@ Error monitoring is a foundational capability included across all plans in NestJ
 
 ## 1. What Gets Captured Automatically
 
-Errors propagating out of an instrumented endpoint are recorded directly on the failed execution without registering manual error hooks or modifying [Exception Filters](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/06-exception-filters.md).
+Errors propagating out of an instrumented endpoint are recorded directly on the failed execution without registering manual error hooks or modifying [Exception Filters](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/06-exception-filters.md).
 
 An error execution page brings together:
 1. **Error Identity**: Exception class name and human-readable message.

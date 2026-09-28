@@ -28,7 +28,7 @@ In modern cloud environments, **container orchestration (Kubernetes / AWS ECS) i
 When placing NestJS behind an Nginx reverse proxy, the proxy must properly handle WebSocket connection upgrades, HTTP/2 multiplexing, and client IP forwarding:
 
 ```nginx
-# /etc/nginx/conf.d/araz-api.conf
+# /etc/nginx/conf.d/aaraj-api.conf
 upstream nestjs_backend {
     server 10.0.1.10:3000 max_fails=3 fail_timeout=10s;
     server 10.0.1.11:3000 max_fails=3 fail_timeout=10s;
@@ -37,10 +37,10 @@ upstream nestjs_backend {
 
 server {
     listen 443 ssl http2;
-    server_name api.araz.io;
+    server_name api.aaraj.io;
 
-    ssl_certificate /etc/letsencrypt/live/api.araz.io/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.araz.io/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/api.aaraj.io/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.aaraj.io/privkey.pem;
 
     # Performance Tuning
     client_max_body_size 50M;
@@ -77,22 +77,22 @@ server {
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: araz-api
+  name: aaraj-api
   labels:
-    app: araz-api
+    app: aaraj-api
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: araz-api
+      app: aaraj-api
   template:
     metadata:
       labels:
-        app: araz-api
+        app: aaraj-api
     spec:
       containers:
-        - name: araz-api
-          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/araz-api:v1.0.0
+        - name: aaraj-api
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/aaraj-api:v1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
@@ -128,12 +128,12 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: araz-api-hpa
+  name: aaraj-api-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: araz-api
+    name: aaraj-api
   minReplicas: 3
   maxReplicas: 20
   metrics:

@@ -1,6 +1,6 @@
-# Araz Engineering Documentation Portal
+# Aaraj Engineering Documentation Portal
 
-Welcome to the central documentation portal for the **Araz** platform. This repository contains the authoritative architecture standards, engineering guides, and technology reference documentation for building and scaling the enterprise monorepo.
+Welcome to the central documentation portal for the **Aaraj** platform. This repository contains the authoritative architecture standards, engineering guides, and technology reference documentation for building and scaling the enterprise monorepo.
 
 The **[Enterprise E-Commerce Architecture Blueprint](architecture/ecommerce-blueprint.md)** specifies the Bangladesh/South Asian platform design across 36 pillars, with [relational ERDs](architecture/ecommerce-data-model.md), [PostgreSQL schema](architecture/ecommerce-schema.sql), [Phase 0–8 roadmap and Day 1 checklist](architecture/ecommerce-implementation-roadmap.md), and [verified provider/NBR integration constraints](architecture/ecommerce-provider-register.md). These are proposed implementation specifications, not deployed application features.
 
@@ -203,7 +203,7 @@ docs/
 ## Architectural Principles
 
 1. **Explicit Boundaries**: Deployable services live in `apps/*`; reusable business contracts and schemas live in `packages/*`.
-2. **Single Source of Truth**: Shared domain models and validation schemas originate in `@araz/contracts` and are consumed across frontend and backend.
+2. **Single Source of Truth**: Shared domain models and validation schemas originate in `@aaraj/contracts` and are consumed across frontend and backend.
 3. **Type-Safe Inversion of Control**: The backend leverages NestJS's dependency injection system with strict compile-time types and explicit runtime tokens.
 4. **Deterministic Execution Pipeline**: All incoming requests traverse an explicit pipeline: `Middleware -> Guards -> Interceptors (Pre) -> Pipes -> Handler -> Interceptors (Post) -> Exception Filters`.
 5. **Modern ESM Compliance**: All backend modules operate under ECMAScript Modules (`NodeNext`) with explicit relative import specifiers.
@@ -212,7 +212,7 @@ docs/
 
 ## Quick Navigation
 
-* **Backend Standards Index**: [docs/backend/README.md](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/README.md)
-* **Request Lifecycle Reference**: [docs/backend/overview/11-request-lifecycle.md](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/11-request-lifecycle.md)
-* **Root Application Guide**: [README.md](file:///home/solo/JUNK/OFC/LK/araz/README.md)
-* **API Service Guide**: [apps/api/README.md](file:///home/solo/JUNK/OFC/LK/araz/apps/api/README.md)
+* **Backend Standards Index**: [docs/backend/README.md](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/README.md)
+* **Request Lifecycle Reference**: [docs/backend/overview/11-request-lifecycle.md](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/11-request-lifecycle.md)
+* **Root Application Guide**: [README.md](file:///home/solo/JUNK/OFC/LK/aaraj/README.md)
+* **API Service Guide**: [apps/api/README.md](file:///home/solo/JUNK/OFC/LK/aaraj/apps/api/README.md)

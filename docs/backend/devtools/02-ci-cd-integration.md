@@ -108,7 +108,7 @@ jobs:
           echo "BRANCH_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
 
       - name: Publish Graph Snapshot
-        run: pnpm --filter @araz/api run start
+        run: pnpm --filter @aaraj/api run start
         env:
           PUBLISH_GRAPH: 'true'
           DEVTOOLS_API_KEY: ${{ secrets.DEVTOOLS_API_KEY }}
@@ -137,7 +137,7 @@ publish_devtools_graph:
   script:
     - npm install -g pnpm@12.5.1
     - pnpm install --frozen-lockfile
-    - PUBLISH_GRAPH=true pnpm --filter @araz/api run start
+    - PUBLISH_GRAPH=true pnpm --filter @aaraj/api run start
   variables:
     DEVTOOLS_API_KEY: $DEVTOOLS_API_KEY
     REPOSITORY_NAME: $CI_PROJECT_NAME

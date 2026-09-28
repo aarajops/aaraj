@@ -12,8 +12,8 @@ The `@nestjs/typeorm` package provides first-class NestJS integration, including
 
 ```bash
 # Example for PostgreSQL:
-pnpm --filter @araz/api add @nestjs/typeorm typeorm pg
-pnpm --filter @araz/api add -D @types/pg
+pnpm --filter @aaraj/api add @nestjs/typeorm typeorm pg
+pnpm --filter @aaraj/api add -D @types/pg
 ```
 
 ### Basic Setup in `AppModule`
@@ -35,7 +35,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         port: config.get<number>('DATABASE_PORT', 5432),
         username: config.get<string>('DATABASE_USER', 'postgres'),
         password: config.get<string>('DATABASE_PASSWORD', 'secret'),
-        database: config.get<string>('DATABASE_NAME', 'araz_db'),
+        database: config.get<string>('DATABASE_NAME', 'aaraj_db'),
         autoLoadEntities: true, // Automatically registers entities loaded via forFeature
         synchronize: false,    // CRITICAL: NEVER enable in production! Data loss risk!
         retryAttempts: 10,
@@ -327,7 +327,7 @@ describe('UsersService', () => {
   let service: UsersService;
 
   const mockUserRepository = {
-    find: vi.fn().mockResolvedValue([{ id: '1', email: 'test@araz.io' }]),
+    find: vi.fn().mockResolvedValue([{ id: '1', email: 'test@aaraj.io' }]),
     findOneBy: vi.fn(),
     create: vi.fn().mockImplementation((dto) => dto),
     save: vi.fn().mockImplementation((user) => Promise.resolve({ id: '1', ...user })),

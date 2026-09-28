@@ -12,8 +12,8 @@ The `@nestjs/sequelize` package integrates Sequelize into NestJS, offering model
 
 ```bash
 # Example for PostgreSQL:
-pnpm --filter @araz/api add @nestjs/sequelize sequelize sequelize-typescript pg
-pnpm --filter @araz/api add -D @types/sequelize @types/pg
+pnpm --filter @aaraj/api add @nestjs/sequelize sequelize sequelize-typescript pg
+pnpm --filter @aaraj/api add -D @types/sequelize @types/pg
 ```
 
 ### Module Registration in `AppModule`
@@ -35,7 +35,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         port: config.get<number>('DATABASE_PORT', 5432),
         username: config.get<string>('DATABASE_USER', 'postgres'),
         password: config.get<string>('DATABASE_PASSWORD', 'secret'),
-        database: config.get<string>('DATABASE_NAME', 'araz_db'),
+        database: config.get<string>('DATABASE_NAME', 'aaraj_db'),
         autoLoadModels: true, // Automatically registers models loaded via forFeature
         synchronize: false,   // Never synchronize in production!
       }),
@@ -203,7 +203,7 @@ import { User } from './models/user.model.js';
 describe('UsersService (Sequelize)', () => {
   it('should find all users', async () => {
     const mockUserModel = {
-      findAll: vi.fn().mockResolvedValue([{ id: '1', email: 'test@araz.io' }]),
+      findAll: vi.fn().mockResolvedValue([{ id: '1', email: 'test@aaraj.io' }]),
     };
 
     const module = await Test.createTestingModule({

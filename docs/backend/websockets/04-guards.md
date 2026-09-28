@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12 (`@nestjs/websockets`, `@nestjs/platform-socket.io`, `@nestjs/platform-ws`)  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-[Guards](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/08-guards.md) in WebSockets evaluate permissions, roles, and authentication claims before a message handler is invoked.
+[Guards](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/08-guards.md) in WebSockets evaluate permissions, roles, and authentication claims before a message handler is invoked.
 
 There is no fundamental structural difference between WebSocket guards and HTTP guards: both implement the `CanActivate` interface and evaluate the incoming execution context. However, over WebSockets:
 - **Return Semantics**: If a guard returns `false`, Nest automatically throws a `WsException` with the message `'Forbidden resource'`.
@@ -189,10 +189,10 @@ export class WsJwtAuthGuard implements CanActivate {
   private verifyToken(token: string): AuthenticatedUser {
     // Mock token verification for demonstration
     if (token === 'valid-admin-token') {
-      return { id: 'usr_admin', email: 'admin@araz.io', roles: ['admin'] };
+      return { id: 'usr_admin', email: 'admin@aaraj.io', roles: ['admin'] };
     }
     if (token === 'valid-user-token') {
-      return { id: 'usr_member', email: 'user@araz.io', roles: ['user'] };
+      return { id: 'usr_member', email: 'user@aaraj.io', roles: ['user'] };
     }
     throw new Error('Invalid token');
   }

@@ -130,7 +130,7 @@ createOrder(@Payload() order: { orderId: string; amount: number }) {
     key: order.orderId, // Partitioning key
     value: { ...order, status: 'CONFIRMED' },
     headers: {
-      'x-source': 'araz-api',
+      'x-source': 'aaraj-api',
     },
   };
 }

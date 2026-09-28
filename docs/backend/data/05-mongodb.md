@@ -11,8 +11,8 @@ The `@nestjs/mongoose` package integrates [Mongoose](https://mongoosejs.com/) (t
 ## 1. Installation & Module Setup
 
 ```bash
-pnpm --filter @araz/api add @nestjs/mongoose mongoose
-pnpm --filter @araz/api add -D @types/mongoose
+pnpm --filter @aaraj/api add @nestjs/mongoose mongoose
+pnpm --filter @aaraj/api add -D @types/mongoose
 ```
 
 ### Basic Setup in `AppModule`

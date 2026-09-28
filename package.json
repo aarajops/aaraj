@@ -1,5 +1,5 @@
 {
-  "name": "araz",
+  "name": "aaraj",
   "private": true,
   "packageManager": "pnpm@12.5.1",
   "engines": {
@@ -9,9 +9,9 @@
     "dev": "pnpm run dev:prepare && pnpm --parallel --filter './apps/*' --filter './packages/*' --if-present run dev",
     "dev:prepare": "pnpm run build:packages",
     "build:packages": "pnpm --filter './packages/*' --if-present run build",
-    "dev:web": "pnpm --filter @araz/web dev",
-    "dev:api": "pnpm --filter @araz/api dev",
-    "dev:contracts": "pnpm --filter @araz/contracts dev",
+    "dev:web": "pnpm --filter @aaraj/web dev",
+    "dev:api": "pnpm --filter @aaraj/api dev",
+    "dev:contracts": "pnpm --filter @aaraj/contracts dev",
     "build": "pnpm -r --if-present run build",
     "typecheck": "pnpm run build:packages && pnpm -r --if-present run typecheck",
     "lint": "pnpm -r --if-present run lint",

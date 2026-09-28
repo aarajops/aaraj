@@ -6,7 +6,7 @@ Data received across HTTP, WebSockets, or RPC boundaries must be rigorously vali
 1. **Schema-Based Validation (`StandardSchemaValidationPipe`)**: Uses modern [Standard Schema](https://standardschema.dev/) compatible libraries (such as **Zod**, **Valibot**, and **ArkType**). Schemas act as the single source of truth; TypeScript types are inferred without runtime reflection metadata.
 2. **Decorator-Based Validation (`ValidationPipe`)**: Uses [`class-validator`](https://github.com/typestack/class-validator) and [`class-transformer`](https://github.com/typestack/class-transformer) decorators on class definitions.
 
-In modern monorepos such as `@araz`, **Schema-Based Validation** with Zod is the primary standard because it allows contracts to be shared verbatim across client and server applications in `packages/contracts`.
+In modern monorepos such as `@aaraj`, **Schema-Based Validation** with Zod is the primary standard because it allows contracts to be shared verbatim across client and server applications in `packages/contracts`.
 
 ---
 
@@ -96,7 +96,7 @@ The `schema` option can be passed to parameter decorators (`@Body()`, `@Query()`
 
 ```typescript
 import { Controller, Post, Body } from '@nestjs/common';
-import { createUserSchema, type CreateUserDto } from '@araz/contracts';
+import { createUserSchema, type CreateUserDto } from '@aaraj/contracts';
 import { UsersService } from './users.service.js';
 
 @Controller('users')

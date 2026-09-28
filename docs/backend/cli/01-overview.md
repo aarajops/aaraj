@@ -103,7 +103,7 @@ pnpm run start:dev
 By default, the server bootstraps on port `3000` (e.g., `http://localhost:3000`). The process continuously watches the filesystem and recompiles upon every detected source file modification.
 
 > [!TIP]
-> **10x Faster Builds with SWC**: By default, standard mode projects compile using `tsc`. For significantly faster incremental compilation during development, configure the [SWC builder](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/05-scripts.md) by passing `--builder swc` or setting `"builder": "swc"` in `nest-cli.json`.
+> **10x Faster Builds with SWC**: By default, standard mode projects compile using `tsc`. For significantly faster incremental compilation during development, configure the [SWC builder](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/05-scripts.md) by passing `--builder swc` or setting `"builder": "swc"` in `nest-cli.json`.
 
 ---
 
@@ -165,11 +165,11 @@ nest generate --help
 
 | Command | Alias | Description | Detailed Reference |
 | :--- | :--- | :--- | :--- |
-| `new` | `n` | Scaffolds a new standard-mode NestJS application with all boilerplate files. | [Command Reference: new](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md#1-nest-new) |
-| `generate` | `g` | Generates and/or modifies source files based on schematic templates (controllers, services, modules, resources). | [Command Reference: generate](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md#2-nest-generate) |
-| `build` | | Compiles an application or monorepo workspace into an output directory (`dist/`). | [Command Reference: build](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md#3-nest-build) |
-| `start` | | Compiles and executes an application (or the default workspace project). | [Command Reference: start](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md#4-nest-start) |
-| `add` | | Imports an external library packaged with custom Nest schematics and executes its setup. | [Command Reference: add](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md#5-nest-add) |
-| `upgrade` | `update` | Upgrades an existing project to the latest NestJS major version (v12) and applies automated AST migrations. | [Command Reference: upgrade](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md#6-nest-upgrade) |
-| `deploy` | | Deploys the application directly to AWS cloud infrastructure powered by Mau. | [Command Reference: deploy](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md#7-nest-deploy) |
-| `info` | `i` | Displays diagnostic information about installed Nest packages, runtime versions, and system environment. | [Command Reference: info](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/cli/04-usage.md#8-nest-info) |
+| `new` | `n` | Scaffolds a new standard-mode NestJS application with all boilerplate files. | [Command Reference: new](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/04-usage.md#1-nest-new) |
+| `generate` | `g` | Generates and/or modifies source files based on schematic templates (controllers, services, modules, resources). | [Command Reference: generate](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/04-usage.md#2-nest-generate) |
+| `build` | | Compiles an application or monorepo workspace into an output directory (`dist/`). | [Command Reference: build](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/04-usage.md#3-nest-build) |
+| `start` | | Compiles and executes an application (or the default workspace project). | [Command Reference: start](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/04-usage.md#4-nest-start) |
+| `add` | | Imports an external library packaged with custom Nest schematics and executes its setup. | [Command Reference: add](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/04-usage.md#5-nest-add) |
+| `upgrade` | `update` | Upgrades an existing project to the latest NestJS major version (v12) and applies automated AST migrations. | [Command Reference: upgrade](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/04-usage.md#6-nest-upgrade) |
+| `deploy` | | Deploys the application directly to AWS cloud infrastructure powered by Mau. | [Command Reference: deploy](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/04-usage.md#7-nest-deploy) |
+| `info` | `i` | Displays diagnostic information about installed Nest packages, runtime versions, and system environment. | [Command Reference: info](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/cli/04-usage.md#8-nest-info) |

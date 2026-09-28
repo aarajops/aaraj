@@ -104,4 +104,4 @@ When `forceCloseConnections: true` is enabled, the shutdown progression proceeds
 ## 4. Production Architectural Recommendations
 
 - **Behind Load Balancers (AWS ALB / Nginx / Cloudflare)**: Set your server's keep-alive timeout higher than the load balancer's keep-alive timeout (`keepAliveTimeout > 60s`) to prevent race conditions where Node.js closes a socket just as the load balancer sends a new request (resulting in `502 Bad Gateway`).
-- **Container Deployments**: Pair `forceCloseConnections: true` with [Terminus Graceful Shutdown](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/recipes/07-health-checks.md#graceful-shutdown-timeout) (`gracefulShutdownTimeoutMs: 5000`) so ingress controllers have time to deregister the pod before sockets are severed.
+- **Container Deployments**: Pair `forceCloseConnections: true` with [Terminus Graceful Shutdown](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/recipes/07-health-checks.md#graceful-shutdown-timeout) (`gracefulShutdownTimeoutMs: 5000`) so ingress controllers have time to deregister the pod before sockets are severed.

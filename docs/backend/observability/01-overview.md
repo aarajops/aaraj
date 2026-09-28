@@ -40,10 +40,10 @@ NestJS Observe organizes telemetry across three structural layers:
 
 ```text
 Team (Organization & Billing)
- └── Project (e.g., "araz-production", "araz-staging")
-      ├── Application 1: "araz-api" (Main REST API)
-      ├── Application 2: "araz-worker" (BullMQ Job Processor)
-      └── Application 3: "araz-gateway" (Reverse Ingress)
+ └── Project (e.g., "aaraj-production", "aaraj-staging")
+      ├── Application 1: "aaraj-api" (Main REST API)
+      ├── Application 2: "aaraj-worker" (BullMQ Job Processor)
+      └── Application 3: "aaraj-gateway" (Reverse Ingress)
 ```
 
 1. **Team**: The root administrative entity managing user memberships, access roles (**Read**, **Write**, **Admin**), and subscriptions.
@@ -73,7 +73,7 @@ Ingestion volume can be limited without deploying code changes via project-level
 ## 5. Setting Up a Project
 
 1. Sign up at [observe.nestjs.com](https://www.observe.nestjs.com/).
-2. Create a **Project** (e.g., `araz-api-production`).
-3. Add an **Application** representing your service (`araz-server`).
+2. Create a **Project** (e.g., `aaraj-api-production`).
+3. Add an **Application** representing your service (`aaraj-server`).
 4. Generate an **API Key Pair** (`appKey` and `appSecret`) from the project's **API Keys** page. Store these credentials securely in environment variables (`OBSERVE_APP_KEY`, `OBSERVE_APP_SECRET`).
 5. Instrument the application using the `@nestjs/observe` SDK.

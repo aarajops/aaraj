@@ -13,7 +13,7 @@ Authentication verifies the identity of a client attempting to access applicatio
 ## 1. Installation & Module Setup
 
 ```bash
-pnpm --filter @araz/api add @nestjs/jwt
+pnpm --filter @aaraj/api add @nestjs/jwt
 ```
 
 ### Configuring `JwtModule` with `ConfigService`

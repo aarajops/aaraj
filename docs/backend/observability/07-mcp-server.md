@@ -78,7 +78,7 @@ Cursor expands environment variables automatically:
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-const client = new Client({ name: 'araz-diagnostic-agent', version: '1.0.0' });
+const client = new Client({ name: 'aaraj-diagnostic-agent', version: '1.0.0' });
 
 await client.connect(
   new StreamableHTTPClientTransport(new URL('https://<api-host>/mcp'), {

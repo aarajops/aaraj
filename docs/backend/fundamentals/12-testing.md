@@ -4,7 +4,7 @@
 
 Automated testing is vital for enterprise applications. NestJS provides dedicated testing utilities (`@nestjs/testing`) that replicate the runtime Inversion of Control (IoC) container, allowing you to mock dependencies, override providers, and execute end-to-end integration tests with zero boilerplate.
 
-In the `@araz` monorepo, both unit and end-to-end test suites run on **Vitest** for native ECMAScript Modules (ESM) support and extreme execution speed.
+In the `@aaraj` monorepo, both unit and end-to-end test suites run on **Vitest** for native ECMAScript Modules (ESM) support and extreme execution speed.
 
 ---
 

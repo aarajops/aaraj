@@ -24,8 +24,8 @@ HTTP response compression reduces payload sizes transmitted across the wire, dec
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add compression
-pnpm --filter @araz/api add -D @types/compression
+pnpm --filter @aaraj/api add compression
+pnpm --filter @aaraj/api add -D @types/compression
 ```
 
 ### Configuration & Thresholds
@@ -70,7 +70,7 @@ The `FastifyAdapter` utilizes `@fastify/compress`, which natively supports moder
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add @fastify/compress
+pnpm --filter @aaraj/api add @fastify/compress
 ```
 
 ### Registration & Brotli Quality Tuning

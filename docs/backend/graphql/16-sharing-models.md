@@ -76,7 +76,7 @@ export default defineConfig({
 
 ## 3. Recommended Monorepo Architecture
 
-In an enterprise monorepo like Araz, the recommended pattern is:
+In an enterprise monorepo like Aaraj, the recommended pattern is:
 1. Place shared data structures in `packages/contracts`.
 2. Model pure business types without server-only framework dependencies.
 3. In backend services (`apps/api`), extend or decorate these contracts using mapped types or code-first decorators.

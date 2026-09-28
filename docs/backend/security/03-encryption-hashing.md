@@ -25,7 +25,7 @@ import { promisify } from 'node:util';
 @Injectable()
 export class EncryptionService {
   private readonly algorithm = 'aes-256-ctr';
-  private readonly secretKey = process.env.ENCRYPTION_KEY ?? 'araz-super-secret-key-32-chars';
+  private readonly secretKey = process.env.ENCRYPTION_KEY ?? 'aaraj-super-secret-key-32-chars';
 
   async encrypt(plainText: string): Promise<string> {
     // 1. Generate unique 16-byte IV for every encryption call
@@ -76,8 +76,8 @@ User passwords must **never** be encrypted with reversible encryption; they must
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add bcrypt
-pnpm --filter @araz/api add -D @types/bcrypt
+pnpm --filter @aaraj/api add bcrypt
+pnpm --filter @aaraj/api add -D @types/bcrypt
 ```
 
 ### Implementing `HashingService`
@@ -112,7 +112,7 @@ export class HashingService {
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add argon2
+pnpm --filter @aaraj/api add argon2
 ```
 
 ### Argon2 Usage

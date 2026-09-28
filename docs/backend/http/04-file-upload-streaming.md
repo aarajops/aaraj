@@ -30,7 +30,7 @@ NestJS maps multipart form fields to route handler parameters via interceptors a
 ### Installation
 
 ```bash
-pnpm --filter @araz/api add -D @types/multer
+pnpm --filter @aaraj/api add -D @types/multer
 ```
 
 ### Single File Upload with Disk Storage
@@ -190,7 +190,7 @@ export class ImageDimensionValidator extends FileValidator<DimensionOptions> {
 Starting with NestJS v12.1, Fastify applications use the identical interceptor API backed by `@fastify/multipart`.
 
 ```bash
-pnpm --filter @araz/api add @fastify/multipart
+pnpm --filter @aaraj/api add @fastify/multipart
 ```
 
 ### Zero-Buffering Streaming Upload (`FileStreamInterceptor`)

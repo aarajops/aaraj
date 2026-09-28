@@ -2,13 +2,13 @@
 
 > **Source Reference**: [NestJS Official Documentation - First Steps](https://docs.nestjs.com/first-steps)
 
-This guide covers the core fundamentals of NestJS, how an application is structured and bootstrapped, platform adapters, and how `@araz/api` adheres to industry best practices.
+This guide covers the core fundamentals of NestJS, how an application is structured and bootstrapped, platform adapters, and how `@aaraj/api` adheres to industry best practices.
 
 ---
 
 ## 1. Language & Module System
 
-Nest is written in TypeScript and runs on Node.js. In the `@araz` monorepo, `@araz/api` is configured as a modern **ECMAScript Module (ESM)**:
+Nest is written in TypeScript and runs on Node.js. In the `@aaraj` monorepo, `@aaraj/api` is configured as a modern **ECMAScript Module (ESM)**:
 
 * `apps/api/package.json` specifies `"type": "module"`.
 * `tsconfig.json` specifies `"module": "NodeNext"` and `"moduleResolution": "NodeNext"`.
@@ -19,7 +19,7 @@ Nest is written in TypeScript and runs on Node.js. In the `@araz` monorepo, `@ar
 ## 2. Runtime & Prerequisites
 
 NestJS requires Node.js **v20.19+**, **v22.12+**, or **v24+**.
-* The Araz repository is pinned to **Node.js 24 LTS** (`>=24.15.0 <25`) and uses **pnpm 12.5.1**.
+* The Aaraj repository is pinned to **Node.js 24 LTS** (`>=24.15.0 <25`) and uses **pnpm 12.5.1**.
 * Package management is governed strictly by the root `pnpm-lock.yaml`.
 
 ---
@@ -133,19 +133,19 @@ Nest is platform-agnostic and interfaces with underlying HTTP engines through ad
 ### Development Commands
 ```bash
 # Start backend in watch mode
-pnpm --filter @araz/api dev
+pnpm --filter @aaraj/api dev
 
 # Run unit tests with Vitest
-pnpm --filter @araz/api test
+pnpm --filter @aaraj/api test
 
 # Run End-to-End tests
-pnpm --filter @araz/api test:e2e
+pnpm --filter @aaraj/api test:e2e
 
 # Run linter
-pnpm --filter @araz/api lint
+pnpm --filter @aaraj/api lint
 
 # Check TypeScript types
-pnpm --filter @araz/api typecheck
+pnpm --filter @aaraj/api typecheck
 ```
 
 ### High-Speed Tooling

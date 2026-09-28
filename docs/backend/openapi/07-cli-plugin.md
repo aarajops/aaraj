@@ -25,7 +25,7 @@ When the plugin is enabled:
 ```typescript
 // WITHOUT PLUGIN (Tedious Manual Duplication)
 export class CreateUserDto {
-  @ApiProperty({ description: 'User email address', example: 'dev@araz.io' })
+  @ApiProperty({ description: 'User email address', example: 'dev@aaraj.io' })
   @IsEmail()
   email!: string;
 
@@ -37,7 +37,7 @@ export class CreateUserDto {
 export class CreateUserDto {
   /**
    * User email address
-   * @example 'dev@araz.io'
+   * @example 'dev@aaraj.io'
    */
   @IsEmail()
   email!: string;

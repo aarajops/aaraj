@@ -168,7 +168,7 @@ importers:
 
   apps/api:
     dependencies:
-      '@araz/contracts':
+      '@aaraj/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@nestjs/common':
@@ -241,7 +241,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@araz/contracts':
+      '@aaraj/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       next:

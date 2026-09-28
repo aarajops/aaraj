@@ -1,4 +1,4 @@
-name: araz-local
+name: aaraj-local
 
 services:
   postgres:

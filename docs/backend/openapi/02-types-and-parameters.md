@@ -44,7 +44,7 @@ export class CreateCatDto {
 ```
 
 > [!TIP]
-> **Automate with the CLI Plugin**: Instead of manually annotating every property with `@ApiProperty()`, enable the [Swagger CLI Plugin](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/openapi/07-cli-plugin.md) in `nest-cli.json`. It automatically extracts types, optionality (`?`), defaults, and JSDoc comments into OpenAPI schemas at compile time.
+> **Automate with the CLI Plugin**: Instead of manually annotating every property with `@ApiProperty()`, enable the [Swagger CLI Plugin](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/openapi/07-cli-plugin.md) in `nest-cli.json`. It automatically extracts types, optionality (`?`), defaults, and JSDoc comments into OpenAPI schemas at compile time.
 
 ---
 

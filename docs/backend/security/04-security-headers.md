@@ -85,9 +85,9 @@ CSP prevents script injection attacks by declaring approved sources of executabl
 app.useSecurityHeaders({
   contentSecurityPolicy: {
     directives: {
-      scriptSrc: ["'self'", 'https://cdn.araz.io'],
-      connectSrc: ["'self'", 'wss://realtime.araz.io'],
-      imgSrc: ["'self'", 'data:', 'https://images.araz.io'],
+      scriptSrc: ["'self'", 'https://cdn.aaraj.io'],
+      connectSrc: ["'self'", 'wss://realtime.aaraj.io'],
+      imgSrc: ["'self'", 'data:', 'https://images.aaraj.io'],
       upgradeInsecureRequests: null, // Remove directive if testing over HTTP locally
     },
   },
@@ -125,7 +125,7 @@ If integrating standalone Helmet manually on Express or Fastify:
 
 ### Express:
 ```bash
-pnpm --filter @araz/api add helmet
+pnpm --filter @aaraj/api add helmet
 ```
 ```typescript
 import helmet from 'helmet';
@@ -134,7 +134,7 @@ app.use(helmet());
 
 ### Fastify:
 ```bash
-pnpm --filter @araz/api add @fastify/helmet
+pnpm --filter @aaraj/api add @fastify/helmet
 ```
 ```typescript
 import helmet from '@fastify/helmet';

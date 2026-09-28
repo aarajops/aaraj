@@ -12,10 +12,10 @@ NestJS provides the `@nestjs/cache-manager` package, built on top of [cache-mana
 
 ```bash
 # In-memory caching:
-pnpm --filter @araz/api add @nestjs/cache-manager cache-manager
+pnpm --filter @aaraj/api add @nestjs/cache-manager cache-manager
 
 # Distributed Redis caching:
-pnpm --filter @araz/api add @keyv/redis cacheable
+pnpm --filter @aaraj/api add @keyv/redis cacheable
 ```
 
 ### Basic Setup in `AppModule`
@@ -95,7 +95,7 @@ export class ProductsService {
   }
 
   private async fetchFromDatabase(id: string): Promise<Product> {
-    return { id, name: 'Araz Enterprise License', price: 999 };
+    return { id, name: 'Aaraj Enterprise License', price: 999 };
   }
 }
 ```

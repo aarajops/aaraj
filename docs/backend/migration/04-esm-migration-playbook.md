@@ -16,7 +16,7 @@ Declare your project as an ES module by adding `"type": "module"`:
 
 ```json
 {
-  "name": "@araz/api",
+  "name": "@aaraj/api",
   "version": "1.0.0",
   "type": "module",
   "scripts": {

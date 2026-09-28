@@ -18,7 +18,7 @@ Before applying security decorators to controllers, register the corresponding s
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 const config = new DocumentBuilder()
-  .setTitle('Araz Enterprise API')
+  .setTitle('Aaraj Enterprise API')
   .setVersion('1.0.0')
   // 1. JWT Bearer Token (Authorization: Bearer <token>)
   .addBearerAuth(
@@ -56,8 +56,8 @@ const config = new DocumentBuilder()
     type: 'oauth2',
     flows: {
       authorizationCode: {
-        authorizationUrl: 'https://auth.araz.io/oauth2/authorize',
-        tokenUrl: 'https://auth.araz.io/oauth2/token',
+        authorizationUrl: 'https://auth.aaraj.io/oauth2/authorize',
+        tokenUrl: 'https://auth.aaraj.io/oauth2/token',
         scopes: {
           'read:users': 'Read user accounts',
           'write:users': 'Modify user accounts',

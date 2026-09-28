@@ -128,10 +128,10 @@ In the consumer package (`apps/api/package.json`), configure `dependenciesMeta`:
 ```json
 {
   "dependencies": {
-    "@araz/contracts": "workspace:*"
+    "@aaraj/contracts": "workspace:*"
   },
   "dependenciesMeta": {
-    "@araz/contracts": {
+    "@aaraj/contracts": {
       "injected": true
     }
   }

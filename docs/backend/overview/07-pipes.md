@@ -100,13 +100,13 @@ export class ProductsController {
 }
 ```
 
-### Integration with Monorepo Contracts (`@araz/contracts`)
+### Integration with Monorepo Contracts (`@aaraj/contracts`)
 
-In the Araz monorepo, all DTOs and schemas are housed in `packages/contracts`:
+In the Aaraj monorepo, all DTOs and schemas are housed in `packages/contracts`:
 ```typescript
 import { Controller, Post, Body, UsePipes } from '@nestjs/common';
 import { StandardSchemaValidationPipe } from '@nestjs/common';
-import { CreateUserContract, type CreateUserDto } from '@araz/contracts';
+import { CreateUserContract, type CreateUserDto } from '@aaraj/contracts';
 
 @Controller('users')
 export class UsersController {

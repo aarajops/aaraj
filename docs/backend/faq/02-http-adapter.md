@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM)
 
-NestJS abstracts the underlying HTTP transport engine using the **Adapter Pattern**. Whether running on top of [Express](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/01-first-steps.md) or [Fastify](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/http/08-performance-fastify.md), all framework components (guards, interceptors, pipes, filters) interact with an implementation of `AbstractHttpAdapter`.
+NestJS abstracts the underlying HTTP transport engine using the **Adapter Pattern**. Whether running on top of [Express](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/01-first-steps.md) or [Fastify](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/http/08-performance-fastify.md), all framework components (guards, interceptors, pipes, filters) interact with an implementation of `AbstractHttpAdapter`.
 
 In advanced scenarios—such as mounting third-party middleware incompatible with Nest abstractions, inspecting raw socket states, or reading server listening events—you can access the adapter and the underlying platform engine directly.
 

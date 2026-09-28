@@ -4,7 +4,7 @@
 > **Framework Compatibility**: NestJS v11+ / v12 (`@nestjs/websockets`, `@nestjs/platform-socket.io`, `@nestjs/platform-ws`)  
 > **Runtime Target**: Node.js 24 LTS / Pure ECMAScript Modules (ESM) / TypeScript Strict Mode
 
-In NestJS WebSockets, [Pipes](file:///home/solo/JUNK/OFC/LK/araz/docs/backend/overview/07-pipes.md) perform the exact same two core responsibilities as in HTTP controllers:
+In NestJS WebSockets, [Pipes](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/overview/07-pipes.md) perform the exact same two core responsibilities as in HTTP controllers:
 1. **Transformation**: Converting raw message payloads into the expected internal data types (e.g., parsing strings into integers or instantiating domain models).
 2. **Validation**: Evaluating incoming payloads against schema contracts and rejecting malformed or malicious packets before they reach the message handler.
 

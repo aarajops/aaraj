@@ -40,7 +40,7 @@ async function bootstrap() {
 
   // 1. Build Base OpenAPI Configuration
   const config = new DocumentBuilder()
-    .setTitle('Araz Enterprise API')
+    .setTitle('Aaraj Enterprise API')
     .setDescription('Enterprise microservices and multi-tenant domain API')
     .setVersion('1.0.0')
     .addTag('auth', 'Authentication and session verification')

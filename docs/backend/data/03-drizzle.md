@@ -12,8 +12,8 @@ The `@nestjs/drizzle` package integrates Drizzle into the NestJS dependency inje
 
 ```bash
 # Example for PostgreSQL using node-postgres (pg):
-pnpm --filter @araz/api add @nestjs/drizzle drizzle-orm pg
-pnpm --filter @araz/api add -D drizzle-kit @types/pg
+pnpm --filter @aaraj/api add @nestjs/drizzle drizzle-orm pg
+pnpm --filter @aaraj/api add -D drizzle-kit @types/pg
 ```
 
 ---
@@ -275,10 +275,10 @@ describe('UsersService (Drizzle)', () => {
   const mockDb = {
     select: vi.fn().mockReturnThis(),
     from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue([{ id: 1, email: 'test@araz.io' }]),
+    where: vi.fn().mockResolvedValue([{ id: 1, email: 'test@aaraj.io' }]),
     insert: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
-    returning: vi.fn().mockResolvedValue([{ id: 1, email: 'created@araz.io' }]),
+    returning: vi.fn().mockResolvedValue([{ id: 1, email: 'created@aaraj.io' }]),
   };
 
   beforeEach(async () => {
