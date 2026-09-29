@@ -1,6 +1,8 @@
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
 import { redisStorage } from '@better-auth/redis-storage';
+import { Logger } from '@nestjs/common';
 import { betterAuth } from 'better-auth';
+import { createAuthMiddleware, isAPIError } from 'better-auth/api';
 import { loadLocalEnvironment } from '../platform/config/local-environment.js';
 import { getDrizzleDatabase } from '../platform/database/database-client.js';
 import { getRedisClient } from '../platform/redis/redis-client.js';
@@ -29,6 +31,13 @@ if (!baseURL || !clientURL) {
 }
 
 const redis = getRedisClient();
+const logger = new Logger('BetterAuth');
+
+const authenticationEvents = new Map([
+  ['/sign-up/email', 'auth.email_sign_up'],
+  ['/sign-in/email', 'auth.email_sign_in'],
+  ['/sign-out', 'auth.sign_out'],
+]);
 
 export const auth = betterAuth({
   appName: 'Aaraj',
@@ -59,5 +68,25 @@ export const auth = betterAuth({
     requireEmailVerification: false,
     minPasswordLength: 8,
     maxPasswordLength: 128,
+  },
+  hooks: {
+    after: createAuthMiddleware(async (context) => {
+      const event = authenticationEvents.get(context.path);
+      if (!event) return;
+
+      const failed = isAPIError(context.context.returned);
+      const userId = failed ? undefined : context.context.newSession?.user.id;
+      const fields = {
+        event,
+        outcome: failed ? 'failure' : 'success',
+        ...(userId ? { userId } : {}),
+      };
+
+      if (failed) {
+        logger.warn('Authentication request failed', fields);
+      } else {
+        logger.log('Authentication request succeeded', fields);
+      }
+    }),
   },
 });

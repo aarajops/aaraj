@@ -4,10 +4,10 @@ import { loadLocalEnvironment } from './src/platform/config/local-environment.js
 loadLocalEnvironment();
 
 export default defineConfig({
-  schema: './src/auth/auth-schema.ts',
+  schema: ['./src/auth/auth-schema.ts', './src/platform/audit/audit-schema.ts'],
   out: './drizzle',
   dialect: 'postgresql',
-  schemaFilter: ['identity'],
+  schemaFilter: ['identity', 'audit'],
   dbCredentials: {
     host: process.env.POSTGRES_HOST ?? '127.0.0.1',
     port: Number(process.env.POSTGRES_PORT ?? 5432),
