@@ -1,21 +1,16 @@
 import { Controller, Get } from '@nestjs/common';
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
-import { AppService } from './app.service.js';
 import { CONTRACT_VERSION, type HealthCheckResponse } from '@aaraj/contracts';
 import { DatabaseService } from './platform/database/database.service.js';
+import { RedisService } from './platform/redis/redis.service.js';
 
 @Controller()
 @AllowAnonymous()
 export class AppController {
   constructor(
-    private readonly appService: AppService,
     private readonly databaseService: DatabaseService,
+    private readonly redisService: RedisService,
   ) {}
-
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
-  }
 
   @Get('health')
   getHealth(): HealthCheckResponse {
@@ -28,8 +23,15 @@ export class AppController {
   }
 
   @Get('health/ready')
-  async getReadiness(): Promise<{ status: 'ok'; database: 'ok' }> {
-    await this.databaseService.checkConnection();
-    return { status: 'ok', database: 'ok' };
+  async getReadiness(): Promise<{
+    status: 'ok';
+    database: 'ok';
+    redis: 'ok';
+  }> {
+    await Promise.all([
+      this.databaseService.checkConnection(),
+      this.redisService.checkConnection(),
+    ]);
+    return { status: 'ok', database: 'ok', redis: 'ok' };
   }
 }

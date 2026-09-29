@@ -8,7 +8,7 @@ import { DatabaseService } from './../src/platform/database/database.service.js'
 describe('AppController (e2e)', () => {
   let app: INestApplication;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -19,13 +19,6 @@ describe('AppController (e2e)', () => {
     app = moduleFixture.createNestApplication({ bodyParser: false });
     configureApp(app);
     await app.init();
-  });
-
-  it('/api (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/api')
-      .expect(200)
-      .expect('Aaraj API v1.0.0');
   });
 
   it('/api/health (GET)', async () => {
@@ -45,7 +38,7 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/api/health/ready')
       .expect(200)
-      .expect({ status: 'ok', database: 'ok' });
+      .expect({ status: 'ok', database: 'ok', redis: 'ok' });
   });
 
   it('/api/auth/ok (GET)', () => {
@@ -55,7 +48,27 @@ describe('AppController (e2e)', () => {
       .expect({ ok: true });
   });
 
-  afterEach(async () => {
+  it('rate limits repeated email sign-in requests', async () => {
+    const url = '/api/auth/sign-in/email';
+    const body = {
+      email: 'not-an-email',
+      password: 'x',
+    };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await request(app.getHttpServer()).post(url).send(body);
+      expect(response.status).toBe(400);
+    }
+
+    const limitedResponse = await request(app.getHttpServer())
+      .post(url)
+      .send(body)
+      .expect(429);
+
+    expect(Number(limitedResponse.headers['x-retry-after'])).toBeGreaterThan(0);
+  });
+
+  afterAll(async () => {
     await app.close();
   });
 });

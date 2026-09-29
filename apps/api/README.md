@@ -90,10 +90,11 @@ pnpm --filter @aaraj/api build
 ```text
 apps/api/
 ├── src/
-│   ├── app.controller.spec.ts   # Controller unit tests
-│   ├── app.controller.ts        # Health and status routes
+│   ├── auth/                    # Better Auth configuration and feature module
+│   ├── platform/                # Configuration, database, and Redis infrastructure
+│   ├── app.controller.spec.ts   # Health and readiness unit tests
+│   ├── app.controller.ts        # Health and readiness routes
 │   ├── app.module.ts            # Root application module
-│   ├── app.service.ts           # Root application service
 │   ├── configure-app.ts         # Shared app bootstrap configuration (prefix, CORS)
 │   └── main.ts                  # Entry point
 ├── test/

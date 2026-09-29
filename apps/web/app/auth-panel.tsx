@@ -30,14 +30,29 @@ export function AuthPanel({ initialSession }: { initialSession: InitialSession }
     setStatusMessage(null);
     setIsSubmitting(true);
 
+    let rateLimited = false;
+    const onError = ({ response }: { response: Response }) => {
+      if (response.status !== 429) return;
+
+      rateLimited = true;
+      const retryAfter = response.headers.get("X-Retry-After");
+      setErrorMessage(
+        retryAfter
+          ? `Too many attempts. Try again in ${retryAfter} seconds.`
+          : "Too many attempts. Please wait and try again.",
+      );
+    };
+
     try {
       const result =
         mode === "sign-up"
-          ? await authClient.signUp.email({ name, email, password })
-          : await authClient.signIn.email({ email, password });
+          ? await authClient.signUp.email({ name, email, password }, { onError })
+          : await authClient.signIn.email({ email, password }, { onError });
 
       if (result.error) {
-        setErrorMessage(result.error.message ?? "Authentication failed.");
+        if (!rateLimited) {
+          setErrorMessage(result.error.message ?? "Authentication failed.");
+        }
       } else {
         setPassword("");
         setStatusMessage(

@@ -30,11 +30,12 @@ A standard NestJS service is structured around cohesive, modular components:
 
 ```text
 apps/api/src/
-├── app.controller.spec.ts     # Controller unit tests (Vitest)
-├── app.controller.ts          # Root HTTP route handler
-├── app.module.ts              # Root IoC module
-├── app.service.ts             # Root business logic provider
-├── configure-app.ts           # Reusable application configuration (prefixes, CORS, pipes)
+├── auth/                      # Better Auth feature integration and schema
+├── platform/                  # Shared configuration, database, and Redis infrastructure
+├── app.controller.spec.ts     # Health and readiness unit tests
+├── app.controller.ts          # Application health and readiness routes
+├── app.module.ts              # Root composition module
+├── configure-app.ts           # Shared application configuration (prefix, CORS)
 └── main.ts                    # Application entry point and HTTP bootstrap
 ```
 
@@ -45,9 +46,10 @@ apps/api/src/
 | `main.ts` | The entry file that uses `NestFactory` to instantiate the application and start the HTTP server. |
 | `configure-app.ts` | Encapsulates app configuration (e.g. global `/api` prefix, CORS, pipes) so both `main.ts` and E2E test suites share identical setups. |
 | `app.module.ts` | The root module that bundles controllers, providers, and imported feature modules. |
-| `app.controller.ts` | Handles incoming HTTP requests and delegates work to service providers. |
-| `app.service.ts` | Encapsulates business logic, data persistence, and domain workflows. |
-| `app.controller.spec.ts` | Unit tests executing against isolated controller instances. |
+| `app.controller.ts` | Exposes application-level health and readiness endpoints. |
+| `app.controller.spec.ts` | Unit tests for health and dependency-readiness behavior. |
+| `auth/` | Contains the Better Auth integration and auth-owned schema. |
+| `platform/` | Contains shared infrastructure modules and services. |
 
 ---
 

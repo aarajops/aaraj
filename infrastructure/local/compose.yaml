@@ -18,5 +18,25 @@ services:
       retries: 20
     stop_grace_period: 30s
 
+  redis-state:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?copy infrastructure/local/.env.example to .env.local first}
+    command:
+      - sh
+      - -c
+      - 'exec redis-server --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"'
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-state-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -qx PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    stop_grace_period: 30s
+
 volumes:
   postgres-data:
+  redis-state-data:

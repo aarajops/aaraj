@@ -1,18 +1,11 @@
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 
-export interface AppConfigOptions {
-  clientUrl?: string;
-}
-
-export function configureApp(
-  app: INestApplication,
-  options: AppConfigOptions = {},
-): void {
+export function configureApp(app: INestApplication): void {
   app.setGlobalPrefix('api');
 
-  const allowedOrigins = options.clientUrl ?? process.env.CLIENT_URL ?? 'http://localhost:3000';
+  const allowedOrigin = process.env.CLIENT_URL ?? 'http://localhost:3000';
   app.enableCors({
-    origin: allowedOrigins,
+    origin: allowedOrigin,
     credentials: true,
   });
 }

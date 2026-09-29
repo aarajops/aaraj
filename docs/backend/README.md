@@ -320,7 +320,7 @@ The backend is built as a pure ESM project (`"type": "module"` in `apps/api/pack
 * **Strict Rule**: All relative file imports **MUST** include the `.js` extension at runtime:
   ```typescript
   // CORRECT
-  import { AppService } from './app.service.js';
+  import { DatabaseService } from './platform/database/database.service.js';
   import { UsersModule } from './users/users.module.js';
 
   // INCORRECT (Fails in NodeNext ESM)

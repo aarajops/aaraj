@@ -8,6 +8,7 @@ const { AppModule } = await import('./app.module.js');
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   configureApp(app);
+  app.enableShutdownHooks();
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port);
 }

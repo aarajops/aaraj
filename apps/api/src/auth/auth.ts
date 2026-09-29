@@ -1,7 +1,9 @@
 import { drizzleAdapter } from '@better-auth/drizzle-adapter';
+import { redisStorage } from '@better-auth/redis-storage';
 import { betterAuth } from 'better-auth';
 import { loadLocalEnvironment } from '../platform/config/local-environment.js';
 import { getDrizzleDatabase } from '../platform/database/database-client.js';
+import { getRedisClient } from '../platform/redis/redis-client.js';
 import * as authSchema from './auth-schema.js';
 
 loadLocalEnvironment();
@@ -26,6 +28,8 @@ if (!baseURL || !clientURL) {
   );
 }
 
+const redis = getRedisClient();
+
 export const auth = betterAuth({
   appName: 'Aaraj',
   baseURL,
@@ -37,6 +41,19 @@ export const auth = betterAuth({
     schema: authSchema,
     schemaName: 'identity',
   }),
+  secondaryStorage: redisStorage({
+    client: redis,
+    keyPrefix: process.env.BETTER_AUTH_REDIS_KEY_PREFIX ?? 'better-auth:',
+  }),
+  session: {
+    storeSessionInDatabase: true,
+  },
+  rateLimit: {
+    enabled: true,
+    storage: 'secondary-storage',
+    window: 60,
+    max: 100,
+  },
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
