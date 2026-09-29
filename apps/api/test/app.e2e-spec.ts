@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/configure-app.js';
+import { DatabaseService } from './../src/platform/database/database.service.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -10,9 +11,12 @@ describe('AppController (e2e)', () => {
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(DatabaseService)
+      .useValue({ checkConnection: async () => undefined })
+      .compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication({ bodyParser: false });
     configureApp(app);
     await app.init();
   });
@@ -35,6 +39,20 @@ describe('AppController (e2e)', () => {
       version: '0.0.1',
     });
     expect(response.body.timestamp).toBeDefined();
+  });
+
+  it('/api/health/ready (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/api/health/ready')
+      .expect(200)
+      .expect({ status: 'ok', database: 'ok' });
+  });
+
+  it('/api/auth/ok (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/api/auth/ok')
+      .expect(200)
+      .expect({ ok: true });
   });
 
   afterEach(async () => {

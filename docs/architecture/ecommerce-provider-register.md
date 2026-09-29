@@ -41,12 +41,6 @@ Implementation must retain immutable structured invoice and rendered-document sn
 
 **Issuance release gate:** Finance must verify the merchant's registration/BIN, current gazetted rules/SROs, applicable rates/exemptions/duties, current prescribed form, numbering, retention, legally applicable tax point and treatment of advances, COD, split supplies and returns. Record the exact source, effective date, reviewer and approval version. This register has not established that no later 2026 amendment applies. Do not hard-code a universal VAT rate or call the schema an NBR certification.
 
-## Turnstile and OTP lifecycle
-
-[Cloudflare's server-validation documentation](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/) requires backend Siteverify validation. Tokens are single-use and expire after 300 seconds. Check success, expected hostname and action; its optional `idempotency_key` supports verification retries. Expired/consumed challenges require a fresh token.
-
-Bind proof validation to the OTP-send command. For a successfully completed command retry, return its durable result without another SMS or consumption of the same challenge. Limit phone/IP/device activity, cooldowns, verification attempts and total provider spend independently. A domestic phone prefix and Turnstile reduce abuse; they cannot eliminate pumping or prove number ownership. Use normalized verified phone identity for login, and never log OTPs or Turnstile secrets/tokens.
-
 ## Social commerce and conversion tracking
 
 The [WhatsApp Business Messaging Policy](https://whatsappbusiness.com/policy/), last updated September 23, 2026 when inspected, requires recipient opt-in and honoring opt-out. Business-initiated conversations use approved templates; free-form replies are allowed within the 24-hour customer-service window, while messages outside it require approved templates. Automated replies need an accessible human escalation route. Persist consent purpose/source/time/version, channel eligibility, template approval and revocation state. Operational necessity does not override WhatsApp channel consent or sending rules; choose an eligible alternate channel when needed.

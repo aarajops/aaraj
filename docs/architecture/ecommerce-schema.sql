@@ -1,7 +1,8 @@
 -- Aaraj proposed enterprise model, PostgreSQL 16+. DOCUMENTATION, NOT AN APPLIED MIGRATION.
 -- Target a disposable EMPTY database owned by a migration role with CREATE EXTENSION rights.
 -- Never execute against an existing application database; derive reviewed owner migrations.
--- Values: bigint minor units; UUID external references; timestamptz UTC; encrypted bytea PII.
+-- Values: bigint minor units; UUID external references; business timestamps use timestamptz UTC;
+-- Better Auth core columns follow its generated Drizzle schema.
 -- No cross-context foreign keys. A UUID named *_ref is deliberately NOT a foreign key.
 -- No cross-context joins, including reporting. Compose public APIs or event projections.
 -- Application transactions stay inside ONE schema; orchestration uses persisted sagas.
@@ -80,16 +81,35 @@ BEGIN
   END LOOP;
 END $ddl$;
 
--- IDENTITY: secrets encrypted using externally managed keys; lookup hashes keyed HMAC.
-CREATE TABLE identity.users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  phone_lookup_hash bytea NOT NULL UNIQUE CHECK (octet_length(phone_lookup_hash) = 32),
-  phone_ciphertext bytea NOT NULL, pii_key_version text NOT NULL,
-  display_name_ciphertext bytea, email_ciphertext bytea, password_hash text,
-  status text NOT NULL CHECK (status IN ('PENDING','ACTIVE','LOCKED','DEACTIVATED')),
-  phone_verified_at timestamptz, version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
-  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+-- Better Auth core tables; authoritative Drizzle definitions live in
+-- apps/api/src/auth/auth-schema.ts. Email/password is the launch sign-in method.
+CREATE TABLE identity.user (
+  id text PRIMARY KEY, name text NOT NULL, email text NOT NULL UNIQUE,
+  email_verified boolean NOT NULL DEFAULT false, image text,
+  created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now()
 );
+CREATE TABLE identity.session (
+  id text PRIMARY KEY, expires_at timestamp NOT NULL, token text NOT NULL UNIQUE,
+  created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL,
+  ip_address text, user_agent text,
+  user_id text NOT NULL REFERENCES identity.user(id) ON DELETE CASCADE
+);
+CREATE INDEX "session_userId_idx" ON identity.session(user_id);
+CREATE TABLE identity.account (
+  id text PRIMARY KEY, account_id text NOT NULL, provider_id text NOT NULL,
+  user_id text NOT NULL REFERENCES identity.user(id) ON DELETE CASCADE,
+  access_token text, refresh_token text, id_token text,
+  access_token_expires_at timestamp, refresh_token_expires_at timestamp,
+  scope text, password text,
+  created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL
+);
+CREATE INDEX "account_userId_idx" ON identity.account(user_id);
+CREATE TABLE identity.verification (
+  id text PRIMARY KEY, identifier text NOT NULL, value text NOT NULL,
+  expires_at timestamp NOT NULL, created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now()
+);
+CREATE INDEX "verification_identifier_idx" ON identity.verification(identifier);
 CREATE TABLE identity.roles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), code text NOT NULL UNIQUE,
   description text NOT NULL, is_system boolean NOT NULL DEFAULT false
@@ -103,27 +123,12 @@ CREATE TABLE identity.role_permissions (
   PRIMARY KEY (role_id, permission_code)
 );
 CREATE TABLE identity.user_roles (
-  user_id uuid NOT NULL REFERENCES identity.users(id), role_id uuid NOT NULL REFERENCES identity.roles(id),
-  scope_key text NOT NULL DEFAULT 'global', granted_by uuid REFERENCES identity.users(id),
+  user_id text NOT NULL REFERENCES identity.user(id), role_id uuid NOT NULL REFERENCES identity.roles(id),
+  scope_key text NOT NULL DEFAULT 'global', granted_by text REFERENCES identity.user(id),
   expires_at timestamptz, PRIMARY KEY (user_id, role_id, scope_key)
 );
-CREATE TABLE identity.sessions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES identity.users(id),
-  refresh_token_hash bytea NOT NULL UNIQUE, refresh_family_id uuid NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL,
-  revoked_at timestamptz, device_hash bytea, CHECK (expires_at > created_at)
-);
-CREATE TABLE identity.otp_challenges (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), phone_lookup_hash bytea NOT NULL,
-  purpose text NOT NULL CHECK (purpose IN ('LOGIN','PHONE_CHANGE','RECOVERY')),
-  code_hmac bytea NOT NULL, turnstile_verification_ref text NOT NULL,
-  attempts integer NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
-  created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL,
-  consumed_at timestamptz, provider_message_ref text, CHECK (expires_at > created_at)
-);
-CREATE INDEX ON identity.otp_challenges(phone_lookup_hash, created_at DESC);
 CREATE TABLE identity.mfa_factors (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES identity.users(id),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id text NOT NULL REFERENCES identity.user(id),
   kind text NOT NULL CHECK (kind IN ('TOTP','WEBAUTHN')), secret_ciphertext bytea NOT NULL,
   key_version text NOT NULL, verified_at timestamptz, revoked_at timestamptz,
   last_accepted_counter bigint CHECK (last_accepted_counter >= 0)
@@ -133,19 +138,19 @@ CREATE TABLE identity.mfa_recovery_codes (
   consumed_at timestamptz, PRIMARY KEY (factor_id, code_hash)
 );
 CREATE TABLE identity.step_up_grants (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES identity.users(id),
-  session_id uuid NOT NULL REFERENCES identity.sessions(id),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id text NOT NULL REFERENCES identity.user(id),
+  session_id text NOT NULL REFERENCES identity.session(id),
   permission_code text NOT NULL REFERENCES identity.permissions(code),
   target_ref uuid NOT NULL, command_digest bytea NOT NULL, expires_at timestamptz NOT NULL,
   consumed_at timestamptz
 );
 CREATE TABLE identity.addresses (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES identity.users(id),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id text NOT NULL REFERENCES identity.user(id),
   area_ref uuid NOT NULL, geography_version text NOT NULL, address_ciphertext bytea NOT NULL,
   key_version text NOT NULL, label text NOT NULL, version bigint NOT NULL DEFAULT 1 CHECK (version > 0)
 );
 CREATE TABLE identity.consents (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES identity.users(id),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id text NOT NULL REFERENCES identity.user(id),
   purpose text NOT NULL, policy_version text NOT NULL, granted boolean NOT NULL,
   recorded_at timestamptz NOT NULL DEFAULT now(), source text NOT NULL
 );

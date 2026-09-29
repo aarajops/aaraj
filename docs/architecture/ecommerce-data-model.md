@@ -8,7 +8,7 @@ A relationship between bounded contexts means a public application call or event
 
 | Schema | Owning aggregates and authoritative facts |
 | --- | --- |
-| identity | Users, phone verification, sessions, roles/scoped permissions, MFA, saved addresses, consent |
+| identity | Better Auth users, sessions, accounts, and verification records; roles/scoped permissions, staff MFA, saved addresses, consent |
 | geography | Versioned Division → District → Upazila/Thana → Area/Union hierarchy and effective courier-zone maps |
 | catalog | Products, SKU variants, brands, categories, typed attributes, media and search documents |
 | inventory | Warehouses, physical/reserved/available balances, movements, reservations and adjustments |
@@ -30,9 +30,9 @@ Identity owns user facts; commerce schemas hold opaque customer/actor IDs. Geogr
 
 The following inventory is derived from CREATE TABLE statements in the companion DDL. Owner-local command receipt/outbox/inbox tables are created by its SQL helper.
 
-### identity (12 tables)
+### identity (13 tables)
 
-users, roles, permissions, role_permissions, user_roles, sessions, otp_challenges, mfa_factors, mfa_recovery_codes, step_up_grants, addresses, consents
+user, session, account, verification, roles, permissions, role_permissions, user_roles, mfa_factors, mfa_recovery_codes, step_up_grants, addresses, consents
 
 ### geography (6 tables)
 
@@ -94,7 +94,6 @@ tickets, ticket_messages, customer_timeline, impersonation_sessions, address_cor
 erDiagram
   USER ||--o{ SESSION : authenticates
   USER ||--o{ MFA_FACTOR : enrolls
-  USER ||--o{ OTP_CHALLENGE : verifies
   USER ||--o{ USER_ROLE : receives
   ROLE ||--o{ ROLE_PERMISSION : grants
   PERMISSION ||--o{ ROLE_PERMISSION : names
@@ -195,7 +194,6 @@ Provider transport and verified inbox belong to Notification; human conversation
 
 | Operation | Database owner and transaction | Required invariant |
 | --- | --- | --- |
-| OTP redemption | Identity | Bounded challenge, one-time consume, scoped command receipt |
 | Stock reserve/release/deduct | Inventory | Sorted row locks; balance, movement, reservation, receipt and outbox commit together |
 | Cart merge | Cart | Unique merge receipt and optimistic cart version |
 | Quote/promotion | Pricing | Integer subunits, rule snapshot and serialized quota holds |

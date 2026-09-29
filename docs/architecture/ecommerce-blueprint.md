@@ -94,7 +94,7 @@ flowchart TB
 
 The diagram's database arrows are ownership routes, not permission to query every schema. A checkout request can synchronously call `Inventory.reserve()` through a port, but the Inventory implementation alone touches stock tables. Each module commits locally. An Order-owned process manager records the cross-module workflow, retries, and compensations. Read pages compose port results or use event-fed projections owned by the reader.
 
-Deploy the HTTP process, outbox relays, and worker groups separately. Keep critical payment reconciliation separate from media, bulk email, and analytics queues. Autoscale by queue age and work duration as well as CPU; scale API replicas within the database connection budget. Start with one writer region and at least two availability zones. Stateless HTTP replicas never keep authoritative carts, OTPs, stock, or checkout progress in memory.
+Deploy the HTTP process, outbox relays, and worker groups separately. Keep critical payment reconciliation separate from media, bulk email, and analytics queues. Autoscale by queue age and work duration as well as CPU; scale API replicas within the database connection budget. Start with one writer region and at least two availability zones. Stateless HTTP replicas never keep authoritative carts, sessions, stock, or checkout progress in memory.
 
 ### I. Core monolith architecture and ingress security
 
@@ -102,7 +102,7 @@ Deploy the HTTP process, outbox relays, and worker groups separately. Keep criti
 
 | Owner | Authoritative responsibilities | Public application ports / events |
 | --- | --- | --- |
-| Identity | Accounts, verified phones, credentials, sessions, permissions, MFA, consents | `authenticate`, `authorize`, `getCustomerEligibility`; `CustomerVerified`, `PermissionChanged` |
+| Identity | Better Auth email/password accounts and sessions, permissions, staff MFA, consents | `authenticate`, `authorize`, `getCustomerEligibility`; `PermissionChanged` |
 | Catalog | Products, variants, categories, brands, attributes, media metadata, searchable projections | `getSellableVariants`; `ProductPublished`, `VariantChanged` |
 | Inventory | Warehouses, physical/reserved/available stock, reservations, movements | `reserve`, `commit`, `release`, `adjust`; `StockReserved`, `StockDeducted` |
 | Cart | Guest/customer cart lifecycle, merge receipts | `merge`, `setQuantity`, `getCart`; `CartChanged` |
@@ -192,7 +192,7 @@ Use strict object schemas, bounded strings/arrays/nesting, explicit numeric pars
 
 Use `@nestjs/throttler` with a reviewed Redis-backed `ThrottlerStorage` implementation, atomically counting across replicas. Configure route tiers explicitly so authentication's stricter policy does not accidentally apply to every browsing endpoint. Start with **120 requests/minute for public browsing, 5/minute for authentication, and 10/minute for checkout/payments**; tune by load/abuse evidence. The library's TTL units are milliseconds. [Nest rate limiting](https://docs.nestjs.com/security/rate-limiting).
 
-Combine IP/subnet, actor/session, normalized phone HMAC, device, and endpoint budgets rather than trusting a spoofable header. Add OTP resend cooldowns and per-phone daily spend ceilings. Carrier NAT users need bounded burst tolerance and observable false-positive rates. Return `429` and `Retry-After`; auth/OTP/payment mutations fail closed when distributed abuse controls are unavailable, while public cached browsing may use an emergency edge limit. Verified provider webhooks get separate signature-aware capacity budgets so customer limits do not block reconciliation.
+Combine IP/subnet, actor/session, normalized identifier HMAC, device, and endpoint budgets rather than trusting a spoofable header. Use the same generic sign-in failure for unknown identifiers and wrong passwords. Carrier NAT users need bounded burst tolerance and observable false-positive rates. Return `429` and `Retry-After`; authentication and payment mutations fail closed when distributed abuse controls are unavailable, while public cached browsing may use an emergency edge limit. Verified provider webhooks get separate signature-aware capacity budgets so customer limits do not block reconciliation.
 
 #### 06. Secrets and infrastructure as code
 
@@ -268,19 +268,15 @@ Persist line and per-unit allocations, including tax and shipping allocation pol
 
 ### IV. Bangladesh and South Asian localization
 
-#### 14. Phone-first OTP and SMS pumping defenses
+#### 14. Email/password identity
 
-Normalize accepted domestic formats to E.164 and enforce the full BD mobile pattern `^\+8801[3-9][0-9]{8}$` for the initial market. Prefix validation restricts destinations; it cannot establish identity, current carrier, or absence of fraud. Keep country rules configurable for later markets. Phone changes require re-verification and sensitive-action cooldowns; account recovery considers recycled/SIM-swapped numbers.
+Use Better Auth's email/password system through the NestJS integration. At launch, neither sign-up nor ordinary sign-in requires email verification or OTP. Better Auth owns password hashing, account records, and sessions; keep commerce authorization and customer profile data in their owning modules. Apply bounded input, generic credential errors, and distributed rate limits. Email recovery may prove email ownership as part of the reset flow. Staff MFA and privileged step-up controls remain separate authorization safeguards and are not customer sign-up gates.
 
-Before sending an OTP, validate Cloudflare Turnstile server-side, including hostname/action and replay status. Add independent phone/IP/device/hour/day budgets, send cooldowns, provider spend caps, and a kill switch. Turnstile does not eliminate SMS abuse by itself. Implement SSL Wireless and/or Infobip through typed native HTTP adapters with explicit delivery/status capabilities, selected by merchant access and measured delivery quality. Encrypt the normalized phone, index a keyed HMAC for equality/abuse detection, and record provider delivery outcomes without message content. SMS delivery is not evidence of OTP verification.
-
-A completed request with a matching idempotency receipt replays its safe result without reconsuming a Turnstile token or resending SMS. An unfinished/new send must carry a valid challenge or a server-recorded verification bound to that same operation; refresh expired proofs without changing the semantic business request fingerprint.
-
-Generate cryptographically random short-lived OTPs, store a keyed digest with challenge ID/purpose/attempt cap, compare safely, and consume atomically. A successful OTP challenge cannot be replayed for another action. Public responses remain uniform for known/unknown accounts. Redis replay cache entries for OTP verification must not contain raw tokens; use a short-lived session exchange reference or encrypted secret response with reauthentication where needed. Staff enrollment uses a separate controlled flow and mandatory TOTP.
+Serve the browser session through Better Auth's HttpOnly, SameSite=Lax cookies; production uses HTTPS so session cookies are secure. Keep trusted origins, CORS, and CSRF protections aligned. Use Better Auth's session lifecycle rather than a parallel custom refresh-token implementation.
 
 #### 15. COD risk and partial courier-fee advances
 
-Risk combines verified delivery history, RTS numerator/denominator, recency, order value, repeated failed OTPs, velocity, and review outcomes. Separate customer-caused refusal from courier failures or damaged goods; small samples need smoothing and a neutral default. Explain outcomes using reason codes and give staff/customer review paths.
+Risk combines verified delivery history, RTS numerator/denominator, recency, order value, failed sign-in velocity where relevant, and review outcomes. Separate customer-caused refusal from courier failures or damaged goods; small samples need smoothing and a neutral default. Explain outcomes using reason codes and give staff/customer review paths.
 
 For configured first-time/high-risk cohorts, require a disclosed **৳100–৳150 advance** (`10000–15000` paisa), capped at the order payable amount and captured through a verified MFS intent with purpose `COD_ADVANCE`. Persist policy version, disclosure, amount, and allocation. It is part of the order payment, not an additional charge: `remainingCOD = orderPayable - appliedVerifiedAdvance`. Never collect the full original total again at the door.
 
@@ -314,9 +310,9 @@ Generate/issue invoices at the legally applicable supply/tax point, including th
 
 #### 19. Conversational commerce and channel identity
 
-Receive signed WhatsApp/Messenger webhooks through a durable inbox, deduplicate provider message IDs, and normalize events into versioned contracts. A channel sender identifier is not automatically a verified phone account. Link accounts with explicit verification and consent, keeping channel credentials and messages encrypted/minimized.
+Receive signed WhatsApp/Messenger webhooks through a durable inbox, deduplicate provider message IDs, and normalize events into versioned contracts. A channel sender identifier does not by itself authorize linking to a customer account. Link accounts with explicit verification and consent, keeping channel credentials and messages encrypted/minimized.
 
-Conversation agents and staff create **draft carts/orders through the same Cart/Order ports** as the storefront. Send a clear item/price/address/COD summary and record customer confirmation before placement. Apply identical stock, fraud, OTP/identity, idempotency, and payment rules. Human takeover stops automated replies; no language model or webhook can directly write an order table.
+Conversation agents and staff create **draft carts/orders through the same Cart/Order ports** as the storefront. Send a clear item/price/address/COD summary and record customer confirmation before placement. Apply identical stock, fraud, identity, idempotency, and payment rules. Human takeover stops automated replies; no language model or webhook can directly write an order table.
 
 Keep template approvals, opt-in evidence, allowed conversation-window rules, unsubscribe state, and delivery receipts per channel. Send shipping updates from fulfillment events and customer-safe tracking links. Use provider policy/version checks at implementation rather than embedding a permanently assumed messaging window or fee schedule. CAPI marketing consent is separate from consent for necessary order notifications.
 
@@ -469,7 +465,7 @@ Continuously archive WAL to encrypted offsite object storage with independent cr
 
 Target **RPO <5 minutes and RTO <30 minutes**. Measure recoverability from the latest durably archived/replicated commit, not the timestamp of a cron success. Alert before a 5-minute WAL gap (for example at 2 minutes), including low-traffic archive delay. Restore a sample automatically into an isolated environment regularly and run a full timed drill at least monthly and before launch. Verify row counts, journal balance, order/payment links, inbox deduplication, keys, and application behavior. [PostgreSQL continuous archiving and PITR](https://www.postgresql.org/docs/16/continuous-archiving.html).
 
-Financial/provider evidence can exist after the chosen restore point. Before reopening mutations, reconcile external captures/refunds/consignments/remittances against restored receipts, then replay safe events. Rebuild caches/search from authoritative owner exports. Never resurrect an expired OTP or replay all side-effecting jobs indiscriminately after restore.
+Financial/provider evidence can exist after the chosen restore point. Before reopening mutations, reconcile external captures/refunds/consignments/remittances against restored receipts, then replay safe events. Rebuild caches/search from authoritative owner exports. Revoke sessions that may have been affected by the restore; never replay side-effecting jobs indiscriminately.
 
 #### 33. Expand-and-contract releases and rollback
 
@@ -485,7 +481,7 @@ New and previous application versions must both operate on the expanded schema d
 | Contract suites | Public exports, Zod/Standard Schema interoperability, unknown-field handling, OpenAPI/event fixtures, compatibility and safe money bounds |
 | PostgreSQL/Redis integration | Real services: stock locks, quotas, receipts, partitions, constraints, durable outbox/inbox, permission restrictions, rollback and expiration races |
 | Provider contract suites | Native-fetch fixtures plus available official sandboxes; signatures, schema drift, timeout/query recovery, duplicate/out-of-order webhooks, refunds and statement matching |
-| Supertest E2E | OTP → cart merge → quote → reservation → prepaid/COD advance → confirmation → split delivery → payout → partial return/refund, with authorization and CSRF failures |
+| Supertest E2E | Email/password sign-up and sign-in → cart merge → quote → reservation → prepaid/COD advance → confirmation → split delivery → payout → partial return/refund, with authorization and CSRF failures |
 | Storefront/admin journeys | Browser purchase funnel on low-bandwidth mobile, Bangla rendering, accessibility, secure admin actions, status refresh after redirects |
 | Resilience/load | Last-unit contention, flash-sale admission, worker death before/after commit, Redis flush/restart, provider outages, replica lag, DLQ recovery, rolling migration and PITR drill |
 
@@ -541,7 +537,7 @@ erDiagram
 
 Database checks cover row-local facts; aggregate rules need a locked transaction, trigger, or posting function. Examples include order-header totals matching lines, total active reservations matching balances, refund sums not exceeding captures, and journals balancing. Neither JSONB nor an ORM relation is a substitute for these invariants. Sensitive snapshots are encrypted while amounts/IDs needed for indexing stay typed.
 
-The schema's full topology is a target. Implement it incrementally with the phase gates below, not as a single all-or-nothing Day 1 migration. Data retention is classified by purpose: ephemeral OTP/proofs, guest carts, operational events, PII evidence, and legally retained financial/tax records have separate policies. Deletion/anonymization must preserve required accounting evidence and consent/legal-hold decisions; never cascade customer deletion through financial history.
+The schema's full topology is a target. Implement it incrementally with the phase gates below, not as a single all-or-nothing Day 1 migration. Data retention is classified by purpose: sessions, guest carts, operational events, PII evidence, and legally retained financial/tax records have separate policies. Deletion/anonymization must preserve required accounting evidence and consent/legal-hold decisions; never cascade customer deletion through financial history.
 
 ## Section 3: Phased implementation roadmap — Day 1 to production
 
@@ -551,7 +547,7 @@ The [implementation roadmap](ecommerce-implementation-roadmap.md#section-3-phase
 | --- | --- | --- |
 | 0 | Local infrastructure, secrets/config, ingress/security scaffolding, IaC design | Reproducible startup; no secret/PII leakage; bounded, validated configuration |
 | 1 | Contracts, owned repositories/migrations, geography, durable receipts/outbox foundations | Boundary checks and real-database invariants pass |
-| 2 | Phone/OTP/Turnstile, sessions, PBAC, TOTP | Abuse/replay/ownership tests and privileged-action audit pass |
+| 2 | Better Auth email/password authentication, sessions, PBAC | Email, rate-limit, session, recovery, and ownership tests pass; staff step-up is scoped to privileged workflows |
 | 3 | Catalog/search/media and concurrent Inventory | Last-unit contention, projection recovery, safe upload pipeline pass |
 | 4 | Guest/customer carts, pricing/promotions, tax/invoice rules | Allocation/quota tests pass; current tax rules approved |
 | 5 | Persisted checkout, prepaid/COD advances, fraud review | Provider sandbox/live-readiness evidence and ambiguous-payment recovery pass |

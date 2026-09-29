@@ -5,7 +5,7 @@ export const CONTRACT_VERSION = '0.0.1';
 export const HealthCheckResponseSchema = z.object({
   status: z.enum(['ok', 'error']),
   service: z.string(),
-  timestamp: z.string(),
+  timestamp: z.iso.datetime(),
   version: z.string(),
 });
 
@@ -31,15 +31,15 @@ export const MoneySchema = z.object({
 export type Money = z.infer<typeof MoneySchema>;
 
 export const ProductSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   slug: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
   price: MoneySchema,
   stockQuantity: z.number().int().nonnegative(),
   isActive: z.boolean().default(true),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 export type Product = z.infer<typeof ProductSchema>;
