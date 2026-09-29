@@ -15,6 +15,11 @@
     "build": "pnpm -r --if-present run build",
     "typecheck": "pnpm run build:packages && pnpm -r --if-present run typecheck",
     "lint": "pnpm -r --if-present run lint",
-    "test": "pnpm -r --if-present run test"
+    "test": "pnpm -r --if-present run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,yaml,yml,css,scss,html}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,yaml,yml,css,scss,html}\""
+  },
+  "devDependencies": {
+    "prettier": "3.9.8"
   }
 }

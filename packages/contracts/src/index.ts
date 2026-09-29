@@ -1,9 +1,10 @@
-import { z } from 'zod';
+import { z } from "zod";
+export * from "./access.js";
 
-export const CONTRACT_VERSION = '0.0.1';
+export const CONTRACT_VERSION = "0.0.1";
 
 export const HealthCheckResponseSchema = z.object({
-  status: z.enum(['ok', 'error']),
+  status: z.enum(["ok", "error"]),
   service: z.string(),
   timestamp: z.iso.datetime(),
   version: z.string(),
@@ -12,20 +13,20 @@ export const HealthCheckResponseSchema = z.object({
 export type HealthCheckResponse = z.infer<typeof HealthCheckResponseSchema>;
 
 export const OrderStatusSchema = z.enum([
-  'PENDING',
-  'CONFIRMED',
-  'PROCESSING',
-  'SHIPPED',
-  'DELIVERED',
-  'CANCELLED',
-  'REFUNDED',
+  "PENDING",
+  "CONFIRMED",
+  "PROCESSING",
+  "SHIPPED",
+  "DELIVERED",
+  "CANCELLED",
+  "REFUNDED",
 ]);
 
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
 export const MoneySchema = z.object({
   amount: z.number().int().nonnegative(),
-  currency: z.string().length(3).default('BDT'),
+  currency: z.string().length(3).default("BDT"),
 });
 
 export type Money = z.infer<typeof MoneySchema>;

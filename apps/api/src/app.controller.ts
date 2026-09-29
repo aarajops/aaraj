@@ -1,8 +1,8 @@
-import { Controller, Get } from '@nestjs/common';
-import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
-import { CONTRACT_VERSION, type HealthCheckResponse } from '@aaraj/contracts';
-import { DatabaseService } from './platform/database/database.service.js';
-import { RedisService } from './platform/redis/redis.service.js';
+import { Controller, Get } from "@nestjs/common";
+import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
+import { CONTRACT_VERSION, type HealthCheckResponse } from "@aaraj/contracts";
+import { DatabaseService } from "./platform/database/database.service.js";
+import { RedisService } from "./platform/redis/redis.service.js";
 
 @Controller()
 @AllowAnonymous()
@@ -12,26 +12,26 @@ export class AppController {
     private readonly redisService: RedisService,
   ) {}
 
-  @Get('health')
+  @Get("health")
   getHealth(): HealthCheckResponse {
     return {
-      status: 'ok',
-      service: '@aaraj/api',
+      status: "ok",
+      service: "@aaraj/api",
       timestamp: new Date().toISOString(),
       version: CONTRACT_VERSION,
     };
   }
 
-  @Get('health/ready')
+  @Get("health/ready")
   async getReadiness(): Promise<{
-    status: 'ok';
-    database: 'ok';
-    redis: 'ok';
+    status: "ok";
+    database: "ok";
+    redis: "ok";
   }> {
     await Promise.all([
       this.databaseService.checkConnection(),
       this.redisService.checkConnection(),
     ]);
-    return { status: 'ok', database: 'ok', redis: 'ok' };
+    return { status: "ok", database: "ok", redis: "ok" };
   }
 }

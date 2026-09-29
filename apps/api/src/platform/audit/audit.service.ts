@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { auditEvent } from './audit-schema.js';
-import type { AuditTransaction } from './audit.types.js';
+import { Injectable } from "@nestjs/common";
+import { auditEvent } from "./audit-schema.js";
+import type { AuditTransaction } from "./audit.types.js";
 
-export type AuditActorType = 'user' | 'service' | 'anonymous';
+export type AuditActorType = "user" | "service" | "anonymous";
 
 export interface AuditEventInput {
   actorType: AuditActorType;
@@ -36,7 +36,7 @@ export class AuditService {
       .returning({ id: auditEvent.id });
 
     if (!record) {
-      throw new Error('Audit event insert did not return an identifier.');
+      throw new Error("Audit event insert did not return an identifier.");
     }
 
     return record.id;

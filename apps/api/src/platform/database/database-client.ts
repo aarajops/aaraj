@@ -1,5 +1,5 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 
 let poolInstance: Pool | undefined;
 let drizzleInstance: ReturnType<typeof drizzle> | undefined;
@@ -12,12 +12,12 @@ export function getPostgresPool(): Pool {
   const password = process.env.POSTGRES_PASSWORD;
   if (!database || !user || !password) {
     throw new Error(
-      'POSTGRES_DB, POSTGRES_USER, and POSTGRES_PASSWORD must be configured before connecting to PostgreSQL.',
+      "POSTGRES_DB, POSTGRES_USER, and POSTGRES_PASSWORD must be configured before connecting to PostgreSQL.",
     );
   }
 
   poolInstance = new Pool({
-    host: process.env.POSTGRES_HOST ?? '127.0.0.1',
+    host: process.env.POSTGRES_HOST ?? "127.0.0.1",
     port: Number(process.env.POSTGRES_PORT ?? 5432),
     database,
     user,

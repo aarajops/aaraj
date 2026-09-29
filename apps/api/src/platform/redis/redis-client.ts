@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis';
+import { Redis } from "ioredis";
 
 let redisClient: Redis | undefined;
 
@@ -7,7 +7,7 @@ export function getRedisClient(): Redis {
 
   const url = process.env.REDIS_URL;
   if (!url) {
-    throw new Error('REDIS_URL must be configured before connecting to Redis.');
+    throw new Error("REDIS_URL must be configured before connecting to Redis.");
   }
 
   redisClient = new Redis(url, {
@@ -21,7 +21,7 @@ export function getRedisClient(): Redis {
 export async function closeRedisClient(): Promise<void> {
   if (!redisClient) return;
 
-  if (redisClient.status === 'ready') {
+  if (redisClient.status === "ready") {
     try {
       await redisClient.quit();
     } catch {

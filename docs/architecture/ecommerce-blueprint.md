@@ -146,22 +146,15 @@ Range-partition `ordering.orders`, `audit.audit_logs`, and each owner's `outbox_
 
 Use keyset pagination with stable composite cursors, indexes driven by query plans, bounded statement/lock timeouts, autovacuum monitoring, and optimistic aggregate versions. Monthly partitions are the starting policy for orders/audit; adjust outbox interval after measuring volume. Archive and detach according to retention and legal hold policy, with a tested lookup path for historical orders.
 
-#### 03. Permission-based authorization and mandatory step-up MFA
+#### 03. Permission-based authorization
 
-Authorize **action + resource + scope** server-side. Role names are editable permission bundles; they do not bypass object ownership or warehouse scope.
+Authorize a named capability against the operation and, when relevant, the resource. Use NestJS's official policy-based authorization module. Roles are permission bundles, not endpoint checks, and do not imply a hierarchy.
 
-| Role | Initial permissions | Restrictions |
-| --- | --- | --- |
-| SuperAdmin | Permission administration, break-glass operations | Mandatory TOTP; separate elevated session and audit; cannot silently erase financial evidence |
-| OperationsManager | Fulfillment, scoped inventory adjustment, order exceptions | Refund/price override require named permissions and recent TOTP |
-| CatalogEditor | Product/media editing, publish workflow | No payment/refund/customer credential access |
-| CustomerSupport | Masked customer timeline, tickets, pre-dispatch address correction | No credential changes or financial acts while impersonating |
-| FraudAnalyst | Risk cases, evidence, release/reject review | No role administration or unrestricted PII exports |
-| Customer | Own cart, orders, return requests, preferences | Ownership checks on every resource ID |
+The initial role labels are `superadmin`, `admin`, `staff`, `moderator`, and `customer`. Define each role's grants only when its first real workflow is implemented. Do not add wildcard permissions or a general administrator bypass. Customers may access their own records only; the owning application service enforces that relationship after loading the record. Do not add warehouse or location scope to the initial authorization model.
 
-Permissions include `refund.authorize`, `refund.execute`, `identity.roles.assign`, `pricing.override`, `inventory.adjust`, `order.risk.review`, `support.impersonate`, and `customer.pii.read`. Use distinct refund authorizer/executor above an agreed threshold, forbid self-approval, and check ceilings in integer subunits. Mandatory TOTP covers refund authorization, role changes, and price overrides even if the JWT remains valid.
+Permission keys name concrete actions introduced with their routes and use cases. The implemented PBAC base provides `access.read_self`, `access.read`, and `access.manage`, persisted elevated role assignments, protected `/api/access/*` endpoints, and an operator-only first-superadmin bootstrap. Role grants and revocations are reauthorized and committed with their audit event in the same database transaction. Concurrent changes preserve the last superadmin. Role writes require a trusted Origin and a sign-in within 15 minutes. The exact base matrix and setup instructions are in [the authorization guide](../backend/security/02-authorization.md). Commerce capabilities are added with their feature workflows.
 
-Encrypt TOTP seeds with KMS-backed envelope keys; hash recovery codes, make them single-use, prevent time-step replay, and test clock skew. Issue a short-lived step-up grant bound to actor, session, action, target, and operation digest. Recovery and enrollment cannot bypass the same approval/audit controls. Access JWTs are short-lived, issuer/audience/algorithm checked, refresh tokens rotated and hashed with reuse detection; permission-version checks invalidate stale elevated rights.
+Customer sign-up and sign-in remain email/password without OTP or phone verification. Role changes require a recent email/password sign-in; other sensitive staff workflows define their own step-up requirements when implemented.
 
 #### 04. Validation, security headers, and the request lifecycle
 

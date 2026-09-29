@@ -1,0 +1,10 @@
+node_modules/
+**/dist/
+**/build/
+**/.next/
+**/out/
+**/coverage/
+.git-backups/
+**/next-env.d.ts
+apps/api/drizzle/meta/
+pnpm-lock.yaml

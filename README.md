@@ -60,6 +60,10 @@ The repository maintains an authoritative, durable documentation portal under `/
 
 ## Development Quickstart
 
+### Code formatting
+
+Use double quotes in TypeScript/JavaScript strings and JSX attributes across all workspaces. The root Prettier configuration is shared by the API, storefront, and contracts. Run `pnpm format` to apply it or `pnpm format:check` to verify it; CI checks formatting too. Prettier may choose single quotes to avoid escaping embedded double quotes. Preserve template literals, SQL string literals, and shell quoting where their syntax or behavior requires them.
+
 ### Prerequisites
 * Node.js `>=24.15.0 <25`
 * pnpm `12.5.1`

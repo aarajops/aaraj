@@ -1,8 +1,8 @@
-import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const localEnvironmentFile = fileURLToPath(
-  new URL('../../../../../infrastructure/local/.env.local', import.meta.url),
+  new URL("../../../../../infrastructure/local/.env.local", import.meta.url),
 );
 
 let loaded = false;
@@ -12,7 +12,7 @@ export function loadLocalEnvironment(): void {
   loaded = true;
 
   if (
-    process.env.NODE_ENV !== 'production' &&
+    process.env.NODE_ENV !== "production" &&
     existsSync(localEnvironmentFile)
   ) {
     process.loadEnvFile(localEnvironmentFile);

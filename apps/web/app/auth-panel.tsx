@@ -6,7 +6,11 @@ import type { InitialSession } from "@/lib/auth-session";
 
 type FormMode = "sign-in" | "sign-up";
 
-export function AuthPanel({ initialSession }: { initialSession: InitialSession }) {
+export function AuthPanel({
+  initialSession,
+}: {
+  initialSession: InitialSession;
+}) {
   authClient.hydrateSession(initialSession);
   const [mode, setMode] = useState<FormMode>("sign-in");
   const [name, setName] = useState("");
@@ -46,7 +50,10 @@ export function AuthPanel({ initialSession }: { initialSession: InitialSession }
     try {
       const result =
         mode === "sign-up"
-          ? await authClient.signUp.email({ name, email, password }, { onError })
+          ? await authClient.signUp.email(
+              { name, email, password },
+              { onError },
+            )
           : await authClient.signIn.email({ email, password }, { onError });
 
       if (result.error) {
@@ -82,7 +89,9 @@ export function AuthPanel({ initialSession }: { initialSession: InitialSession }
         setStatusMessage("You are signed out.");
       }
     } catch {
-      setErrorMessage("Could not sign out. Check your connection and try again.");
+      setErrorMessage(
+        "Could not sign out. Check your connection and try again.",
+      );
     }
   }
 
@@ -109,9 +118,7 @@ export function AuthPanel({ initialSession }: { initialSession: InitialSession }
           <div className="space-y-5">
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
               <p className="font-medium">Signed in as {session.user.name}</p>
-              <p className="mt-1 text-sm text-zinc-400">
-                {session.user.email}
-              </p>
+              <p className="mt-1 text-sm text-zinc-400">{session.user.email}</p>
             </div>
             <button
               className="w-full rounded-lg bg-white px-4 py-3 font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:opacity-60"

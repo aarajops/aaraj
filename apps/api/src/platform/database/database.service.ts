@@ -1,9 +1,9 @@
-import { Injectable, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, OnApplicationShutdown } from "@nestjs/common";
 import {
   closePostgresPool,
   getDrizzleDatabase,
   getPostgresPool,
-} from './database-client.js';
+} from "./database-client.js";
 
 @Injectable()
 export class DatabaseService implements OnApplicationShutdown {
@@ -12,7 +12,7 @@ export class DatabaseService implements OnApplicationShutdown {
   }
 
   async checkConnection(): Promise<void> {
-    await getPostgresPool().query('SELECT 1');
+    await getPostgresPool().query("SELECT 1");
   }
 
   async onApplicationShutdown(): Promise<void> {
