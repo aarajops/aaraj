@@ -67,6 +67,16 @@ Use double quotes in TypeScript/JavaScript strings and JSX attributes across all
 ### Prerequisites
 * Node.js `>=24.15.0 <25`
 * pnpm `12.5.1`
+* Docker Engine with Docker Compose, running and accessible without `sudo`.
+* `infrastructure/local/.env.local` configured from `.env.example` (keep your existing file).
+
+On Linux, if Docker reports permission denied, add your user to the Docker group once:
+
+```bash
+sudo usermod -aG docker "$USER"
+```
+
+Log out of your desktop session and log back in, then reopen VS Code. Verify access with `docker info`. Docker group membership grants root-level Docker access; never run `pnpm dev` with `sudo`.
 
 ### Installation
 ```bash
@@ -77,8 +87,11 @@ pnpm install
 All workspaces expose a standardized task interface:
 
 ```bash
-# Start all deployable applications in development mode
+# Start PostgreSQL and Redis, wait for health checks, build contracts, then start applications
 pnpm dev
+
+# Stop local database containers when finished (preserves their data)
+pnpm dev:infra:stop
 
 # Start specific applications
 pnpm dev:web    # Next.js storefront on http://localhost:3000
@@ -96,6 +109,10 @@ pnpm lint
 # Run all test suites
 pnpm test
 ```
+
+Wait for Nest to report successful startup before opening `http://localhost:3000`. Pressing `Ctrl+C` stops the development applications; database containers remain running for the next start. Individual `dev:web` and `dev:api` commands assume infrastructure is already running; use `pnpm dev:infra` if needed.
+
+These Compose commands are local-development helpers only. Production deployment manages its own database, Redis, and built application processes; it does not use `pnpm dev`.
 
 ---
 
