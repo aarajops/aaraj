@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { authClient } from "@/lib/auth-client";
-import type { InitialSession } from "@/lib/auth-session";
+import { useState, type SubmitEvent } from "react";
+import { authClient } from "@/features/auth/auth-client";
+import type { InitialSession } from "@/features/auth/auth-session";
 
 type FormMode = "sign-in" | "sign-up";
 
@@ -28,7 +28,7 @@ export function AuthPanel({
   const session = isPending && !isRefetching ? initialSession : data;
   const isSessionPending = isPending && !isRefetching && !initialSession;
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage(null);
     setStatusMessage(null);
@@ -96,7 +96,7 @@ export function AuthPanel({
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-950 px-5 py-12 text-zinc-100">
+    <main className="flex min-h-[calc(100vh-4rem)] flex-1 items-center justify-center bg-zinc-950 px-5 py-12 text-zinc-100">
       <section className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-7 shadow-2xl sm:p-9">
         <header className="mb-8">
           <p className="text-sm font-semibold tracking-[0.2em] text-emerald-400">

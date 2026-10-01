@@ -1,7 +1,11 @@
 import { z } from "zod";
+import {
+  CursorPaginationMetadataSchema,
+  ListPageSizeSchema,
+} from "./pagination.js";
 
 export const AuditEventQuerySchema = z.strictObject({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: ListPageSizeSchema,
   eventType: z
     .string()
     .regex(/^[a-z][a-z0-9_.-]{0,99}$/)
@@ -31,6 +35,6 @@ export type AuditEvent = z.infer<typeof AuditEventSchema>;
 
 export const AuditEventPageSchema = z.strictObject({
   events: z.array(AuditEventSchema),
-  nextCursor: z.string().nullable(),
+  ...CursorPaginationMetadataSchema.shape,
 });
 export type AuditEventPage = z.infer<typeof AuditEventPageSchema>;

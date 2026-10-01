@@ -71,7 +71,10 @@ describe("catalog and security audit", () => {
     await request(app.getHttpServer())
       .get("/api/catalog/products")
       .expect(200)
-      .expect([]);
+      .expect({ products: [], hasMore: false, nextOffset: null });
+    await request(app.getHttpServer())
+      .get("/api/catalog/products?limit=101")
+      .expect(400);
     await request(app.getHttpServer())
       .get("/api/catalog/products/manage")
       .expect(401);
@@ -107,7 +110,7 @@ describe("catalog and security audit", () => {
     await request(app.getHttpServer())
       .get("/api/catalog/products")
       .expect(200)
-      .expect([]);
+      .expect({ products: [], hasMore: false, nextOffset: null });
     await request(app.getHttpServer())
       .get("/api/catalog/products/aaraj-draft-bike")
       .expect(404);
@@ -115,8 +118,8 @@ describe("catalog and security audit", () => {
       .get("/api/catalog/products/manage")
       .set("Cookie", staff.cookie)
       .expect(200);
-    expect(managed.body).toHaveLength(1);
-    expect(managed.body[0].id).toBe(created.body.id);
+    expect(managed.body.products).toHaveLength(1);
+    expect(managed.body.products[0].id).toBe(created.body.id);
 
     await request(app.getHttpServer())
       .patch(`/api/catalog/products/${created.body.id}`)
@@ -135,12 +138,43 @@ describe("catalog and security audit", () => {
       .get("/api/catalog/products/aaraj-draft-bike")
       .expect(200);
     expect(publicProduct.body.name).toBe("Aaraj City Bike");
+
+    await request(app.getHttpServer())
+      .post("/api/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "aaraj-city-mug",
+        name: "Aaraj City Mug",
+        isPublished: true,
+        reason: "Second item for pagination coverage",
+      })
+      .expect(201);
+
+    const firstProductPage = await request(app.getHttpServer())
+      .get("/api/catalog/products?limit=1")
+      .expect(200);
+    expect(firstProductPage.body.products).toHaveLength(1);
+    expect(firstProductPage.body.hasMore).toBe(true);
+    expect(firstProductPage.body.nextOffset).toBe(1);
+    const secondProductPage = await request(app.getHttpServer())
+      .get(
+        `/api/catalog/products?limit=1&offset=${firstProductPage.body.nextOffset}`,
+      )
+      .expect(200);
+    expect(secondProductPage.body.products).toHaveLength(1);
+    expect(secondProductPage.body.hasMore).toBe(false);
+    expect(secondProductPage.body.nextOffset).toBeNull();
+    expect(secondProductPage.body.products[0].id).not.toBe(
+      firstProductPage.body.products[0].id,
+    );
+
     const publicList = await request(app.getHttpServer())
       .get("/api/catalog/products?limit=10")
       .expect(200);
     expect(
-      publicList.body.map((product: { slug: string }) => product.slug),
-    ).toEqual(["aaraj-draft-bike"]);
+      publicList.body.products.map((product: { slug: string }) => product.slug),
+    ).toHaveLength(2);
 
     await request(app.getHttpServer()).get("/api/audit/events").expect(401);
     await request(app.getHttpServer())
@@ -158,6 +192,27 @@ describe("catalog and security audit", () => {
       .expect(200);
     expect(page.body.events).toHaveLength(1);
     expect(page.body.nextCursor).toEqual(expect.any(String));
+    expect(() =>
+      JSON.parse(
+        Buffer.from(page.body.nextCursor, "base64url").toString("utf8"),
+      ),
+    ).toThrow();
+    const finalCursorCharacter = page.body.nextCursor.slice(-1);
+    const tamperedCursor =
+      page.body.nextCursor.slice(0, -1) +
+      (finalCursorCharacter === "A" ? "B" : "A");
+    await request(app.getHttpServer())
+      .get(
+        `/api/audit/events?eventType=catalog.product_updated&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(tamperedCursor)}`,
+      )
+      .set("Cookie", owner.cookie)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(
+        `/api/audit/events?eventType=catalog.product_created&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(page.body.nextCursor)}`,
+      )
+      .set("Cookie", owner.cookie)
+      .expect(400);
     const nextPage = await request(app.getHttpServer())
       .get(
         `/api/audit/events?eventType=catalog.product_updated&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(page.body.nextCursor)}`,

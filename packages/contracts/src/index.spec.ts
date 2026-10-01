@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  AuditEventQuerySchema,
+  CatalogProductListQuerySchema,
+  DEFAULT_LIST_PAGE_SIZE,
   HealthCheckResponseSchema,
+  MAX_LIST_PAGE_SIZE,
   OrderStatusSchema,
   ProductSchema,
 } from "./index.js";
@@ -44,5 +48,18 @@ describe("Contracts Schema Validation", () => {
       updatedAt: new Date().toISOString(),
     };
     expect(ProductSchema.safeParse(validProduct).success).toBe(true);
+  });
+
+  it("uses one bounded page-size policy across list contracts", () => {
+    expect(CatalogProductListQuerySchema.parse({})).toEqual({
+      limit: DEFAULT_LIST_PAGE_SIZE,
+      offset: 0,
+    });
+    expect(AuditEventQuerySchema.parse({}).limit).toBe(DEFAULT_LIST_PAGE_SIZE);
+    expect(MAX_LIST_PAGE_SIZE).toBe(100);
+    expect(
+      CatalogProductListQuerySchema.safeParse({ limit: 101 }).success,
+    ).toBe(false);
+    expect(AuditEventQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
   });
 });

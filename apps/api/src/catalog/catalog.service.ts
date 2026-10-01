@@ -6,9 +6,11 @@ import {
 import { AuthorizationService } from "@nestjs/authorization";
 import type {
   CatalogProductCreateInput,
+  CatalogProductPage,
   CatalogProductListQuery,
   CatalogProductUpdateInput,
 } from "@aaraj/contracts";
+import { MAX_LIST_OFFSET } from "@aaraj/contracts";
 import { and, desc, eq } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import { DatabaseService } from "../platform/database/database.service.js";
@@ -30,9 +32,9 @@ export class CatalogService {
       .from(catalogProduct)
       .where(eq(catalogProduct.isPublished, true))
       .orderBy(desc(catalogProduct.updatedAt), desc(catalogProduct.id))
-      .limit(query.limit)
+      .limit(query.limit + 1)
       .offset(query.offset);
-    return rows.map(toProduct);
+    return toProductPage(rows, query);
   }
 
   async findPublished(slug: string) {
@@ -59,9 +61,9 @@ export class CatalogService {
       .select()
       .from(catalogProduct)
       .orderBy(desc(catalogProduct.updatedAt), desc(catalogProduct.id))
-      .limit(query.limit)
+      .limit(query.limit + 1)
       .offset(query.offset);
-    return rows.map(toProduct);
+    return toProductPage(rows, query);
   }
 
   async create(actor: AccessPrincipal, input: CatalogProductCreateInput) {
@@ -165,6 +167,24 @@ export class CatalogService {
       }
     });
   }
+}
+
+function toProductPage(
+  rows: Parameters<typeof toProduct>[0][],
+  query: CatalogProductListQuery,
+): CatalogProductPage {
+  const hasMore = rows.length > query.limit;
+  const products = rows.slice(0, query.limit).map(toProduct);
+  const candidateNextOffset = query.offset + products.length;
+
+  return {
+    products,
+    hasMore,
+    nextOffset:
+      hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+        ? candidateNextOffset
+        : null,
+  };
 }
 
 function toProduct(product: typeof catalogProduct.$inferSelect) {

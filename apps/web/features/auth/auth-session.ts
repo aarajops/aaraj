@@ -1,5 +1,7 @@
+import "server-only";
+
 import { headers } from "next/headers";
-import type { authClient } from "@/lib/auth-client";
+import type { authClient } from "@/features/auth/auth-client";
 
 export type InitialSession = typeof authClient.$Infer.Session | null;
 

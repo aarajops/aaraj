@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  OffsetPaginationMetadataSchema,
+  OffsetPaginationQuerySchema,
+} from "./pagination.js";
 
 export const CatalogProductSlugSchema = z
   .string()
@@ -44,11 +48,15 @@ export type CatalogProductUpdateInput = z.input<
   typeof CatalogProductUpdateSchema
 >;
 
-export const CatalogProductListQuerySchema = z.strictObject({
-  limit: z.coerce.number().int().min(1).max(100).default(24),
-  offset: z.coerce.number().int().min(0).max(100_000).default(0),
-});
+export const CatalogProductListQuerySchema = OffsetPaginationQuerySchema;
 export type CatalogProductListQuery = z.infer<
   typeof CatalogProductListQuerySchema
 >;
+
+export const CatalogProductPageSchema = z.strictObject({
+  products: CatalogProductSchema.array(),
+  ...OffsetPaginationMetadataSchema.shape,
+});
+export type CatalogProductPage = z.infer<typeof CatalogProductPageSchema>;
+
 export const CatalogProductIdSchema = z.uuid();

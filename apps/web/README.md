@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Aaraj Web
 
-## Getting Started
+The Aaraj storefront and staff catalog UI use the Next.js App Router. The NestJS API remains the source of truth for authentication, authorization, audit records, and product data.
 
-First, run the development server:
+## Organization
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```text
+app/                         Routes, layouts, and route-specific loading UI
+  _components/               App-wide route-independent components
+features/auth/               Sign-in UI, Better Auth client, server session read
+features/catalog/            Catalog UI, server queries, browser API client
+e2e/                         Playwright storefront workflow and test API
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Keep `app/**/page.tsx` focused on route behavior and composing feature code.
+- Keep auth and catalog implementation in their feature folders; only create shared code when more than one feature needs it.
+- Keep API contracts in `@aaraj/contracts`. Server reads use `server-only`; browser auth and catalog API modules use `client-only`.
+- Send catalog mutations through the same-origin `/api` route. The Nest API enforces permissions and writes audit events; UI visibility is not an access-control check.
+- Preserve the current URLs unless a product or routing requirement calls for a change.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run the storefront with the rest of the local stack from the repository root using `pnpm dev`, or run only this app with `pnpm --filter @aaraj/web dev`.
 
-## Learn More
+```bash
+pnpm --filter @aaraj/web typecheck
+pnpm --filter @aaraj/web lint
+pnpm --filter @aaraj/web build
+pnpm --filter @aaraj/web test:e2e
+```
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Install the Playwright browser once with `pnpm --filter @aaraj/web exec playwright install chromium`. The browser suite uses its isolated test API; API E2E tests separately cover Nest authorization, persistence, and audit behavior.
