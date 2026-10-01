@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { getPostgresSslOptions } from "./postgres-ssl.js";
 
 let poolInstance: Pool | undefined;
 let drizzleInstance: ReturnType<typeof drizzle> | undefined;
@@ -10,18 +11,23 @@ export function getPostgresPool(): Pool {
   const database = process.env.POSTGRES_DB;
   const user = process.env.POSTGRES_USER;
   const password = process.env.POSTGRES_PASSWORD;
+  const host = process.env.POSTGRES_HOST ?? "127.0.0.1";
   if (!database || !user || !password) {
     throw new Error(
       "POSTGRES_DB, POSTGRES_USER, and POSTGRES_PASSWORD must be configured before connecting to PostgreSQL.",
     );
   }
+  if (process.env.NODE_ENV === "production" && !process.env.POSTGRES_HOST) {
+    throw new Error("POSTGRES_HOST must be configured in production.");
+  }
 
   poolInstance = new Pool({
-    host: process.env.POSTGRES_HOST ?? "127.0.0.1",
+    host,
     port: Number(process.env.POSTGRES_PORT ?? 5432),
     database,
     user,
     password,
+    ssl: getPostgresSslOptions(),
     max: 5,
     connectionTimeoutMillis: 5_000,
   });

@@ -1,13 +1,14 @@
 import { AuthorizationModule } from "@nestjs/authorization";
 import { Module } from "@nestjs/common";
-import { AuthorizationDenialsLogger } from "./authorization-denials.logger.js";
-import { DatabaseModule } from "../database/database.module.js";
 import { AuditModule } from "../audit/audit.module.js";
-import { PermissionsService } from "./permissions.service.js";
+import { DatabaseModule } from "../database/database.module.js";
+import { AccessController } from "./access.controller.js";
+import { CookieMutationGuard } from "./cookie-mutation.guard.js";
 import { AccessPolicy } from "./access.policy.js";
 import { AccessService } from "./access.service.js";
-import { AccessController } from "./access.controller.js";
-import { AccessMutationGuard } from "./access-mutation.guard.js";
+import { AuditPolicy } from "./audit.policy.js";
+import { AuthorizationDenialsLogger } from "./authorization-denials.logger.js";
+import { PermissionsService } from "./permissions.service.js";
 
 @Module({
   imports: [DatabaseModule, AuditModule, AuthorizationModule.forRoot()],
@@ -16,9 +17,10 @@ import { AccessMutationGuard } from "./access-mutation.guard.js";
     AuthorizationDenialsLogger,
     PermissionsService,
     AccessPolicy,
+    AuditPolicy,
     AccessService,
-    AccessMutationGuard,
+    CookieMutationGuard,
   ],
-  exports: [PermissionsService],
+  exports: [PermissionsService, CookieMutationGuard],
 })
 export class PlatformAuthorizationModule {}

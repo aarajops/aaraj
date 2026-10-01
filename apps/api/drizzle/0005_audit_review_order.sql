@@ -1,0 +1,1 @@
+CREATE INDEX "event_occurred_at_id_idx" ON "audit"."event" USING btree ("occurred_at","id");

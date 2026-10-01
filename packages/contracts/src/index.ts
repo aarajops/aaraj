@@ -52,3 +52,5 @@ export const CreateProductSchema = ProductSchema.omit({
 });
 
 export type CreateProductInput = z.infer<typeof CreateProductSchema>;
+export * from "./audit.js";
+export * from "./catalog.js";

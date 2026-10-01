@@ -1,3 +1,4 @@
+import type { DatabaseService } from "../database/database.service.js";
 import { auditEvent } from "./audit-schema.js";
 import { AuditService, type AuditEventInput } from "./audit.service.js";
 import type { AuditTransaction } from "./audit.types.js";
@@ -18,7 +19,8 @@ describe("AuditService", () => {
       metadata: { role: "staff" },
     };
 
-    await expect(new AuditService().append(transaction, event)).resolves.toBe(
+    const service = new AuditService({} as DatabaseService);
+    await expect(service.append(transaction, event)).resolves.toBe(
       "audit-event-id",
     );
     expect(insert).toHaveBeenCalledWith(auditEvent);

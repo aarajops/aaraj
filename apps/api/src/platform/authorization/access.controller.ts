@@ -22,11 +22,11 @@ import {
 import { AccessPolicy } from "./access.policy.js";
 import { AccessService } from "./access.service.js";
 import { accessCatalog } from "./access.permissions.js";
-import { AccessMutationGuard } from "./access-mutation.guard.js";
+import { CookieMutationGuard } from "./cookie-mutation.guard.js";
 
 @Controller("access")
 @UsePipes(StandardSchemaValidationPipe)
-@UseGuards(AccessMutationGuard)
+@UseGuards(CookieMutationGuard)
 export class AccessController {
   constructor(private readonly access: AccessService) {}
 

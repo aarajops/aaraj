@@ -26,8 +26,11 @@ export const PermissionSchema = z.enum([
   "access.read_self",
   "access.read",
   "access.manage",
+  "audit.read",
+  "catalog.manage",
 ]);
 export type Permission = z.infer<typeof PermissionSchema>;
+
 export const EffectiveAccessSchema = z.strictObject({
   userId: AccessUserIdSchema,
   roles: z.array(RoleSchema),

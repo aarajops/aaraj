@@ -3,10 +3,12 @@ import { redisStorage } from "@better-auth/redis-storage";
 import { Logger } from "@nestjs/common";
 import { betterAuth } from "better-auth";
 import { createAuthMiddleware, isAPIError } from "better-auth/api";
+import { recordAuditEvent } from "../platform/audit/audit.service.js";
 import { loadLocalEnvironment } from "../platform/config/local-environment.js";
 import { getDrizzleDatabase } from "../platform/database/database-client.js";
 import { getRedisClient } from "../platform/redis/redis-client.js";
 import * as authSchema from "./auth-schema.js";
+import { getClientIpOptions } from "./client-ip.js";
 
 loadLocalEnvironment();
 
@@ -45,6 +47,9 @@ export const auth = betterAuth({
   basePath: "/api/auth",
   secret,
   trustedOrigins: [clientURL],
+  advanced: {
+    ipAddress: getClientIpOptions(),
+  },
   database: drizzleAdapter(getDrizzleDatabase(), {
     provider: "pg",
     schema: authSchema,
@@ -75,17 +80,34 @@ export const auth = betterAuth({
       if (!event) return;
 
       const failed = isAPIError(context.context.returned);
-      const userId = failed ? undefined : context.context.newSession?.user.id;
+      const actorId =
+        context.context.newSession?.user.id ?? context.context.session?.user.id;
       const fields = {
         event,
         outcome: failed ? "failure" : "success",
-        ...(userId ? { userId } : {}),
+        ...(actorId ? { userId: actorId } : {}),
       };
 
       if (failed) {
         logger.warn("Authentication request failed", fields);
       } else {
         logger.log("Authentication request succeeded", fields);
+      }
+
+      try {
+        await recordAuditEvent({
+          actorType: actorId ? "user" : "anonymous",
+          ...(actorId ? { actorId } : {}),
+          eventType: event,
+          subjectType: "auth_route",
+          subjectId: context.path,
+          metadata: { outcome: failed ? "failure" : "success" },
+        });
+      } catch (error) {
+        logger.error("Authentication audit write failed", {
+          event,
+          error: error instanceof Error ? error.name : "unknown error",
+        });
       }
     }),
   },

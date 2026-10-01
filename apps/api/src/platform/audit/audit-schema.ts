@@ -18,7 +18,9 @@ export const auditEvent = audit.table(
     occurredAt: timestamp("occurred_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    actorType: text("actor_type").notNull(),
+    actorType: text("actor_type")
+      .$type<"user" | "service" | "anonymous">()
+      .notNull(),
     actorId: text("actor_id"),
     eventType: text("event_type").notNull(),
     subjectType: text("subject_type").notNull(),
@@ -35,6 +37,7 @@ export const auditEvent = audit.table(
       "event_actor_type_check",
       sql`${table.actorType} in ('user', 'service', 'anonymous')`,
     ),
+    index("event_occurred_at_id_idx").on(table.occurredAt, table.id),
     index("event_subject_time_idx").on(
       table.subjectType,
       table.subjectId,

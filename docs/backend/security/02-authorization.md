@@ -8,21 +8,21 @@ The implementation lives in `apps/api/src/platform/authorization/`. `PlatformAut
 
 The exact roles are `superadmin`, `admin`, `staff`, `moderator`, and `customer`. Roles bundle permissions; they have no implicit hierarchy. Each existing authenticated user has baseline `customer` access. Elevated assignments are additive, persisted in `access.role_assignment`, and read from PostgreSQL for each permission check. They are never trusted from a request body, client session, cookie payload, or client-side permission check. A missing identity or unknown permission denies access; a database failure cannot grant access.
 
-Initial permissions cover the implemented access-management workflow only:
+Current permissions cover the implemented access-management, audit-review, and catalog workflows:
 
-| Role       | Own effective access (`access.read_self`) | Inspect roles and another user's access (`access.read`) | Grant/revoke elevated roles (`access.manage`) |
-| ---------- | ----------------------------------------- | ------------------------------------------------------- | --------------------------------------------- |
-| superadmin | Yes                                       | Yes                                                     | Yes                                           |
-| admin      | Yes                                       | Yes                                                     | No                                            |
-| staff      | Yes                                       | No                                                      | No                                            |
-| moderator  | Yes                                       | No                                                      | No                                            |
-| customer   | Yes                                       | No                                                      | No                                            |
+| Role       | Access management | Audit review (`audit.read`) | Catalog management (`catalog.manage`) |
+| ---------- | ----------------- | --------------------------- | ------------------------------------- |
+| superadmin | Yes               | Yes                         | Yes                                   |
+| admin      | Read only         | No                          | Yes                                   |
+| staff      | Own access only   | No                          | Yes                                   |
+| moderator  | Own access only   | No                          | No                                    |
+| customer   | Own access only   | No                          | No                                    |
 
-There is no wildcard or blanket superadmin bypass. Commerce permissions are added with their actual features. `staff` and `moderator` are valid assignable roles now; their commerce capabilities are not invented ahead of those features. Permission names and request/response schemas live in `packages/contracts/src/access.ts`; server grants live in `access.permissions.ts`. Role bundles are reviewed code, not user-editable configuration.
+There is no wildcard or blanket superadmin bypass. Catalog management is currently granted to staff/admin/superadmin for the first catalog workflow. The permission is independent of role hierarchy and can be changed in reviewed code. No warehouse/location scope exists. Permission names and request/response schemas live in `packages/contracts/src/access.ts`; server grants live in `access.permissions.ts`. Role bundles are reviewed code, not user-editable configuration.
 
 ## API
 
-All paths below have the `/api` prefix. Authentication and `@Can(AccessPolicy, ...)` protect every access endpoint.
+All paths below have the `/api` prefix. Authentication and explicit Nest policies protect access, audit, and catalog management routes. Public catalog browse routes are intentionally anonymous and return published records only.
 
 | Method and path                            | Requirement        | Result                                                   |
 | ------------------------------------------ | ------------------ | -------------------------------------------------------- |
@@ -32,19 +32,19 @@ All paths below have the `/api` prefix. Authentication and `@Can(AccessPolicy, .
 | `PUT /access/users/:userId/roles/:role`    | `access.manage`    | Grant one elevated role                                  |
 | `DELETE /access/users/:userId/roles/:role` | `access.manage`    | Revoke one elevated role                                 |
 
-Writes require JSON `{ "reason": "Staff onboarding approved" }`, an exact trusted `Origin` matching `CLIENT_URL`, and a session created by a sign-in within the last 15 minutes. A stale session receives 403 with `code: RECENT_SIGN_IN_REQUIRED`; sign in again with the existing email/password. This is a privileged-role-change requirement, not an OTP or customer sign-up requirement. Better Auth protects its own auth endpoints against CSRF; the Nest write endpoints enforce their own Origin check through `AccessMutationGuard`.
+Current role and catalog writes require JSON with a reason, an exact trusted `Origin` matching `CLIENT_URL`, and a session created by a sign-in within the last 15 minutes. A stale session receives 403 with `code: RECENT_SIGN_IN_REQUIRED`; sign in again with the existing email/password. This is not an OTP or customer sign-up requirement. Better Auth protects its own auth endpoints against CSRF; Nest write routes enforce their own Origin and recent-sign-in check through `CookieMutationGuard`.
 
 Unknown fields, unknown roles, wildcard roles, `customer` assignment, invalid user IDs, and empty/oversized reasons are rejected by Nest's `StandardSchemaValidationPipe` using the shared schemas. Customer is the baseline, so removing every elevated assignment returns the user to customer access.
 
-Only superadmins can change assignments. Self-grants are forbidden. Self-revocation is allowed unless it would remove the last superadmin. The FK prevents deleting an account with elevated assignments; revoke those assignments through the audited workflow first. Clients cannot become privileged through ordinary sign-up.
+Only superadmins can change assignments. Staff/admin/superadmin may manage catalog products. Self-grants are forbidden. Self-revocation is allowed unless it would remove the last superadmin. The FK prevents deleting an account with elevated assignments; revoke those assignments through the audited workflow first. Clients cannot become privileged through ordinary sign-up.
 
 `AccessService` repeats permission checks inside a PostgreSQL transaction after taking a shared advisory transaction lock for assignment writes. Bootstrap uses the same lock. This serializes competing role changes across API instances, checks the latest grants, and prevents concurrent removal of all superadmins. Role changes and their audit event commit or roll back together. Repeating the same grant/revoke has no additional effect and produces no duplicate audit event. Revocation takes effect on the next permission check using the same session; it does not wait for a cached permission list to expire. Requests already authorized may finish; sensitive feature mutations should recheck authorization within their transaction as this service does.
 
-Audit events are `access.role_granted`, `access.role_revoked`, and `access.superadmin_bootstrapped`. They contain actor, subject user ID, role, action where applicable, and the operator's reason. Reasons should describe the business decision, never contain passwords or session tokens. Nest policy denials go to the existing redacted operational logger.
+Audit events cover role grants/revocations/bootstrap, Better Auth sign-up/sign-in/sign-out outcomes, Nest authorization denials, and catalog create/update. Auth events store outcome and route only; authorization denials store policy/ability, reason, and handler; catalog writes and role changes share their business transaction with the audit insert. `GET /api/audit/events` is `audit.read`-protected and currently granted only to superadmins. It supports bounded pages, an opaque cursor, and exact event-type/actor filters. The database trigger rejects UPDATE, DELETE, and TRUNCATE. Production must use a separate migration/owner role and restricted runtime role; a database superuser can still disable the trigger. Production audit retention requires approval from the business/legal owner before launch.
 
 ## Migration and first superadmin
 
-`apps/api/drizzle/0002_pbac_role_assignments.sql` adds the `access` schema, an enum for the four assignable roles, and the assignment table. The existing Drizzle migration journal remains authoritative. Use these commands from the repository root when the earlier migrations are already recorded (or on a fresh database):
+`apps/api/drizzle/0002_pbac_role_assignments.sql` adds the `access` schema and role-assignment table. `0003_audit_append_only.sql` blocks audit row mutation, and `0004_catalog_products.sql` adds the first catalog-owned table. The existing Drizzle migration journal remains authoritative. Use these commands from the repository root when the earlier migrations are already recorded (or on a fresh database):
 
 ```bash
 pnpm --filter @aaraj/contracts build
@@ -52,7 +52,7 @@ pnpm --filter @aaraj/api db:migrate
 pnpm --filter @aaraj/api build
 ```
 
-Drizzle's connection explicitly disables TLS for local development and enables certificate-verified TLS when `NODE_ENV=production`. Production migrations require the database server's trusted certificate chain.
+The runtime pool and Drizzle migration connection both explicitly require certificate-verified TLS when `NODE_ENV=production`; `POSTGRES_SSL_CA_FILE` supplies a CA bundle when required. Production migrations use separate `MIGRATION_POSTGRES_USER`/`MIGRATION_POSTGRES_PASSWORD` credentials from the runtime `POSTGRES_USER`.
 
 Create your normal email/password account first. Find its exact ID through your trusted local database connection:
 

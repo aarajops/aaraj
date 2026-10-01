@@ -6,8 +6,14 @@ import {
 import { Subject } from "rxjs";
 import { AuthorizationDenialsLogger } from "./authorization-denials.logger.js";
 
+const { recordAuditEvent } = vi.hoisted(() => ({
+  recordAuditEvent: vi.fn().mockResolvedValue("audit-event-id"),
+}));
+
+vi.mock("../audit/audit.service.js", () => ({ recordAuditEvent }));
+
 describe("AuthorizationDenialsLogger", () => {
-  it("logs denial context without user records or policy arguments", () => {
+  it("logs and records redacted denial context", () => {
     const events = new Subject<AuthorizationEvent>();
     const authorizationEvents = {
       events$: events.asObservable(),
@@ -35,6 +41,15 @@ describe("AuthorizationDenialsLogger", () => {
       reason: "forbidden",
       userId: "staff-user-id",
       handler: "OrdersController.refund",
+    });
+    expect(recordAuditEvent).toHaveBeenCalledWith({
+      actorType: "user",
+      actorId: "staff-user-id",
+      eventType: "authorization.denied",
+      subjectType: "policy",
+      subjectId: "OrderPolicy.refund",
+      reason: "forbidden",
+      metadata: { handler: "OrdersController.refund" },
     });
 
     logger.onModuleDestroy();

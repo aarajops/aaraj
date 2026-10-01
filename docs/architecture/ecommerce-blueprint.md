@@ -1,6 +1,6 @@
 # Aaraj enterprise e-commerce architecture and implementation blueprint
 
-Design baseline: 28 September 2026. Scope: Bangladesh launch, South Asian expansion, and a path to high-volume production. This is a proposed architecture and delivery specification; the application, migrations, integrations, and infrastructure described here have not been implemented by adding these documents.
+Design baseline: 1 October 2026. Scope: Bangladesh launch, with later regional growth. This remains a target architecture, not a claim that every described domain or production control is implemented.
 
 Read this document with the [complete data model and ERDs](ecommerce-data-model.md), [PostgreSQL DDL](ecommerce-schema.sql), and [phased roadmap and Day 1 execution checklist](ecommerce-implementation-roadmap.md). Together they form the four requested sections. The SQL is a design artifact for review and disposable-database validation, not a production migration to apply wholesale.
 
@@ -8,20 +8,20 @@ Read this document with the [complete data model and ERDs](ecommerce-data-model.
 
 Repository inspection confirms `apps/api` uses NestJS `^12.0.1`, Node `>=24.15.0 <25`, `type: module`, TypeScript NodeNext, Vitest, and Oxlint. `apps/web` is **Next.js 16**, not an undecided Next/Vite application. `packages/contracts` exports Zod 4 contracts. The workspace pins pnpm `12.5.1`; the observed local runtime is Node `24.19.0`. Relative TypeScript imports must end in `.js`. All cross-package imports use package exports.
 
-The backend reference suite has **18 tiers and 147 numbered Markdown chapters** in this checkout, rather than the brief's 138. Treat it as a reference library, not proof that features exist: the API currently has a small starter module and CORS configuration, with no database, Redis, authentication, checkout, outbox, or provider implementation. Existing contracts contain a basic product, money, and order-status model; these require deliberate evolution. Existing CI already builds contracts, typechecks, lints, tests, runs API E2E tests, and builds the workspace.
+Current implementation status (1 October 2026): the monorepo has a local PostgreSQL/Redis stack; a Nest API with explicit runtime PostgreSQL TLS policy, Better Auth email/password, Redis-backed auth rate limiting, Nest PBAC, an append-only audit table and superadmin-only audit review, and a small persisted product catalog. The catalog exposes published products publicly and requires catalog permission for staff/admin writes. Inventory, pricing, carts, checkout, orders, payments, a transactional outbox, and production infrastructure are not implemented. Treat the remaining architecture and full SQL as proposals; do not apply the full schema wholesale.
 
-| Decision | Selected approach | Consequence |
-| --- | --- | --- |
-| Application architecture | DDD modular monolith, independently scalable HTTP and worker processes from the same API codebase | Preserve module boundaries without premature network services |
-| Data | PostgreSQL 16+; `pg` and Drizzle behind module-owned repositories; reviewed SQL migrations | Explicit locks, constraints, partitions, and transaction handles remain visible |
-| Contracts | Zod / Standard Schema V1 in `@aaraj/contracts` | Transport models, events, enums, and validation have one public source; domain entities remain behavior-rich and private to their owner |
-| Concurrency | PostgreSQL is authoritative; Redis accelerates admission and reads | A lost Redis key cannot create money, stock, or a second business operation |
-| Events | `@nestjs/outbox` with module-owned PostgreSQL stores and inboxes; `@nestjs/event-emitter` / CQRS for dispatch | Durable state changes never depend on an in-memory emit alone |
-| Jobs | `@nestjs/bullmq`, bounded worker pools, durable dispatch records | Queue retries are expected; every business handler deduplicates |
-| Providers | Typed HTTP adapters using Node 24 native `fetch`; `@nestjs/axios` only where specifically justified | No unmaintained bKash, Nagad, SSLCommerz, Pathao, Steadfast, or RedX wrappers |
+| Decision                   | Selected approach                                                                                                                  | Consequence                                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application architecture   | DDD modular monolith, independently scalable HTTP and worker processes from the same API codebase                                  | Preserve module boundaries without premature network services                                                                                       |
+| Data                       | PostgreSQL 16+; `pg` and Drizzle behind module-owned repositories; reviewed SQL migrations                                         | Explicit locks, constraints, partitions, and transaction handles remain visible                                                                     |
+| Contracts                  | Zod / Standard Schema V1 in `@aaraj/contracts`                                                                                     | Transport models, events, enums, and validation have one public source; domain entities remain behavior-rich and private to their owner             |
+| Concurrency                | PostgreSQL is authoritative; Redis accelerates admission and reads                                                                 | A lost Redis key cannot create money, stock, or a second business operation                                                                         |
+| Events                     | Proposed module-owned PostgreSQL outbox/inbox when an asynchronous workflow is implemented                                         | No outbox or event relay exists in the current application                                                                                          |
+| Jobs                       | `@nestjs/bullmq`, bounded worker pools, durable dispatch records                                                                   | Queue retries are expected; every business handler deduplicates                                                                                     |
+| Providers                  | Typed HTTP adapters using Node 24 native `fetch`; `@nestjs/axios` only where specifically justified                                | No unmaintained bKash, Nagad, SSLCommerz, Pathao, Steadfast, or RedX wrappers                                                                       |
 | Initial production hosting | AWS reference deployment: ECS/Fargate, ALB, RDS PostgreSQL Multi-AZ, managed Redis, S3/CloudFront, Secrets Manager, KMS, Terraform | Region, service availability, merchant data requirements, latency, and cost validated in Phase 0; equivalent infrastructure can replace these ports |
-| Currency | BDT first; currency metadata and explicit rational FX quotes | Amounts never silently mix currencies; no floating-point financial arithmetic |
-| Launch scope | Single merchant, multiple warehouses; prepaid and COD | Marketplace sellers, escrow, and cross-border settlement are separate future bounded contexts |
+| Currency                   | BDT first; currency metadata and explicit rational FX quotes                                                                       | Amounts never silently mix currencies; no floating-point financial arithmetic                                                                       |
+| Launch scope               | Single merchant and one fulfillment location; payment methods are a later product decision                                         | Multiple warehouses, marketplace sellers, escrow, and cross-border settlement are deferred until justified                                          |
 
 `@nestjs/outbox` and native Standard Schema validation are documented by Nest. Their exact added package versions, ESM behavior, and Nest 12 peer compatibility still require a lockfile-backed check before installation. The blueprint does not replace that check with speculative package versions. See [Nest outbox](https://docs.nestjs.com/reliability/outbox) and [schema validation](https://docs.nestjs.com/application/validation).
 
@@ -100,22 +100,22 @@ Deploy the HTTP process, outbox relays, and worker groups separately. Keep criti
 
 #### 01. Bounded contexts, layers, and public interfaces
 
-| Owner | Authoritative responsibilities | Public application ports / events |
-| --- | --- | --- |
-| Identity | Better Auth email/password accounts and sessions, permissions, staff MFA, consents | `authenticate`, `authorize`, `getCustomerEligibility`; `PermissionChanged` |
-| Catalog | Products, variants, categories, brands, attributes, media metadata, searchable projections | `getSellableVariants`; `ProductPublished`, `VariantChanged` |
-| Inventory | Warehouses, physical/reserved/available stock, reservations, movements | `reserve`, `commit`, `release`, `adjust`; `StockReserved`, `StockDeducted` |
-| Cart | Guest/customer cart lifecycle, merge receipts | `merge`, `setQuantity`, `getCart`; `CartChanged` |
-| Pricing | Price books, quotes, promotion rules/quotas, tax rules and invoice rendering rules | `quote`, `holdPromotion`, `consumePromotion`; `PriceChanged`, `PromotionConsumed` |
-| Order | Commercial order aggregate, immutable line snapshots, checkout process, risk decisions, invoice facts | `place`, `confirm`, `cancel`, `approveRisk`; `OrderPlaced`, `OrderConfirmed` |
-| Payment | Intents, attempts, captures, advance application, refunds, financial reconciliation | `createIntent`, `queryStatus`, `requestRefund`; `PaymentCaptured`, `RefundCompleted` |
-| Fulfillment | Allocation plan, shipments, consignments, delivery evidence, returns and inspection | `plan`, `book`, `correctAddress`, `requestReturn`; `ShipmentDelivered`, `ReturnInspected` |
-| CourierLedger | Courier receivables, fees, payouts, matched remittances, disputes | `recordCollection`, `reconcileStatement`; `CourierSettlementMatched` |
-| Notification | Delivery intents, preferences, templates, social/provider adapters, consented analytics jobs | `requestDelivery`; `NotificationDelivered`, `SocialMessageReceived` |
-| Audit | Append-only redacted security and business audit evidence | `record`, privileged `query`; `AuditCheckpointSealed` |
-| Moderation | Reviews, abuse reports, decisions, profanity/risk-assisted content screening | `submitReview`, `reviewDecision`; `ReviewPublished` |
-| Geography | Versioned BD hierarchy and provider-zone mapping data | `validatePath`, `resolveCourierZone`; `GeographyVersionPublished` |
-| Support | Tickets, event-fed customer timeline, support access sessions | `getTimeline`, delegated domain commands; `TicketOpened` |
+| Owner         | Authoritative responsibilities                                                                        | Public application ports / events                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Identity      | Better Auth email/password accounts and sessions, permissions, staff MFA, consents                    | `authenticate`, `authorize`, `getCustomerEligibility`; `PermissionChanged`                |
+| Catalog       | Products, variants, categories, brands, attributes, media metadata, searchable projections            | `getSellableVariants`; `ProductPublished`, `VariantChanged`                               |
+| Inventory     | Warehouses, physical/reserved/available stock, reservations, movements                                | `reserve`, `commit`, `release`, `adjust`; `StockReserved`, `StockDeducted`                |
+| Cart          | Guest/customer cart lifecycle, merge receipts                                                         | `merge`, `setQuantity`, `getCart`; `CartChanged`                                          |
+| Pricing       | Price books, quotes, promotion rules/quotas, tax rules and invoice rendering rules                    | `quote`, `holdPromotion`, `consumePromotion`; `PriceChanged`, `PromotionConsumed`         |
+| Order         | Commercial order aggregate, immutable line snapshots, checkout process, risk decisions, invoice facts | `place`, `confirm`, `cancel`, `approveRisk`; `OrderPlaced`, `OrderConfirmed`              |
+| Payment       | Intents, attempts, captures, advance application, refunds, financial reconciliation                   | `createIntent`, `queryStatus`, `requestRefund`; `PaymentCaptured`, `RefundCompleted`      |
+| Fulfillment   | Allocation plan, shipments, consignments, delivery evidence, returns and inspection                   | `plan`, `book`, `correctAddress`, `requestReturn`; `ShipmentDelivered`, `ReturnInspected` |
+| CourierLedger | Courier receivables, fees, payouts, matched remittances, disputes                                     | `recordCollection`, `reconcileStatement`; `CourierSettlementMatched`                      |
+| Notification  | Delivery intents, preferences, templates, social/provider adapters, consented analytics jobs          | `requestDelivery`; `NotificationDelivered`, `SocialMessageReceived`                       |
+| Audit         | Append-only redacted security and business audit evidence                                             | `record`, privileged `query`; `AuditCheckpointSealed`                                     |
+| Moderation    | Reviews, abuse reports, decisions, profanity/risk-assisted content screening                          | `submitReview`, `reviewDecision`; `ReviewPublished`                                       |
+| Geography     | Versioned BD hierarchy and provider-zone mapping data                                                 | `validatePath`, `resolveCourierZone`; `GeographyVersionPublished`                         |
+| Support       | Tickets, event-fed customer timeline, support access sessions                                         | `getTimeline`, delegated domain commands; `TicketOpened`                                  |
 
 Geography and Support are explicit supporting contexts; neither becomes a shared-table shortcut. The fraud policy engine belongs to Order, while provider social and CAPI transports belong to Notification. Support owns conversations, human handoff, and social draft-order state; verified inbound messages and outbound delivery requests cross the Notification boundary through events/ports. Tax calculation belongs to Pricing; issued invoice snapshots belong to Order. CourierLedger is operational reconciliation, with an eventual accounting-system export port rather than an undeclared replacement for a general ledger.
 
@@ -150,9 +150,9 @@ Use keyset pagination with stable composite cursors, indexes driven by query pla
 
 Authorize a named capability against the operation and, when relevant, the resource. Use NestJS's official policy-based authorization module. Roles are permission bundles, not endpoint checks, and do not imply a hierarchy.
 
-The initial role labels are `superadmin`, `admin`, `staff`, `moderator`, and `customer`. Define each role's grants only when its first real workflow is implemented. Do not add wildcard permissions or a general administrator bypass. Customers may access their own records only; the owning application service enforces that relationship after loading the record. Do not add warehouse or location scope to the initial authorization model.
+The implemented base roles are `superadmin`, `admin`, `staff`, `moderator`, and `customer`. Current grants cover access management, superadmin-only audit review, and catalog management for staff/admin/superadmin. There is no wildcard bypass. Each protected route uses `@Can()` and transactional writes repeat authorization in the owning service. There is no warehouse/location scope in the launch authorization model.
 
-Permission keys name concrete actions introduced with their routes and use cases. The implemented PBAC base provides `access.read_self`, `access.read`, and `access.manage`, persisted elevated role assignments, protected `/api/access/*` endpoints, and an operator-only first-superadmin bootstrap. Role grants and revocations are reauthorized and committed with their audit event in the same database transaction. Concurrent changes preserve the last superadmin. Role writes require a trusted Origin and a sign-in within 15 minutes. The exact base matrix and setup instructions are in [the authorization guide](../backend/security/02-authorization.md). Commerce capabilities are added with their feature workflows.
+Permission keys name concrete actions introduced with their routes and use cases. The implemented PBAC base provides `access.read_self`, `access.read`, `access.manage`, `audit.read`, and `catalog.manage`, persisted elevated role assignments, protected `/api/access/*` endpoints, a superadmin-only `/api/audit/events` review route, and an operator-only first-superadmin bootstrap. Role grants and revocations are reauthorized and committed with their audit event in the same database transaction. Concurrent changes preserve the last superadmin. Role writes require a trusted Origin and a sign-in within 15 minutes. The exact base matrix and setup instructions are in [the authorization guide](../backend/security/02-authorization.md). Commerce capabilities are added with their feature workflows.
 
 Customer sign-up and sign-in remain email/password without OTP or phone verification. Role changes require a recent email/password sign-in; other sensitive staff workflows define their own step-up requirements when implemented.
 
@@ -164,11 +164,11 @@ Register the built-in `StandardSchemaValidationPipe` globally and attach a schem
 
 ```ts
 // Illustrative addition to a module; create the referenced contract/use case first.
-import { Body, Controller, Post } from '@nestjs/common';
-import { PlaceOrderSchema, type PlaceOrderInput } from '@aaraj/contracts';
-import { PlaceOrderUseCase } from '../application/place-order.use-case.js';
+import { Body, Controller, Post } from "@nestjs/common";
+import { PlaceOrderSchema, type PlaceOrderInput } from "@aaraj/contracts";
+import { PlaceOrderUseCase } from "../application/place-order.use-case.js";
 
-@Controller('orders')
+@Controller("orders")
 export class OrdersController {
   constructor(private readonly placeOrder: PlaceOrderUseCase) {}
 
@@ -321,17 +321,17 @@ Dispatch local handlers through `@nestjs/event-emitter`/CQRS behind the durable 
 
 Idempotency protocol:
 
-| Stage | Required behavior |
-| --- | --- |
-| Admission | Require a bounded opaque key on POST/PUT/PATCH/DELETE, including administrative and auth mutations; reject missing/invalid keys before side effects |
-| Scope | Derive owner, authenticated actor/session, HTTP operation/version, and key; never share results between users |
-| Fingerprint | Canonicalize the validated semantic command and hash/HMAC it; omit ephemeral Turnstile/proof tokens from business fingerprint while verifying proofs before execution |
-| Claim | Atomically acquire Redis pending lease, then insert/check owner-local durable receipt using a unique scoped key in the business transaction |
-| Replay | Same key and same payload returns the original status/body or stable operation reference; different payload returns `409 IDEMPOTENCY_CONFLICT`; pending work returns `202` with operation URL or `409 IN_PROGRESS` consistently |
-| Persistence | Commit result/reference alongside state and outbox; serialize only allowlisted responses; Redis replay TTL is `86400` seconds |
-| Failure | Never save an uncertain provider outcome as a definitive failure; recover via durable attempt/reference and status query |
-| Cache outage | Check durable receipts and use the DB fallback only when configured abuse controls remain safe; otherwise `503` before mutation, never unrestricted execution |
-| Retention | Durable order/payment/refund/stock uniqueness and receipt policy outlive the 24-hour cache; key expiry never authorizes charging the same business intent twice |
+| Stage        | Required behavior                                                                                                                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admission    | Require a bounded opaque key on POST/PUT/PATCH/DELETE, including administrative and auth mutations; reject missing/invalid keys before side effects                                                                             |
+| Scope        | Derive owner, authenticated actor/session, HTTP operation/version, and key; never share results between users                                                                                                                   |
+| Fingerprint  | Canonicalize the validated semantic command and hash/HMAC it; omit ephemeral Turnstile/proof tokens from business fingerprint while verifying proofs before execution                                                           |
+| Claim        | Atomically acquire Redis pending lease, then insert/check owner-local durable receipt using a unique scoped key in the business transaction                                                                                     |
+| Replay       | Same key and same payload returns the original status/body or stable operation reference; different payload returns `409 IDEMPOTENCY_CONFLICT`; pending work returns `202` with operation URL or `409 IN_PROGRESS` consistently |
+| Persistence  | Commit result/reference alongside state and outbox; serialize only allowlisted responses; Redis replay TTL is `86400` seconds                                                                                                   |
+| Failure      | Never save an uncertain provider outcome as a definitive failure; recover via durable attempt/reference and status query                                                                                                        |
+| Cache outage | Check durable receipts and use the DB fallback only when configured abuse controls remain safe; otherwise `503` before mutation, never unrestricted execution                                                                   |
+| Retention    | Durable order/payment/refund/stock uniqueness and receipt policy outlive the 24-hour cache; key expiry never authorizes charging the same business intent twice                                                                 |
 
 Webhooks cannot be forced to send Aaraj's header: derive an internal idempotency key from verified provider event/transaction identity. Jobs and scheduled commands similarly use stable event/job/business IDs. Even a new client key cannot bypass order/capture/refund natural business uniqueness. Endpoints with secure one-time secrets return operation/session references or encrypted scoped replay responses; cache entries must not expose tokens or other customers' PII.
 
@@ -434,15 +434,15 @@ One-click address correction is a **command**, not direct SQL: reauthenticate/au
 
 Every provider adapter has an end-to-end deadline, bounded connections/concurrency, circuit state, retry budget, and half-open probes. Start with measured provider-specific budgets (for example 3–10 seconds per request, not an indefinite fetch); use `AbortSignal` and bounded response bodies. Retry safe queries/transient failures with jitter. Mutating calls require provider idempotency or a query-before-retry protocol; an open circuit or timeout must not be reported as a definitive failed charge.
 
-| Failure | Customer/system behavior |
-| --- | --- |
-| Catalog cache or search unavailable | Serve bounded-age approved catalog cache or basic DB search within capacity |
-| Inventory/primary unavailable | Browsing remains available; pause checkout with a retryable status |
-| MFS unavailable | Keep an existing attempt pending; offer another method only after prior attempt is conclusively closed |
-| Courier unavailable | Accept only orders whose delivery promise remains supportable; queue booking and show delay |
-| SMS unavailable | Stop repeated sends; expose retry/support path; do not bypass identity checks |
-| Analytics/media workers overloaded | Shed/delay these jobs without starving payment/stock workers |
-| Redis auth/idempotency unavailable | Use verified durable fallback only where safe, otherwise block mutations and keep reads available |
+| Failure                             | Customer/system behavior                                                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Catalog cache or search unavailable | Serve bounded-age approved catalog cache or basic DB search within capacity                            |
+| Inventory/primary unavailable       | Browsing remains available; pause checkout with a retryable status                                     |
+| MFS unavailable                     | Keep an existing attempt pending; offer another method only after prior attempt is conclusively closed |
+| Courier unavailable                 | Accept only orders whose delivery promise remains supportable; queue booking and show delay            |
+| SMS unavailable                     | Stop repeated sends; expose retry/support path; do not bypass identity checks                          |
+| Analytics/media workers overloaded  | Shed/delay these jobs without starving payment/stock workers                                           |
+| Redis auth/idempotency unavailable  | Use verified durable fallback only where safe, otherwise block mutations and keep reads available      |
 
 #### 31. Tracing, diagnostics, and redaction
 
@@ -468,15 +468,15 @@ New and previous application versions must both operate on the expanded schema d
 
 #### 34. Automated tests and regression guardrails
 
-| Layer | Required proof |
-| --- | --- |
-| Financial/state unit suites | Vitest; 100% statement/branch/function/line coverage for money allocation, state-transition, and ledger-balancing modules; property/invariant tests, mutation testing for high-risk logic |
-| Contract suites | Public exports, Zod/Standard Schema interoperability, unknown-field handling, OpenAPI/event fixtures, compatibility and safe money bounds |
-| PostgreSQL/Redis integration | Real services: stock locks, quotas, receipts, partitions, constraints, durable outbox/inbox, permission restrictions, rollback and expiration races |
-| Provider contract suites | Native-fetch fixtures plus available official sandboxes; signatures, schema drift, timeout/query recovery, duplicate/out-of-order webhooks, refunds and statement matching |
-| Supertest E2E | Email/password sign-up and sign-in → cart merge → quote → reservation → prepaid/COD advance → confirmation → split delivery → payout → partial return/refund, with authorization and CSRF failures |
-| Storefront/admin journeys | Browser purchase funnel on low-bandwidth mobile, Bangla rendering, accessibility, secure admin actions, status refresh after redirects |
-| Resilience/load | Last-unit contention, flash-sale admission, worker death before/after commit, Redis flush/restart, provider outages, replica lag, DLQ recovery, rolling migration and PITR drill |
+| Layer                        | Required proof                                                                                                                                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Financial/state unit suites  | Vitest; 100% statement/branch/function/line coverage for money allocation, state-transition, and ledger-balancing modules; property/invariant tests, mutation testing for high-risk logic          |
+| Contract suites              | Public exports, Zod/Standard Schema interoperability, unknown-field handling, OpenAPI/event fixtures, compatibility and safe money bounds                                                          |
+| PostgreSQL/Redis integration | Real services: stock locks, quotas, receipts, partitions, constraints, durable outbox/inbox, permission restrictions, rollback and expiration races                                                |
+| Provider contract suites     | Native-fetch fixtures plus available official sandboxes; signatures, schema drift, timeout/query recovery, duplicate/out-of-order webhooks, refunds and statement matching                         |
+| Supertest E2E                | Email/password sign-up and sign-in → cart merge → quote → reservation → prepaid/COD advance → confirmation → split delivery → payout → partial return/refund, with authorization and CSRF failures |
+| Storefront/admin journeys    | Browser purchase funnel on low-bandwidth mobile, Bangla rendering, accessibility, secure admin actions, status refresh after redirects                                                             |
+| Resilience/load              | Last-unit contention, flash-sale admission, worker death before/after commit, Redis flush/restart, provider outages, replica lag, DLQ recovery, rolling migration and PITR drill                   |
 
 Coverage alone does not establish correctness. Add conservation assertions: stock never negative, sum of allocated discounts equals discount, captured/refunded amounts reconcile, every journal balances, and committed state changes have durable events. Freeze clocks and use deterministic fixtures; isolate external dependencies so live SMS/payment providers never make CI flaky. Load-test realistic hot-SKU skew and burst patterns, measure p95/p99 and pool/queue saturation, and set capacity with headroom before promising scale.
 
@@ -536,17 +536,17 @@ The schema's full topology is a target. Implement it incrementally with the phas
 
 The [implementation roadmap](ecommerce-implementation-roadmap.md#section-3-phased-implementation-roadmap-day-1-to-production) specifies the ordered tasks, files, dependencies, owners, test evidence, and phase exit criteria. The delivery sequence is:
 
-| Phase | Deliverable | Release gate |
-| --- | --- | --- |
-| 0 | Local infrastructure, secrets/config, ingress/security scaffolding, IaC design | Reproducible startup; no secret/PII leakage; bounded, validated configuration |
-| 1 | Contracts, owned repositories/migrations, geography, durable receipts/outbox foundations | Boundary checks and real-database invariants pass |
-| 2 | Better Auth email/password authentication, sessions, PBAC | Email, rate-limit, session, recovery, and ownership tests pass; staff step-up is scoped to privileged workflows |
-| 3 | Catalog/search/media and concurrent Inventory | Last-unit contention, projection recovery, safe upload pipeline pass |
-| 4 | Guest/customer carts, pricing/promotions, tax/invoice rules | Allocation/quota tests pass; current tax rules approved |
-| 5 | Persisted checkout, prepaid/COD advances, fraud review | Provider sandbox/live-readiness evidence and ambiguous-payment recovery pass |
-| 6 | Split fulfillment, couriers, COD ledger, RMA/refunds | Booking dedup, remittance matching, partial-return reconciliation pass |
-| 7 | Consented CAPI/GA4, social channels, audit operations, DLQ/support console | Event dedup, privacy, social order confirmation, controlled replay pass |
-| 8 | Load/security hardening, release automation, PITR/DR, launch | Production-sized recovery exercise, SLO/load evidence, reconciled financial canary |
+| Phase | Deliverable                                                                              | Release gate                                                                                                    |
+| ----- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 0     | Local infrastructure, secrets/config, ingress/security scaffolding, IaC design           | Reproducible startup; no secret/PII leakage; bounded, validated configuration                                   |
+| 1     | Contracts, owned repositories/migrations, geography, durable receipts/outbox foundations | Boundary checks and real-database invariants pass                                                               |
+| 2     | Better Auth email/password authentication, sessions, PBAC                                | Email, rate-limit, session, recovery, and ownership tests pass; staff step-up is scoped to privileged workflows |
+| 3     | Catalog/search/media and concurrent Inventory                                            | Last-unit contention, projection recovery, safe upload pipeline pass                                            |
+| 4     | Guest/customer carts, pricing/promotions, tax/invoice rules                              | Allocation/quota tests pass; current tax rules approved                                                         |
+| 5     | Persisted checkout, prepaid/COD advances, fraud review                                   | Provider sandbox/live-readiness evidence and ambiguous-payment recovery pass                                    |
+| 6     | Split fulfillment, couriers, COD ledger, RMA/refunds                                     | Booking dedup, remittance matching, partial-return reconciliation pass                                          |
+| 7     | Consented CAPI/GA4, social channels, audit operations, DLQ/support console               | Event dedup, privacy, social order confirmation, controlled replay pass                                         |
+| 8     | Load/security hardening, release automation, PITR/DR, launch                             | Production-sized recovery exercise, SLO/load evidence, reconciled financial canary                              |
 
 Security, audit facts, outbox, tests, and telemetry begin in Phases 0–1 and grow in every phase. Phase 6 extends event-driven logistics; it is not the first point at which events become durable. Phase 7 adds audit operations/social integrations, not the first audit records. Phase 8 verifies the accumulated test program, not the first tests.
 

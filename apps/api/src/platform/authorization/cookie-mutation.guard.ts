@@ -7,7 +7,7 @@ import {
 import type { Request } from "express";
 
 @Injectable()
-export class AccessMutationGuard implements CanActivate {
+export class CookieMutationGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<
       Request & {
@@ -30,7 +30,7 @@ export class AccessMutationGuard implements CanActivate {
     if (!Number.isFinite(age) || age < 0 || age > 15 * 60 * 1000) {
       throw new ForbiddenException({
         code: "RECENT_SIGN_IN_REQUIRED",
-        message: "Sign in again before changing roles (within 15 minutes).",
+        message: "Sign in again before this action (within 15 minutes).",
       });
     }
     return true;

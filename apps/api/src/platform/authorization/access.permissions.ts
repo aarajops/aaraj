@@ -7,9 +7,15 @@ import {
 
 // Explicit grants, with no role hierarchy or wildcard administrator bypass.
 export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
-  superadmin: ["access.read_self", "access.read", "access.manage"],
-  admin: ["access.read_self", "access.read"],
-  staff: ["access.read_self"],
+  superadmin: [
+    "access.read_self",
+    "access.read",
+    "access.manage",
+    "audit.read",
+    "catalog.manage",
+  ],
+  admin: ["access.read_self", "access.read", "catalog.manage"],
+  staff: ["access.read_self", "catalog.manage"],
   moderator: ["access.read_self"],
   customer: ["access.read_self"],
 };
