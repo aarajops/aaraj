@@ -7,6 +7,11 @@ import {
   type CatalogProductListQuery,
   type CatalogProductPage,
 } from "@aaraj/contracts";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   createCatalogProduct,
   fetchManagedProducts,
@@ -177,9 +182,9 @@ export function CatalogManager({
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] flex-1 bg-zinc-950 px-5 py-12 text-zinc-100 sm:py-16">
+    <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
       <div className="mx-auto max-w-6xl">
-        <p className="text-sm font-semibold tracking-[0.18em] text-emerald-300">
+        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
           AARAJ STAFF
         </p>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
@@ -187,14 +192,11 @@ export function CatalogManager({
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               Catalog management
             </h1>
-            <p className="mt-2 text-zinc-400">
+            <p className="mt-2 text-muted-foreground">
               Create product drafts and choose when they appear publicly.
             </p>
           </div>
-          <Link
-            className="text-sm text-emerald-300 hover:text-emerald-200"
-            href="/"
-          >
+          <Link className="text-sm text-primary hover:text-primary/80" href="/">
             View public catalog
           </Link>
         </div>
@@ -208,48 +210,55 @@ export function CatalogManager({
               >
                 Products
               </h2>
-              <button
-                className="text-sm text-emerald-300 hover:text-emerald-200"
+              <Button
+                className="h-auto px-2 py-1 text-sm text-primary"
+                variant="ghost"
                 disabled={isRefreshing}
                 type="button"
                 onClick={() => void loadProducts()}
               >
                 {isRefreshing ? "Refreshing…" : "Refresh"}
-              </button>
+              </Button>
             </div>
 
             {products.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 text-zinc-400">
+              <p className="mt-4 rounded-xl border border-border bg-card/60 p-5 text-muted-foreground">
                 No products yet. Create the first draft using the form.
               </p>
             ) : (
               <ul className="mt-4 space-y-3">
                 {products.map((product) => (
                   <li
-                    className="flex items-center justify-between gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4"
+                    className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card/60 p-4"
                     key={product.id}
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-white">
+                      <p className="truncate font-medium text-foreground">
                         {product.name}
                       </p>
-                      <p className="mt-1 truncate text-sm text-zinc-400">
+                      <p className="mt-1 truncate text-sm text-muted-foreground">
                         /{product.slug}
                       </p>
-                      <span
-                        className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${product.isPublished ? "bg-emerald-950 text-emerald-200" : "bg-zinc-800 text-zinc-300"}`}
+                      <Badge
+                        className={
+                          product.isPublished
+                            ? "border-success/30 bg-success/10 text-success"
+                            : ""
+                        }
+                        variant={product.isPublished ? "outline" : "secondary"}
                       >
                         {product.isPublished ? "Published" : "Draft"}
-                      </span>
+                      </Badge>
                     </div>
-                    <button
+                    <Button
                       aria-label={`Edit ${product.name}`}
-                      className="shrink-0 rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500 hover:text-white"
+                      className="h-auto shrink-0 px-3 py-2"
+                      variant="outline"
                       type="button"
                       onClick={() => editProduct(product)}
                     >
                       Edit
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -265,24 +274,29 @@ export function CatalogManager({
             />
           </section>
 
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 sm:p-7">
+          <Card
+            aria-labelledby="product-form-heading"
+            className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7"
+            role="region"
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold">
+                <h2 className="text-xl font-semibold" id="product-form-heading">
                   {form.id ? "Edit product" : "Create a product"}
                 </h2>
-                <p className="mt-1 text-sm text-zinc-400">
+                <p className="mt-1 text-sm text-muted-foreground">
                   New products default to draft. You can publish now or later.
                 </p>
               </div>
               {form.id && (
-                <button
-                  className="text-sm text-zinc-400 hover:text-white"
+                <Button
+                  className="h-auto px-2 py-1 text-sm text-muted-foreground"
+                  variant="ghost"
                   type="button"
                   onClick={resetForm}
                 >
                   New product
-                </button>
+                </Button>
               )}
             </div>
 
@@ -292,9 +306,9 @@ export function CatalogManager({
                 htmlFor="product-name"
               >
                 Name
-                <input
+                <Input
                   autoComplete="off"
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-base outline-none focus:border-emerald-400"
+                  className="h-auto bg-background px-3 py-2.5 text-base md:text-base"
                   id="product-name"
                   maxLength={160}
                   name="name"
@@ -309,11 +323,11 @@ export function CatalogManager({
                 htmlFor="product-slug"
               >
                 Slug
-                <input
+                <Input
                   autoComplete="off"
                   aria-describedby={slugError ? "slug-error" : undefined}
                   aria-invalid={Boolean(slugError)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-base outline-none focus:border-emerald-400"
+                  className="h-auto bg-background px-3 py-2.5 text-base md:text-base"
                   id="product-slug"
                   maxLength={120}
                   name="slug"
@@ -324,14 +338,14 @@ export function CatalogManager({
                 />
                 {slugError && (
                   <span
-                    className="block text-sm text-red-300"
+                    className="block text-sm text-destructive"
                     id="slug-error"
                     role="alert"
                   >
                     {slugError}
                   </span>
                 )}
-                <span className="block text-xs font-normal text-zinc-500">
+                <span className="block text-xs font-normal text-muted-foreground">
                   Use lowercase letters, numbers, and single hyphens.
                 </span>
               </label>
@@ -341,8 +355,8 @@ export function CatalogManager({
                 htmlFor="product-description"
               >
                 Description
-                <textarea
-                  className="min-h-28 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-base outline-none focus:border-emerald-400"
+                <Textarea
+                  className="min-h-28 resize-y bg-background px-3 py-2.5 text-base md:text-base"
                   id="product-description"
                   maxLength={5000}
                   name="description"
@@ -353,10 +367,10 @@ export function CatalogManager({
                 />
               </label>
 
-              <label className="flex items-start gap-3 rounded-lg border border-zinc-800 p-3 text-sm text-zinc-200">
+              <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
                 <input
                   aria-label="Published on the storefront"
-                  className="mt-0.5 accent-emerald-300"
+                  className="mt-0.5 accent-primary"
                   checked={form.isPublished}
                   name="isPublished"
                   type="checkbox"
@@ -368,7 +382,7 @@ export function CatalogManager({
                   <span className="block font-medium">
                     Published on the storefront
                   </span>
-                  <span className="mt-1 block text-zinc-400">
+                  <span className="mt-1 block text-muted-foreground">
                     Unchecked products remain visible to authorized staff only.
                   </span>
                 </span>
@@ -379,8 +393,8 @@ export function CatalogManager({
                 htmlFor="audit-reason"
               >
                 Audit reason
-                <input
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-base outline-none focus:border-emerald-400"
+                <Input
+                  className="h-auto bg-background px-3 py-2.5 text-base md:text-base"
                   id="audit-reason"
                   maxLength={500}
                   minLength={3}
@@ -393,7 +407,7 @@ export function CatalogManager({
 
               {errorMessage && (
                 <p
-                  className="rounded-lg border border-red-900 bg-red-950/50 p-3 text-sm text-red-200"
+                  className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
                   role="alert"
                 >
                   {errorMessage}
@@ -406,15 +420,15 @@ export function CatalogManager({
               )}
               {statusMessage && (
                 <p
-                  className="rounded-lg border border-emerald-900 bg-emerald-950/50 p-3 text-sm text-emerald-200"
+                  className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
                   role="status"
                 >
                   {statusMessage}
                 </p>
               )}
 
-              <button
-                className="w-full rounded-lg bg-emerald-300 px-4 py-3 font-semibold text-zinc-950 hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+              <Button
+                className="h-auto w-full px-4 py-3 text-base font-semibold"
                 disabled={isSaving}
                 type="submit"
               >
@@ -425,9 +439,9 @@ export function CatalogManager({
                     : form.isPublished
                       ? "Create and publish"
                       : "Create draft"}
-              </button>
+              </Button>
             </form>
-          </section>
+          </Card>
         </div>
       </div>
     </main>

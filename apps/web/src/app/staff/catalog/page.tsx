@@ -18,16 +18,16 @@ export default async function StaffCatalogPage({
     const isUnauthenticated = result.kind === "unauthenticated";
     const isForbidden = result.kind === "forbidden";
     return (
-      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-zinc-950 px-5 py-12 text-zinc-100 sm:py-16">
+      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
         <div className="mx-auto max-w-3xl">
-          <p className="text-sm font-semibold tracking-[0.18em] text-emerald-300">
+          <p className="text-sm font-semibold tracking-[0.18em] text-primary">
             AARAJ STAFF
           </p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight">
             Catalog management
           </h1>
           <section
-            className={`mt-8 rounded-2xl border p-7 ${isForbidden ? "border-red-900 bg-red-950/40" : isUnauthenticated ? "border-zinc-800 bg-zinc-900/70" : "border-amber-900/70 bg-amber-950/30"}`}
+            className={`mt-8 rounded-2xl border p-7 ${isForbidden ? "border-destructive/30 bg-destructive/10" : isUnauthenticated ? "border-border bg-card/70" : "border-warning/30 bg-warning/10"}`}
           >
             <h2 className="text-xl font-semibold">
               {isUnauthenticated
@@ -36,7 +36,7 @@ export default async function StaffCatalogPage({
                   ? "Staff access required"
                   : "Catalog unavailable"}
             </h2>
-            <p className="mt-2 text-zinc-300">
+            <p className="mt-2 text-secondary-foreground">
               {isUnauthenticated
                 ? "Sign in with an Aaraj staff account to manage products."
                 : isForbidden
@@ -45,14 +45,14 @@ export default async function StaffCatalogPage({
             </p>
             {isUnauthenticated ? (
               <Link
-                className="mt-5 inline-flex rounded-lg bg-emerald-300 px-4 py-2.5 font-semibold text-zinc-950 hover:bg-emerald-200"
+                className="mt-5 inline-flex rounded-lg bg-primary px-4 py-2.5 font-semibold text-primary-foreground hover:bg-primary/80"
                 href="/account"
               >
                 Go to your account
               </Link>
             ) : (
               <Link
-                className="mt-5 inline-flex rounded-lg border border-zinc-600 px-4 py-2.5 font-medium text-zinc-100 hover:border-zinc-400"
+                className="mt-5 inline-flex rounded-lg border border-input px-4 py-2.5 font-medium text-foreground hover:border-ring"
                 href="/staff/catalog"
               >
                 Try again

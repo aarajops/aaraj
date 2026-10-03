@@ -6,7 +6,6 @@ dist/
 build/
 .next/
 apps/web/.next-e2e/
-apps/web/.next-e2e-build/
 apps/web/test-results/
 apps/web/playwright-report/
 out/

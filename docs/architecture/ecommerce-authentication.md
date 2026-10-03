@@ -19,7 +19,7 @@ Configure `BETTER_AUTH_SECRET` from a high-entropy environment secret, `BETTER_A
 
 ## Web client
 
-Use Better Auth's React client in `apps/web/lib/auth-client.ts`. The Next.js rewrite in `apps/web/next.config.ts` forwards browser requests from `/api/*` to NestJS, keeping auth requests and session cookies same-origin. The server page forwards the incoming cookie to Better Auth's `get-session` endpoint, then the client calls `hydrateSession` as recommended for SSR. Because NestJS owns the Better Auth instance, Next.js calls its HTTP endpoint instead of importing the server instance or opening another database connection. The account screen in `apps/web/app/auth-panel.tsx` provides email/password sign-up, sign-in, session display, and sign-out; it does not add phone, OTP, or email-verification steps.
+Use Better Auth's React client in `apps/web/src/features/auth/auth-client.ts`. The Next.js rewrite in `apps/web/next.config.ts` forwards browser requests from `/api/*` to NestJS, keeping auth requests and session cookies same-origin. The account route in `apps/web/src/app/account/page.tsx` forwards the incoming cookie to Better Auth's `get-session` endpoint through the session helper in `apps/web/src/features/auth/auth-session.ts`; the client calls `hydrateSession` as recommended for SSR. Because NestJS owns the Better Auth instance, Next.js calls its HTTP endpoint instead of importing the server instance or opening another database connection. The account UI in `apps/web/src/features/auth/auth-panel.tsx` provides email/password sign-up, sign-in, session display, and sign-out; it does not add phone, OTP, or email-verification steps.
 
 ## Rate limiting
 

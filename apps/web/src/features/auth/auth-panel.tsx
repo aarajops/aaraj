@@ -3,6 +3,9 @@
 import { useState, type SubmitEvent } from "react";
 import { authClient } from "@/features/auth/auth-client";
 import type { InitialSession } from "@/features/auth/auth-session";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 type FormMode = "sign-in" | "sign-up";
 
@@ -96,48 +99,59 @@ export function AuthPanel({
   }
 
   return (
-    <main className="flex min-h-[calc(100vh-4rem)] flex-1 items-center justify-center bg-zinc-950 px-5 py-12 text-zinc-100">
-      <section className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-7 shadow-2xl sm:p-9">
+    <main className="flex min-h-[calc(100vh-4rem)] flex-1 items-center justify-center bg-background px-5 py-12 text-foreground">
+      <Card
+        aria-labelledby="account-heading"
+        className="w-full max-w-md gap-0 rounded-2xl p-7 shadow-2xl sm:p-9"
+        role="region"
+      >
         <header className="mb-8">
-          <p className="text-sm font-semibold tracking-[0.2em] text-emerald-400">
+          <p className="text-sm font-semibold tracking-[0.2em] text-primary">
             AARAJ
           </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+          <h1
+            className="mt-3 text-3xl font-semibold tracking-tight"
+            id="account-heading"
+          >
             Your account
           </h1>
-          <p className="mt-2 text-sm text-zinc-400">
+          <p className="mt-2 text-sm text-muted-foreground">
             Sign in or create an account with your email.
           </p>
         </header>
 
         {isSessionPending ? (
-          <p className="text-sm text-zinc-400" role="status">
+          <p className="text-sm text-muted-foreground" role="status">
             Checking your session…
           </p>
         ) : session?.user ? (
           <div className="space-y-5">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+            <div className="rounded-xl border border-border bg-background p-4">
               <p className="font-medium">Signed in as {session.user.name}</p>
-              <p className="mt-1 text-sm text-zinc-400">{session.user.email}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {session.user.email}
+              </p>
             </div>
-            <button
-              className="w-full rounded-lg bg-white px-4 py-3 font-medium text-zinc-900 transition hover:bg-zinc-200 disabled:opacity-60"
+            <Button
+              className="h-auto w-full px-4 py-3 text-base"
+              variant="outline"
               type="button"
               onClick={handleSignOut}
             >
               Sign out
-            </button>
+            </Button>
           </div>
         ) : (
           <>
             <div
-              className="mb-6 grid grid-cols-2 rounded-lg bg-zinc-950 p-1"
+              className="mb-6 grid grid-cols-2 rounded-lg bg-background p-1"
               aria-label="Account action"
             >
               {(["sign-in", "sign-up"] as const).map((option) => (
-                <button
+                <Button
                   key={option}
-                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${mode === option ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-white"}`}
+                  className="h-auto w-full px-3 py-2"
+                  variant={mode === option ? "secondary" : "ghost"}
                   type="button"
                   aria-pressed={mode === option}
                   onClick={() => {
@@ -147,7 +161,7 @@ export function AuthPanel({
                   }}
                 >
                   {option === "sign-in" ? "Sign in" : "Create account"}
-                </button>
+                </Button>
               ))}
             </div>
 
@@ -158,8 +172,8 @@ export function AuthPanel({
                   htmlFor="name"
                 >
                   Name
-                  <input
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-3 text-base outline-none transition placeholder:text-zinc-600 focus:border-emerald-400"
+                  <Input
+                    className="h-auto bg-background px-3 py-3 text-base md:text-base"
                     id="name"
                     name="name"
                     autoComplete="name"
@@ -175,8 +189,8 @@ export function AuthPanel({
                 htmlFor="email"
               >
                 Email
-                <input
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-3 text-base outline-none transition placeholder:text-zinc-600 focus:border-emerald-400"
+                <Input
+                  className="h-auto bg-background px-3 py-3 text-base md:text-base"
                   id="email"
                   name="email"
                   type="email"
@@ -192,8 +206,8 @@ export function AuthPanel({
                 htmlFor="password"
               >
                 Password
-                <input
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-3 text-base outline-none transition placeholder:text-zinc-600 focus:border-emerald-400"
+                <Input
+                  className="h-auto bg-background px-3 py-3 text-base md:text-base"
                   id="password"
                   name="password"
                   type="password"
@@ -208,8 +222,8 @@ export function AuthPanel({
                 />
               </label>
 
-              <button
-                className="w-full rounded-lg bg-emerald-400 px-4 py-3 font-semibold text-zinc-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+              <Button
+                className="h-auto w-full px-4 py-3 text-base font-semibold"
                 type="submit"
                 disabled={isSubmitting}
               >
@@ -218,14 +232,14 @@ export function AuthPanel({
                   : mode === "sign-up"
                     ? "Create account"
                     : "Sign in"}
-              </button>
+              </Button>
             </form>
           </>
         )}
 
         {(errorMessage || sessionError) && (
           <p
-            className="mt-5 rounded-lg border border-red-900 bg-red-950/60 p-3 text-sm text-red-200"
+            className="mt-5 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
             role="alert"
           >
             {errorMessage ?? sessionError?.message}
@@ -233,13 +247,13 @@ export function AuthPanel({
         )}
         {statusMessage && (
           <p
-            className="mt-5 rounded-lg border border-emerald-900 bg-emerald-950/60 p-3 text-sm text-emerald-200"
+            className="mt-5 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
             role="status"
           >
             {statusMessage}
           </p>
         )}
-      </section>
+      </Card>
     </main>
   );
 }

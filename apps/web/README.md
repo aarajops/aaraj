@@ -5,14 +5,17 @@ The Aaraj storefront and staff catalog UI use the Next.js App Router. The NestJS
 ## Organization
 
 ```text
-app/                         Routes, layouts, and route-specific loading UI
-  _components/               App-wide route-independent components
-features/auth/               Sign-in UI, Better Auth client, server session read
-features/catalog/            Catalog UI, server queries, browser API client
+src/                         Application source code
+  app/                       Routes, layouts, and route-specific loading UI
+    _components/             App-wide route-independent components
+  components/ui/             shadcn/ui components used by the app
+  features/auth/             Sign-in UI, Better Auth client, server session read
+  features/catalog/          Catalog UI, server queries, browser API client
+  lib/                       Shared application utilities
 e2e/                         Playwright storefront workflow and test API
 ```
 
-- Keep `app/**/page.tsx` focused on route behavior and composing feature code.
+- Keep `src/app/**/page.tsx` focused on route behavior and composing feature code.
 - Keep auth and catalog implementation in their feature folders; only create shared code when more than one feature needs it.
 - Keep API contracts in `@aaraj/contracts`. Server reads use `server-only`; browser auth and catalog API modules use `client-only`.
 - Send catalog mutations through the same-origin `/api` route. The Nest API enforces permissions and writes audit events; UI visibility is not an access-control check.
