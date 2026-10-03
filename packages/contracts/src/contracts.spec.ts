@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  AccessUserIdSchema,
   AuditEventQuerySchema,
+  CatalogProductSchema,
   CatalogProductListQuerySchema,
   DEFAULT_LIST_PAGE_SIZE,
   HealthCheckResponseSchema,
   MAX_LIST_PAGE_SIZE,
-  OrderStatusSchema,
-  ProductSchema,
+  RoleSchema,
 } from "./index.js";
 
 describe("Contracts Schema Validation", () => {
@@ -27,27 +28,24 @@ describe("Contracts Schema Validation", () => {
     );
   });
 
-  it("validates order status enums correctly", () => {
-    expect(OrderStatusSchema.safeParse("PENDING").success).toBe(true);
-    expect(OrderStatusSchema.safeParse("CONFIRMED").success).toBe(true);
-    expect(OrderStatusSchema.safeParse("INVALID_STATUS").success).toBe(false);
+  it("validates public access contracts correctly", () => {
+    expect(RoleSchema.safeParse("customer").success).toBe(true);
+    expect(RoleSchema.safeParse("unknown").success).toBe(false);
+    expect(AccessUserIdSchema.safeParse("user_123").success).toBe(true);
+    expect(AccessUserIdSchema.safeParse("user/123").success).toBe(false);
   });
 
-  it("validates product schema correctly", () => {
+  it("validates the implemented catalog product contract", () => {
     const validProduct = {
       id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       slug: "premium-leather-wallet",
       name: "Premium Leather Wallet",
-      price: {
-        amount: 2500,
-        currency: "BDT",
-      },
-      stockQuantity: 50,
-      isActive: true,
+      description: null,
+      isPublished: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    expect(ProductSchema.safeParse(validProduct).success).toBe(true);
+    expect(CatalogProductSchema.safeParse(validProduct).success).toBe(true);
   });
 
   it("uses one bounded page-size policy across list contracts", () => {

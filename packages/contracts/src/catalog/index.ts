@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
-} from "./pagination.js";
+} from "../common/pagination.js";
 
 export const CatalogProductSlugSchema = z
   .string()

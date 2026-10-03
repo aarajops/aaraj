@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   CursorPaginationMetadataSchema,
   ListPageSizeSchema,
-} from "./pagination.js";
+} from "../common/pagination.js";
 
 export const AuditEventQuerySchema = z.strictObject({
   limit: ListPageSizeSchema,
