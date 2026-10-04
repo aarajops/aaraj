@@ -69,6 +69,12 @@ jobs:
 
       - name: E2E Test (API)
         run: pnpm --filter @aaraj/api run test:e2e
+        env:
+          E2E_POSTGRES_HOST: 127.0.0.1
+          E2E_POSTGRES_PORT: 5432
+          E2E_POSTGRES_ADMIN_DATABASE: postgres
+          E2E_POSTGRES_ADMIN_USER: aaraj_test
+          E2E_POSTGRES_ADMIN_PASSWORD: aaraj_test
 
       - name: Install Playwright Chromium
         run: pnpm --filter @aaraj/web exec playwright install --with-deps chromium
@@ -76,5 +82,17 @@ jobs:
       - name: E2E Test (Storefront)
         run: pnpm --filter @aaraj/web test:e2e
 
+      - name: E2E Test (Browser to API)
+        run: pnpm --filter @aaraj/web test:e2e:integration
+        env:
+          API_INTERNAL_URL: http://api:3001
+          E2E_POSTGRES_HOST: 127.0.0.1
+          E2E_POSTGRES_PORT: 5432
+          E2E_POSTGRES_ADMIN_DATABASE: postgres
+          E2E_POSTGRES_ADMIN_USER: aaraj_test
+          E2E_POSTGRES_ADMIN_PASSWORD: aaraj_test
+
       - name: Production Build
         run: pnpm run build
+        env:
+          API_INTERNAL_URL: http://api:3001

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { headers } from "next/headers";
+import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
 import {
   CatalogProductListQuerySchema,
   CatalogProductDetailSchema,
@@ -48,10 +49,7 @@ export function parseCatalogSizeGuidePageQuery(
 }
 
 function apiBaseUrl(): string {
-  return (process.env.API_INTERNAL_URL ?? "http://localhost:3001").replace(
-    /\/$/,
-    "",
-  );
+  return getApiInternalUrl();
 }
 
 export async function getPublishedProducts(

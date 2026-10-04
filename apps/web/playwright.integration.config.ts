@@ -6,7 +6,7 @@ const apiPort = 3181;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "catalog.spec.ts",
+  testMatch: "integration/**/*.spec.ts",
   fullyParallel: false,
   workers: 1,
   reporter: "list",
@@ -22,10 +22,10 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "node e2e/mock-api.mjs",
+      command: "pnpm --filter @aaraj/api run e2e:server",
       url: `http://${host}:${apiPort}/api/health/ready`,
       reuseExistingServer: false,
-      timeout: 30_000,
+      timeout: 120_000,
       env: { PORT: String(apiPort), HOST: host },
     },
     {
@@ -35,7 +35,7 @@ export default defineConfig({
       timeout: 120_000,
       env: {
         API_INTERNAL_URL: `http://${host}:${apiPort}`,
-        NEXT_DIST_DIR: ".next-e2e",
+        NEXT_DIST_DIR: ".next-e2e-integration",
       },
     },
   ],

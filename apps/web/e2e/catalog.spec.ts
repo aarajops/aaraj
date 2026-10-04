@@ -49,14 +49,20 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("heading", { name: "Catalog management" }),
   ).toBeVisible();
+  await page.getByLabel("Category").fill("T-shirts");
+  await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
+  await page.getByRole("button", { name: "Load 100 more size guides" }).click();
+  await expect(
+    page.locator("#product-size-guide option").filter({
+      hasText: "Legacy guide beyond the first page",
+    }),
+  ).toHaveCount(1);
   await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E Tee");
   await page.locator("#product-slug").fill("aaraj-e2e-tee");
   await page
     .getByLabel("Description", { exact: true })
     .fill("A test product used to verify the clothing catalog workflow.");
   await page.getByLabel("Audience").selectOption("unisex");
-  await page.getByLabel("Category").fill("T-shirts");
-  await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Add variant" }).click();
   await page.getByLabel("Variant 1 SKU").fill("AA-TEE-BLK-S");
   await page.getByLabel("Variant 1 color").fill("Black");

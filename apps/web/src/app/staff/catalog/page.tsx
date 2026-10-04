@@ -90,6 +90,8 @@ export default async function StaffCatalogPage({
       key={`${query.limit}:${query.offset}`}
       initialPage={result.page}
       initialSizeGuides={guides.page.guides}
+      initialSizeGuidesHasMore={guides.page.hasMore}
+      initialSizeGuidesNextOffset={guides.page.nextOffset}
       query={query}
     />
   );
