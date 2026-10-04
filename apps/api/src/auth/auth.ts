@@ -14,9 +14,7 @@ loadLocalEnvironment();
 
 const secret = process.env.BETTER_AUTH_SECRET;
 if (!secret || Buffer.byteLength(secret, "utf8") < 32) {
-  throw new Error(
-    "BETTER_AUTH_SECRET must contain at least 32 bytes of high-entropy secret data.",
-  );
+  throw new Error("BETTER_AUTH_SECRET must contain at least 32 bytes.");
 }
 
 const baseURL =

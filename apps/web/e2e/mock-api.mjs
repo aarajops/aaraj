@@ -12,7 +12,27 @@ import {
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3181);
 const products = [];
-const sizeGuides = [];
+const sizeGuides = Array.from({ length: 100 }, (_, index) =>
+  makeGuide(
+    {
+      name:
+        index === 0
+          ? "Legacy guide beyond the first page"
+          : `Historical guide ${index + 1}`,
+      category: index === 0 ? "T-shirts" : `Category ${index + 1}`,
+      fit: index === 0 ? "Regular" : null,
+      measurementBasis: "garment",
+      inputUnit: "cm",
+      rows: [
+        {
+          sizeLabel: index === 0 ? "S" : "M",
+          measurements: [{ key: "chest_width", value: "50" }],
+        },
+      ],
+    },
+    new Date(Date.UTC(2020, 0, index + 1)).toISOString(),
+  ),
+);
 
 function send(response, status, body) {
   response.writeHead(status, { "Content-Type": "application/json" });
@@ -364,7 +384,7 @@ const server = createServer(async (request, response) => {
 });
 
 function makeGuide(input, createdAt) {
-  const now = new Date().toISOString();
+  const now = createdAt ?? new Date().toISOString();
   return {
     id: randomUUID(),
     name: input.name,

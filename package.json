@@ -6,11 +6,11 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
-    "dev": "pnpm run dev:prepare && pnpm --parallel --filter './apps/*' --filter './packages/*' --if-present run dev",
-    "dev:prepare": "pnpm run dev:infra && pnpm run build:packages",
+    "dev": "pnpm run dev:prepare && pnpm --parallel --filter @aaraj/api --filter @aaraj/web --filter @aaraj/contracts --if-present run dev",
+    "dev:prepare": "pnpm run dev:infra && pnpm run build:packages && pnpm --filter @aaraj/api run db:migrate",
     "dev:infra": "docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local up --detach --wait postgres redis-state",
     "dev:infra:stop": "docker compose --file infrastructure/local/compose.yaml --env-file infrastructure/local/.env.local stop postgres redis-state",
-    "build:packages": "pnpm --filter './packages/*' --if-present run build",
+    "build:packages": "pnpm --filter @aaraj/contracts run build",
     "dev:web": "pnpm --filter @aaraj/web dev",
     "dev:api": "pnpm --filter @aaraj/api dev",
     "dev:contracts": "pnpm --filter @aaraj/contracts dev",

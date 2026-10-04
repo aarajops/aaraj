@@ -4,6 +4,7 @@ import {
   CatalogManagedProductDetailSchema,
   CatalogProductPageSchema,
   CatalogProductSchema,
+  CatalogSizeGuidePageSchema,
   type CatalogProduct,
   type CatalogManagedProductDetail,
   type CatalogProductListQuery,
@@ -17,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createCatalogProduct,
+  fetchManagedSizeGuides,
   fetchManagedProduct,
   fetchManagedProducts,
   updateCatalogProduct,
@@ -76,14 +78,24 @@ const fieldClassName =
 export function CatalogManager({
   initialPage,
   initialSizeGuides,
+  initialSizeGuidesHasMore,
+  initialSizeGuidesNextOffset,
   query,
 }: {
   initialPage: CatalogProductPage;
   initialSizeGuides: SizeGuideOption[];
+  initialSizeGuidesHasMore: boolean;
+  initialSizeGuidesNextOffset: number | null;
   query: CatalogProductListQuery;
 }) {
   const [products, setProducts] = useState(initialPage.products);
-  const [sizeGuides] = useState(initialSizeGuides);
+  const [sizeGuides, setSizeGuides] = useState(initialSizeGuides);
+  const [hasMoreSizeGuides, setHasMoreSizeGuides] = useState(
+    initialSizeGuidesHasMore,
+  );
+  const [nextSizeGuideOffset, setNextSizeGuideOffset] = useState(
+    initialSizeGuidesNextOffset,
+  );
   const [hasMore, setHasMore] = useState(initialPage.hasMore);
   const [nextOffset, setNextOffset] = useState(initialPage.nextOffset);
   const [form, setForm] = useState<ProductForm>(blankForm);
@@ -93,6 +105,10 @@ export function CatalogManager({
   const [slugError, setSlugError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
+  const [sizeGuideLoadError, setSizeGuideLoadError] = useState<string | null>(
+    null,
+  );
 
   const loadProducts = useCallback(async () => {
     setIsRefreshing(true);
@@ -121,6 +137,45 @@ export function CatalogManager({
       setIsRefreshing(false);
     }
   }, [query]);
+
+  async function loadMoreSizeGuides() {
+    if (isLoadingSizeGuides || nextSizeGuideOffset === null) return;
+
+    setIsLoadingSizeGuides(true);
+    setSizeGuideLoadError(null);
+    try {
+      const response = await fetchManagedSizeGuides({
+        limit: 100,
+        offset: nextSizeGuideOffset,
+      });
+      if (response.status === 401 || response.status === 403) {
+        setSizeGuideLoadError(
+          "Your session no longer has permission to load size guides.",
+        );
+        return;
+      }
+      if (!response.ok) throw new Error("Size guide request failed.");
+
+      const result = CatalogSizeGuidePageSchema.safeParse(
+        await response.json(),
+      );
+      if (!result.success) throw new Error("Size guide response was invalid.");
+
+      setSizeGuides((current) => {
+        const knownIds = new Set(current.map((guide) => guide.id));
+        return [
+          ...current,
+          ...result.data.guides.filter((guide) => !knownIds.has(guide.id)),
+        ];
+      });
+      setHasMoreSizeGuides(result.data.hasMore);
+      setNextSizeGuideOffset(result.data.nextOffset);
+    } catch {
+      setSizeGuideLoadError("More size guides could not be loaded. Try again.");
+    } finally {
+      setIsLoadingSizeGuides(false);
+    }
+  }
 
   function updateForm<K extends keyof ProductForm>(
     key: K,
@@ -162,6 +217,14 @@ export function CatalogManager({
         await response.json(),
       );
       if (!result.success) throw new Error("The product response was invalid.");
+      if (result.data.sizeGuide) {
+        const existingGuide = toSizeGuideOption(result.data.sizeGuide);
+        setSizeGuides((current) =>
+          current.some(({ id }) => id === existingGuide.id)
+            ? current
+            : [existingGuide, ...current],
+        );
+      }
       setForm(toProductFormState(result.data));
       setSlugError(null);
     } catch {
@@ -748,6 +811,24 @@ export function CatalogManager({
                       selector on product details.
                     </span>
                   )}
+                {hasMoreSizeGuides && nextSizeGuideOffset !== null && (
+                  <Button
+                    className="h-auto px-2 py-1 text-sm text-primary"
+                    disabled={isLoadingSizeGuides}
+                    type="button"
+                    variant="ghost"
+                    onClick={() => void loadMoreSizeGuides()}
+                  >
+                    {isLoadingSizeGuides
+                      ? "Loading size guides…"
+                      : "Load 100 more size guides"}
+                  </Button>
+                )}
+                {sizeGuideLoadError && (
+                  <span className="block text-sm text-destructive" role="alert">
+                    {sizeGuideLoadError}
+                  </span>
+                )}
               </label>
 
               <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
@@ -852,6 +933,20 @@ function toProductFormState(product: CatalogManagedProductDetail): ProductForm {
     })),
     isPublished: product.isPublished,
     reason: "",
+  };
+}
+
+function toSizeGuideOption(
+  guide: NonNullable<CatalogManagedProductDetail["sizeGuide"]>,
+): SizeGuideOption {
+  return {
+    id: guide.id,
+    name: guide.name,
+    category: guide.category,
+    fit: guide.fit,
+    measurementBasis: guide.measurementBasis,
+    sizeLabels: guide.rows.map(({ sizeLabel }) => sizeLabel),
+    updatedAt: guide.updatedAt,
   };
 }
 

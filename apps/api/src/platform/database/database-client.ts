@@ -28,6 +28,7 @@ export function getPostgresPool(): Pool {
     user,
     password,
     ssl: getPostgresSslOptions(),
+    options: "-c search_path=pg_catalog",
     max: 5,
     connectionTimeoutMillis: 5_000,
   });

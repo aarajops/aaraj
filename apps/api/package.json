@@ -13,6 +13,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:grant-runtime": "node dist/platform/database/grant-runtime-privileges.js",
     "access:bootstrap": "node dist/platform/authorization/bootstrap-superadmin.js",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
@@ -24,16 +25,17 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "e2e:server": "node test/e2e-server.mjs"
   },
   "dependencies": {
     "@aaraj/contracts": "workspace:*",
     "@better-auth/drizzle-adapter": "^1.7.6",
     "@better-auth/redis-storage": "1.7.6",
     "@nestjs/authorization": "0.0.1",
-    "@nestjs/common": "^12.0.1",
-    "@nestjs/core": "^12.0.1",
-    "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/common": "^12.1.0",
+    "@nestjs/core": "^12.1.0",
+    "@nestjs/platform-express": "^12.1.0",
     "@thallesp/nestjs-better-auth": "^2.8.0",
     "better-auth": "^1.7.6",
     "drizzle-orm": "^0.45.3",
@@ -46,7 +48,7 @@
     "@nestjs/cli": "^12.0.0",
     "@nestjs/mau": "^0.2.6",
     "@nestjs/schematics": "^12.0.0",
-    "@nestjs/testing": "^12.0.1",
+    "@nestjs/testing": "^12.1.0",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.23.1",
@@ -58,7 +60,6 @@
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "typescript": "^6.0.2",
-    "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"
   }
 }
