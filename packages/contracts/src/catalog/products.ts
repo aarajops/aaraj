@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  MAX_LIST_OFFSET,
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
 } from "../common/pagination.js";
@@ -115,11 +116,66 @@ export type CatalogProductListQuery = z.infer<
   typeof CatalogProductListQuerySchema
 >;
 
+export const DEFAULT_PUBLIC_CATALOG_PAGE_SIZE = 24;
+export const MAX_PUBLIC_CATALOG_PAGE_SIZE = 48;
+
+const OptionalCatalogAudienceQuerySchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  CatalogAudienceSchema.optional(),
+);
+const OptionalCatalogCategoryQuerySchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().trim().min(1).max(80).optional(),
+);
+const OptionalCatalogColorQuerySchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().trim().min(1).max(80).optional(),
+);
+const OptionalCatalogSizeQuerySchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().trim().min(1).max(40).optional(),
+);
+
+/** Public storefront pagination is deliberately smaller than staff list pages. */
+export const CatalogPublishedProductListQuerySchema = z.strictObject({
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_PUBLIC_CATALOG_PAGE_SIZE)
+    .default(DEFAULT_PUBLIC_CATALOG_PAGE_SIZE),
+  offset: z.coerce.number().int().min(0).max(MAX_LIST_OFFSET).default(0),
+  audience: OptionalCatalogAudienceQuerySchema,
+  category: OptionalCatalogCategoryQuerySchema,
+  color: OptionalCatalogColorQuerySchema,
+  size: OptionalCatalogSizeQuerySchema,
+});
+export type CatalogPublishedProductListQuery = z.infer<
+  typeof CatalogPublishedProductListQuerySchema
+>;
+
 export const CatalogProductPageSchema = z.strictObject({
   products: CatalogProductSchema.array(),
   ...OffsetPaginationMetadataSchema.shape,
 });
 export type CatalogProductPage = z.infer<typeof CatalogProductPageSchema>;
+
+export const CatalogProductFilterOptionsSchema = z.strictObject({
+  categories: z.string().min(1).max(80).array(),
+  colors: z.string().min(1).max(80).array(),
+  sizes: z.string().min(1).max(40).array(),
+});
+export type CatalogProductFilterOptions = z.infer<
+  typeof CatalogProductFilterOptionsSchema
+>;
+
+export const CatalogPublishedProductPageSchema =
+  CatalogProductPageSchema.extend({
+    filters: CatalogProductFilterOptionsSchema,
+  });
+export type CatalogPublishedProductPage = z.infer<
+  typeof CatalogPublishedProductPageSchema
+>;
 
 export const CatalogProductIdSchema = z.uuid();
 

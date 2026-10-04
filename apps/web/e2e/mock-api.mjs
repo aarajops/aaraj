@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import {
   CatalogProductCreateSchema,
+  CatalogPublishedProductListQuerySchema,
   CatalogProductUpdateSchema,
   CatalogSizeGuideCreateSchema,
   DEFAULT_LIST_PAGE_SIZE,
@@ -197,7 +198,7 @@ const server = createServer(async (request, response) => {
   }
 
   if (url.pathname === "/api/catalog/products" && method === "GET") {
-    sendProductPage(
+    sendPublishedProductPage(
       response,
       products.filter((product) => product.isPublished),
       url,
@@ -486,6 +487,83 @@ function sendProductPage(response, source, url) {
   sendPage(response, source.map(summary), url, "products");
 }
 
+function sendPublishedProductPage(response, source, url) {
+  const input = Object.create(null);
+  for (const [key, value] of url.searchParams) {
+    if (Object.hasOwn(input, key)) {
+      const previous = input[key];
+      input[key] = Array.isArray(previous)
+        ? [...previous, value]
+        : [previous, value];
+    } else {
+      input[key] = value;
+    }
+  }
+  const parsed = CatalogPublishedProductListQuerySchema.safeParse(input);
+  if (!parsed.success) {
+    send(response, 400, {
+      statusCode: 400,
+      message: "Invalid public catalog query",
+    });
+    return;
+  }
+
+  const query = parsed.data;
+  const matching = source.filter((product) => {
+    if (query.audience && product.audience !== query.audience) return false;
+    if (
+      query.category &&
+      normalize(product.category ?? "") !== normalize(query.category)
+    ) {
+      return false;
+    }
+    if (query.color || query.size) {
+      return product.variants.some(
+        (variant) =>
+          variant.isActive &&
+          (!query.color ||
+            normalize(variant.color) === normalize(query.color)) &&
+          (!query.size ||
+            normalize(variant.sizeLabel) === normalize(query.size)),
+      );
+    }
+    return true;
+  });
+  const ordered = [...matching].sort((left, right) => {
+    const byUpdatedAt = right.updatedAt.localeCompare(left.updatedAt);
+    return byUpdatedAt || right.id.localeCompare(left.id);
+  });
+  const rows = ordered.slice(query.offset, query.offset + query.limit + 1);
+  const hasMore = rows.length > query.limit;
+  const pageRows = rows.slice(0, query.limit);
+  const candidateNextOffset = query.offset + pageRows.length;
+  send(response, 200, {
+    products: pageRows.map(summary),
+    hasMore,
+    nextOffset:
+      hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+        ? candidateNextOffset
+        : null,
+    filters: {
+      categories: uniqueFilterValues(source.map(({ category }) => category)),
+      colors: uniqueFilterValues(
+        source.flatMap((product) =>
+          product.variants
+            .filter(({ isActive }) => isActive)
+            .map(({ color }) => color),
+        ),
+      ),
+      sizes: uniqueFilterValues(
+        source.flatMap((product) =>
+          product.variants
+            .filter(({ isActive }) => isActive)
+            .map(({ sizeLabel }) => sizeLabel),
+        ),
+      ),
+    },
+  });
+}
+
 function sendPage(response, source, url, key) {
   const rawLimit = url.searchParams.get("limit");
   const rawOffset = url.searchParams.get("offset");
@@ -525,6 +603,23 @@ function sendPage(response, source, url, key) {
 
 function normalize(value) {
   return value.trim().toLowerCase();
+}
+
+function uniqueFilterValues(values) {
+  const unique = new Map();
+  const candidates = values
+    .filter((value) => Boolean(value?.trim()))
+    .map((value) => value.trim())
+    .sort((left, right) =>
+      left.localeCompare(right, "en", { sensitivity: "variant" }),
+    );
+  for (const displayValue of candidates) {
+    const normalizedValue = normalize(displayValue);
+    if (!unique.has(normalizedValue)) unique.set(normalizedValue, displayValue);
+  }
+  return [...unique.values()].sort((left, right) =>
+    left.localeCompare(right, "en", { sensitivity: "base" }),
+  );
 }
 
 server.listen(port, host);

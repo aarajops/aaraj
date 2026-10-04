@@ -11,6 +11,7 @@ interface CatalogPaginationProps {
   itemName?: string;
   hasMore: boolean;
   nextOffset: number | null;
+  preservedParams?: Readonly<Record<string, string | undefined>>;
 }
 
 export function CatalogPagination({
@@ -22,6 +23,7 @@ export function CatalogPagination({
   itemName = "products",
   hasMore,
   nextOffset,
+  preservedParams,
 }: CatalogPaginationProps) {
   const hasPrevious = offset > 0;
   const hasNext = nextOffset !== null;
@@ -46,7 +48,7 @@ export function CatalogPagination({
         {hasPrevious ? (
           <Link
             className="rounded-lg border border-input px-4 py-2 text-sm font-medium text-foreground hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            href={pageHref(pathname, limit, previousOffset)}
+            href={pageHref(pathname, limit, previousOffset, preservedParams)}
             rel="prev"
           >
             Previous
@@ -62,7 +64,7 @@ export function CatalogPagination({
         {hasNext ? (
           <Link
             className="rounded-lg border border-input px-4 py-2 text-sm font-medium text-foreground hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            href={pageHref(pathname, limit, nextOffset)}
+            href={pageHref(pathname, limit, nextOffset, preservedParams)}
             rel="next"
           >
             Next
@@ -86,10 +88,18 @@ export function CatalogPagination({
   );
 }
 
-function pageHref(pathname: string, limit: number, offset: number): string {
+function pageHref(
+  pathname: string,
+  limit: number,
+  offset: number,
+  preservedParams?: Readonly<Record<string, string | undefined>>,
+): string {
   const search = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
   });
+  for (const [key, value] of Object.entries(preservedParams ?? {})) {
+    if (value !== undefined && value !== "") search.set(key, value);
+  }
   return `${pathname}?${search}`;
 }

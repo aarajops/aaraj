@@ -21,10 +21,12 @@ import {
   CatalogProductCreateSchema,
   CatalogProductIdSchema,
   CatalogProductListQuerySchema,
+  CatalogPublishedProductListQuerySchema,
   CatalogProductSlugSchema,
   CatalogProductUpdateSchema,
   type CatalogProductCreateInput,
   type CatalogProductListQuery,
+  type CatalogPublishedProductListQuery,
   type CatalogProductUpdateInput,
 } from "@aaraj/contracts";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
@@ -61,8 +63,8 @@ export class CatalogController {
   @Get()
   @AllowAnonymous()
   listPublished(
-    @Query({ schema: CatalogProductListQuerySchema })
-    query: CatalogProductListQuery,
+    @Query({ schema: CatalogPublishedProductListQuerySchema })
+    query: CatalogPublishedProductListQuery,
   ) {
     return this.catalog.listPublished(query);
   }

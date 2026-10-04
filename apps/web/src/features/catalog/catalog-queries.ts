@@ -6,10 +6,14 @@ import {
   CatalogProductListQuerySchema,
   CatalogProductDetailSchema,
   CatalogProductPageSchema,
+  CatalogPublishedProductListQuerySchema,
+  CatalogPublishedProductPageSchema,
   CatalogSizeGuideListQuerySchema,
   CatalogSizeGuidePageSchema,
   type CatalogProductListQuery,
   type CatalogProductPage,
+  type CatalogPublishedProductListQuery,
+  type CatalogPublishedProductPage,
   type CatalogProductDetail,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
@@ -18,9 +22,15 @@ import {
 export type CatalogPageSearchParams = {
   limit?: string | string[];
   offset?: string | string[];
+  audience?: string | string[];
+  category?: string | string[];
+  color?: string | string[];
+  size?: string | string[];
 };
 
 const defaultCatalogQuery = CatalogProductListQuerySchema.parse({});
+const defaultPublishedCatalogQuery =
+  CatalogPublishedProductListQuerySchema.parse({});
 
 export function parseCatalogPageQuery(
   searchParams: CatalogPageSearchParams,
@@ -32,6 +42,39 @@ export function parseCatalogPageQuery(
       typeof searchParams.offset === "string" ? searchParams.offset : undefined,
   });
   return result.success ? result.data : defaultCatalogQuery;
+}
+
+export function parsePublishedCatalogPageQuery(
+  searchParams: CatalogPageSearchParams,
+): CatalogPublishedProductListQuery {
+  const searchValues = [
+    searchParams.limit,
+    searchParams.offset,
+    searchParams.audience,
+    searchParams.category,
+    searchParams.color,
+    searchParams.size,
+  ];
+  if (searchValues.some(Array.isArray)) return defaultPublishedCatalogQuery;
+
+  const result = CatalogPublishedProductListQuerySchema.safeParse({
+    limit:
+      typeof searchParams.limit === "string" ? searchParams.limit : undefined,
+    offset:
+      typeof searchParams.offset === "string" ? searchParams.offset : undefined,
+    audience:
+      typeof searchParams.audience === "string"
+        ? searchParams.audience
+        : undefined,
+    category:
+      typeof searchParams.category === "string"
+        ? searchParams.category
+        : undefined,
+    color:
+      typeof searchParams.color === "string" ? searchParams.color : undefined,
+    size: typeof searchParams.size === "string" ? searchParams.size : undefined,
+  });
+  return result.success ? result.data : defaultPublishedCatalogQuery;
 }
 
 export function parseCatalogSizeGuidePageQuery(
@@ -53,20 +96,26 @@ function apiBaseUrl(): string {
 }
 
 export async function getPublishedProducts(
-  query: CatalogProductListQuery,
-): Promise<CatalogProductPage | null> {
+  query: CatalogPublishedProductListQuery,
+): Promise<CatalogPublishedProductPage | null> {
   try {
     const search = new URLSearchParams({
       limit: String(query.limit),
       offset: String(query.offset),
     });
+    if (query.audience) search.set("audience", query.audience);
+    if (query.category) search.set("category", query.category);
+    if (query.color) search.set("color", query.color);
+    if (query.size) search.set("size", query.size);
     const response = await fetch(
       `${apiBaseUrl()}/api/catalog/products?${search}`,
       { cache: "no-store" },
     );
     if (!response.ok) return null;
 
-    const result = CatalogProductPageSchema.safeParse(await response.json());
+    const result = CatalogPublishedProductPageSchema.safeParse(
+      await response.json(),
+    );
     return result.success ? result.data : null;
   } catch {
     return null;

@@ -169,6 +169,29 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("status")).toContainText("Product updated.");
 
   await page.goto("/");
+  await page.getByLabel("Audience").selectOption("unisex");
+  await page.getByLabel("Category").selectOption("T-shirts");
+  await page.getByLabel("Color").selectOption("Black");
+  await page.getByLabel("Size").selectOption("S");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page).toHaveURL(/audience=unisex/);
+  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+
+  const filteredProducts = await page.request.get(
+    "/api/catalog/products?audience=unisex&category=T-shirts&color=Black&size=S",
+  );
+  expect(filteredProducts.status()).toBe(200);
+  expect((await filteredProducts.json()).products).toEqual(
+    expect.arrayContaining([expect.objectContaining({ slug })]),
+  );
+
+  const unavailableVariant = await page.request.get(
+    "/api/catalog/products?color=White&size=S",
+  );
+  expect(unavailableVariant.status()).toBe(200);
+  expect((await unavailableVariant.json()).products).toEqual([]);
+
+  await page.getByRole("link", { name: "Clear filters" }).click();
   await page.getByRole("link", { name: productName }).click();
   await expect(
     page.getByRole("heading", { name: productName, level: 1 }),

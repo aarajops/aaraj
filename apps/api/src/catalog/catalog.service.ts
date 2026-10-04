@@ -12,11 +12,23 @@ import type {
   CatalogManagedProductDetail,
   CatalogProductListQuery,
   CatalogProductPage,
+  CatalogProductFilterOptions,
+  CatalogPublishedProductListQuery,
+  CatalogPublishedProductPage,
   CatalogProductUpdateInput,
   CatalogProductVariantInput,
 } from "@aaraj/contracts";
 import { MAX_LIST_OFFSET } from "@aaraj/contracts";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  sql,
+} from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DatabaseService } from "../platform/database/database.service.js";
@@ -39,16 +51,104 @@ export class CatalogService {
   ) {}
 
   async listPublished(
-    query: CatalogProductListQuery,
-  ): Promise<CatalogProductPage> {
-    const rows = await this.database.db
-      .select()
-      .from(catalogProduct)
-      .where(eq(catalogProduct.isPublished, true))
-      .orderBy(desc(catalogProduct.updatedAt), desc(catalogProduct.id))
-      .limit(query.limit + 1)
-      .offset(query.offset);
-    return toProductPage(rows, query);
+    query: CatalogPublishedProductListQuery,
+  ): Promise<CatalogPublishedProductPage> {
+    const conditions = [eq(catalogProduct.isPublished, true)];
+    if (query.audience) {
+      conditions.push(eq(catalogProduct.audience, query.audience));
+    }
+    if (query.category) {
+      conditions.push(
+        eq(
+          sql<string>`lower(btrim(${catalogProduct.category}))`,
+          normalize(query.category),
+        ),
+      );
+    }
+
+    if (query.color || query.size) {
+      const variantConditions = [
+        eq(catalogProductVariant.productId, catalogProduct.id),
+        eq(catalogProductVariant.isActive, true),
+      ];
+      if (query.color) {
+        variantConditions.push(
+          eq(
+            sql<string>`lower(btrim(${catalogProductVariant.color}))`,
+            normalize(query.color),
+          ),
+        );
+      }
+      if (query.size) {
+        variantConditions.push(
+          eq(
+            sql<string>`lower(btrim(${catalogProductVariant.sizeLabel}))`,
+            normalize(query.size),
+          ),
+        );
+      }
+      conditions.push(
+        exists(
+          this.database.db
+            .select({ id: catalogProductVariant.id })
+            .from(catalogProductVariant)
+            .where(and(...variantConditions)),
+        ),
+      );
+    }
+
+    const [rows, filterOptions] = await Promise.all([
+      this.database.db
+        .select()
+        .from(catalogProduct)
+        .where(and(...conditions))
+        .orderBy(desc(catalogProduct.updatedAt), desc(catalogProduct.id))
+        .limit(query.limit + 1)
+        .offset(query.offset),
+      this.getPublishedProductFilterOptions(),
+    ]);
+
+    return { ...toProductPage(rows, query), filters: filterOptions };
+  }
+
+  private async getPublishedProductFilterOptions(): Promise<CatalogProductFilterOptions> {
+    const [productValues, variantValues] = await Promise.all([
+      this.database.db
+        .selectDistinct({
+          category: catalogProduct.category,
+        })
+        .from(catalogProduct)
+        .where(
+          and(
+            eq(catalogProduct.isPublished, true),
+            isNotNull(catalogProduct.category),
+          ),
+        ),
+      this.database.db
+        .selectDistinct({
+          color: catalogProductVariant.color,
+          size: catalogProductVariant.sizeLabel,
+        })
+        .from(catalogProductVariant)
+        .innerJoin(
+          catalogProduct,
+          eq(catalogProductVariant.productId, catalogProduct.id),
+        )
+        .where(
+          and(
+            eq(catalogProduct.isPublished, true),
+            eq(catalogProductVariant.isActive, true),
+          ),
+        ),
+    ]);
+
+    return {
+      categories: uniqueFilterValues(
+        productValues.map(({ category }) => category),
+      ),
+      colors: uniqueFilterValues(variantValues.map(({ color }) => color)),
+      sizes: uniqueFilterValues(variantValues.map(({ size }) => size)),
+    };
   }
 
   async findPublished(slug: string): Promise<CatalogProductDetail> {
@@ -586,6 +686,25 @@ function combinationKey(color: string, sizeLabel: string): string {
 
 function normalize(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
+}
+
+function uniqueFilterValues(values: (string | null)[]): string[] {
+  const unique = new Map<string, string>();
+  const candidates = values
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => value.trim())
+    .sort((left, right) =>
+      left.localeCompare(right, "en", { sensitivity: "variant" }),
+    );
+  for (const displayValue of candidates) {
+    const normalizedValue = normalize(displayValue);
+    if (!unique.has(normalizedValue)) {
+      unique.set(normalizedValue, displayValue);
+    }
+  }
+  return [...unique.values()].sort((left, right) =>
+    left.localeCompare(right, "en", { sensitivity: "base" }),
+  );
 }
 
 function normalizeOptional(value: string | null): string | null {

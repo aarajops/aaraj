@@ -72,9 +72,26 @@ describe("catalog and security audit", () => {
     await request(app.getHttpServer())
       .get("/api/catalog/products")
       .expect(200)
-      .expect({ products: [], hasMore: false, nextOffset: null });
+      .expect({
+        products: [],
+        hasMore: false,
+        nextOffset: null,
+        filters: { categories: [], colors: [], sizes: [] },
+      });
     await request(app.getHttpServer())
       .get("/api/catalog/products?limit=101")
+      .expect(400);
+    await request(app.getHttpServer())
+      .get("/api/catalog/products?limit=49")
+      .expect(400);
+    await request(app.getHttpServer())
+      .get("/api/catalog/products?unexpected=value")
+      .expect(400);
+    await request(app.getHttpServer())
+      .get("/api/catalog/products?audience=all")
+      .expect(400);
+    await request(app.getHttpServer())
+      .get("/api/catalog/products?color=Black&color=White")
       .expect(400);
     await request(app.getHttpServer())
       .get("/api/catalog/products/manage")
@@ -189,7 +206,12 @@ describe("catalog and security audit", () => {
     await request(app.getHttpServer())
       .get("/api/catalog/products")
       .expect(200)
-      .expect({ products: [], hasMore: false, nextOffset: null });
+      .expect({
+        products: [],
+        hasMore: false,
+        nextOffset: null,
+        filters: { categories: [], colors: [], sizes: [] },
+      });
     await request(app.getHttpServer())
       .get("/api/catalog/products/aaraj-draft-tee")
       .expect(404);
@@ -271,6 +293,80 @@ describe("catalog and security audit", () => {
       })
       .expect(201);
 
+    const variantFilterProbe = await request(app.getHttpServer())
+      .post("/api/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "variant-filter-probe",
+        name: "Variant Filter Probe",
+        audience: "unisex",
+        category: "T-shirts",
+        fit: "Regular",
+        sizeGuideId: guideId,
+        variants: [
+          { sku: "AA-PROBE-BLK-M", color: "Black", sizeLabel: "M" },
+          { sku: "AA-PROBE-WHT-L", color: "White", sizeLabel: "L" },
+          { sku: "AA-PROBE-RED-M", color: "Red", sizeLabel: "M" },
+        ],
+        isPublished: true,
+        reason: "Test filters against individual variants",
+      })
+      .expect(201);
+
+    const unisexTshirts = await request(app.getHttpServer())
+      .get("/api/catalog/products?audience=unisex&category=%20t-shirts%20")
+      .expect(200);
+    expect(
+      unisexTshirts.body.products.map(
+        (product: { slug: string }) => product.slug,
+      ),
+    ).toEqual(
+      expect.arrayContaining(["aaraj-draft-tee", "variant-filter-probe"]),
+    );
+
+    const matchingVariant = await request(app.getHttpServer())
+      .get("/api/catalog/products?color=black&size=m")
+      .expect(200);
+    expect(
+      matchingVariant.body.products.map(
+        (product: { slug: string }) => product.slug,
+      ),
+    ).toEqual(
+      expect.arrayContaining(["aaraj-draft-tee", "variant-filter-probe"]),
+    );
+
+    for (const query of ["color=black&size=l", "color=white&size=m"]) {
+      const noMatchingVariant = await request(app.getHttpServer())
+        .get(`/api/catalog/products?${query}`)
+        .expect(200);
+      expect(noMatchingVariant.body.products).toEqual([]);
+    }
+
+    const filterOptions = await request(app.getHttpServer())
+      .get("/api/catalog/products")
+      .expect(200);
+    expect(filterOptions.body.filters).toEqual({
+      categories: ["T-shirts"],
+      colors: ["Black", "Red", "White"],
+      sizes: ["L", "M"],
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/products/${variantFilterProbe.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        variants: [{ sku: "AA-PROBE-BLK-M", color: "Black", sizeLabel: "M" }],
+        reason: "Remove unavailable test variants",
+      })
+      .expect(200);
+    const activeOnlyFilters = await request(app.getHttpServer())
+      .get("/api/catalog/products?color=red")
+      .expect(200);
+    expect(activeOnlyFilters.body.products).toEqual([]);
+    expect(activeOnlyFilters.body.filters.colors).not.toContain("Red");
+
     await request(app.getHttpServer())
       .patch(`/api/catalog/size-guides/${guideId}`)
       .set("Cookie", staff.cookie)
@@ -306,10 +402,21 @@ describe("catalog and security audit", () => {
       )
       .expect(200);
     expect(secondProductPage.body.products).toHaveLength(1);
-    expect(secondProductPage.body.hasMore).toBe(false);
-    expect(secondProductPage.body.nextOffset).toBeNull();
+    expect(secondProductPage.body.hasMore).toBe(true);
+    expect(secondProductPage.body.nextOffset).toBe(2);
     expect(secondProductPage.body.products[0].id).not.toBe(
       firstProductPage.body.products[0].id,
+    );
+    const thirdProductPage = await request(app.getHttpServer())
+      .get(
+        `/api/catalog/products?limit=1&offset=${secondProductPage.body.nextOffset}`,
+      )
+      .expect(200);
+    expect(thirdProductPage.body.products).toHaveLength(1);
+    expect(thirdProductPage.body.hasMore).toBe(false);
+    expect(thirdProductPage.body.nextOffset).toBeNull();
+    expect(thirdProductPage.body.products[0].id).not.toBe(
+      secondProductPage.body.products[0].id,
     );
 
     const publicList = await request(app.getHttpServer())
@@ -317,7 +424,7 @@ describe("catalog and security audit", () => {
       .expect(200);
     expect(
       publicList.body.products.map((product: { slug: string }) => product.slug),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
 
     await request(app.getHttpServer()).get("/api/audit/events").expect(401);
     await request(app.getHttpServer())
@@ -356,14 +463,20 @@ describe("catalog and security audit", () => {
       )
       .set("Cookie", owner.cookie)
       .expect(400);
-    const nextPage = await request(app.getHttpServer())
-      .get(
-        `/api/audit/events?eventType=catalog.product_updated&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(page.body.nextCursor)}`,
-      )
-      .set("Cookie", owner.cookie)
-      .expect(200);
-    expect(nextPage.body.events).toHaveLength(1);
-    expect(nextPage.body.nextCursor).toBeNull();
+    let updateCursor: string | null = page.body.nextCursor;
+    let remainingUpdateCount = 0;
+    while (updateCursor) {
+      const updatePage = await request(app.getHttpServer())
+        .get(
+          `/api/audit/events?eventType=catalog.product_updated&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(updateCursor)}`,
+        )
+        .set("Cookie", owner.cookie)
+        .expect(200);
+      expect(updatePage.body.events).toHaveLength(1);
+      remainingUpdateCount += updatePage.body.events.length;
+      updateCursor = updatePage.body.nextCursor;
+    }
+    expect(remainingUpdateCount).toBeGreaterThan(0);
 
     await getPostgresPool().query(
       `INSERT INTO audit.event

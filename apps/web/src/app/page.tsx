@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { CatalogFilters } from "@/features/catalog/catalog-filters";
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
 import {
   getPublishedProducts,
-  parseCatalogPageQuery,
+  parsePublishedCatalogPageQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
 
@@ -24,8 +25,11 @@ async function PublishedProductList({
 }: {
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
-  const query = parseCatalogPageQuery(await searchParams);
+  const query = parsePublishedCatalogPageQuery(await searchParams);
   const page = await getPublishedProducts(query);
+  const hasActiveFilters = Boolean(
+    query.audience || query.category || query.color || query.size,
+  );
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
@@ -39,7 +43,7 @@ async function PublishedProductList({
               Products
             </h1>
             <p className="mt-3 max-w-2xl text-muted-foreground">
-              Browse products currently available from Aaraj.
+              Explore products in the Aaraj catalog.
             </p>
           </div>
           <Link
@@ -50,6 +54,8 @@ async function PublishedProductList({
           </Link>
         </div>
 
+        <CatalogFilters options={page?.filters ?? null} query={query} />
+
         {page === null ? (
           <p
             className="mt-10 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
@@ -59,7 +65,9 @@ async function PublishedProductList({
           </p>
         ) : page.products.length === 0 ? (
           <p className="mt-10 rounded-xl border border-border bg-card/60 p-8 text-secondary-foreground">
-            No products are published yet. Please check back soon.
+            {hasActiveFilters
+              ? "No products match these filters. Try changing or clearing them."
+              : "No products are published yet. Please check back soon."}
           </p>
         ) : (
           <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -92,6 +100,12 @@ async function PublishedProductList({
             productCount={page.products.length}
             hasMore={page.hasMore}
             nextOffset={page.nextOffset}
+            preservedParams={{
+              audience: query.audience,
+              category: query.category,
+              color: query.color,
+              size: query.size,
+            }}
           />
         )}
       </div>

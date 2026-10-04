@@ -5,11 +5,14 @@ import {
   CatalogProductSchema,
   CatalogProductCreateSchema,
   CatalogProductListQuerySchema,
+  CatalogPublishedProductListQuerySchema,
   CatalogProductUpdateSchema,
   CatalogSizeGuideCreateSchema,
   DEFAULT_LIST_PAGE_SIZE,
+  DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
   HealthCheckResponseSchema,
   MAX_LIST_PAGE_SIZE,
+  MAX_PUBLIC_CATALOG_PAGE_SIZE,
   RoleSchema,
 } from "./index.js";
 
@@ -149,5 +152,59 @@ describe("Contracts Schema Validation", () => {
       CatalogProductListQuerySchema.safeParse({ limit: 101 }).success,
     ).toBe(false);
     expect(AuditEventQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
+  });
+
+  it("validates public catalog filters with a storefront-specific page size", () => {
+    expect(CatalogPublishedProductListQuerySchema.parse({})).toEqual({
+      limit: DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
+      offset: 0,
+    });
+    expect(DEFAULT_PUBLIC_CATALOG_PAGE_SIZE).toBe(24);
+    expect(MAX_PUBLIC_CATALOG_PAGE_SIZE).toBe(48);
+    expect(
+      CatalogPublishedProductListQuerySchema.parse({
+        limit: "48",
+        offset: "24",
+        audience: "unisex",
+        category: " T-shirts ",
+        color: " Black ",
+        size: " M ",
+      }),
+    ).toEqual({
+      limit: 48,
+      offset: 24,
+      audience: "unisex",
+      category: "T-shirts",
+      color: "Black",
+      size: "M",
+    });
+    expect(
+      CatalogPublishedProductListQuerySchema.parse({ category: "" }),
+    ).toMatchObject({ limit: 24, offset: 0 });
+    expect(
+      CatalogPublishedProductListQuerySchema.safeParse({ limit: 49 }).success,
+    ).toBe(false);
+    expect(
+      CatalogPublishedProductListQuerySchema.safeParse({ audience: "all" })
+        .success,
+    ).toBe(false);
+    expect(
+      CatalogPublishedProductListQuerySchema.safeParse({ category: "   " })
+        .success,
+    ).toBe(false);
+    expect(
+      CatalogPublishedProductListQuerySchema.safeParse({
+        category: "x".repeat(81),
+      }).success,
+    ).toBe(false);
+    expect(
+      CatalogPublishedProductListQuerySchema.safeParse({
+        color: ["Black", "White"],
+      }).success,
+    ).toBe(false);
+    expect(
+      CatalogPublishedProductListQuerySchema.safeParse({ unexpected: "value" })
+        .success,
+    ).toBe(false);
   });
 });
