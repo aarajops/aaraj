@@ -22,7 +22,10 @@ import {
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
 import Link from "next/link";
-import { useCallback, useState, type SubmitEvent } from "react";
+import { useCallback, useState } from "react";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Field, FieldLabel } from "@/components/ui/field";
 
 type MeasurementValues = Partial<Record<CatalogMeasurementKey, string>>;
 interface GuideRowDraft {
@@ -79,8 +82,24 @@ export function SizeGuideManager({
   const [guides, setGuides] = useState(initialPage.guides);
   const [hasMore, setHasMore] = useState(initialPage.hasMore);
   const [nextOffset, setNextOffset] = useState(initialPage.nextOffset);
-  const [form, setForm] = useState<GuideForm>(blankForm);
-  const [isSaving, setIsSaving] = useState(false);
+  const {
+    control,
+    register,
+    handleSubmit,
+    reset,
+    getValues,
+    setValue,
+    formState: { isSubmitting },
+  } = useForm<GuideForm>({ defaultValues: blankForm });
+  const {
+    fields: rowFields,
+    append: appendRow,
+    remove: removeRow,
+  } = useFieldArray({ control, name: "rows" });
+  const [editingId, selectedKeys, inputUnit] = useWatch({
+    control,
+    name: ["id", "keys", "inputUnit"],
+  });
   const [isLoadingGuide, setIsLoadingGuide] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -96,50 +115,32 @@ export function SizeGuideManager({
     setNextOffset(page.data.nextOffset);
   }, [query]);
 
-  function updateRow(index: number, key: CatalogMeasurementKey, value: string) {
-    setForm((current) => ({
-      ...current,
-      rows: current.rows.map((row, rowIndex) =>
-        rowIndex === index
-          ? { ...row, values: { ...row.values, [key]: value } }
-          : row,
-      ),
-    }));
+  function clearKeyValues(key: CatalogMeasurementKey) {
+    getValues("rows").forEach((_, index) => {
+      setValue(`rows.${index}.values.${key}`, "", { shouldDirty: true });
+    });
   }
 
-  function toggleKey(key: CatalogMeasurementKey, enabled: boolean) {
-    setForm((current) => ({
-      ...current,
-      keys: enabled
-        ? [...current.keys, key]
-        : current.keys.filter((currentKey) => currentKey !== key),
-      rows: current.rows.map((row) => {
-        const values = { ...row.values };
-        if (enabled) values[key] = "";
-        else delete values[key];
-        return { ...row, values };
-      }),
-    }));
-  }
-
-  function changeInputUnit(inputUnit: GuideForm["inputUnit"]) {
-    setForm((current) => ({
-      ...current,
-      inputUnit,
-      rows: current.rows.map((row) => ({
-        ...row,
-        values: Object.fromEntries(
-          current.keys.map((key) => [
-            key,
-            convertMeasurementUnit(
-              row.values[key] ?? "",
-              current.inputUnit,
-              inputUnit,
-            ),
-          ]),
-        ),
-      })),
-    }));
+  function changeInputUnit(
+    inputUnit: GuideForm["inputUnit"],
+    onChange: (value: GuideForm["inputUnit"]) => void,
+  ) {
+    const current = getValues();
+    if (current.inputUnit === inputUnit) return;
+    current.rows.forEach((row, index) => {
+      current.keys.forEach((key) => {
+        setValue(
+          `rows.${index}.values.${key}`,
+          convertMeasurementUnit(
+            row.values[key] ?? "",
+            current.inputUnit,
+            inputUnit,
+          ),
+          { shouldDirty: true },
+        );
+      });
+    });
+    onChange(inputUnit);
   }
 
   async function editGuide(guideId: string) {
@@ -154,7 +155,7 @@ export function SizeGuideManager({
       const result = CatalogSizeGuideSchema.safeParse(await response.json());
       if (!result.success)
         throw new Error("The server returned an invalid guide.");
-      setForm(toSizeGuideFormState(result.data));
+      reset(toSizeGuideFormState(result.data));
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -167,20 +168,18 @@ export function SizeGuideManager({
   }
 
   function resetForm() {
-    setForm({ ...blankForm, keys: [...blankForm.keys], rows: [] });
+    reset(blankForm);
     setErrorMessage(null);
     setStatusMessage(null);
   }
 
-  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveGuide(form: GuideForm) {
     setErrorMessage(null);
     setStatusMessage(null);
     if (form.keys.length === 0 || form.rows.length === 0) {
       setErrorMessage("Choose at least one measurement and add a size row.");
       return;
     }
-    setIsSaving(true);
     const payload = {
       name: form.name.trim(),
       categoryId: form.categoryId,
@@ -211,12 +210,10 @@ export function SizeGuideManager({
         return;
       }
       setStatusMessage(form.id ? "Size guide updated." : "Size guide created.");
-      setForm({ ...blankForm, keys: [...blankForm.keys], rows: [] });
+      reset(blankForm);
       await loadGuides();
     } catch {
       setErrorMessage("Could not reach the server. Please try again.");
-    } finally {
-      setIsSaving(false);
     }
   }
 
@@ -315,14 +312,14 @@ export function SizeGuideManager({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold" id="guide-form-heading">
-                  {form.id ? "Edit size guide" : "Create a size guide"}
+                  {editingId ? "Edit size guide" : "Create a size guide"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Measurements are stored once in millimetres and shown in cm
                   and inches.
                 </p>
               </div>
-              {form.id && (
+              {editingId && (
                 <Button
                   className="h-auto px-2 py-1 text-sm text-muted-foreground"
                   type="button"
@@ -334,99 +331,91 @@ export function SizeGuideManager({
               )}
             </div>
 
-            <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="guide-name"
-              >
-                Guide name
+            <form className="mt-6 space-y-4" onSubmit={handleSubmit(saveGuide)}>
+              <Field>
+                <FieldLabel htmlFor="guide-name">Guide name</FieldLabel>
                 <Input
                   className={inputClassName}
                   id="guide-name"
                   maxLength={120}
                   required
-                  value={form.name}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
+                  {...register("name", { required: true, maxLength: 120 })}
                 />
-              </label>
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
-                <CatalogCategorySelect
-                  id="guide-category"
-                  label="Product category"
-                  required
-                  value={form.categoryId}
-                  onChange={(categoryId) =>
-                    setForm((current) => ({ ...current, categoryId }))
-                  }
+                <Controller
+                  control={control}
+                  name="categoryId"
+                  render={({ field }) => (
+                    <CatalogCategorySelect
+                      id="guide-category"
+                      label="Product category"
+                      required
+                      value={field.value}
+                      name={field.name}
+                      inputRef={field.ref}
+                      onBlur={field.onBlur}
+                      onChange={field.onChange}
+                    />
+                  )}
                 />
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="guide-fit"
-                >
-                  Fit{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (optional)
-                  </span>
+                <Field>
+                  <FieldLabel htmlFor="guide-fit">
+                    Fit{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (optional)
+                    </span>
+                  </FieldLabel>
                   <Input
                     className={inputClassName}
                     id="guide-fit"
                     maxLength={80}
-                    value={form.fit}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        fit: event.target.value,
-                      }))
-                    }
+                    {...register("fit")}
                   />
-                </label>
+                </Field>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="measurement-basis"
-                >
-                  Measurement basis
-                  <select
+                <Field>
+                  <FieldLabel htmlFor="measurement-basis">
+                    Measurement basis
+                  </FieldLabel>
+                  <NativeSelect
                     className={inputClassName}
                     id="measurement-basis"
-                    value={form.measurementBasis}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        measurementBasis: event.target
-                          .value as GuideForm["measurementBasis"],
-                      }))
-                    }
+                    {...register("measurementBasis")}
                   >
                     <option value="garment">Garment measurements</option>
                     <option value="body">Body measurements</option>
-                  </select>
-                </label>
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="measurement-unit"
-                >
-                  Enter measurements in
-                  <select
-                    className={inputClassName}
-                    id="measurement-unit"
-                    value={form.inputUnit}
-                    onChange={(event) =>
-                      changeInputUnit(
-                        event.target.value as GuideForm["inputUnit"],
-                      )
-                    }
-                  >
-                    <option value="cm">Centimetres (cm)</option>
-                    <option value="in">Inches (in)</option>
-                  </select>
-                </label>
+                  </NativeSelect>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="measurement-unit">
+                    Enter measurements in
+                  </FieldLabel>
+                  <Controller
+                    control={control}
+                    name="inputUnit"
+                    render={({ field }) => (
+                      <NativeSelect
+                        className={inputClassName}
+                        id="measurement-unit"
+                        name={field.name}
+                        ref={field.ref}
+                        value={field.value}
+                        onBlur={field.onBlur}
+                        onChange={(event) =>
+                          changeInputUnit(
+                            event.target.value as GuideForm["inputUnit"],
+                            field.onChange,
+                          )
+                        }
+                      >
+                        <option value="cm">Centimetres (cm)</option>
+                        <option value="in">Inches (in)</option>
+                      </NativeSelect>
+                    )}
+                  />
+                </Field>
               </div>
 
               <fieldset className="space-y-2 rounded-xl border border-border p-4">
@@ -440,11 +429,11 @@ export function SizeGuideManager({
                       key={key}
                     >
                       <input
-                        checked={form.keys.includes(key)}
                         type="checkbox"
-                        onChange={(event) =>
-                          toggleKey(key, event.target.checked)
-                        }
+                        value={key}
+                        {...register("keys", {
+                          onChange: () => clearKeyValues(key),
+                        })}
                       />
                       {labels[key]}
                     </label>
@@ -465,27 +454,21 @@ export function SizeGuideManager({
                     type="button"
                     variant="outline"
                     onClick={() =>
-                      setForm((current) => ({
-                        ...current,
-                        rows: [
-                          ...current.rows,
-                          {
-                            sizeLabel: "",
-                            values: Object.fromEntries(
-                              current.keys.map((key) => [key, ""]),
-                            ),
-                          },
-                        ],
-                      }))
+                      appendRow({
+                        sizeLabel: "",
+                        values: Object.fromEntries(
+                          selectedKeys.map((key) => [key, ""]),
+                        ),
+                      })
                     }
                   >
                     Add size
                   </Button>
                 </div>
-                {form.rows.map((row, index) => (
+                {rowFields.map((row, index) => (
                   <fieldset
                     className="space-y-3 rounded-xl border border-border bg-background/70 p-4"
-                    key={index}
+                    key={row.id}
                   >
                     <legend className="sr-only">Size row {index + 1}</legend>
                     <label
@@ -498,28 +481,20 @@ export function SizeGuideManager({
                         id={`size-label-${index}`}
                         maxLength={40}
                         required
-                        value={row.sizeLabel}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            rows: current.rows.map((item, itemIndex) =>
-                              itemIndex === index
-                                ? { ...item, sizeLabel: event.target.value }
-                                : item,
-                            ),
-                          }))
-                        }
+                        {...register(`rows.${index}.sizeLabel` as const, {
+                          required: true,
+                        })}
                         placeholder="Example: M or One Size"
                       />
                     </label>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {form.keys.map((key) => (
+                      {selectedKeys.map((key) => (
                         <label
                           className="block space-y-1 text-sm"
                           htmlFor={`size-${index}-${key}`}
                           key={key}
                         >
-                          {labels[key]} ({form.inputUnit})
+                          {labels[key]} ({inputUnit})
                           <Input
                             className={inputClassName}
                             id={`size-${index}-${key}`}
@@ -529,10 +504,10 @@ export function SizeGuideManager({
                             required
                             step="0.001"
                             type="number"
-                            value={row.values[key] ?? ""}
-                            onChange={(event) =>
-                              updateRow(index, key, event.target.value)
-                            }
+                            {...register(
+                              `rows.${index}.values.${key}` as const,
+                              { required: true },
+                            )}
                           />
                         </label>
                       ))}
@@ -541,20 +516,13 @@ export function SizeGuideManager({
                       className="h-auto px-2 py-1 text-sm text-destructive"
                       type="button"
                       variant="ghost"
-                      onClick={() =>
-                        setForm((current) => ({
-                          ...current,
-                          rows: current.rows.filter(
-                            (_, rowIndex) => rowIndex !== index,
-                          ),
-                        }))
-                      }
+                      onClick={() => removeRow(index)}
                     >
                       Remove size
                     </Button>
                   </fieldset>
                 ))}
-                {form.rows.length === 0 && (
+                {rowFields.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     Add each size sold for this guide. “One Size” is a valid
                     label.
@@ -562,26 +530,19 @@ export function SizeGuideManager({
                 )}
               </section>
 
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="guide-audit-reason"
-              >
-                Audit reason
+              <Field>
+                <FieldLabel htmlFor="guide-audit-reason">
+                  Audit reason
+                </FieldLabel>
                 <Input
                   className={inputClassName}
                   id="guide-audit-reason"
                   maxLength={500}
                   minLength={3}
                   required
-                  value={form.reason}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      reason: event.target.value,
-                    }))
-                  }
+                  {...register("reason", { required: true, minLength: 3 })}
                 />
-              </label>
+              </Field>
               {errorMessage && (
                 <p
                   className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
@@ -600,10 +561,14 @@ export function SizeGuideManager({
               )}
               <Button
                 className="h-auto w-full px-4 py-3 text-base font-semibold"
-                disabled={isSaving || isLoadingGuide}
+                disabled={isSubmitting || isLoadingGuide}
                 type="submit"
               >
-                {isSaving ? "Saving…" : form.id ? "Save guide" : "Create guide"}
+                {isSubmitting
+                  ? "Saving…"
+                  : editingId
+                    ? "Save guide"
+                    : "Create guide"}
               </Button>
             </form>
           </Card>

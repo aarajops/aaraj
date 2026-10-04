@@ -2,28 +2,30 @@
 
 This is the schema and ERD companion to the [enterprise architecture](ecommerce-blueprint.md). The diagrams describe logical relationships; complete PostgreSQL columns and constraints are in [ecommerce-schema.sql](ecommerce-schema.sql). Both are proposed design artifacts, not applied migrations.
 
+The implemented launch catalog adds one current base price per sellable variant: a non-negative whole-BDT integer, named `amountBdt` in API contracts and `price_bdt` in PostgreSQL. Zero represents a free product; draft variants may instead remain unpriced. Publication requires all active variants to have a price. The public product response exposes a single price taken from the first active variant in color order and the assigned size guide's order; public color/size options do not expose individual variant prices. Staff responses retain each variant's price for catalog management. The proposed quote/tax/payment structures below are future design only and do not change this product-price representation.
+
 For the launch catalog, each product style has at most one primary category, which must be an active leaf when assigned. Categories remain reusable managed records; use a future collections feature for overlapping campaigns or merchandising groups. The target model below follows this single-category relationship and does not use a product-category join table.
 
 A relationship between bounded contexts means a public application call or event-fed local projection. It never authorizes a cross-schema foreign key, SQL join, ORM relation, or shared transaction.
 
 ## Ownership
 
-| Schema | Owning aggregates and authoritative facts |
-| --- | --- |
-| identity | Better Auth users, sessions, accounts, and verification records; roles/scoped permissions, staff MFA, saved addresses, consent |
-| geography | Versioned Division → District → Upazila/Thana → Area/Union hierarchy and effective courier-zone maps |
-| catalog | Products, SKU variants, brands, categories, typed attributes, media and search documents |
-| inventory | Warehouses, physical/reserved/available balances, movements, reservations and adjustments |
-| cart | Anonymous/customer carts, lines, one-time merge receipts |
-| pricing | Effective price books, promotions, quotes, quotas, tax rules and immutable quote allocations |
-| ordering | Orders/lines, checkout saga, risk review, address/price/tax snapshots and issued invoice/correction facts |
-| payment | MFS intents/attempts/captures, verified COD funding receipts, refunds/payouts, reconciliation and optional wallet |
-| fulfillment | Split warehouse allocation, courier bookings, shipments, returns and inspection/disposition |
-| courier_ledger | Effective courier contracts/fees, COD receivables, statements, remittances, discrepancies and balanced journals |
-| notification | Provider channels/webhook ingress, message consent/delivery, retries/DLQ, CAPI and GA4 dispatch |
-| audit | Redacted audit stream, source IDs, hash chain and independent anchors |
-| moderation | Event-fed purchase eligibility, reviews, abuse reports and decisions |
-| support | Tickets/timeline, operator sessions, address correction, conversations, social messages and draft commands |
+| Schema             | Owning aggregates and authoritative facts                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| identity           | Better Auth users, sessions, accounts, and verification records; roles/scoped permissions, staff MFA, saved addresses, consent     |
+| geography          | Versioned Division → District → Upazila/Thana → Area/Union hierarchy and effective courier-zone maps                               |
+| catalog            | Products, SKU variants, brands, categories, typed attributes, media and search documents                                           |
+| inventory          | Warehouses, physical/reserved/available balances, movements, reservations and adjustments                                          |
+| cart               | Anonymous/customer carts, lines, one-time merge receipts                                                                           |
+| pricing            | Effective price books, promotions, quotes, quotas, tax rules and immutable quote allocations                                       |
+| ordering           | Orders/lines, checkout saga, risk review, address/price/tax snapshots and issued invoice/correction facts                          |
+| payment            | MFS intents/attempts/captures, verified COD funding receipts, refunds/payouts, reconciliation and optional wallet                  |
+| fulfillment        | Split warehouse allocation, courier bookings, shipments, returns and inspection/disposition                                        |
+| courier_ledger     | Effective courier contracts/fees, COD receivables, statements, remittances, discrepancies and balanced journals                    |
+| notification       | Provider channels/webhook ingress, message consent/delivery, retries/DLQ, CAPI and GA4 dispatch                                    |
+| audit              | Redacted audit stream, source IDs, hash chain and independent anchors                                                              |
+| moderation         | Event-fed purchase eligibility, reviews, abuse reports and decisions                                                               |
+| support            | Tickets/timeline, operator sessions, address correction, conversations, social messages and draft commands                         |
 | every owner schema | Its own command receipts, event-ID registry, partitioned outbox and consumer inbox; identical shape does not mean shared ownership |
 
 Identity owns user facts; commerce schemas hold opaque customer/actor IDs. Geography validates address ancestry through its port. Order and Fulfillment preserve encrypted delivery and zone snapshots. Notification verifies and transports social messages; Support owns conversation and draft-order state. Payment receives a verified collection event and records the refundable COD source; no context reads another's tables.
@@ -92,7 +94,7 @@ tickets, ticket_messages, customer_timeline, impersonation_sessions, address_cor
 
 ### Identity and Bangladesh geography
 
-~~~mermaid
+```mermaid
 erDiagram
   USER ||--o{ SESSION : authenticates
   USER ||--o{ MFA_FACTOR : enrolls
@@ -105,13 +107,13 @@ erDiagram
   DISTRICT ||--|{ UPAZILA_THANA : contains
   UPAZILA_THANA ||--|{ AREA_UNION : contains
   AREA_UNION ||--o{ COURIER_ZONE_MAPPING : maps
-~~~
+```
 
 A saved address contains an area identifier and geography version. Historical orders keep hierarchy names/IDs and provider-zone snapshots after reference data changes.
 
 ### Catalog, inventory, cart, and pricing
 
-~~~mermaid
+```mermaid
 erDiagram
   PRODUCT ||--|{ VARIANT : defines
   PRODUCT ||--o{ PRODUCT_MEDIA : displays
@@ -123,13 +125,13 @@ erDiagram
   CART ||--|{ CART_LINE : contains
   QUOTE ||--|{ QUOTE_LINE : prices
   PROMOTION ||--o{ PROMOTION_REDEMPTION : limits
-~~~
+```
 
 Available stock is physical minus reserved, constrained nonnegative. Cart and quote lines hold opaque SKU IDs; checkout calls Catalog, Pricing and Inventory ports to revalidate.
 
 ### Order, payment source, fulfillment, return and tax
 
-~~~mermaid
+```mermaid
 erDiagram
   CUSTOMER ||--o{ ORDER : places
   ORDER ||--|{ ORDER_LINE : snapshots
@@ -150,13 +152,13 @@ erDiagram
   SHIPMENT ||--o{ RETURN_AUTHORIZATION : returns
   RETURN_AUTHORIZATION ||--|{ RETURN_LINE : selects
   RETURN_LINE ||--o{ RETURN_INSPECTION : grades
-~~~
+```
 
 Cross-context customer/order/shipment links above are opaque IDs, not SQL FKs. A payment intent is an attempt; only a verified capture or courier COD collection is refundable. MFS/bank payout may differ from the incoming COD collection rail.
 
 ### Courier settlement
 
-~~~mermaid
+```mermaid
 erDiagram
   COURIER_CONTRACT ||--o{ RECEIVABLE : prices
   SHIPMENT ||--o| RECEIVABLE : earns_on_collection
@@ -165,13 +167,13 @@ erDiagram
   REMITTANCE_LINE ||--o{ REMITTANCE_ALLOCATION : settles
   JOURNAL ||--|{ POSTING : contains
   ACCOUNT ||--o{ POSTING : posts
-~~~
+```
 
 A verified collection becomes an event-fed CourierLedger receivable and a separate Payment funding source. Fee rate and base are effective-dated merchant facts. Posted journals have at least two currency-matched entries and balance to zero; corrections are reversals.
 
 ### Durable events, audit, social commerce and support
 
-~~~mermaid
+```mermaid
 erDiagram
   COMMAND_RECEIPT ||--o{ OUTBOX_EVENT : commits_with
   OUTBOX_EVENT ||--o{ CONSUMER_INBOX : deduplicates
@@ -187,25 +189,25 @@ erDiagram
   NOTIFICATION_MESSAGE ||--o| DEAD_LETTER : isolates
   CUSTOMER ||--o{ MODERATION_REVIEW : authors
   MODERATION_REVIEW ||--o{ MODERATION_DECISION : adjudicates
-~~~
+```
 
 Provider transport and verified inbox belong to Notification; human conversation and order drafting belong to Support. Versioned event IDs and one local inbox transaction make duplicate/reordered delivery safe.
 
 ## Atomic operations and constraints
 
-| Operation | Database owner and transaction | Required invariant |
-| --- | --- | --- |
-| Stock reserve/release/deduct | Inventory | Sorted row locks; balance, movement, reservation, receipt and outbox commit together |
-| Cart merge | Cart | Unique merge receipt and optimistic cart version |
-| Quote/promotion | Pricing | Integer subunits, rule snapshot and serialized quota holds |
-| Checkout | Order orchestration; participant writes stay owner-local | Durable saga, idempotent local commands and compensations |
-| MFS capture/refund | Payment | Provider verification; query ambiguous outcome before retry |
-| COD collection/refund | Payment | Verified event source, remaining-collection cap, line allocation and payout attempt |
-| Courier payout | CourierLedger | Matched statement, receivable allocation and balanced immutable journal |
-| Shipment/return | Fulfillment; stock stays Inventory-owned | Booking dedup and inspection before stock adjustment |
-| Audit | Source context then Audit projection | Source state and redacted audit outbox fact commit together |
-| Social message/order | Notification transport then Support conversation | Verified inbox; link identity only after proof |
-| Optional wallet credit | Payment | Customer liability and balancing account post together |
+| Operation                    | Database owner and transaction                           | Required invariant                                                                   |
+| ---------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Stock reserve/release/deduct | Inventory                                                | Sorted row locks; balance, movement, reservation, receipt and outbox commit together |
+| Cart merge                   | Cart                                                     | Unique merge receipt and optimistic cart version                                     |
+| Quote/promotion              | Pricing                                                  | Integer subunits, rule snapshot and serialized quota holds                           |
+| Checkout                     | Order orchestration; participant writes stay owner-local | Durable saga, idempotent local commands and compensations                            |
+| MFS capture/refund           | Payment                                                  | Provider verification; query ambiguous outcome before retry                          |
+| COD collection/refund        | Payment                                                  | Verified event source, remaining-collection cap, line allocation and payout attempt  |
+| Courier payout               | CourierLedger                                            | Matched statement, receivable allocation and balanced immutable journal              |
+| Shipment/return              | Fulfillment; stock stays Inventory-owned                 | Booking dedup and inspection before stock adjustment                                 |
+| Audit                        | Source context then Audit projection                     | Source state and redacted audit outbox fact commit together                          |
+| Social message/order         | Notification transport then Support conversation         | Verified inbox; link identity only after proof                                       |
+| Optional wallet credit       | Payment                                                  | Customer liability and balancing account post together                               |
 
 A row CHECK cannot prove sums over multiple rows. Lock aggregates or use guarded posting functions for order totals, promotion quotas, cumulative capture/refund, COD partial refunds, payout allocations and journal balance. These SQL constraints supplement transaction and concurrency tests.
 
@@ -217,4 +219,4 @@ A row CHECK cannot prove sums over multiple rows. Lock aggregates or use guarded
 - Provision future partitions and alert on coverage. The reference SQL has no default partition that could conceal a scheduler failure.
 - Runtime roles have DML only in their schema and cannot run DDL or disable audit/ledger guards. Migration and break-glass credentials are separate.
 
-PostgreSQL 16+ uses bigint subunits, and TypeScript uses bigint calculations. Public JSON integer amounts are bounded by JavaScript's safe integer range. Currency exponent is explicit: BDT exponent two means ৳19.99 is 1999 paisa.
+The implemented catalog stores whole BDT prices in PostgreSQL `integer` and exposes them as JSON integer `amountBdt` values. It rejects fractional amounts. The broader quote, tax, and payment model is still a proposal; its precision, rounding, and provider-boundary rules must be reviewed before that work begins.

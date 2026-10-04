@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPublishedProduct } from "@/features/catalog/catalog-queries";
+import { formatCatalogPrice } from "@/features/catalog/price";
 
 export default async function ProductPage({
   params,
@@ -34,7 +35,13 @@ export default async function ProductPage({
   }
 
   const { product } = result;
-  const variantsByColor = new Map<string, { color: string; sizes: string[] }>();
+  const variantsByColor = new Map<
+    string,
+    {
+      color: string;
+      sizes: string[];
+    }
+  >();
   for (const variant of product.variants) {
     const colorKey = variant.color.trim().toLowerCase();
     const group = variantsByColor.get(colorKey) ?? {
@@ -93,6 +100,11 @@ export default async function ProductPage({
           <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
             {product.name}
           </h1>
+          {product.price && (
+            <p className="mt-3 text-xl font-semibold text-primary">
+              {formatCatalogPrice(product.price)}
+            </p>
+          )}
           {(product.audience || product.category) && (
             <p className="mt-3 text-sm text-muted-foreground">
               {[product.audience, product.category?.name]
@@ -135,12 +147,12 @@ export default async function ProductPage({
                 {[...variantsByColor.values()].map(({ color, sizes }) => (
                   <li className="flex flex-wrap gap-2 text-sm" key={color}>
                     <span className="mr-2 font-medium">{color}</span>
-                    {sizes.map((size) => (
+                    {sizes.map((sizeLabel) => (
                       <span
                         className="rounded-full border border-border px-2.5 py-1 text-muted-foreground"
-                        key={`${color}:${size}`}
+                        key={`${color}:${sizeLabel}`}
                       >
-                        {size}
+                        {sizeLabel}
                       </span>
                     ))}
                   </li>

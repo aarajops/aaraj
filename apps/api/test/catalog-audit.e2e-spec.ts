@@ -9,7 +9,10 @@ import { getPostgresPool } from "../src/platform/database/database-client.js";
 import { auditEvent } from "../src/platform/audit/audit-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { AccessService } from "../src/platform/authorization/access.service.js";
-import { catalogProduct } from "../src/catalog/catalog-schema.js";
+import {
+  catalogProduct,
+  catalogProductVariant,
+} from "../src/catalog/catalog-schema.js";
 
 type Account = { id: string; email: string; cookie: string };
 const origin = "http://localhost:3000";
@@ -314,7 +317,37 @@ describe("catalog and security audit", () => {
         sizeGuideId: guideId,
         isPublished: true,
         reason: "Reject unavailable size",
-        variants: [{ sku: "TEE-MISSING-S", color: "Black", sizeLabel: "S" }],
+        variants: [
+          {
+            sku: "TEE-MISSING-S",
+            color: "Black",
+            sizeLabel: "S",
+            price: { amountBdt: 1999 },
+          },
+        ],
+      })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post("/api/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "fractional-price-tee",
+        name: "Fractional price tee",
+        audience: "unisex",
+        categoryId,
+        fit: "Regular",
+        sizeGuideId: guideId,
+        reason: "Reject fractional BDT price",
+        variants: [
+          {
+            sku: "TEE-FRACTIONAL-M",
+            color: "Black",
+            sizeLabel: "M",
+            price: { amountBdt: 1999.5 },
+          },
+        ],
       })
       .expect(400);
 
@@ -330,7 +363,9 @@ describe("catalog and security audit", () => {
         categoryId,
         fit: "Regular",
         sizeGuideId: guideId,
-        variants: [{ sku: "AA-TEE-BLK-M", color: "Black", sizeLabel: "M" }],
+        variants: [
+          { sku: "AA-TEE-BLK-M", color: "Black", sizeLabel: "M", price: null },
+        ],
         reason: "Initial catalog entry",
       })
       .expect(201);
@@ -363,7 +398,15 @@ describe("catalog and security audit", () => {
       .set("Cookie", staff.cookie)
       .expect(200);
     expect(managedDetail.body.variants).toHaveLength(1);
+    expect(managedDetail.body.variants[0].price).toBeNull();
     expect(managedDetail.body.sizeGuide.id).toBe(guideId);
+
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({ isPublished: true, reason: "Reject a missing variant price" })
+      .expect(400);
 
     await request(app.getHttpServer())
       .patch(`/api/catalog/products/${created.body.id}`)
@@ -371,8 +414,18 @@ describe("catalog and security audit", () => {
       .set("Origin", origin)
       .send({
         variants: [
-          { sku: "TEE-M-1", color: "Black", sizeLabel: "M" },
-          { sku: "TEE-M-2", color: " black ", sizeLabel: "m" },
+          {
+            sku: "TEE-M-1",
+            color: "Black",
+            sizeLabel: "M",
+            price: null,
+          },
+          {
+            sku: "TEE-M-2",
+            color: " black ",
+            sizeLabel: "m",
+            price: null,
+          },
         ],
         reason: "Reject duplicate color size",
       })
@@ -387,7 +440,14 @@ describe("catalog and security audit", () => {
         name: "Duplicate SKU Tee",
         audience: "men",
         categoryId,
-        variants: [{ sku: "aa-tee-blk-m", color: "White", sizeLabel: "M" }],
+        variants: [
+          {
+            sku: "aa-tee-blk-m",
+            color: "White",
+            sizeLabel: "M",
+            price: null,
+          },
+        ],
         reason: "Reject reused SKU",
       })
       .expect(409);
@@ -397,6 +457,23 @@ describe("catalog and security audit", () => {
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({ isPublished: true, reason: "Approved for storefront" })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        variants: [
+          {
+            sku: "AA-TEE-BLK-M",
+            color: "Black",
+            sizeLabel: "M",
+            price: { amountBdt: 1999 },
+          },
+        ],
+        isPublished: true,
+        reason: "Set price and publish product",
+      })
       .expect(200);
     await request(app.getHttpServer())
       .patch(`/api/catalog/products/${created.body.id}`)
@@ -410,6 +487,8 @@ describe("catalog and security audit", () => {
       .expect(200);
     expect(publicProduct.body.name).toBe("Aaraj City Tee");
     expect(publicProduct.body.variants).toHaveLength(1);
+    expect(publicProduct.body.price).toEqual({ amountBdt: 1999 });
+    expect(publicProduct.body.variants[0]).not.toHaveProperty("price");
     expect(publicProduct.body.variants[0]).not.toHaveProperty("sku");
     expect(publicProduct.body.sizeGuide.rows).toHaveLength(2);
 
@@ -424,7 +503,14 @@ describe("catalog and security audit", () => {
         categoryId,
         fit: "Regular",
         sizeGuideId: guideId,
-        variants: [{ sku: "AA-TEE-WHT-L", color: "White", sizeLabel: "L" }],
+        variants: [
+          {
+            sku: "AA-TEE-WHT-L",
+            color: "White",
+            sizeLabel: "L",
+            price: { amountBdt: 2499 },
+          },
+        ],
         isPublished: true,
         reason: "Second item for pagination coverage",
       })
@@ -442,9 +528,24 @@ describe("catalog and security audit", () => {
         fit: "Regular",
         sizeGuideId: guideId,
         variants: [
-          { sku: "AA-PROBE-BLK-M", color: "Black", sizeLabel: "M" },
-          { sku: "AA-PROBE-WHT-L", color: "White", sizeLabel: "L" },
-          { sku: "AA-PROBE-RED-M", color: "Red", sizeLabel: "M" },
+          {
+            sku: "AA-PROBE-BLK-M",
+            color: "Black",
+            sizeLabel: "M",
+            price: { amountBdt: 1999 },
+          },
+          {
+            sku: "AA-PROBE-WHT-L",
+            color: "White",
+            sizeLabel: "L",
+            price: { amountBdt: 2199 },
+          },
+          {
+            sku: "AA-PROBE-RED-M",
+            color: "Red",
+            sizeLabel: "M",
+            price: { amountBdt: 2299 },
+          },
         ],
         isPublished: true,
         reason: "Test filters against individual variants",
@@ -504,7 +605,14 @@ describe("catalog and security audit", () => {
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
-        variants: [{ sku: "AA-PROBE-BLK-M", color: "Black", sizeLabel: "M" }],
+        variants: [
+          {
+            sku: "AA-PROBE-BLK-M",
+            color: "Black",
+            sizeLabel: "M",
+            price: { amountBdt: 1999 },
+          },
+        ],
         reason: "Remove unavailable test variants",
       })
       .expect(200);
@@ -729,6 +837,17 @@ describe("catalog and security audit", () => {
       "catalog.product_updated",
     ]);
     expect(productEvents[0]?.reason).toBe("Initial catalog entry");
+    const priceUpdateEvent = productEvents.find(
+      (event) => event.reason === "Set price and publish product",
+    );
+    expect(priceUpdateEvent?.metadata).toMatchObject({
+      variantPriceChanges: [
+        {
+          previousAmountBdt: null,
+          nextAmountBdt: 1999,
+        },
+      ],
+    });
 
     await expect(
       getPostgresPool().query(
@@ -754,6 +873,16 @@ describe("catalog and security audit", () => {
       })
       .returning();
     if (!legacyProduct) throw new Error("Legacy product insert failed.");
+    await database.db.insert(catalogProductVariant).values({
+      productId: legacyProduct.id,
+      sku: "LEGACY-UNPRICED-M",
+      color: "Black",
+      sizeLabel: "M",
+      priceBdt: null,
+    });
+    await request(app.getHttpServer())
+      .get(`/api/catalog/products/${legacyProduct.slug}`)
+      .expect(404);
     await request(app.getHttpServer())
       .patch(`/api/catalog/products/${legacyProduct.id}`)
       .set("Cookie", staff.cookie)

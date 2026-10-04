@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, type SubmitEvent } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { authClient } from "@/features/auth/auth-client";
 import type { InitialSession } from "@/features/auth/auth-session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 type FormMode = "sign-in" | "sign-up";
+type AuthForm = { name: string; email: string; password: string };
 
 export function AuthPanel({
   initialSession,
@@ -16,10 +19,14 @@ export function AuthPanel({
 }) {
   authClient.hydrateSession(initialSession);
   const [mode, setMode] = useState<FormMode>("sign-in");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    resetField,
+    formState: { isSubmitting },
+  } = useForm<AuthForm>({
+    defaultValues: { name: "", email: "", password: "" },
+  });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const {
@@ -31,11 +38,9 @@ export function AuthPanel({
   const session = isPending && !isRefetching ? initialSession : data;
   const isSessionPending = isPending && !isRefetching && !initialSession;
 
-  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitCredentials({ name, email, password }: AuthForm) {
     setErrorMessage(null);
     setStatusMessage(null);
-    setIsSubmitting(true);
 
     let rateLimited = false;
     const onError = ({ response }: { response: Response }) => {
@@ -64,7 +69,7 @@ export function AuthPanel({
           setErrorMessage(result.error.message ?? "Authentication failed.");
         }
       } else {
-        setPassword("");
+        resetField("password");
         setStatusMessage(
           mode === "sign-up"
             ? "Your Aaraj account is ready."
@@ -75,8 +80,6 @@ export function AuthPanel({
       setErrorMessage(
         "Could not reach the server. Check that the API is running and try again.",
       );
-    } finally {
-      setIsSubmitting(false);
     }
   }
 
@@ -165,51 +168,40 @@ export function AuthPanel({
               ))}
             </div>
 
-            <form className="space-y-4" onSubmit={handleSubmit}>
+            <form
+              className="space-y-4"
+              onSubmit={handleSubmit(submitCredentials)}
+            >
               {mode === "sign-up" && (
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="name"
-                >
-                  Name
+                <Field>
+                  <FieldLabel htmlFor="name">Name</FieldLabel>
                   <Input
                     className="h-auto bg-background px-3 py-3 text-base md:text-base"
                     id="name"
-                    name="name"
                     autoComplete="name"
                     required
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
+                    {...register("name", { required: mode === "sign-up" })}
                   />
-                </label>
+                </Field>
               )}
 
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="email"
-              >
-                Email
+              <Field>
+                <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
                   className="h-auto bg-background px-3 py-3 text-base md:text-base"
                   id="email"
-                  name="email"
                   type="email"
                   autoComplete="email"
                   required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  {...register("email", { required: true })}
                 />
-              </label>
+              </Field>
 
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="password"
-              >
-                Password
+              <Field>
+                <FieldLabel htmlFor="password">Password</FieldLabel>
                 <Input
                   className="h-auto bg-background px-3 py-3 text-base md:text-base"
                   id="password"
-                  name="password"
                   type="password"
                   autoComplete={
                     mode === "sign-up" ? "new-password" : "current-password"
@@ -217,10 +209,18 @@ export function AuthPanel({
                   minLength={8}
                   maxLength={128}
                   required
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  {...register("password", {
+                    required: true,
+                    minLength: 8,
+                    maxLength: 128,
+                  })}
                 />
-              </label>
+                {mode === "sign-up" && (
+                  <FieldDescription>
+                    Use at least 8 characters.
+                  </FieldDescription>
+                )}
+              </Field>
 
               <Button
                 className="h-auto w-full px-4 py-3 text-base font-semibold"

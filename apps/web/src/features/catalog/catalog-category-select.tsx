@@ -4,8 +4,15 @@ import {
   CatalogCategoryOptionsSchema,
   type CatalogCategoryOption,
 } from "@aaraj/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Ref } from "react";
 import { fetchCatalogCategories } from "@/features/catalog/catalog-client";
+import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
@@ -15,12 +22,18 @@ export function CatalogCategorySelect({
   label,
   value,
   required = false,
+  name,
+  inputRef,
+  onBlur,
   onChange,
 }: {
   id: string;
   label: string;
   value: string;
   required?: boolean;
+  name?: string;
+  inputRef?: Ref<HTMLSelectElement>;
+  onBlur?: () => void;
   onChange: (categoryId: string) => void;
 }) {
   const [categories, setCategories] = useState<CatalogCategoryOption[]>([]);
@@ -50,14 +63,17 @@ export function CatalogCategorySelect({
   }, []);
 
   return (
-    <label className="block space-y-2 text-sm font-medium" htmlFor={id}>
-      {label}
-      <select
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <NativeSelect
         className={fieldClassName}
         disabled={loadState !== "ready" || categories.length === 0}
         id={id}
+        name={name}
+        ref={inputRef}
         required={required}
         value={value}
+        onBlur={onBlur}
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">
@@ -72,21 +88,18 @@ export function CatalogCategorySelect({
             {category.path}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       {loadState === "error" && (
-        <span
-          className="block text-xs font-normal text-destructive"
-          role="alert"
-        >
+        <FieldError>
           Product categories could not be loaded. Try again later.
-        </span>
+        </FieldError>
       )}
       {loadState === "ready" && categories.length === 0 && (
-        <span className="block text-xs font-normal text-muted-foreground">
+        <FieldDescription>
           An administrator needs to add an active leaf category before this item
           can be assigned.
-        </span>
+        </FieldDescription>
       )}
-    </label>
+    </Field>
   );
 }

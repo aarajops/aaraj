@@ -64,6 +64,13 @@
       "when": 1791135571047,
       "tag": "0008_query_aligned_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791137714669,
+      "tag": "0009_variant_base_prices",
+      "breakpoints": true
     }
   ]
 }

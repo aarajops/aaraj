@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { CatalogFilters } from "@/features/catalog/catalog-filters";
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
+import { formatCatalogPrice } from "@/features/catalog/price";
 import {
   getPublishedProducts,
   parsePublishedCatalogPageQuery,
@@ -80,6 +81,11 @@ async function PublishedProductList({
                   <h2 className="text-xl font-semibold text-foreground group-hover:text-accent-foreground">
                     {product.name}
                   </h2>
+                  {product.price && (
+                    <p className="mt-2 text-base font-semibold text-primary">
+                      {formatCatalogPrice(product.price)}
+                    </p>
+                  )}
                   <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
                     {product.description || "View product details."}
                   </p>

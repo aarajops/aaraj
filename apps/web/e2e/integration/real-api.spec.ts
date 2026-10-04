@@ -153,10 +153,12 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByLabel("Variant 1 SKU").fill(skuSmall);
   await page.getByLabel("Variant 1 color").fill("Black");
   await page.getByLabel("Variant 1 size").fill("S");
+  await page.getByLabel("Variant 1 price in BDT").fill("2450");
   await page.getByRole("button", { name: "Add variant" }).click();
   await page.getByLabel("Variant 2 SKU").fill(skuMedium);
   await page.getByLabel("Variant 2 color").fill("Black");
   await page.getByLabel("Variant 2 size").fill("M");
+  await page.getByLabel("Variant 2 price in BDT").fill("2490");
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Create configured integration product draft");
@@ -199,6 +201,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/audience=unisex/);
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
+  await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
 
   const filteredProducts = await page.request.get(
     "/api/catalog/products?audience=unisex&category=t-shirts&color=Black&size=S",
@@ -219,12 +222,19 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("heading", { name: productName, level: 1 }),
   ).toBeVisible();
+  await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
   await expect(
     page.getByText("A product configured in a real browser and database flow."),
   ).toBeVisible();
   await expect(page.getByText("100% cotton")).toBeVisible();
   await expect(page.getByText("Machine wash cold")).toBeVisible();
   await expect(page.getByText("Available colors and sizes")).toBeVisible();
+  const publicVariants = page.locator(
+    'section[aria-labelledby="available-variants-heading"]',
+  );
+  await expect(publicVariants.getByText("S", { exact: true })).toBeVisible();
+  await expect(publicVariants.getByText("M", { exact: true })).toBeVisible();
+  await expect(publicVariants).not.toContainText("৳");
   await expect(page.getByText("Size guide: " + guideName)).toBeVisible();
   await expect(page.getByText("50.8 / 20.0", { exact: true })).toBeVisible();
   await expect(page.getByText("71.1 / 28.0", { exact: true })).toBeVisible();
@@ -237,6 +247,7 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(publicResponse.status()).toBe(200);
   const publicProduct = await publicResponse.json();
   expect(publicProduct.variants).toHaveLength(2);
+  expect(publicProduct.price).toEqual({ amountBdt: 2450 });
   expect(publicProduct.variants).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ color: "Black", sizeLabel: "S" }),
@@ -245,6 +256,7 @@ test("catalog operator configures a product through to storefront visibility", a
   );
   for (const variant of publicProduct.variants) {
     expect(variant).not.toHaveProperty("sku");
+    expect(variant).not.toHaveProperty("price");
   }
 
   await page.goto("/staff/catalog");

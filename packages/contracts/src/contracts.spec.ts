@@ -59,6 +59,7 @@ describe("Contracts Schema Validation", () => {
       fabricComposition: null,
       careInstructions: null,
       sizeGuideId: null,
+      price: null,
       isPublished: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -74,23 +75,89 @@ describe("Contracts Schema Validation", () => {
       categoryId: "0cc175b9-c0f1-36a8-b1c3-99e269772661",
       reason: "Add the product",
       variants: [
-        { sku: "TEE-BLK-M", color: "Black", sizeLabel: "M" },
-        { sku: "tee-blk-m", color: "black", sizeLabel: "m" },
+        {
+          sku: "TEE-BLK-M",
+          color: "Black",
+          sizeLabel: "M",
+          price: null,
+        },
+        {
+          sku: "tee-blk-m",
+          color: "black",
+          sizeLabel: "m",
+          price: null,
+        },
       ],
     };
     expect(CatalogProductCreateSchema.safeParse(product).success).toBe(false);
     expect(
       CatalogProductCreateSchema.safeParse({
         ...product,
-        variants: [{ ...product.variants[0], gtin: "4006381333932" }],
+        variants: [
+          {
+            ...product.variants[0],
+            gtin: "4006381333932",
+            price: { amountBdt: 1999 },
+          },
+        ],
       }).success,
     ).toBe(false);
     expect(
       CatalogProductCreateSchema.safeParse({
         ...product,
-        variants: [{ ...product.variants[0], gtin: "4006381333931" }],
+        variants: [
+          {
+            ...product.variants[0],
+            gtin: "4006381333931",
+            price: { amountBdt: 1999 },
+          },
+        ],
       }).success,
     ).toBe(true);
+  });
+
+  it("requires a whole-BDT price when a variant is priced", () => {
+    const input = {
+      slug: "aaraj-priced-tee",
+      name: "Aaraj Priced Tee",
+      audience: "unisex",
+      reason: "Add a priced variant",
+      variants: [
+        {
+          sku: "AA-TEE-BLK-M",
+          color: "Black",
+          sizeLabel: "M",
+          price: { amountBdt: 1999 },
+        },
+      ],
+    };
+    expect(CatalogProductCreateSchema.safeParse(input).success).toBe(true);
+    expect(
+      CatalogProductCreateSchema.safeParse({
+        ...input,
+        variants: [{ ...input.variants[0], price: { amountBdt: -1 } }],
+      }).success,
+    ).toBe(false);
+    expect(
+      CatalogProductCreateSchema.safeParse({
+        ...input,
+        variants: [{ ...input.variants[0], price: { amountBdt: 0 } }],
+      }).success,
+    ).toBe(true);
+    expect(
+      CatalogProductCreateSchema.safeParse({
+        ...input,
+        variants: [{ ...input.variants[0], price: { amountBdt: 1999.5 } }],
+      }).success,
+    ).toBe(false);
+    expect(
+      CatalogProductCreateSchema.safeParse({
+        ...input,
+        variants: [
+          { ...input.variants[0], price: { amountBdt: 2_147_483_648 } },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("allows staff to clear legacy apparel fields while unpublishing", () => {

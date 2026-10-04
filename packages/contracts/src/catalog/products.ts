@@ -14,6 +14,12 @@ import { CatalogSizeGuideSchema } from "./size-guides.js";
 export const CatalogAudienceSchema = z.enum(["men", "women", "unisex"]);
 export type CatalogAudience = z.infer<typeof CatalogAudienceSchema>;
 
+/** Aaraj launch prices are whole amounts in BDT. */
+export const CatalogPriceSchema = z.strictObject({
+  amountBdt: z.number().int().nonnegative().max(2_147_483_647),
+});
+export type CatalogPrice = z.infer<typeof CatalogPriceSchema>;
+
 export const CatalogProductSlugSchema = z
   .string()
   .min(1)
@@ -24,6 +30,7 @@ export const CatalogProductVariantInputSchema = z.strictObject({
   sku: z.string().trim().min(1).max(100),
   color: z.string().trim().min(1).max(80),
   sizeLabel: z.string().trim().min(1).max(40),
+  price: CatalogPriceSchema.nullable(),
   gtin: z
     .string()
     .trim()
@@ -42,12 +49,15 @@ export const CatalogProductVariantSchema = z.strictObject({
   sizeLabel: z.string(),
 });
 
-export const CatalogManagedProductVariantSchema =
-  CatalogProductVariantSchema.extend({
-    sku: z.string(),
-    gtin: z.string().nullable(),
-    isActive: z.boolean(),
-  });
+export const CatalogManagedProductVariantSchema = z.strictObject({
+  id: z.uuid(),
+  color: z.string(),
+  sizeLabel: z.string(),
+  price: CatalogPriceSchema.nullable(),
+  sku: z.string(),
+  gtin: z.string().nullable(),
+  isActive: z.boolean(),
+});
 
 export const CatalogProductSchema = z.strictObject({
   id: z.uuid(),
@@ -60,6 +70,7 @@ export const CatalogProductSchema = z.strictObject({
   fabricComposition: z.string().max(1000).nullable(),
   careInstructions: z.string().max(2000).nullable(),
   sizeGuideId: z.uuid().nullable(),
+  price: CatalogPriceSchema.nullable(),
   isPublished: z.boolean(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),

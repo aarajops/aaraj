@@ -25,8 +25,21 @@ import {
 } from "@/features/catalog/catalog-client";
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
+import {
+  formatCatalogPrice,
+  formatBdtInput,
+  parseBdtPrice,
+} from "@/features/catalog/price";
 import Link from "next/link";
-import { useCallback, useState, type SubmitEvent } from "react";
+import { useCallback, useState } from "react";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 
 type SizeGuideOption = CatalogSizeGuideSummary;
 type Audience = "" | "men" | "women" | "unisex";
@@ -34,6 +47,7 @@ type VariantDraft = {
   sku: string;
   color: string;
   sizeLabel: string;
+  priceBdt: string;
   gtin: string;
 };
 
@@ -99,11 +113,27 @@ export function CatalogManager({
   );
   const [hasMore, setHasMore] = useState(initialPage.hasMore);
   const [nextOffset, setNextOffset] = useState(initialPage.nextOffset);
-  const [form, setForm] = useState<ProductForm>(blankForm);
-  const [isSaving, setIsSaving] = useState(false);
+  const {
+    control,
+    register,
+    handleSubmit,
+    reset,
+    setError,
+    clearErrors,
+    formState: { errors, isSubmitting },
+  } = useForm<ProductForm>({ defaultValues: blankForm });
+  const {
+    fields: variantFields,
+    append: appendVariant,
+    remove: removeVariant,
+  } = useFieldArray({ control, name: "variants" });
+  const [editingId, categoryId, fit, sizeGuideId, isPublished] = useWatch({
+    control,
+    name: ["id", "categoryId", "fit", "sizeGuideId", "isPublished"],
+  });
+  const slugError = errors.slug?.message;
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [slugError, setSlugError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
@@ -178,27 +208,6 @@ export function CatalogManager({
     }
   }
 
-  function updateForm<K extends keyof ProductForm>(
-    key: K,
-    value: ProductForm[K],
-  ) {
-    setForm((current) => ({ ...current, [key]: value }));
-    if (key === "slug") setSlugError(null);
-  }
-
-  function updateVariant<K extends keyof VariantDraft>(
-    index: number,
-    key: K,
-    value: VariantDraft[K],
-  ) {
-    setForm((current) => ({
-      ...current,
-      variants: current.variants.map((variant, variantIndex) =>
-        variantIndex === index ? { ...variant, [key]: value } : variant,
-      ),
-    }));
-  }
-
   async function editProduct(product: CatalogProduct) {
     setIsLoadingProduct(true);
     setErrorMessage(null);
@@ -226,8 +235,7 @@ export function CatalogManager({
             : [existingGuide, ...current],
         );
       }
-      setForm(toProductFormState(result.data));
-      setSlugError(null);
+      reset(toProductFormState(result.data));
     } catch {
       setErrorMessage("Product details are temporarily unavailable.");
     } finally {
@@ -236,47 +244,62 @@ export function CatalogManager({
   }
 
   function resetForm() {
-    setForm({ ...blankForm, variants: [] });
+    reset(blankForm);
     setErrorMessage(null);
-    setSlugError(null);
     setStatusMessage(null);
   }
 
-  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
+  async function saveProduct(form: ProductForm) {
     setErrorMessage(null);
-    setSlugError(null);
+    clearErrors("slug");
     setStatusMessage(null);
     if (!form.audience && (!form.id || form.isPublished)) {
       setErrorMessage("Choose an audience before saving.");
-      setIsSaving(false);
       return;
     }
 
-    const variants = form.variants
-      .filter((variant) =>
-        [variant.sku, variant.color, variant.sizeLabel, variant.gtin].some(
-          (value) => value.trim().length > 0,
-        ),
+    const variantDrafts = form.variants.filter((variant) =>
+      [
+        variant.sku,
+        variant.color,
+        variant.sizeLabel,
+        variant.priceBdt,
+        variant.gtin,
+      ].some((value) => value.trim().length > 0),
+    );
+    if (
+      variantDrafts.some(
+        ({ priceBdt }) =>
+          priceBdt.trim().length > 0 && parseBdtPrice(priceBdt) === null,
       )
-      .map((variant) => ({
+    ) {
+      setErrorMessage(
+        "Enter each price as a whole BDT amount, for example 1999.",
+      );
+      return;
+    }
+
+    const variants = variantDrafts.map((variant) => {
+      const amountBdt = parseBdtPrice(variant.priceBdt);
+      return {
         sku: variant.sku.trim(),
         color: variant.color.trim(),
         sizeLabel: variant.sizeLabel.trim(),
+        price: amountBdt === null ? null : { amountBdt },
         gtin: variant.gtin.trim() || null,
-      }));
+      };
+    });
     if (
       form.isPublished &&
       (!variants.length ||
         !form.sizeGuideId ||
         !form.audience ||
-        !form.categoryId)
+        !form.categoryId ||
+        variants.some((variant) => variant.price === null))
     ) {
       setErrorMessage(
-        "Before publishing, choose an audience and category, assign a matching size guide, and add at least one complete color and size variant.",
+        "Before publishing, choose an audience and category, assign a matching size guide, and set a BDT price for every complete color and size variant.",
       );
-      setIsSaving(false);
       return;
     }
 
@@ -316,7 +339,10 @@ export function CatalogManager({
           response.status === 409 &&
           problem.message?.includes("slug")
         ) {
-          setSlugError("That slug is already in use. Choose another one.");
+          setError("slug", {
+            type: "server",
+            message: "That slug is already in use. Choose another one.",
+          });
         } else if (problem.code === "RECENT_SIGN_IN_REQUIRED") {
           setErrorMessage(
             "Sign in again before saving: sign out, then sign back in to renew your 15-minute confirmation.",
@@ -340,20 +366,18 @@ export function CatalogManager({
             ? "Product created and published."
             : "Draft product created.",
       );
-      setForm({ ...blankForm, variants: [] });
+      reset(blankForm);
       await loadProducts();
     } catch {
       setErrorMessage("Could not reach the server. Please try again.");
-    } finally {
-      setIsSaving(false);
     }
   }
 
   const compatibleGuides = sizeGuides.filter(
     (guide) =>
-      form.categoryId &&
-      guide.category.id === form.categoryId &&
-      (guide.fit ?? "").trim().toLowerCase() === form.fit.trim().toLowerCase(),
+      categoryId &&
+      guide.category.id === categoryId &&
+      (guide.fit ?? "").trim().toLowerCase() === fit.trim().toLowerCase(),
   );
 
   return (
@@ -432,6 +456,11 @@ export function CatalogManager({
                       <p className="mt-1 truncate text-sm text-muted-foreground">
                         /{product.slug}
                       </p>
+                      <p className="mt-1 text-sm font-medium text-foreground">
+                        {product.price
+                          ? formatCatalogPrice(product.price)
+                          : "Price not set"}
+                      </p>
                       <Badge
                         className={
                           product.isPublished
@@ -451,7 +480,7 @@ export function CatalogManager({
                       disabled={isLoadingProduct}
                       onClick={() => void editProduct(product)}
                     >
-                      {isLoadingProduct && form.id === product.id
+                      {isLoadingProduct && editingId === product.id
                         ? "Loading…"
                         : "Edit"}
                     </Button>
@@ -478,14 +507,14 @@ export function CatalogManager({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold" id="product-form-heading">
-                  {form.id ? "Edit product" : "Create a product"}
+                  {editingId ? "Edit product" : "Create a product"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Drafts can be incomplete. Publishing requires sellable
                   variants and a matching size guide.
                 </p>
               </div>
-              {form.id && (
+              {editingId && (
                 <Button
                   className="h-auto px-2 py-1 text-sm text-muted-foreground"
                   variant="ghost"
@@ -497,29 +526,24 @@ export function CatalogManager({
               )}
             </div>
 
-            <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="product-name"
-              >
-                Name
+            <form
+              className="mt-6 space-y-4"
+              onSubmit={handleSubmit(saveProduct)}
+            >
+              <Field>
+                <FieldLabel htmlFor="product-name">Name</FieldLabel>
                 <Input
                   autoComplete="off"
                   className={fieldClassName}
                   id="product-name"
                   maxLength={160}
-                  name="name"
                   required
-                  value={form.name}
-                  onChange={(event) => updateForm("name", event.target.value)}
+                  {...register("name", { required: true, maxLength: 160 })}
                 />
-              </label>
+              </Field>
 
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="product-slug"
-              >
-                Slug
+              <Field data-invalid={Boolean(slugError)}>
+                <FieldLabel htmlFor="product-slug">Slug</FieldLabel>
                 <Input
                   autoComplete="off"
                   aria-describedby={slugError ? "slug-error" : undefined}
@@ -527,73 +551,63 @@ export function CatalogManager({
                   className={fieldClassName}
                   id="product-slug"
                   maxLength={120}
-                  name="slug"
                   pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                   required
-                  value={form.slug}
-                  onChange={(event) => updateForm("slug", event.target.value)}
+                  {...register("slug", {
+                    required: true,
+                    onChange: () => clearErrors("slug"),
+                  })}
                 />
                 {slugError && (
-                  <span
-                    className="block text-sm text-destructive"
-                    id="slug-error"
-                    role="alert"
-                  >
-                    {slugError}
-                  </span>
+                  <FieldError id="slug-error">{slugError}</FieldError>
                 )}
-                <span className="block text-xs font-normal text-muted-foreground">
+                <FieldDescription>
                   Use lowercase letters, numbers, and single hyphens.
-                </span>
-              </label>
+                </FieldDescription>
+              </Field>
 
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="product-description"
-              >
-                Description
+              <Field>
+                <FieldLabel htmlFor="product-description">
+                  Description
+                </FieldLabel>
                 <Textarea
                   className="min-h-24 resize-y bg-background px-3 py-2.5 text-base md:text-base"
                   id="product-description"
                   maxLength={5000}
-                  name="description"
-                  value={form.description}
-                  onChange={(event) =>
-                    updateForm("description", event.target.value)
-                  }
+                  {...register("description")}
                 />
-              </label>
+              </Field>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="product-audience"
-                >
-                  Audience
-                  <select
+                <Field>
+                  <FieldLabel htmlFor="product-audience">Audience</FieldLabel>
+                  <NativeSelect
                     className={fieldClassName}
                     id="product-audience"
-                    name="audience"
-                    required={!form.id || form.isPublished}
-                    value={form.audience}
-                    onChange={(event) =>
-                      updateForm("audience", event.target.value as Audience)
-                    }
+                    required={!editingId || isPublished}
+                    {...register("audience")}
                   >
                     <option value="">Choose audience</option>
                     <option value="men">Men</option>
                     <option value="women">Women</option>
                     <option value="unisex">Unisex</option>
-                  </select>
-                </label>
-                <CatalogCategorySelect
-                  id="product-category"
-                  label="Product category"
-                  required={form.isPublished}
-                  value={form.categoryId}
-                  onChange={(categoryId) =>
-                    updateForm("categoryId", categoryId)
-                  }
+                  </NativeSelect>
+                </Field>
+                <Controller
+                  control={control}
+                  name="categoryId"
+                  render={({ field }) => (
+                    <CatalogCategorySelect
+                      id="product-category"
+                      label="Product category"
+                      required={isPublished}
+                      value={field.value}
+                      name={field.name}
+                      inputRef={field.ref}
+                      onBlur={field.onBlur}
+                      onChange={field.onChange}
+                    />
+                  )}
                 />
               </div>
 
@@ -609,8 +623,7 @@ export function CatalogManager({
                   className={fieldClassName}
                   id="product-fit"
                   maxLength={80}
-                  value={form.fit}
-                  onChange={(event) => updateForm("fit", event.target.value)}
+                  {...register("fit")}
                 />
               </label>
 
@@ -626,10 +639,7 @@ export function CatalogManager({
                   className={fieldClassName}
                   id="product-fabric"
                   maxLength={1000}
-                  value={form.fabricComposition}
-                  onChange={(event) =>
-                    updateForm("fabricComposition", event.target.value)
-                  }
+                  {...register("fabricComposition")}
                 />
               </label>
 
@@ -645,10 +655,7 @@ export function CatalogManager({
                   className="min-h-20 resize-y bg-background px-3 py-2.5 text-base md:text-base"
                   id="product-care"
                   maxLength={2000}
-                  value={form.careInstructions}
-                  onChange={(event) =>
-                    updateForm("careInstructions", event.target.value)
-                  }
+                  {...register("careInstructions")}
                 />
               </label>
 
@@ -670,19 +677,22 @@ export function CatalogManager({
                     type="button"
                     variant="outline"
                     onClick={() =>
-                      updateForm("variants", [
-                        ...form.variants,
-                        { sku: "", color: "", sizeLabel: "", gtin: "" },
-                      ])
+                      appendVariant({
+                        sku: "",
+                        color: "",
+                        sizeLabel: "",
+                        priceBdt: "",
+                        gtin: "",
+                      })
                     }
                   >
                     Add variant
                   </Button>
                 </div>
-                {form.variants.map((variant, index) => (
+                {variantFields.map((variant, index) => (
                   <fieldset
                     className="grid gap-3 rounded-lg bg-background/70 p-3 sm:grid-cols-2"
-                    key={index}
+                    key={variant.id}
                   >
                     <legend className="sr-only">Variant {index + 1}</legend>
                     <label className="space-y-1 text-sm">
@@ -692,10 +702,9 @@ export function CatalogManager({
                         className={fieldClassName}
                         maxLength={100}
                         required
-                        value={variant.sku}
-                        onChange={(event) =>
-                          updateVariant(index, "sku", event.target.value)
-                        }
+                        {...register(`variants.${index}.sku` as const, {
+                          required: true,
+                        })}
                       />
                     </label>
                     <label className="space-y-1 text-sm">
@@ -705,10 +714,9 @@ export function CatalogManager({
                         className={fieldClassName}
                         maxLength={80}
                         required
-                        value={variant.color}
-                        onChange={(event) =>
-                          updateVariant(index, "color", event.target.value)
-                        }
+                        {...register(`variants.${index}.color` as const, {
+                          required: true,
+                        })}
                       />
                     </label>
                     <label className="space-y-1 text-sm">
@@ -718,11 +726,25 @@ export function CatalogManager({
                         className={fieldClassName}
                         maxLength={40}
                         required
-                        value={variant.sizeLabel}
-                        onChange={(event) =>
-                          updateVariant(index, "sizeLabel", event.target.value)
-                        }
+                        {...register(`variants.${index}.sizeLabel` as const, {
+                          required: true,
+                        })}
                       />
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      Price (BDT)
+                      <Input
+                        aria-label={`Variant ${index + 1} price in BDT`}
+                        className={fieldClassName}
+                        inputMode="numeric"
+                        maxLength={10}
+                        placeholder="1999"
+                        {...register(`variants.${index}.priceBdt` as const)}
+                      />
+                      <span className="block text-xs text-muted-foreground">
+                        Enter whole BDT only. Use 0 for a free product. Required
+                        to publish.
+                      </span>
                     </label>
                     <label className="space-y-1 text-sm">
                       GTIN{" "}
@@ -734,48 +756,34 @@ export function CatalogManager({
                         className={fieldClassName}
                         inputMode="numeric"
                         maxLength={14}
-                        value={variant.gtin}
-                        onChange={(event) =>
-                          updateVariant(index, "gtin", event.target.value)
-                        }
+                        {...register(`variants.${index}.gtin` as const)}
                       />
                     </label>
                     <Button
                       className="h-auto justify-self-start px-2 py-1 text-sm text-destructive"
                       type="button"
                       variant="ghost"
-                      onClick={() =>
-                        updateForm(
-                          "variants",
-                          form.variants.filter(
-                            (_, itemIndex) => itemIndex !== index,
-                          ),
-                        )
-                      }
+                      onClick={() => removeVariant(index)}
                     >
                       Remove variant
                     </Button>
                   </fieldset>
                 ))}
-                {form.variants.length === 0 && (
+                {variantFields.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     No variants added. Add them before publishing.
                   </p>
                 )}
               </section>
 
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="product-size-guide"
-              >
-                Reusable size guide
-                <select
+              <Field>
+                <FieldLabel htmlFor="product-size-guide">
+                  Reusable size guide
+                </FieldLabel>
+                <NativeSelect
                   className={fieldClassName}
                   id="product-size-guide"
-                  value={form.sizeGuideId}
-                  onChange={(event) =>
-                    updateForm("sizeGuideId", event.target.value)
-                  }
+                  {...register("sizeGuideId")}
                 >
                   <option value="">No size guide assigned</option>
                   {compatibleGuides.map((guide) => (
@@ -784,9 +792,9 @@ export function CatalogManager({
                       {guide.sizeLabels.join(", ")}
                     </option>
                   ))}
-                </select>
-                {form.categoryId && compatibleGuides.length === 0 && (
-                  <span className="block text-xs font-normal text-muted-foreground">
+                </NativeSelect>
+                {categoryId && compatibleGuides.length === 0 && (
+                  <FieldDescription>
                     No matching size guide is available.{" "}
                     <Link
                       className="text-primary underline"
@@ -795,16 +803,16 @@ export function CatalogManager({
                       Create one
                     </Link>
                     .
-                  </span>
+                  </FieldDescription>
                 )}
-                {form.sizeGuideId &&
+                {sizeGuideId &&
                   compatibleGuides.some(
-                    (guide) => guide.id === form.sizeGuideId,
+                    (guide) => guide.id === sizeGuideId,
                   ) && (
-                    <span className="block text-xs font-normal text-muted-foreground">
+                    <FieldDescription>
                       Required for published clothing and used beside the size
                       selector on product details.
-                    </span>
+                    </FieldDescription>
                   )}
                 {hasMoreSizeGuides && nextSizeGuideOffset !== null && (
                   <Button
@@ -820,22 +828,16 @@ export function CatalogManager({
                   </Button>
                 )}
                 {sizeGuideLoadError && (
-                  <span className="block text-sm text-destructive" role="alert">
-                    {sizeGuideLoadError}
-                  </span>
+                  <FieldError>{sizeGuideLoadError}</FieldError>
                 )}
-              </label>
+              </Field>
 
               <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
                 <input
                   aria-label="Published on the storefront"
                   className="mt-0.5 accent-primary"
-                  checked={form.isPublished}
-                  name="isPublished"
                   type="checkbox"
-                  onChange={(event) =>
-                    updateForm("isPublished", event.target.checked)
-                  }
+                  {...register("isPublished")}
                 />
                 <span>
                   <span className="block font-medium">
@@ -848,22 +850,17 @@ export function CatalogManager({
                 </span>
               </label>
 
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="audit-reason"
-              >
-                Audit reason
+              <Field>
+                <FieldLabel htmlFor="audit-reason">Audit reason</FieldLabel>
                 <Input
                   className={fieldClassName}
                   id="audit-reason"
                   maxLength={500}
                   minLength={3}
-                  name="reason"
                   required
-                  value={form.reason}
-                  onChange={(event) => updateForm("reason", event.target.value)}
+                  {...register("reason", { required: true, minLength: 3 })}
                 />
-              </label>
+              </Field>
 
               {errorMessage && (
                 <p
@@ -889,14 +886,14 @@ export function CatalogManager({
 
               <Button
                 className="h-auto w-full px-4 py-3 text-base font-semibold"
-                disabled={isSaving || isLoadingProduct}
+                disabled={isSubmitting || isLoadingProduct}
                 type="submit"
               >
-                {isSaving
+                {isSubmitting
                   ? "Saving…"
-                  : form.id
+                  : editingId
                     ? "Save changes"
-                    : form.isPublished
+                    : isPublished
                       ? "Create and publish"
                       : "Create draft"}
               </Button>
@@ -924,6 +921,7 @@ function toProductFormState(product: CatalogManagedProductDetail): ProductForm {
       sku: variant.sku,
       color: variant.color,
       sizeLabel: variant.sizeLabel,
+      priceBdt: formatBdtInput(variant.price?.amountBdt ?? null),
       gtin: variant.gtin ?? "",
     })),
     isPublished: product.isPublished,

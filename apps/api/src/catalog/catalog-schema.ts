@@ -192,6 +192,7 @@ export const catalogProductVariant = catalogSchema.table(
     sku: text("sku").notNull(),
     color: text("color").notNull(),
     sizeLabel: text("size_label").notNull(),
+    priceBdt: integer("price_bdt"),
     gtin: text("gtin"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -219,6 +220,10 @@ export const catalogProductVariant = catalogSchema.table(
     check(
       "product_variant_gtin_check",
       sql`${table.gtin} is null OR ${table.gtin} ~ '^([0-9]{8}|[0-9]{12,14})$'`,
+    ),
+    check(
+      "product_variant_price_bdt_check",
+      sql`${table.priceBdt} is null OR ${table.priceBdt} >= 0`,
     ),
   ],
 );

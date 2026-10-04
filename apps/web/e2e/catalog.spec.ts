@@ -71,10 +71,12 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByLabel("Variant 1 SKU").fill("AA-TEE-BLK-S");
   await page.getByLabel("Variant 1 color").fill("Black");
   await page.getByLabel("Variant 1 size").fill("S");
+  await page.getByLabel("Variant 1 price in BDT").fill("1999");
   await page.getByRole("button", { name: "Add variant" }).click();
   await page.getByLabel("Variant 2 SKU").fill("AA-TEE-BLK-M");
   await page.getByLabel("Variant 2 color").fill("Black");
   await page.getByLabel("Variant 2 size").fill("M");
+  await page.getByLabel("Variant 2 price in BDT").fill("2200");
   const guideOptions = await page
     .locator("#product-size-guide option")
     .evaluateAll((options) =>
@@ -92,17 +94,25 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Publish apparel test product");
+  await page.getByLabel("Variant 2 price in BDT").fill("2200.50");
+  await page.getByRole("button", { name: "Create and publish" }).click();
+  await expect(
+    page.getByText("Enter each price as a whole BDT amount, for example 1999."),
+  ).toBeVisible();
+  await page.getByLabel("Variant 2 price in BDT").fill("2200");
   await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(page.getByRole("status")).toContainText(
     "Product created and published.",
   );
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
+  await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
 
   await page.goto("/");
   await page.getByLabel("Audience").selectOption("unisex");
   await page.getByLabel("Category").selectOption("t-shirts");
   await page.getByLabel("Color").selectOption("Black");
   await page.getByLabel("Size").selectOption("M");
+  await expect(page.getByLabel("Audience")).toHaveValue("unisex");
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/audience=unisex/);
   await expect(page).toHaveURL(/category=t-shirts/);
@@ -133,12 +143,19 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("heading", { name: "Aaraj E2E Tee", level: 1 }),
   ).toBeVisible();
+  await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
       "A test product used to verify the clothing catalog workflow.",
     ),
   ).toBeVisible();
   await expect(page.getByText("Available colors and sizes")).toBeVisible();
+  const publicVariants = page.locator(
+    'section[aria-labelledby="available-variants-heading"]',
+  );
+  await expect(publicVariants.getByText("S", { exact: true })).toBeVisible();
+  await expect(publicVariants.getByText("M", { exact: true })).toBeVisible();
+  await expect(publicVariants).not.toContainText("৳");
   await expect(page.getByText("Size guide: Aaraj Classic Tee")).toBeVisible();
   await expect(page.getByText("50.8 / 20.0", { exact: true })).toBeVisible();
   await expect(page.getByText("71.1 / 28.0", { exact: true })).toBeVisible();
@@ -155,6 +172,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByLabel("Variant 1 SKU").fill("AA-TEE-WHT-M");
   await page.getByLabel("Variant 1 color").fill("White");
   await page.getByLabel("Variant 1 size").fill("M");
+  await page.getByLabel("Variant 1 price in BDT").fill("1999");
   await page.locator("#product-size-guide").selectOption(selectedGuide!.value);
   await page.getByLabel("Published on the storefront").check();
   await page
@@ -211,9 +229,11 @@ test("staff manages reusable size guides and apparel products safely", async ({
   expect(unpublishedResponse?.status()).toBe(404);
 
   await page.goto("/staff/catalog/categories");
-  await expect(page.locator('p[role="alert"]')).toContainText(
-    "Only administrators can manage product categories.",
-  );
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "Only administrators can manage product categories.",
+    }),
+  ).toBeVisible();
   await context.addCookies([
     {
       name: "aaraj-e2e-role",

@@ -1,7 +1,9 @@
 -- Aaraj proposed enterprise model, PostgreSQL 16+. DOCUMENTATION, NOT AN APPLIED MIGRATION.
 -- Target a disposable EMPTY database owned by a migration role with CREATE EXTENSION rights.
 -- Never execute against an existing application database; derive reviewed owner migrations.
--- Values: bigint minor units; UUID external references; business timestamps use timestamptz UTC;
+-- Future financial workflow examples use bigint amounts; launch catalog base prices are whole-BDT
+-- integers in catalog.product_variant.price_bdt and are implemented in a separate migration.
+-- UUID external references; business timestamps use timestamptz UTC;
 -- Better Auth core columns follow its generated Drizzle schema.
 -- No cross-context foreign keys. A UUID named *_ref is deliberately NOT a foreign key.
 -- No cross-context joins, including reporting. Compose public APIs or event projections.

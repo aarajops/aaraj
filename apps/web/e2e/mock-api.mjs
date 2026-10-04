@@ -735,7 +735,27 @@ function productDetail(product, management = false) {
 function summary(product) {
   const fields = { ...product };
   delete fields.variants;
-  return fields;
+  const activeVariants = product.variants.filter(({ isActive }) => isActive);
+  const guide = sizeGuides.find(({ id }) => id === product.sizeGuideId);
+  const sizeOrder = new Map(
+    guide?.rows.map((row, index) => [normalize(row.sizeLabel), index]) ?? [],
+  );
+  const firstVariant = [...activeVariants].sort((left, right) => {
+    const colorOrder = left.color.localeCompare(right.color);
+    if (colorOrder !== 0) return colorOrder;
+    const leftOrder = sizeOrder.get(normalize(left.sizeLabel));
+    const rightOrder = sizeOrder.get(normalize(right.sizeLabel));
+    if (leftOrder !== undefined && rightOrder !== undefined) {
+      return leftOrder - rightOrder;
+    }
+    if (leftOrder !== undefined) return -1;
+    if (rightOrder !== undefined) return 1;
+    return left.sizeLabel.localeCompare(right.sizeLabel);
+  })[0];
+  return {
+    ...fields,
+    price: firstVariant?.price ?? null,
+  };
 }
 
 function isPublishable(product, variants, guide) {
@@ -744,6 +764,7 @@ function isPublishable(product, variants, guide) {
     product.category?.id &&
     guide &&
     variants.length > 0 &&
+    variants.every((variant) => variant.price !== null) &&
     product.category.id === guide.category.id &&
     normalize(product.fit ?? "") === normalize(guide.fit ?? "") &&
     variants.every((variant) =>

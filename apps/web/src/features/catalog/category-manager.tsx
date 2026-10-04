@@ -14,7 +14,10 @@ import {
   updateCatalogCategory,
 } from "@/features/catalog/catalog-client";
 import Link from "next/link";
-import { useCallback, useEffect, useState, type SubmitEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 
 interface CategoryForm {
   id: string | null;
@@ -40,9 +43,15 @@ const fieldClassName =
 
 export function CategoryManager() {
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
-  const [form, setForm] = useState<CategoryForm>(emptyForm);
+  const {
+    control,
+    register,
+    handleSubmit,
+    reset,
+    formState: { isSubmitting },
+  } = useForm<CategoryForm>({ defaultValues: emptyForm });
+  const editingId = useWatch({ control, name: "id" });
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -77,11 +86,9 @@ export function CategoryManager() {
     };
   }, []);
 
-  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveCategory(form: CategoryForm) {
     setErrorMessage(null);
     setStatusMessage(null);
-    setIsSaving(true);
     const payload = {
       name: form.name.trim(),
       slug: form.slug.trim(),
@@ -107,19 +114,17 @@ export function CategoryManager() {
         return;
       }
       setStatusMessage(form.id ? "Category updated." : "Category created.");
-      setForm(emptyForm);
+      reset(emptyForm);
       await loadCategories();
     } catch {
       setErrorMessage("Could not reach the server. Please try again.");
-    } finally {
-      setIsSaving(false);
     }
   }
 
   function editCategory(category: CatalogCategory) {
     setErrorMessage(null);
     setStatusMessage(null);
-    setForm({
+    reset({
       id: category.id,
       name: category.name,
       slug: category.slug,
@@ -209,86 +214,64 @@ export function CategoryManager() {
 
           <Card className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7">
             <h2 className="text-xl font-semibold">
-              {form.id ? "Edit category" : "Create a category"}
+              {editingId ? "Edit category" : "Create a category"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Slugs are stable storefront filter values. Categories in use can
               be renamed, but cannot be deactivated.
             </p>
-            <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="category-name"
-              >
-                Name
+            <form
+              className="mt-5 space-y-4"
+              onSubmit={handleSubmit(saveCategory)}
+            >
+              <Field>
+                <FieldLabel htmlFor="category-name">Name</FieldLabel>
                 <Input
                   className={fieldClassName}
                   id="category-name"
                   maxLength={80}
                   required
-                  value={form.name}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
+                  {...register("name", { required: true, maxLength: 80 })}
                 />
-              </label>
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="category-slug"
-              >
-                Slug
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="category-slug">Slug</FieldLabel>
                 <Input
                   className={fieldClassName}
                   id="category-slug"
                   maxLength={100}
                   pattern="[a-z0-9]+(-[a-z0-9]+)*"
                   required
-                  value={form.slug}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      slug: event.target.value,
-                    }))
-                  }
+                  {...register("slug", { required: true, maxLength: 100 })}
                 />
-              </label>
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="category-parent"
-              >
-                Parent category
-                <select
+                <FieldDescription>
+                  Used in storefront URLs; keep it stable once products use it.
+                </FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="category-parent">
+                  Parent category
+                </FieldLabel>
+                <NativeSelect
                   className={fieldClassName}
                   id="category-parent"
-                  value={form.parentId}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      parentId: event.target.value,
-                    }))
-                  }
+                  {...register("parentId")}
                 >
                   <option value="">Top level</option>
                   {categories
                     .filter(
                       (category) =>
-                        category.isActive && category.id !== form.id,
+                        category.isActive && category.id !== editingId,
                     )
                     .map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.path}
                       </option>
                     ))}
-                </select>
-              </label>
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="category-order"
-              >
-                Display order
+                </NativeSelect>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="category-order">Display order</FieldLabel>
                 <Input
                   className={fieldClassName}
                   id="category-order"
@@ -296,67 +279,45 @@ export function CategoryManager() {
                   min={0}
                   required
                   type="number"
-                  value={form.sortOrder}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      sortOrder: event.target.value,
-                    }))
-                  }
+                  {...register("sortOrder", { required: true })}
                 />
-              </label>
-              {form.id && (
-                <label
-                  className="flex items-center gap-2 text-sm font-medium"
-                  htmlFor="category-active"
-                >
+              </Field>
+              {editingId && (
+                <Field className="flex flex-row items-center gap-2">
                   <input
-                    checked={form.isActive}
                     id="category-active"
                     type="checkbox"
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        isActive: event.target.checked,
-                      }))
-                    }
+                    {...register("isActive")}
                   />
-                  Active
-                </label>
+                  <FieldLabel htmlFor="category-active">Active</FieldLabel>
+                </Field>
               )}
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="category-reason"
-              >
-                Reason for change
+              <Field>
+                <FieldLabel htmlFor="category-reason">
+                  Reason for change
+                </FieldLabel>
                 <Input
                   className={fieldClassName}
                   id="category-reason"
                   maxLength={500}
                   minLength={3}
                   required
-                  value={form.reason}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      reason: event.target.value,
-                    }))
-                  }
+                  {...register("reason", { required: true, minLength: 3 })}
                 />
-              </label>
+              </Field>
               <div className="flex gap-3 pt-2">
-                <Button disabled={isSaving} type="submit">
-                  {isSaving
+                <Button disabled={isSubmitting} type="submit">
+                  {isSubmitting
                     ? "Saving…"
-                    : form.id
+                    : editingId
                       ? "Save category"
                       : "Create category"}
                 </Button>
-                {form.id && (
+                {editingId && (
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setForm(emptyForm)}
+                    onClick={() => reset(emptyForm)}
                   >
                     Cancel
                   </Button>
