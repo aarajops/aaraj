@@ -100,15 +100,39 @@ try {
   process.env.BETTER_AUTH_URL = `http://${process.env.HOST ?? "127.0.0.1"}:${process.env.PORT ?? 3181}`;
   process.env.CLIENT_URL = `http://${process.env.HOST ?? "127.0.0.1"}:3180`;
 
-  const [{ AppModule }, { configureApp }] = await Promise.all([
-    import("../dist/app.module.js"),
-    import("../dist/configure-app.js"),
-  ]);
+  const [{ AppModule }, { configureApp }, { auth }, { AccessService }] =
+    await Promise.all([
+      import("../dist/app.module.js"),
+      import("../dist/configure-app.js"),
+      import("../dist/auth/auth.js"),
+      import("../dist/platform/authorization/access.service.js"),
+    ]);
   app = await NestFactory.create(AppModule, {
     bodyParser: false,
     logger: false,
   });
   configureApp(app);
+  await app.init();
+
+  const fixtureEmail = "catalog-e2e@example.test";
+  const fixturePassword = "CatalogE2E-Only-Password-2026!";
+  const fixtureResponse = await auth.api.signUpEmail({
+    body: {
+      name: "E2E Catalog Operator",
+      email: fixtureEmail,
+      password: fixturePassword,
+    },
+    headers: new Headers({ Origin: process.env.CLIENT_URL }),
+    asResponse: true,
+  });
+  if (!fixtureResponse.ok) {
+    throw new Error("Could not create the isolated catalog E2E account.");
+  }
+  const { user } = await fixtureResponse.json();
+  await app
+    .get(AccessService)
+    .bootstrapSuperadmin(user.id, { reason: "Isolated browser E2E fixture" });
+
   await app.listen(
     Number(process.env.PORT ?? 3181),
     process.env.HOST ?? "127.0.0.1",
