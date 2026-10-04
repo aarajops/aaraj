@@ -56,7 +56,7 @@ export class AccessService {
     const reason = this.validateChange(userId, role, input);
     return this.database.db.transaction(async (tx) => {
       await this.lockChanges(tx);
-      // Recheck inside the serialized transaction, even when @Can already allowed.
+      // Authorize within the serialized transaction before changing assignments.
       await this.authorization.authorize(AccessPolicy, "manage", actor, tx);
       if (action === "grant" && actor.id === userId) {
         throw new ForbiddenException("Cannot grant roles to yourself");

@@ -1,6 +1,8 @@
 import "client-only";
 
 import type {
+  CatalogCategoryCreateInput,
+  CatalogCategoryUpdateInput,
   CatalogProductCreateInput,
   CatalogProductListQuery,
   CatalogProductUpdateInput,
@@ -8,6 +10,43 @@ import type {
   CatalogSizeGuideListQuery,
   CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
+
+export function fetchCatalogCategories(): Promise<Response> {
+  return fetch("/api/catalog/categories", {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+}
+
+export function fetchManagedCatalogCategories(): Promise<Response> {
+  return fetch("/api/catalog/categories/manage", {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+}
+
+export function createCatalogCategory(
+  input: CatalogCategoryCreateInput,
+): Promise<Response> {
+  return fetch("/api/catalog/categories", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateCatalogCategory(
+  categoryId: string,
+  input: CatalogCategoryUpdateInput,
+): Promise<Response> {
+  return fetch(`/api/catalog/categories/${encodeURIComponent(categoryId)}`, {
+    method: "PATCH",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
 
 export function fetchManagedProducts(
   query: CatalogProductListQuery,

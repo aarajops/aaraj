@@ -7,6 +7,7 @@ import {
   CatalogProductListQuerySchema,
   CatalogPublishedProductListQuerySchema,
   CatalogProductUpdateSchema,
+  CatalogCategoryCreateSchema,
   CatalogSizeGuideCreateSchema,
   DEFAULT_LIST_PAGE_SIZE,
   DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
@@ -48,7 +49,12 @@ describe("Contracts Schema Validation", () => {
       name: "Premium Leather Wallet",
       description: null,
       audience: "unisex",
-      category: "Accessories",
+      category: {
+        id: "0cc175b9-c0f1-36a8-b1c3-99e269772661",
+        name: "Accessories",
+        slug: "accessories",
+        parentId: null,
+      },
       fit: null,
       fabricComposition: null,
       careInstructions: null,
@@ -65,7 +71,7 @@ describe("Contracts Schema Validation", () => {
       slug: "aaraj-cotton-tee",
       name: "Aaraj Cotton Tee",
       audience: "unisex",
-      category: "T-shirts",
+      categoryId: "0cc175b9-c0f1-36a8-b1c3-99e269772661",
       reason: "Add the product",
       variants: [
         { sku: "TEE-BLK-M", color: "Black", sizeLabel: "M" },
@@ -91,7 +97,7 @@ describe("Contracts Schema Validation", () => {
     expect(
       CatalogProductUpdateSchema.safeParse({
         audience: null,
-        category: null,
+        categoryId: null,
         isPublished: false,
         reason: "Unpublish legacy item",
       }).success,
@@ -101,7 +107,7 @@ describe("Contracts Schema Validation", () => {
   it("requires consistent, unique size guide rows", () => {
     const guide = {
       name: "Classic T-shirt",
-      category: "T-shirts",
+      categoryId: "0cc175b9-c0f1-36a8-b1c3-99e269772661",
       fit: "Regular",
       measurementBasis: "garment",
       inputUnit: "in",
@@ -166,7 +172,7 @@ describe("Contracts Schema Validation", () => {
         limit: "48",
         offset: "24",
         audience: "unisex",
-        category: " T-shirts ",
+        category: " t-shirts ",
         color: " Black ",
         size: " M ",
       }),
@@ -174,7 +180,7 @@ describe("Contracts Schema Validation", () => {
       limit: 48,
       offset: 24,
       audience: "unisex",
-      category: "T-shirts",
+      category: "t-shirts",
       color: "Black",
       size: "M",
     });
@@ -194,7 +200,7 @@ describe("Contracts Schema Validation", () => {
     ).toBe(false);
     expect(
       CatalogPublishedProductListQuerySchema.safeParse({
-        category: "x".repeat(81),
+        category: "x".repeat(101),
       }).success,
     ).toBe(false);
     expect(
@@ -205,6 +211,23 @@ describe("Contracts Schema Validation", () => {
     expect(
       CatalogPublishedProductListQuerySchema.safeParse({ unexpected: "value" })
         .success,
+    ).toBe(false);
+  });
+
+  it("validates managed category identities and slugs", () => {
+    expect(
+      CatalogCategoryCreateSchema.safeParse({
+        name: "T-shirts",
+        slug: "t-shirts",
+        reason: "Create clothing category",
+      }).success,
+    ).toBe(true);
+    expect(
+      CatalogCategoryCreateSchema.safeParse({
+        name: "T-shirts",
+        slug: "T-shirts",
+        reason: "Create clothing category",
+      }).success,
     ).toBe(false);
   });
 });

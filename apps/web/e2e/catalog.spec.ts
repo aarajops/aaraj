@@ -31,7 +31,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
     page.getByRole("heading", { name: "Size guides", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill("Aaraj Classic Tee");
-  await page.getByLabel("Product category").fill("T-shirts");
+  await page
+    .getByLabel("Product category")
+    .selectOption({ label: "Clothing / T-shirts" });
   await page.getByLabel("Fit (optional)").fill("Regular");
   await page.getByLabel("Enter measurements in").selectOption("in");
   await page.getByRole("button", { name: "Add size" }).click();
@@ -49,7 +51,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("heading", { name: "Catalog management" }),
   ).toBeVisible();
-  await page.getByLabel("Category").fill("T-shirts");
+  await page
+    .getByLabel("Product category")
+    .selectOption({ label: "Clothing / T-shirts" });
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Load 100 more size guides" }).click();
   await expect(
@@ -96,12 +100,12 @@ test("staff manages reusable size guides and apparel products safely", async ({
 
   await page.goto("/");
   await page.getByLabel("Audience").selectOption("unisex");
-  await page.getByLabel("Category").selectOption("T-shirts");
+  await page.getByLabel("Category").selectOption("t-shirts");
   await page.getByLabel("Color").selectOption("Black");
   await page.getByLabel("Size").selectOption("M");
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/audience=unisex/);
-  await expect(page).toHaveURL(/category=T-shirts/);
+  await expect(page).toHaveURL(/category=t-shirts/);
   await expect(page).toHaveURL(/color=Black/);
   await expect(page).toHaveURL(/size=M/);
   await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
@@ -112,7 +116,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByLabel("Name", { exact: true }).fill("Duplicate slug item");
   await page.locator("#product-slug").fill("aaraj-e2e-tee");
   await page.getByLabel("Audience").selectOption("unisex");
-  await page.getByLabel("Category").fill("T-shirts");
+  await page
+    .getByLabel("Product category")
+    .selectOption({ label: "Clothing / T-shirts" });
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Check duplicate slug");
@@ -141,7 +147,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E T-shirt");
   await page.locator("#product-slug").fill("aaraj-e2e-t-shirt");
   await page.getByLabel("Audience").selectOption("men");
-  await page.getByLabel("Category").fill("T-shirts");
+  await page
+    .getByLabel("Product category")
+    .selectOption({ label: "Clothing / T-shirts" });
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Add variant" }).click();
   await page.getByLabel("Variant 1 SKU").fill("AA-TEE-WHT-M");
@@ -168,13 +176,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toHaveCount(1);
   await expect(page.getByRole("link", { name: "Previous" })).toBeVisible();
 
-  await page.goto("/?limit=1&offset=0&category=T-shirts");
+  await page.goto("/?limit=1&offset=0&category=t-shirts");
   const publicProductName = page.locator("main ul li h2");
   await expect(publicProductName).toHaveCount(1);
   const firstPageProduct = await publicProductName.textContent();
   await page.getByRole("link", { name: "Next" }).click();
   await expect(page).toHaveURL(/offset=1/);
-  await expect(page).toHaveURL(/category=T-shirts/);
+  await expect(page).toHaveURL(/category=t-shirts/);
   await expect(publicProductName).toHaveCount(1);
   await expect(publicProductName).not.toHaveText(firstPageProduct ?? "");
   await page.getByRole("link", { name: "Previous" }).click();
@@ -201,6 +209,40 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByText("No products are published yet.")).toBeVisible();
   const unpublishedResponse = await page.goto("/products/aaraj-e2e-tee");
   expect(unpublishedResponse?.status()).toBe(404);
+
+  await page.goto("/staff/catalog/categories");
+  await expect(page.locator('p[role="alert"]')).toContainText(
+    "Only administrators can manage product categories.",
+  );
+  await context.addCookies([
+    {
+      name: "aaraj-e2e-role",
+      value: "admin",
+      url: baseURL!,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+  await page.goto("/staff/catalog/categories");
+  await page.getByLabel("Name", { exact: true }).fill("Accessories");
+  await page.getByLabel("Slug").fill("accessories");
+  await page
+    .getByLabel("Reason for change")
+    .fill("Add an independently managed category");
+  await page.getByRole("button", { name: "Create category" }).click();
+  await expect(page.getByRole("status")).toContainText("Category created.");
+  await expect(
+    page.getByRole("list").getByText("Accessories", { exact: true }),
+  ).toBeVisible();
+  await context.addCookies([
+    {
+      name: "aaraj-e2e-role",
+      value: "staff",
+      url: baseURL!,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
 
   await context.clearCookies();
   await page.goto("/staff/catalog");

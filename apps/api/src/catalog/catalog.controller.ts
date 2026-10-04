@@ -1,4 +1,3 @@
-import { Can } from "@nestjs/authorization";
 import {
   Body,
   Controller,
@@ -30,7 +29,6 @@ import {
   type CatalogProductUpdateInput,
 } from "@aaraj/contracts";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
-import { CatalogPolicy } from "./catalog.policy.js";
 import { CatalogService } from "./catalog.service.js";
 
 @Controller("catalog/products")
@@ -41,7 +39,6 @@ export class CatalogController {
 
   @Get("manage")
   @Header("Cache-Control", "no-store")
-  @Can(CatalogPolicy, "manage")
   listForManagement(
     @Session() session: UserSession,
     @Query({ schema: CatalogProductListQuerySchema })
@@ -52,7 +49,6 @@ export class CatalogController {
 
   @Get("manage/:id")
   @Header("Cache-Control", "no-store")
-  @Can(CatalogPolicy, "manage")
   findForManagement(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogProductIdSchema }) productId: string,
@@ -78,7 +74,6 @@ export class CatalogController {
   }
 
   @Post()
-  @Can(CatalogPolicy, "manage")
   create(
     @Session() session: UserSession,
     @Body({ schema: CatalogProductCreateSchema })
@@ -88,7 +83,6 @@ export class CatalogController {
   }
 
   @Patch(":id")
-  @Can(CatalogPolicy, "manage")
   update(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogProductIdSchema }) productId: string,

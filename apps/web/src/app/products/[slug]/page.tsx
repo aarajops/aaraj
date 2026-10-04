@@ -95,7 +95,9 @@ export default async function ProductPage({
           </h1>
           {(product.audience || product.category) && (
             <p className="mt-3 text-sm text-muted-foreground">
-              {[product.audience, product.category].filter(Boolean).join(" · ")}
+              {[product.audience, product.category?.name]
+                .filter(Boolean)
+                .join(" · ")}
               {product.fit ? ` · ${product.fit} fit` : ""}
             </p>
           )}

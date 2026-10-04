@@ -75,15 +75,36 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(accessResponse.status()).toBe(200);
   expect(await accessResponse.json()).toMatchObject({
     roles: expect.arrayContaining(["superadmin"]),
-    permissions: expect.arrayContaining(["catalog.manage"]),
+    permissions: expect.arrayContaining([
+      "catalog.manage",
+      "catalog.categories.manage",
+    ]),
   });
+
+  await page.goto("/staff/catalog/categories");
+  await expect(
+    page.getByRole("heading", { name: "Product categories", level: 1 }),
+  ).toBeVisible();
+  await page.getByLabel("Name", { exact: true }).fill("Clothing");
+  await page.getByLabel("Slug").fill("clothing");
+  await page.getByLabel("Reason for change").fill("Create clothing root");
+  await page.getByRole("button", { name: "Create category" }).click();
+  await expect(page.getByRole("status")).toContainText("Category created.");
+  await page.getByLabel("Name", { exact: true }).fill("T-shirts");
+  await page.getByLabel("Slug").fill("t-shirts");
+  await page.getByLabel("Parent category").selectOption({ label: "Clothing" });
+  await page.getByLabel("Reason for change").fill("Create T-shirt category");
+  await page.getByRole("button", { name: "Create category" }).click();
+  await expect(page.getByRole("status")).toContainText("Category created.");
 
   await page.goto("/staff/catalog/size-guides");
   await expect(
     page.getByRole("heading", { name: "Size guides", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill(guideName);
-  await page.getByLabel("Product category").fill("T-shirts");
+  await page
+    .getByLabel("Product category")
+    .selectOption({ label: "Clothing / T-shirts" });
   await page.getByLabel("Fit (optional)").fill("Regular");
   await page.getByLabel("Enter measurements in").selectOption("in");
   await page.getByRole("button", { name: "Add size" }).click();
@@ -109,7 +130,9 @@ test("catalog operator configures a product through to storefront visibility", a
     .getByLabel("Description", { exact: true })
     .fill("A product configured in a real browser and database flow.");
   await page.getByLabel("Audience").selectOption("unisex");
-  await page.getByLabel("Category").fill("T-shirts");
+  await page
+    .getByLabel("Product category")
+    .selectOption({ label: "Clothing / T-shirts" });
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByLabel("Fabric composition").fill("100% cotton");
   await page.getByLabel("Care instructions").fill("Machine wash cold");
@@ -170,7 +193,7 @@ test("catalog operator configures a product through to storefront visibility", a
 
   await page.goto("/");
   await page.getByLabel("Audience").selectOption("unisex");
-  await page.getByLabel("Category").selectOption("T-shirts");
+  await page.getByLabel("Category").selectOption("t-shirts");
   await page.getByLabel("Color").selectOption("Black");
   await page.getByLabel("Size").selectOption("S");
   await page.getByRole("button", { name: "Apply filters" }).click();
@@ -178,7 +201,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
 
   const filteredProducts = await page.request.get(
-    "/api/catalog/products?audience=unisex&category=T-shirts&color=Black&size=S",
+    "/api/catalog/products?audience=unisex&category=t-shirts&color=Black&size=S",
   );
   expect(filteredProducts.status()).toBe(200);
   expect((await filteredProducts.json()).products).toEqual(

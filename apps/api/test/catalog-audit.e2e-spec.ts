@@ -19,6 +19,7 @@ describe("catalog and security audit", () => {
   let app: INestApplication;
   let database: DatabaseService;
   let owner: Account;
+  let admin: Account;
   let staff: Account;
   let customer: Account;
 
@@ -50,10 +51,14 @@ describe("catalog and security audit", () => {
     await app.init();
     database = app.get(DatabaseService);
     owner = await createAccount("owner");
+    admin = await createAccount("admin");
     staff = await createAccount("staff");
     customer = await createAccount("customer");
     const access = app.get(AccessService);
     await access.bootstrapSuperadmin(owner.id, { reason: "E2E test owner" });
+    await access.changeRole(owner, admin.id, "admin", "grant", {
+      reason: "E2E catalog administrator",
+    });
     await access.changeRole(owner, staff.id, "staff", "grant", {
       reason: "E2E catalog staff",
     });
@@ -78,6 +83,10 @@ describe("catalog and security audit", () => {
         nextOffset: null,
         filters: { categories: [], colors: [], sizes: [] },
       });
+    await request(app.getHttpServer())
+      .get("/api/catalog/categories")
+      .expect(200)
+      .expect({ categories: [] });
     await request(app.getHttpServer())
       .get("/api/catalog/products?limit=101")
       .expect(400);
@@ -109,13 +118,115 @@ describe("catalog and security audit", () => {
       .set("Cookie", customer.cookie)
       .expect(403);
 
+    await request(app.getHttpServer())
+      .get("/api/catalog/categories/manage")
+      .expect(401);
+    await request(app.getHttpServer())
+      .get("/api/catalog/categories/manage")
+      .set("Cookie", staff.cookie)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post("/api/catalog/categories")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({ name: "Forbidden", slug: "forbidden", reason: "Must be admin" })
+      .expect(403);
+
+    const parentCategory = await request(app.getHttpServer())
+      .post("/api/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Clothing",
+        slug: "clothing",
+        sortOrder: 10,
+        reason: "Create clothing category group",
+      })
+      .expect(201);
+    const leafCategory = await request(app.getHttpServer())
+      .post("/api/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "T-shirts",
+        slug: "t-shirts",
+        parentId: parentCategory.body.id,
+        reason: "Create T-shirt leaf category",
+      })
+      .expect(201);
+    const unusedCategory = await request(app.getHttpServer())
+      .post("/api/catalog/categories")
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Accessories",
+        slug: "accessories",
+        reason: "Test administrator category access",
+      })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/categories/${unusedCategory.body.id}`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({ isActive: false, reason: "Archive unused category" })
+      .expect(200);
+    const activeCategories = await request(app.getHttpServer())
+      .get("/api/catalog/categories")
+      .expect(200);
+    expect(
+      activeCategories.body.categories.map(
+        ({ slug }: { slug: string }) => slug,
+      ),
+    ).not.toContain("accessories");
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/categories/${unusedCategory.body.id}`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({ isActive: true, reason: "Restore unused category" })
+      .expect(200);
+    const categoryId = leafCategory.body.id as string;
+    expect(leafCategory.body).toMatchObject({
+      name: "T-shirts",
+      slug: "t-shirts",
+      parentId: parentCategory.body.id,
+      path: "Clothing / T-shirts",
+      isLeaf: true,
+      isActive: true,
+    });
+    const managedCategories = await request(app.getHttpServer())
+      .get("/api/catalog/categories/manage")
+      .set("Cookie", admin.cookie)
+      .expect(200);
+    expect(managedCategories.body.categories).toHaveLength(3);
+    await request(app.getHttpServer())
+      .post("/api/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "invalid-parent-category-product",
+        name: "Invalid category product",
+        audience: "unisex",
+        categoryId: parentCategory.body.id,
+        reason: "Parent categories cannot be product categories",
+      })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/categories/${parentCategory.body.id}`)
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        parentId: leafCategory.body.id,
+        reason: "Reject category cycle",
+      })
+      .expect(400);
+
     const guide = await request(app.getHttpServer())
       .post("/api/catalog/size-guides")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
         name: "Aaraj classic T-shirt",
-        category: "T-shirts",
+        categoryId,
         fit: "Regular",
         measurementBasis: "garment",
         inputUnit: "in",
@@ -139,6 +250,32 @@ describe("catalog and security audit", () => {
       })
       .expect(201);
     const guideId = guide.body.id as string;
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/categories/${categoryId}`)
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({ isActive: false, reason: "Reject category still in use" })
+      .expect(409);
+    await request(app.getHttpServer())
+      .post("/api/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Long sleeve T-shirts",
+        slug: "long-sleeve-t-shirts",
+        parentId: categoryId,
+        reason: "A referenced leaf cannot become a parent",
+      })
+      .expect(409);
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/categories/${unusedCategory.body.id}`)
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        parentId: categoryId,
+        reason: "A referenced leaf cannot receive a child",
+      })
+      .expect(409);
     expect(guide.body.rows[0].measurements).toEqual(
       expect.arrayContaining([
         { key: "chest_width", valueMm: "508.00" },
@@ -159,7 +296,7 @@ describe("catalog and security audit", () => {
         slug: "customer-tee",
         name: "Customer tee",
         audience: "unisex",
-        category: "T-shirts",
+        categoryId,
         reason: "Catalog draft",
       })
       .expect(403);
@@ -172,7 +309,7 @@ describe("catalog and security audit", () => {
         slug: "missing-size-tee",
         name: "Missing size tee",
         audience: "unisex",
-        category: "T-shirts",
+        categoryId,
         fit: "Regular",
         sizeGuideId: guideId,
         isPublished: true,
@@ -190,7 +327,7 @@ describe("catalog and security audit", () => {
         name: "Aaraj Draft Tee",
         description: "Local apparel test product",
         audience: "unisex",
-        category: "T-shirts",
+        categoryId,
         fit: "Regular",
         sizeGuideId: guideId,
         variants: [{ sku: "AA-TEE-BLK-M", color: "Black", sizeLabel: "M" }],
@@ -249,7 +386,7 @@ describe("catalog and security audit", () => {
         slug: "duplicate-sku-tee",
         name: "Duplicate SKU Tee",
         audience: "men",
-        category: "T-shirts",
+        categoryId,
         variants: [{ sku: "aa-tee-blk-m", color: "White", sizeLabel: "M" }],
         reason: "Reject reused SKU",
       })
@@ -284,7 +421,7 @@ describe("catalog and security audit", () => {
         slug: "aaraj-city-shirt",
         name: "Aaraj City Shirt",
         audience: "men",
-        category: "T-shirts",
+        categoryId,
         fit: "Regular",
         sizeGuideId: guideId,
         variants: [{ sku: "AA-TEE-WHT-L", color: "White", sizeLabel: "L" }],
@@ -301,7 +438,7 @@ describe("catalog and security audit", () => {
         slug: "variant-filter-probe",
         name: "Variant Filter Probe",
         audience: "unisex",
-        category: "T-shirts",
+        categoryId,
         fit: "Regular",
         sizeGuideId: guideId,
         variants: [
@@ -315,7 +452,7 @@ describe("catalog and security audit", () => {
       .expect(201);
 
     const unisexTshirts = await request(app.getHttpServer())
-      .get("/api/catalog/products?audience=unisex&category=%20t-shirts%20")
+      .get("/api/catalog/products?audience=unisex&category=t-shirts")
       .expect(200);
     expect(
       unisexTshirts.body.products.map(
@@ -346,11 +483,21 @@ describe("catalog and security audit", () => {
     const filterOptions = await request(app.getHttpServer())
       .get("/api/catalog/products")
       .expect(200);
-    expect(filterOptions.body.filters).toEqual({
-      categories: ["T-shirts"],
+    expect(filterOptions.body.filters).toMatchObject({
+      categories: expect.arrayContaining([
+        expect.objectContaining({ slug: "clothing", path: "Clothing" }),
+        expect.objectContaining({
+          slug: "t-shirts",
+          path: "Clothing / T-shirts",
+        }),
+      ]),
       colors: ["Black", "Red", "White"],
       sizes: ["L", "M"],
     });
+    const parentCategoryProducts = await request(app.getHttpServer())
+      .get("/api/catalog/products?category=clothing")
+      .expect(200);
+    expect(parentCategoryProducts.body.products.length).toBeGreaterThan(0);
 
     await request(app.getHttpServer())
       .patch(`/api/catalog/products/${variantFilterProbe.body.id}`)
@@ -373,7 +520,7 @@ describe("catalog and security audit", () => {
       .set("Origin", origin)
       .send({
         name: "Aaraj incomplete chart",
-        category: "T-shirts",
+        categoryId,
         fit: "Regular",
         measurementBasis: "garment",
         inputUnit: "cm",
@@ -440,6 +587,18 @@ describe("catalog and security audit", () => {
       )
       .set("Cookie", owner.cookie)
       .expect(200);
+    const categoryAuditPage = await request(app.getHttpServer())
+      .get(
+        `/api/audit/events?eventType=catalog.category_created&actorId=${owner.id}&limit=10`,
+      )
+      .set("Cookie", owner.cookie)
+      .expect(200);
+    expect(categoryAuditPage.body.events).toHaveLength(2);
+    expect(
+      categoryAuditPage.body.events.map(
+        (event: { subjectType: string }) => event.subjectType,
+      ),
+    ).toEqual(["catalog_category", "catalog_category"]);
     expect(page.body.events).toHaveLength(1);
     expect(page.body.nextCursor).toEqual(expect.any(String));
     expect(() =>

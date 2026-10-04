@@ -1,4 +1,3 @@
-import { Can } from "@nestjs/authorization";
 import {
   Body,
   Controller,
@@ -23,7 +22,6 @@ import {
   type CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
-import { CatalogPolicy } from "./catalog.policy.js";
 import { SizeGuideService } from "./size-guide.service.js";
 
 @Controller("catalog/size-guides")
@@ -34,7 +32,6 @@ export class SizeGuideController {
 
   @Get("manage")
   @Header("Cache-Control", "no-store")
-  @Can(CatalogPolicy, "manage")
   listForManagement(
     @Session() session: UserSession,
     @Query({ schema: CatalogSizeGuideListQuerySchema })
@@ -45,7 +42,6 @@ export class SizeGuideController {
 
   @Get("manage/:id")
   @Header("Cache-Control", "no-store")
-  @Can(CatalogPolicy, "manage")
   findForManagement(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogSizeGuideIdSchema }) guideId: string,
@@ -54,7 +50,6 @@ export class SizeGuideController {
   }
 
   @Post()
-  @Can(CatalogPolicy, "manage")
   create(
     @Session() session: UserSession,
     @Body({ schema: CatalogSizeGuideCreateSchema })
@@ -64,7 +59,6 @@ export class SizeGuideController {
   }
 
   @Patch(":id")
-  @Can(CatalogPolicy, "manage")
   update(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogSizeGuideIdSchema }) guideId: string,

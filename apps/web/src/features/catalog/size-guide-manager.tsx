@@ -20,6 +20,7 @@ import {
   updateCatalogSizeGuide,
 } from "@/features/catalog/catalog-client";
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
+import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
 import Link from "next/link";
 import { useCallback, useState, type SubmitEvent } from "react";
 
@@ -31,7 +32,7 @@ interface GuideRowDraft {
 interface GuideForm {
   id: string | null;
   name: string;
-  category: string;
+  categoryId: string;
   fit: string;
   measurementBasis: "garment" | "body";
   inputUnit: "cm" | "in";
@@ -59,7 +60,7 @@ const inputClassName =
 const blankForm: GuideForm = {
   id: null,
   name: "",
-  category: "",
+  categoryId: "",
   fit: "",
   measurementBasis: "garment",
   inputUnit: "cm",
@@ -182,7 +183,7 @@ export function SizeGuideManager({
     setIsSaving(true);
     const payload = {
       name: form.name.trim(),
-      category: form.category.trim(),
+      categoryId: form.categoryId,
       fit: form.fit.trim() || null,
       measurementBasis: form.measurementBasis,
       inputUnit: form.inputUnit,
@@ -241,6 +242,12 @@ export function SizeGuideManager({
           >
             Back to products
           </Link>
+          <Link
+            className="text-sm text-primary hover:text-primary/80"
+            href="/staff/catalog/categories"
+          >
+            Manage categories
+          </Link>
         </div>
 
         <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.95fr)]">
@@ -263,7 +270,7 @@ export function SizeGuideManager({
                       <div className="min-w-0">
                         <p className="font-medium">{guide.name}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {guide.category}
+                          {guide.category.name}
                           {guide.fit ? ` · ${guide.fit} fit` : ""} ·{" "}
                           {guide.measurementBasis} measurements
                         </p>
@@ -348,25 +355,15 @@ export function SizeGuideManager({
                 />
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="guide-category"
-                >
-                  Product category
-                  <Input
-                    className={inputClassName}
-                    id="guide-category"
-                    maxLength={80}
-                    required
-                    value={form.category}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        category: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
+                <CatalogCategorySelect
+                  id="guide-category"
+                  label="Product category"
+                  required
+                  value={form.categoryId}
+                  onChange={(categoryId) =>
+                    setForm((current) => ({ ...current, categoryId }))
+                  }
+                />
                 <label
                   className="block space-y-2 text-sm font-medium"
                   htmlFor="guide-fit"
@@ -620,7 +617,7 @@ function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
   return {
     id: guide.id,
     name: guide.name,
-    category: guide.category,
+    categoryId: guide.category.id,
     fit: guide.fit ?? "",
     measurementBasis: guide.measurementBasis,
     inputUnit: "cm",

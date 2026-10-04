@@ -12,4 +12,8 @@ export class CatalogPolicy {
   manage(user: AccessPrincipal | null, db?: AccessDatabase) {
     return this.permissions.has(user, "catalog.manage", db);
   }
+
+  manageCategories(user: AccessPrincipal | null, db?: AccessDatabase) {
+    return this.permissions.has(user, "catalog.categories.manage", db);
+  }
 }

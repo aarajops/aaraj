@@ -197,11 +197,17 @@ CREATE TABLE geography.provider_zone_mappings (
 -- CATALOG: Bangladesh multilingual names; simple FTS + trigram with event-fed search adapter.
 CREATE TABLE catalog.brands (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slug text NOT NULL UNIQUE, name text NOT NULL);
 CREATE TABLE catalog.categories (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), parent_id uuid REFERENCES catalog.categories(id),
-  slug text NOT NULL UNIQUE, names jsonb NOT NULL, CHECK (parent_id IS DISTINCT FROM id)
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  parent_id uuid REFERENCES catalog.categories(id) ON DELETE RESTRICT,
+  slug text NOT NULL UNIQUE, names jsonb NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0 CHECK (sort_order >= 0),
+  is_active boolean NOT NULL DEFAULT true,
+  CHECK (parent_id IS DISTINCT FROM id)
 );
+CREATE INDEX categories_parent_order_idx ON catalog.categories (parent_id, sort_order);
 CREATE TABLE catalog.products (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), brand_id uuid REFERENCES catalog.brands(id),
+  category_id uuid REFERENCES catalog.categories(id) ON DELETE RESTRICT,
   slug text NOT NULL UNIQUE, title text NOT NULL, localized_content jsonb NOT NULL DEFAULT '{}',
   attributes jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(attributes) = 'object'),
   status text NOT NULL CHECK (status IN ('DRAFT','PUBLISHED','ARCHIVED')),
@@ -211,10 +217,7 @@ CREATE TABLE catalog.products (
 CREATE INDEX products_attributes_gin ON catalog.products USING gin (attributes jsonb_path_ops);
 CREATE INDEX products_title_trgm ON catalog.products USING gin (title gin_trgm_ops);
 CREATE INDEX products_search_gin ON catalog.products USING gin (search_document);
-CREATE TABLE catalog.product_categories (
-  product_id uuid NOT NULL REFERENCES catalog.products(id), category_id uuid NOT NULL REFERENCES catalog.categories(id),
-  PRIMARY KEY (product_id, category_id)
-);
+CREATE INDEX products_category_idx ON catalog.products (category_id);
 CREATE TABLE catalog.variants (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), product_id uuid NOT NULL REFERENCES catalog.products(id),
   sku text NOT NULL UNIQUE, barcode text, attributes jsonb NOT NULL DEFAULT '{}',

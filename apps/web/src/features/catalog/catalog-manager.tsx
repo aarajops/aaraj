@@ -24,6 +24,7 @@ import {
   updateCatalogProduct,
 } from "@/features/catalog/catalog-client";
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
+import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
 import Link from "next/link";
 import { useCallback, useState, type SubmitEvent } from "react";
 
@@ -42,7 +43,7 @@ interface ProductForm {
   name: string;
   description: string;
   audience: Audience;
-  category: string;
+  categoryId: string;
   fit: string;
   fabricComposition: string;
   careInstructions: string;
@@ -63,7 +64,7 @@ const blankForm: ProductForm = {
   name: "",
   description: "",
   audience: "",
-  category: "",
+  categoryId: "",
   fit: "",
   fabricComposition: "",
   careInstructions: "",
@@ -247,11 +248,8 @@ export function CatalogManager({
     setErrorMessage(null);
     setSlugError(null);
     setStatusMessage(null);
-    if (
-      (!form.audience && (!form.id || form.isPublished)) ||
-      (!form.id && !form.category.trim())
-    ) {
-      setErrorMessage("Choose an audience and category before saving.");
+    if (!form.audience && (!form.id || form.isPublished)) {
+      setErrorMessage("Choose an audience before saving.");
       setIsSaving(false);
       return;
     }
@@ -273,7 +271,7 @@ export function CatalogManager({
       (!variants.length ||
         !form.sizeGuideId ||
         !form.audience ||
-        !form.category)
+        !form.categoryId)
     ) {
       setErrorMessage(
         "Before publishing, choose an audience and category, assign a matching size guide, and add at least one complete color and size variant.",
@@ -287,7 +285,7 @@ export function CatalogManager({
       name: form.name.trim(),
       description: form.description.trim() || null,
       audience: form.audience || null,
-      category: form.category.trim() || null,
+      categoryId: form.categoryId || null,
       fit: form.fit.trim() || null,
       fabricComposition: form.fabricComposition.trim() || null,
       careInstructions: form.careInstructions.trim() || null,
@@ -303,7 +301,6 @@ export function CatalogManager({
         : await createCatalogProduct({
             ...payload,
             audience: form.audience as Exclude<Audience, "">,
-            category: form.category.trim(),
           });
 
       if (!response.ok) {
@@ -354,9 +351,8 @@ export function CatalogManager({
 
   const compatibleGuides = sizeGuides.filter(
     (guide) =>
-      form.category.trim() &&
-      guide.category.trim().toLowerCase() ===
-        form.category.trim().toLowerCase() &&
+      form.categoryId &&
+      guide.category.id === form.categoryId &&
       (guide.fit ?? "").trim().toLowerCase() === form.fit.trim().toLowerCase(),
   );
 
@@ -382,6 +378,12 @@ export function CatalogManager({
               href="/staff/catalog/size-guides"
             >
               Manage size guides
+            </Link>
+            <Link
+              className="text-sm text-primary hover:text-primary/80"
+              href="/staff/catalog/categories"
+            >
+              Manage categories
             </Link>
             <Link
               className="text-sm text-primary hover:text-primary/80"
@@ -584,22 +586,15 @@ export function CatalogManager({
                     <option value="unisex">Unisex</option>
                   </select>
                 </label>
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="product-category"
-                >
-                  Category
-                  <Input
-                    className={fieldClassName}
-                    id="product-category"
-                    maxLength={80}
-                    required={!form.id || form.isPublished}
-                    value={form.category}
-                    onChange={(event) =>
-                      updateForm("category", event.target.value)
-                    }
-                  />
-                </label>
+                <CatalogCategorySelect
+                  id="product-category"
+                  label="Product category"
+                  required={form.isPublished}
+                  value={form.categoryId}
+                  onChange={(categoryId) =>
+                    updateForm("categoryId", categoryId)
+                  }
+                />
               </div>
 
               <label
@@ -790,7 +785,7 @@ export function CatalogManager({
                     </option>
                   ))}
                 </select>
-                {form.category.trim() && compatibleGuides.length === 0 && (
+                {form.categoryId && compatibleGuides.length === 0 && (
                   <span className="block text-xs font-normal text-muted-foreground">
                     No matching size guide is available.{" "}
                     <Link
@@ -920,7 +915,7 @@ function toProductFormState(product: CatalogManagedProductDetail): ProductForm {
     name: product.name,
     description: product.description ?? "",
     audience: product.audience ?? "",
-    category: product.category ?? "",
+    categoryId: product.category?.id ?? "",
     fit: product.fit ?? "",
     fabricComposition: product.fabricComposition ?? "",
     careInstructions: product.careInstructions ?? "",

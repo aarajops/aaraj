@@ -5,6 +5,8 @@ import {
   CatalogPublishedProductListQuerySchema,
   CatalogProductUpdateSchema,
   CatalogSizeGuideCreateSchema,
+  CatalogCategoryCreateSchema,
+  CatalogCategoryUpdateSchema,
   DEFAULT_LIST_PAGE_SIZE,
   MAX_LIST_OFFSET,
   MAX_LIST_PAGE_SIZE,
@@ -13,6 +15,13 @@ import {
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3181);
 const products = [];
+const clothingCategory = makeCategory("Clothing", "clothing");
+const tshirtCategory = makeCategory(
+  "T-shirts",
+  "t-shirts",
+  clothingCategory.id,
+);
+const categories = [clothingCategory, tshirtCategory];
 const sizeGuides = Array.from({ length: 100 }, (_, index) =>
   makeGuide(
     {
@@ -20,7 +29,7 @@ const sizeGuides = Array.from({ length: 100 }, (_, index) =>
         index === 0
           ? "Legacy guide beyond the first page"
           : `Historical guide ${index + 1}`,
-      category: index === 0 ? "T-shirts" : `Category ${index + 1}`,
+      category: tshirtCategory,
       fit: index === 0 ? "Regular" : null,
       measurementBasis: "garment",
       inputUnit: "cm",
@@ -50,7 +59,18 @@ function roleFromCookie(cookie = "") {
 
 function requireStaff(request, response) {
   const role = roleFromCookie(request.headers.cookie);
-  if (role === "staff" || role === "staff-stale") return true;
+  if (["staff", "staff-stale", "admin", "superadmin"].includes(role))
+    return true;
+  send(response, role ? 403 : 401, {
+    statusCode: role ? 403 : 401,
+    message: role ? "Forbidden" : "Unauthorized",
+  });
+  return false;
+}
+
+function requireCategoryAdmin(request, response) {
+  const role = roleFromCookie(request.headers.cookie);
+  if (role === "admin" || role === "superadmin") return true;
   send(response, role ? 403 : 401, {
     statusCode: role ? 403 : 401,
     message: role ? "Forbidden" : "Unauthorized",
@@ -90,13 +110,169 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (url.pathname === "/api/catalog/categories" && method === "GET") {
+    send(response, 200, {
+      categories: refreshCategoryTree()
+        .filter(({ isActive }) => isActive)
+        .map(categoryOption),
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/catalog/categories/manage" && method === "GET") {
+    if (!requireCategoryAdmin(request, response)) return;
+    send(response, 200, { categories: refreshCategoryTree() });
+    return;
+  }
+
+  if (url.pathname === "/api/catalog/categories" && method === "POST") {
+    if (!requireCategoryAdmin(request, response)) return;
+    const parsed = CatalogCategoryCreateSchema.safeParse(
+      await readBody(request),
+    );
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid category input",
+      });
+      return;
+    }
+    const input = parsed.data;
+    if (categories.some(({ slug }) => slug === input.slug)) {
+      send(response, 409, {
+        statusCode: 409,
+        message: "Category slug already in use.",
+      });
+      return;
+    }
+    if (
+      input.parentId &&
+      !categories.some(({ id, isActive }) => id === input.parentId && isActive)
+    ) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Parent category must be active.",
+      });
+      return;
+    }
+    const category = makeCategory(
+      input.name,
+      input.slug,
+      input.parentId ?? null,
+    );
+    category.sortOrder = input.sortOrder ?? 0;
+    categories.push(category);
+    send(
+      response,
+      201,
+      refreshCategoryTree().find(({ id }) => id === category.id),
+    );
+    return;
+  }
+
+  const categoryPath = url.pathname.match(
+    /^\/api\/catalog\/categories\/([^/]+)$/,
+  );
+  if (categoryPath && method === "PATCH") {
+    if (!requireCategoryAdmin(request, response)) return;
+    const category = categories.find(({ id }) => id === categoryPath[1]);
+    const parsed = CatalogCategoryUpdateSchema.safeParse(
+      await readBody(request),
+    );
+    if (!category || !parsed.success) {
+      send(response, category ? 400 : 404, {
+        statusCode: category ? 400 : 404,
+        message: category ? "Invalid category input" : "Category not found",
+      });
+      return;
+    }
+    const input = parsed.data;
+    if (
+      input.slug &&
+      categories.some(
+        ({ id, slug }) => id !== category.id && slug === input.slug,
+      )
+    ) {
+      send(response, 409, {
+        statusCode: 409,
+        message: "Category slug already in use.",
+      });
+      return;
+    }
+    const parentId =
+      input.parentId === undefined ? category.parentId : input.parentId;
+    if (parentId) {
+      const initialParent = categories.find(({ id }) => id === parentId);
+      if (
+        !initialParent ||
+        (input.isActive !== false && !initialParent.isActive)
+      ) {
+        send(response, 400, {
+          statusCode: 400,
+          message: "Parent category must be active.",
+        });
+        return;
+      }
+      let parent = categories.find(({ id }) => id === parentId);
+      const visited = new Set();
+      while (parent) {
+        if (parent.id === category.id || visited.has(parent.id)) {
+          send(response, 400, {
+            statusCode: 400,
+            message: "A category cannot be its own ancestor.",
+          });
+          return;
+        }
+        visited.add(parent.id);
+        parent = parent.parentId
+          ? categories.find(({ id }) => id === parent.parentId)
+          : null;
+      }
+    }
+    if (category.isActive && input.isActive === false) {
+      const referenced =
+        products.some(
+          ({ category: itemCategory }) => itemCategory?.id === category.id,
+        ) ||
+        sizeGuides.some(
+          ({ category: guideCategory }) => guideCategory.id === category.id,
+        ) ||
+        categories.some(
+          ({ parentId: childParentId, isActive }) =>
+            childParentId === category.id && isActive,
+        );
+      if (referenced) {
+        send(response, 409, {
+          statusCode: 409,
+          message:
+            "Move its products, size guides, and active child categories before deactivating this category.",
+        });
+        return;
+      }
+    }
+    Object.assign(category, {
+      name: input.name ?? category.name,
+      slug: input.slug ?? category.slug,
+      parentId,
+      sortOrder: input.sortOrder ?? category.sortOrder,
+      isActive: input.isActive ?? category.isActive,
+      updatedAt: new Date().toISOString(),
+    });
+    send(
+      response,
+      200,
+      refreshCategoryTree().find(({ id }) => id === category.id),
+    );
+    return;
+  }
+
   if (url.pathname === "/api/catalog/size-guides/manage" && method === "GET") {
     if (!requireStaff(request, response)) return;
     const matching = sizeGuides.filter((guide) => {
-      const category = url.searchParams.get("category");
+      const categoryId = url.searchParams.get("categoryId");
       const fit = url.searchParams.get("fit");
       return (
-        (!category || normalize(guide.category) === normalize(category)) &&
+        (!categoryId || guide.category.id === categoryId) &&
         (!fit || normalize(guide.fit ?? "") === normalize(fit))
       );
     });
@@ -131,6 +307,13 @@ const server = createServer(async (request, response) => {
       });
       return;
     }
+    if (!isActiveLeafCategory(parsed.data.categoryId)) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Choose an active leaf product category.",
+      });
+      return;
+    }
     const now = new Date().toISOString();
     const guide = makeGuide(parsed.data, now);
     sizeGuides.unshift(guide);
@@ -158,6 +341,13 @@ const server = createServer(async (request, response) => {
     const candidate = makeGuide(parsed.data, guide.createdAt);
     candidate.id = guide.id;
     candidate.updatedAt = new Date().toISOString();
+    if (!isActiveLeafCategory(parsed.data.categoryId)) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Choose an active leaf product category.",
+      });
+      return;
+    }
     if (
       products.some(
         (product) =>
@@ -234,6 +424,13 @@ const server = createServer(async (request, response) => {
       });
       return;
     }
+    if (body.categoryId && !isActiveLeafCategory(body.categoryId)) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Choose an active leaf product category.",
+      });
+      return;
+    }
     const now = new Date().toISOString();
     const product = {
       id: randomUUID(),
@@ -241,7 +438,9 @@ const server = createServer(async (request, response) => {
       name: body.name,
       description: body.description ?? null,
       audience: body.audience,
-      category: body.category,
+      category: body.categoryId
+        ? categoryReference(categories.find(({ id }) => id === body.categoryId))
+        : null,
       fit: body.fit ?? null,
       fabricComposition: body.fabricComposition ?? null,
       careInstructions: body.careInstructions ?? null,
@@ -338,6 +537,15 @@ const server = createServer(async (request, response) => {
       });
       return;
     }
+    const categoryId =
+      body.categoryId !== undefined ? body.categoryId : product.category?.id;
+    if (categoryId && !isActiveLeafCategory(categoryId)) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Choose an active leaf product category.",
+      });
+      return;
+    }
     const candidate = {
       ...product,
       slug: body.slug ?? product.slug,
@@ -345,7 +553,9 @@ const server = createServer(async (request, response) => {
       description:
         body.description !== undefined ? body.description : product.description,
       audience: body.audience ?? product.audience,
-      category: body.category ?? product.category,
+      category: categoryId
+        ? categoryReference(categories.find(({ id }) => id === categoryId))
+        : null,
       fit: body.fit !== undefined ? body.fit : product.fit,
       fabricComposition:
         body.fabricComposition !== undefined
@@ -389,7 +599,9 @@ function makeGuide(input, createdAt) {
   return {
     id: randomUUID(),
     name: input.name,
-    category: input.category,
+    category: categoryReference(
+      input.category ?? categories.find(({ id }) => id === input.categoryId),
+    ),
     fit: input.fit ?? null,
     measurementBasis: input.measurementBasis,
     rows: input.rows.map((row, sortOrder) => ({
@@ -426,6 +638,82 @@ function sizeGuideSummary(guide) {
   };
 }
 
+function makeCategory(name, slug, parentId = null) {
+  const now = new Date().toISOString();
+  return {
+    id: randomUUID(),
+    name,
+    slug,
+    parentId,
+    sortOrder: 0,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+    path: name,
+    isLeaf: true,
+  };
+}
+
+function refreshCategoryTree() {
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const hasChildren = new Set(
+    categories.flatMap(({ parentId }) => (parentId ? [parentId] : [])),
+  );
+  const pathFor = (category, seen = new Set()) => {
+    if (seen.has(category.id)) return category.name;
+    seen.add(category.id);
+    const parent = category.parentId ? byId.get(category.parentId) : null;
+    return parent
+      ? `${pathFor(parent, seen)} / ${category.name}`
+      : category.name;
+  };
+  for (const category of categories) {
+    category.path = pathFor(category);
+    category.isLeaf = !hasChildren.has(category.id);
+  }
+  return [...categories].sort(
+    (left, right) =>
+      left.sortOrder - right.sortOrder || left.path.localeCompare(right.path),
+  );
+}
+
+function categoryOption(category) {
+  const { id, name, slug, parentId, sortOrder, path, isLeaf } = category;
+  return { id, name, slug, parentId, sortOrder, path, isLeaf };
+}
+
+function categoryReference(category) {
+  if (!category) return null;
+  const { id, name, slug, parentId } = category;
+  return { id, name, slug, parentId };
+}
+
+function isActiveLeafCategory(categoryId) {
+  const category = categories.find(({ id }) => id === categoryId);
+  return Boolean(
+    category?.isActive &&
+    !categories.some(({ parentId }) => parentId === categoryId),
+  );
+}
+
+function categoryMatches(categoryId, slug) {
+  const root = categories.find(
+    (category) => category.slug === slug && category.isActive,
+  );
+  const productCategory = categories.find(({ id }) => id === categoryId);
+  if (!root || !productCategory) return false;
+  let current = productCategory;
+  const visited = new Set();
+  while (current && !visited.has(current.id)) {
+    if (current.id === root.id) return true;
+    visited.add(current.id);
+    current = current.parentId
+      ? categories.find(({ id }) => id === current.parentId)
+      : null;
+  }
+  return false;
+}
+
 function productDetail(product, management = false) {
   return {
     ...summary(product),
@@ -453,10 +741,10 @@ function summary(product) {
 function isPublishable(product, variants, guide) {
   return Boolean(
     product.audience &&
-    product.category &&
+    product.category?.id &&
     guide &&
     variants.length > 0 &&
-    normalize(product.category) === normalize(guide.category) &&
+    product.category.id === guide.category.id &&
     normalize(product.fit ?? "") === normalize(guide.fit ?? "") &&
     variants.every((variant) =>
       guide.rows.some(
@@ -513,7 +801,7 @@ function sendPublishedProductPage(response, source, url) {
     if (query.audience && product.audience !== query.audience) return false;
     if (
       query.category &&
-      normalize(product.category ?? "") !== normalize(query.category)
+      !categoryMatches(product.category?.id, query.category)
     ) {
       return false;
     }
@@ -545,7 +833,7 @@ function sendPublishedProductPage(response, source, url) {
         ? candidateNextOffset
         : null,
     filters: {
-      categories: uniqueFilterValues(source.map(({ category }) => category)),
+      categories: publicCategoryFilters(source),
       colors: uniqueFilterValues(
         source.flatMap((product) =>
           product.variants
@@ -562,6 +850,24 @@ function sendPublishedProductPage(response, source, url) {
       ),
     },
   });
+}
+
+function publicCategoryFilters(source) {
+  const visible = new Set();
+  for (const product of source) {
+    let current = product.category;
+    const visited = new Set();
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      visible.add(current.id);
+      current = current.parentId
+        ? categories.find(({ id }) => id === current.parentId)
+        : null;
+    }
+  }
+  return refreshCategoryTree()
+    .filter(({ id, isActive }) => isActive && visible.has(id))
+    .map(categoryOption);
 }
 
 function sendPage(response, source, url, key) {

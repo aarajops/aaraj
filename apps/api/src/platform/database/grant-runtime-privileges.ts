@@ -12,6 +12,7 @@ const runtimeTableGrants = [
   ["identity", "verification", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
   ["audit", "event", ["SELECT", "INSERT"]],
   ["access", "role_assignment", ["SELECT", "INSERT", "DELETE"]],
+  ["catalog", "category", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "product", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "product_variant", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "size_guide", ["SELECT", "INSERT", "UPDATE"]],

@@ -17,6 +17,7 @@ import type {
   CatalogPublishedProductPage,
   CatalogProductUpdateInput,
   CatalogProductVariantInput,
+  CatalogCategoryReference,
 } from "@aaraj/contracts";
 import { MAX_LIST_OFFSET } from "@aaraj/contracts";
 import {
@@ -36,11 +37,18 @@ import type { AccessPrincipal } from "../platform/authorization/permissions.serv
 import {
   catalogProduct,
   catalogProductVariant,
+  catalogCategory,
   catalogSizeGuide,
   catalogSizeGuideMeasurement,
   catalogSizeGuideRow,
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
+import { CategoryService } from "./category.service.js";
+import {
+  loadCategoryReference,
+  loadCategoryReferences,
+  requireActiveLeafCategory,
+} from "./catalog-category.helpers.js";
 
 @Injectable()
 export class CatalogService {
@@ -48,6 +56,7 @@ export class CatalogService {
     private readonly database: DatabaseService,
     private readonly authorization: AuthorizationService,
     private readonly audit: AuditService,
+    private readonly categories: CategoryService,
   ) {}
 
   async listPublished(
@@ -58,11 +67,11 @@ export class CatalogService {
       conditions.push(eq(catalogProduct.audience, query.audience));
     }
     if (query.category) {
+      const categoryIds = await this.getCategorySubtreeIds(query.category);
       conditions.push(
-        eq(
-          sql<string>`lower(btrim(${catalogProduct.category}))`,
-          normalize(query.category),
-        ),
+        categoryIds.length
+          ? inArray(catalogProduct.categoryId, categoryIds)
+          : sql`false`,
       );
     }
 
@@ -108,20 +117,57 @@ export class CatalogService {
       this.getPublishedProductFilterOptions(),
     ]);
 
-    return { ...toProductPage(rows, query), filters: filterOptions };
+    const categoryReferences = await loadCategoryReferences(
+      this.database.db,
+      rows.slice(0, query.limit).map(({ categoryId }) => categoryId),
+    );
+    return {
+      ...toProductPage(rows, query, categoryReferences),
+      filters: filterOptions,
+    };
+  }
+
+  private async getCategorySubtreeIds(slug: string): Promise<string[]> {
+    const categories = await this.database.db
+      .select({
+        id: catalogCategory.id,
+        slug: catalogCategory.slug,
+        parentId: catalogCategory.parentId,
+      })
+      .from(catalogCategory)
+      .where(eq(catalogCategory.isActive, true));
+    const root = categories.find((category) => category.slug === slug);
+    if (!root) return [];
+    const ids = new Set([root.id]);
+    const categoriesById = new Map(
+      categories.map((category) => [category.id, category]),
+    );
+    for (const category of categories) {
+      let parentId = category.parentId;
+      const visited = new Set<string>();
+      while (parentId && !visited.has(parentId)) {
+        if (parentId === root.id) {
+          ids.add(category.id);
+          break;
+        }
+        visited.add(parentId);
+        parentId = categoriesById.get(parentId)?.parentId ?? null;
+      }
+    }
+    return [...ids];
   }
 
   private async getPublishedProductFilterOptions(): Promise<CatalogProductFilterOptions> {
-    const [productValues, variantValues] = await Promise.all([
+    const [productValues, variantValues, categoryOptions] = await Promise.all([
       this.database.db
         .selectDistinct({
-          category: catalogProduct.category,
+          categoryId: catalogProduct.categoryId,
         })
         .from(catalogProduct)
         .where(
           and(
             eq(catalogProduct.isPublished, true),
-            isNotNull(catalogProduct.category),
+            isNotNull(catalogProduct.categoryId),
           ),
         ),
       this.database.db
@@ -140,11 +186,24 @@ export class CatalogService {
             eq(catalogProductVariant.isActive, true),
           ),
         ),
+      this.categories.listPublic(),
     ]);
 
+    const categoriesById = new Map(
+      categoryOptions.categories.map((category) => [category.id, category]),
+    );
+    const visibleCategoryIds = new Set<string>();
+    for (const { categoryId } of productValues) {
+      let currentId = categoryId;
+      while (currentId && !visibleCategoryIds.has(currentId)) {
+        visibleCategoryIds.add(currentId);
+        currentId = categoriesById.get(currentId)?.parentId ?? null;
+      }
+    }
+
     return {
-      categories: uniqueFilterValues(
-        productValues.map(({ category }) => category),
+      categories: categoryOptions.categories.filter(({ id }) =>
+        visibleCategoryIds.has(id),
       ),
       colors: uniqueFilterValues(variantValues.map(({ color }) => color)),
       sizes: uniqueFilterValues(variantValues.map(({ size }) => size)),
@@ -166,7 +225,7 @@ export class CatalogService {
       if (!product) throw new NotFoundException("Product not found");
       const detail = await loadProductDetail(transaction, product);
       return {
-        ...toCatalogProduct(product),
+        ...detail,
         variants: detail.variants.map(({ id, color, sizeLabel }) => ({
           id,
           color,
@@ -188,7 +247,11 @@ export class CatalogService {
       .orderBy(desc(catalogProduct.updatedAt), desc(catalogProduct.id))
       .limit(query.limit + 1)
       .offset(query.offset);
-    return toProductPage(rows, query);
+    const categoryReferences = await loadCategoryReferences(
+      this.database.db,
+      rows.slice(0, query.limit).map(({ categoryId }) => categoryId),
+    );
+    return toProductPage(rows, query, categoryReferences);
   }
 
   async findForManagement(
@@ -218,6 +281,9 @@ export class CatalogService {
       try {
         const variants = input.variants ?? [];
         const values = toProductPersistenceValues(input);
+        if (values.categoryId) {
+          await requireActiveLeafCategory(transaction, values.categoryId);
+        }
         if (input.isPublished) {
           await validatePublishability(transaction, values, variants);
         } else if (values.sizeGuideId) {
@@ -247,7 +313,10 @@ export class CatalogService {
             variantCount: variants.length,
           },
         });
-        return toCatalogProduct(product);
+        const category = product.categoryId
+          ? await loadCategoryReference(transaction, product.categoryId)
+          : null;
+        return toCatalogProduct(product, category);
       } catch (error) {
         if (isUniqueViolation(error)) throw uniqueConflict(error);
         throw error;
@@ -293,8 +362,10 @@ export class CatalogService {
             : current.description,
         audience:
           input.audience !== undefined ? input.audience : current.audience,
-        category:
-          input.category !== undefined ? input.category : current.category,
+        categoryId:
+          input.categoryId !== undefined
+            ? input.categoryId
+            : current.categoryId,
         fit: input.fit !== undefined ? input.fit : current.fit,
         fabricComposition:
           input.fabricComposition !== undefined
@@ -320,6 +391,9 @@ export class CatalogService {
         }));
 
       try {
+        if (nextValues.categoryId) {
+          await requireActiveLeafCategory(transaction, nextValues.categoryId);
+        }
         if (nextIsPublished) {
           await validatePublishability(transaction, nextValues, variants);
         } else if (nextValues.sizeGuideId) {
@@ -333,7 +407,9 @@ export class CatalogService {
             ? { description: input.description }
             : {}),
           ...(input.audience !== undefined ? { audience: input.audience } : {}),
-          ...(input.category !== undefined ? { category: input.category } : {}),
+          ...(input.categoryId !== undefined
+            ? { categoryId: input.categoryId }
+            : {}),
           ...(input.fit !== undefined ? { fit: input.fit } : {}),
           ...(input.fabricComposition !== undefined
             ? { fabricComposition: input.fabricComposition }
@@ -372,7 +448,10 @@ export class CatalogService {
             ],
           },
         });
-        return toCatalogProduct(product);
+        const category = product.categoryId
+          ? await loadCategoryReference(transaction, product.categoryId)
+          : null;
+        return toCatalogProduct(product, category);
       } catch (error) {
         if (isUniqueViolation(error)) throw uniqueConflict(error);
         throw error;
@@ -385,7 +464,7 @@ async function validatePublishability(
   transaction: AuditTransaction,
   product: {
     audience: "men" | "women" | "unisex" | null;
-    category: string | null;
+    categoryId: string | null;
     fit: string | null;
     sizeGuideId: string | null;
   },
@@ -396,7 +475,7 @@ async function validatePublishability(
       "Choose a product audience before publishing.",
     );
   }
-  if (!product.category) {
+  if (!product.categoryId) {
     throw new BadRequestException(
       "Choose a product category before publishing.",
     );
@@ -414,7 +493,7 @@ async function validatePublishability(
 
   const guide = await requireSizeGuide(transaction, product.sizeGuideId, true);
   if (
-    normalize(product.category) !== normalize(guide.category) ||
+    product.categoryId !== guide.categoryId ||
     normalizeOptional(product.fit) !== normalizeOptional(guide.fit)
   ) {
     throw new BadRequestException(
@@ -553,7 +632,12 @@ async function loadProductDetail(
     : null;
 
   return {
-    ...toCatalogProduct(product),
+    ...toCatalogProduct(
+      product,
+      product.categoryId
+        ? await loadCategoryReference(transaction, product.categoryId)
+        : null,
+    ),
     variants: variants.map((variant) => ({
       id: variant.id,
       sku: variant.sku,
@@ -576,6 +660,7 @@ async function loadSizeGuideDetail(
     .where(eq(catalogSizeGuide.id, guideId))
     .limit(1);
   if (!guide) return null;
+  const category = await loadCategoryReference(transaction, guide.categoryId);
   const rows = await transaction
     .select()
     .from(catalogSizeGuideRow)
@@ -605,7 +690,7 @@ async function loadSizeGuideDetail(
   return {
     id: guide.id,
     name: guide.name,
-    category: guide.category,
+    category,
     fit: guide.fit,
     measurementBasis: guide.measurementBasis,
     rows: rows.map((row) => ({
@@ -622,9 +707,19 @@ async function loadSizeGuideDetail(
 function toProductPage(
   rows: (typeof catalogProduct.$inferSelect)[],
   query: CatalogProductListQuery,
+  categories: Map<string, CatalogCategoryReference>,
 ): CatalogProductPage {
   const hasMore = rows.length > query.limit;
-  const products = rows.slice(0, query.limit).map(toCatalogProduct);
+  const products = rows
+    .slice(0, query.limit)
+    .map((product) =>
+      toCatalogProduct(
+        product,
+        product.categoryId
+          ? (categories.get(product.categoryId) ?? null)
+          : null,
+      ),
+    );
   const candidateNextOffset = query.offset + products.length;
   return {
     products,
@@ -638,6 +733,7 @@ function toProductPage(
 
 function toCatalogProduct(
   product: typeof catalogProduct.$inferSelect,
+  category: CatalogCategoryReference | null,
 ): CatalogProduct {
   return {
     id: product.id,
@@ -645,7 +741,7 @@ function toCatalogProduct(
     name: product.name,
     description: product.description,
     audience: product.audience,
-    category: product.category,
+    category,
     fit: product.fit,
     fabricComposition: product.fabricComposition,
     careInstructions: product.careInstructions,
@@ -661,7 +757,7 @@ function toProductPersistenceValues(input: CatalogProductCreateInput): {
   name: string;
   description: string | null;
   audience: "men" | "women" | "unisex";
-  category: string;
+  categoryId: string | null;
   fit: string | null;
   fabricComposition: string | null;
   careInstructions: string | null;
@@ -672,7 +768,7 @@ function toProductPersistenceValues(input: CatalogProductCreateInput): {
     name: input.name,
     description: input.description ?? null,
     audience: input.audience,
-    category: input.category,
+    categoryId: input.categoryId ?? null,
     fit: input.fit ?? null,
     fabricComposition: input.fabricComposition ?? null,
     careInstructions: input.careInstructions ?? null,

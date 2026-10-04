@@ -43,11 +43,15 @@ export const auditEvent = audit.table(
       table.subjectId,
       table.occurredAt,
     ),
-    index("event_actor_time_idx").on(
-      table.actorType,
+    index("event_actor_id_time_id_idx").on(
       table.actorId,
       table.occurredAt,
+      table.id,
     ),
-    index("event_type_time_idx").on(table.eventType, table.occurredAt),
+    index("event_type_time_id_idx").on(
+      table.eventType,
+      table.occurredAt,
+      table.id,
+    ),
   ],
 );

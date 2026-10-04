@@ -3,6 +3,7 @@ import {
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
 } from "../common/pagination.js";
+import { CatalogCategoryReferenceSchema } from "./categories.js";
 
 export const CatalogMeasurementBasisSchema = z.enum(["garment", "body"]);
 export type CatalogMeasurementBasis = z.infer<
@@ -44,7 +45,7 @@ export const CatalogSizeGuideRowSchema = z.strictObject({
 export const CatalogSizeGuideSchema = z.strictObject({
   id: z.uuid(),
   name: z.string().min(1).max(120),
-  category: z.string().min(1).max(80),
+  category: CatalogCategoryReferenceSchema,
   fit: z.string().min(1).max(80).nullable(),
   measurementBasis: CatalogMeasurementBasisSchema,
   rows: CatalogSizeGuideRowSchema.array(),
@@ -56,7 +57,7 @@ export type CatalogSizeGuide = z.infer<typeof CatalogSizeGuideSchema>;
 export const CatalogSizeGuideSummarySchema = z.strictObject({
   id: z.uuid(),
   name: z.string().min(1).max(120),
-  category: z.string().min(1).max(80),
+  category: CatalogCategoryReferenceSchema,
   fit: z.string().min(1).max(80).nullable(),
   measurementBasis: CatalogMeasurementBasisSchema,
   sizeLabels: z.string().min(1).max(40).array(),
@@ -75,7 +76,7 @@ export type CatalogSizeGuidePage = z.infer<typeof CatalogSizeGuidePageSchema>;
 export const CatalogSizeGuideCreateSchema = z
   .strictObject({
     name: z.string().trim().min(1).max(120),
-    category: z.string().trim().min(1).max(80),
+    categoryId: z.uuid(),
     fit: z.string().trim().min(1).max(80).nullable().optional(),
     measurementBasis: CatalogMeasurementBasisSchema,
     inputUnit: CatalogMeasurementUnitSchema,
@@ -110,7 +111,7 @@ export type CatalogSizeGuideUpdateInput = z.input<
 
 export const CatalogSizeGuideListQuerySchema =
   OffsetPaginationQuerySchema.extend({
-    category: z.string().trim().min(1).max(80).optional(),
+    categoryId: z.uuid().optional(),
     fit: z.string().trim().min(1).max(80).optional(),
   });
 export type CatalogSizeGuideListQuery = z.infer<

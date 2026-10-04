@@ -32,7 +32,6 @@ export class AccessController {
 
   @Get("me")
   @Header("Cache-Control", "no-store")
-  @Can(AccessPolicy, "readSelf")
   me(@Session() session: UserSession) {
     return this.access.getOwnAccess(session.user);
   }
@@ -46,7 +45,6 @@ export class AccessController {
 
   @Get("users/:userId")
   @Header("Cache-Control", "no-store")
-  @Can(AccessPolicy, "read")
   user(
     @Session() session: UserSession,
     @Param("userId", { schema: AccessUserIdSchema }) userId: string,
@@ -55,7 +53,6 @@ export class AccessController {
   }
 
   @Put("users/:userId/roles/:role")
-  @Can(AccessPolicy, "manage")
   grant(
     @Session() session: UserSession,
     @Param("userId", { schema: AccessUserIdSchema }) userId: string,
@@ -66,7 +63,6 @@ export class AccessController {
   }
 
   @Delete("users/:userId/roles/:role")
-  @Can(AccessPolicy, "manage")
   revoke(
     @Session() session: UserSession,
     @Param("userId", { schema: AccessUserIdSchema }) userId: string,

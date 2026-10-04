@@ -50,6 +50,20 @@
       "when": 1791076932901,
       "tag": "0006_apparel_product_variants_size_guides",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791129763661,
+      "tag": "0007_managed_catalog_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791135571047,
+      "tag": "0008_query_aligned_indexes",
+      "breakpoints": true
     }
   ]
 }

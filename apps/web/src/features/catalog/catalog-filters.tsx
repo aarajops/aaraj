@@ -39,7 +39,7 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
         Category
         <select
           className="h-10 rounded-lg border border-input bg-background px-3 font-normal outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          defaultValue={selectedFilterValue(
+          defaultValue={selectedCategoryValue(
             options?.categories ?? [],
             query.category,
           )}
@@ -47,8 +47,8 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
         >
           <option value="">All categories</option>
           {(options?.categories ?? []).map((category) => (
-            <option key={category} value={category}>
-              {category}
+            <option key={category.id} value={category.slug}>
+              {category.path}
             </option>
           ))}
         </select>
@@ -114,4 +114,13 @@ function selectedFilterValue(
       (value) => value.trim().toLocaleLowerCase("en-US") === normalized,
     ) ?? ""
   );
+}
+
+function selectedCategoryValue(
+  values: CatalogProductFilterOptions["categories"],
+  selectedValue: string | undefined,
+): string {
+  return selectedValue && values.some(({ slug }) => slug === selectedValue)
+    ? selectedValue
+    : "";
 }

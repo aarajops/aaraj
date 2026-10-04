@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  AnyPgColumn,
   index,
   integer,
   numeric,
@@ -15,12 +16,52 @@ import type { CatalogMeasurementKey } from "@aaraj/contracts";
 
 export const catalogSchema = pgSchema("catalog");
 
+export const catalogCategory = catalogSchema.table(
+  "category",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    parentId: uuid("parent_id").references(
+      (): AnyPgColumn => catalogCategory.id,
+      { onDelete: "restrict" },
+    ),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("category_slug_uidx").on(table.slug),
+    index("category_parent_order_idx").on(table.parentId, table.sortOrder),
+    check(
+      "category_name_nonempty_check",
+      sql`${table.name} = btrim(${table.name}) AND length(${table.name}) > 0`,
+    ),
+    check(
+      "category_slug_format_check",
+      sql`${table.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
+    ),
+    check("category_sort_order_check", sql`${table.sortOrder} >= 0`),
+    check(
+      "category_parent_not_self_check",
+      sql`${table.parentId} is null or ${table.parentId} <> ${table.id}`,
+    ),
+  ],
+);
+
 export const catalogSizeGuide = catalogSchema.table(
   "size_guide",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     name: text("name").notNull(),
-    category: text("category").notNull(),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => catalogCategory.id, { onDelete: "restrict" }),
     fit: text("fit"),
     measurementBasis: text("measurement_basis")
       .$type<"garment" | "body">()
@@ -33,13 +74,10 @@ export const catalogSizeGuide = catalogSchema.table(
       .defaultNow(),
   },
   (table) => [
+    index("size_guide_category_id_idx").on(table.categoryId),
     check(
       "size_guide_name_nonempty_check",
       sql`${table.name} = btrim(${table.name}) AND length(${table.name}) > 0`,
-    ),
-    check(
-      "size_guide_category_nonempty_check",
-      sql`${table.category} = btrim(${table.category}) AND length(${table.category}) > 0`,
     ),
     check(
       "size_guide_measurement_basis_check",
@@ -100,7 +138,9 @@ export const catalogProduct = catalogSchema.table(
     name: text("name").notNull(),
     description: text("description"),
     audience: text("audience").$type<"men" | "women" | "unisex">(),
-    category: text("category"),
+    categoryId: uuid("category_id").references(() => catalogCategory.id, {
+      onDelete: "restrict",
+    }),
     fit: text("fit"),
     fabricComposition: text("fabric_composition"),
     careInstructions: text("care_instructions"),
@@ -117,9 +157,15 @@ export const catalogProduct = catalogSchema.table(
   },
   (table) => [
     uniqueIndex("product_slug_uidx").on(table.slug),
+    index("product_category_id_idx").on(table.categoryId),
     index("product_published_updated_idx").on(
       table.isPublished,
       table.updatedAt,
+      table.id,
+    ),
+    index("product_size_guide_published_idx").on(
+      table.sizeGuideId,
+      table.isPublished,
     ),
     check(
       "product_slug_format_check",
@@ -132,10 +178,6 @@ export const catalogProduct = catalogSchema.table(
     check(
       "product_audience_check",
       sql`${table.audience} is null or ${table.audience} in ('men', 'women', 'unisex')`,
-    ),
-    check(
-      "product_category_nonempty_check",
-      sql`${table.category} is null or (${table.category} = btrim(${table.category}) AND length(${table.category}) > 0)`,
     ),
   ],
 );

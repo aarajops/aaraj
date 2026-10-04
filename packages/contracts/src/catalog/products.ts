@@ -4,6 +4,11 @@ import {
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
 } from "../common/pagination.js";
+import {
+  CatalogCategoryOptionSchema,
+  CatalogCategoryReferenceSchema,
+  CatalogCategorySlugSchema,
+} from "./categories.js";
 import { CatalogSizeGuideSchema } from "./size-guides.js";
 
 export const CatalogAudienceSchema = z.enum(["men", "women", "unisex"]);
@@ -50,7 +55,7 @@ export const CatalogProductSchema = z.strictObject({
   name: z.string().min(1).max(160),
   description: z.string().max(5000).nullable(),
   audience: CatalogAudienceSchema.nullable(),
-  category: z.string().min(1).max(80).nullable(),
+  category: CatalogCategoryReferenceSchema.nullable(),
   fit: z.string().min(1).max(80).nullable(),
   fabricComposition: z.string().max(1000).nullable(),
   careInstructions: z.string().max(2000).nullable(),
@@ -80,7 +85,7 @@ const CatalogProductFieldsSchema = z.strictObject({
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(5000).nullable().optional(),
   audience: CatalogAudienceSchema,
-  category: z.string().trim().min(1).max(80),
+  categoryId: z.uuid().nullable().optional(),
   fit: z.string().trim().min(1).max(80).nullable().optional(),
   fabricComposition: z.string().trim().max(1000).nullable().optional(),
   careInstructions: z.string().trim().max(2000).nullable().optional(),
@@ -99,7 +104,7 @@ export type CatalogProductCreateInput = z.input<
 export const CatalogProductUpdateSchema = CatalogProductFieldsSchema.partial()
   .extend({
     audience: CatalogAudienceSchema.nullable().optional(),
-    category: z.string().trim().min(1).max(80).nullable().optional(),
+    categoryId: z.uuid().nullable().optional(),
     reason: z.string().trim().min(3).max(500),
   })
   .refine(
@@ -125,7 +130,7 @@ const OptionalCatalogAudienceQuerySchema = z.preprocess(
 );
 const OptionalCatalogCategoryQuerySchema = z.preprocess(
   (value) => (value === "" ? undefined : value),
-  z.string().trim().min(1).max(80).optional(),
+  CatalogCategorySlugSchema.optional(),
 );
 const OptionalCatalogColorQuerySchema = z.preprocess(
   (value) => (value === "" ? undefined : value),
@@ -161,7 +166,7 @@ export const CatalogProductPageSchema = z.strictObject({
 export type CatalogProductPage = z.infer<typeof CatalogProductPageSchema>;
 
 export const CatalogProductFilterOptionsSchema = z.strictObject({
-  categories: z.string().min(1).max(80).array(),
+  categories: CatalogCategoryOptionSchema.array().max(500),
   colors: z.string().min(1).max(80).array(),
   sizes: z.string().min(1).max(40).array(),
 });

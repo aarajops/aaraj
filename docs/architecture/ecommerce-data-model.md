@@ -2,6 +2,8 @@
 
 This is the schema and ERD companion to the [enterprise architecture](ecommerce-blueprint.md). The diagrams describe logical relationships; complete PostgreSQL columns and constraints are in [ecommerce-schema.sql](ecommerce-schema.sql). Both are proposed design artifacts, not applied migrations.
 
+For the launch catalog, each product style has at most one primary category, which must be an active leaf when assigned. Categories remain reusable managed records; use a future collections feature for overlapping campaigns or merchandising groups. The target model below follows this single-category relationship and does not use a product-category join table.
+
 A relationship between bounded contexts means a public application call or event-fed local projection. It never authorizes a cross-schema foreign key, SQL join, ORM relation, or shared transaction.
 
 ## Ownership
@@ -38,9 +40,9 @@ user, session, account, verification, roles, permissions, role_permissions, user
 
 datasets, divisions, districts, upazilas, areas, provider_zone_mappings
 
-### catalog (9 tables)
+### catalog (8 tables)
 
-brands, categories, products, product_categories, variants, media_assets, media_derivatives, product_media, search_projection_jobs
+brands, categories, products, variants, media_assets, media_derivatives, product_media, search_projection_jobs
 
 ### inventory (5 tables)
 
@@ -113,8 +115,7 @@ A saved address contains an area identifier and geography version. Historical or
 erDiagram
   PRODUCT ||--|{ VARIANT : defines
   PRODUCT ||--o{ PRODUCT_MEDIA : displays
-  PRODUCT ||--o{ PRODUCT_CATEGORY : classified_as
-  CATEGORY ||--o{ PRODUCT_CATEGORY : groups
+  CATEGORY o|--o{ PRODUCT : classifies
   WAREHOUSE ||--o{ STOCK_BALANCE : holds
   VARIANT ||--o{ STOCK_BALANCE : stocked_as
   STOCK_BALANCE ||--o{ RESERVATION_ITEM : protects

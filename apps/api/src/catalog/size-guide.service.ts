@@ -28,6 +28,11 @@ import {
   catalogSizeGuideRow,
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
+import {
+  loadCategoryReference,
+  loadCategoryReferences,
+  requireActiveLeafCategory,
+} from "./catalog-category.helpers.js";
 
 @Injectable()
 export class SizeGuideService {
@@ -43,10 +48,8 @@ export class SizeGuideService {
   ): Promise<CatalogSizeGuidePage> {
     await this.authorization.authorize(CatalogPolicy, "manage", actor);
     const predicates = [];
-    if (query.category) {
-      predicates.push(
-        sql`lower(${catalogSizeGuide.category}) = lower(${query.category})`,
-      );
+    if (query.categoryId) {
+      predicates.push(eq(catalogSizeGuide.categoryId, query.categoryId));
     }
     if (query.fit) {
       predicates.push(
@@ -77,13 +80,17 @@ export class SizeGuideService {
       labels.push(sizeRow.sizeLabel);
       rowsByGuide.set(sizeRow.guideId, labels);
     }
+    const categoryReferences = await loadCategoryReferences(
+      this.database.db,
+      selected.map(({ categoryId }) => categoryId),
+    );
     const candidateNextOffset = query.offset + selected.length;
 
     return {
       guides: selected.map((guide) => ({
         id: guide.id,
         name: guide.name,
-        category: guide.category,
+        category: categoryReferences.get(guide.categoryId)!,
         fit: guide.fit,
         measurementBasis: guide.measurementBasis,
         sizeLabels: rowsByGuide.get(guide.id) ?? [],
@@ -123,11 +130,12 @@ export class SizeGuideService {
         transaction,
       );
       try {
+        await requireActiveLeafCategory(transaction, input.categoryId);
         const [guide] = await transaction
           .insert(catalogSizeGuide)
           .values({
             name: input.name,
-            category: input.category,
+            categoryId: input.categoryId,
             fit: input.fit ?? null,
             measurementBasis: input.measurementBasis,
           })
@@ -147,7 +155,7 @@ export class SizeGuideService {
           subjectId: guide.id,
           reason: input.reason,
           metadata: {
-            category: guide.category,
+            categoryId: guide.categoryId,
             measurementBasis: guide.measurementBasis,
             sizeCount: input.rows.length,
           },
@@ -184,12 +192,13 @@ export class SizeGuideService {
         .for("update")
         .limit(1);
       if (!current) throw new NotFoundException("Size guide not found");
+      await requireActiveLeafCategory(transaction, input.categoryId);
 
       const [updated] = await transaction
         .update(catalogSizeGuide)
         .set({
           name: input.name,
-          category: input.category,
+          categoryId: input.categoryId,
           fit: input.fit ?? null,
           measurementBasis: input.measurementBasis,
           updatedAt: new Date(),
@@ -218,7 +227,7 @@ export class SizeGuideService {
           subjectId: guideId,
           reason: input.reason,
           metadata: {
-            category: updated.category,
+            categoryId: updated.categoryId,
             measurementBasis: updated.measurementBasis,
             sizeCount: input.rows.length,
           },
@@ -303,11 +312,12 @@ async function loadSizeGuide(
     values.push({ key: measurement.key, valueMm: measurement.valueMm });
     measurementsByRow.set(measurement.rowId, values);
   }
+  const category = await loadCategoryReference(database, guide.categoryId);
 
   return {
     id: guide.id,
     name: guide.name,
-    category: guide.category,
+    category,
     fit: guide.fit,
     measurementBasis: guide.measurementBasis,
     rows: rows.map((row) => ({
@@ -340,8 +350,7 @@ async function ensurePublishedProductsRemainValid(
   );
   for (const product of products) {
     if (
-      !product.category ||
-      normalize(product.category) !== normalize(guide.category) ||
+      product.categoryId !== guide.categoryId ||
       normalizeOptional(product.fit) !== normalizeOptional(guide.fit)
     ) {
       throw new BadRequestException(
