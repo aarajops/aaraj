@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("staff manages drafts and only published products appear publicly", async ({
+test("staff manages reusable size guides and apparel products safely", async ({
   page,
   context,
   baseURL,
@@ -17,7 +17,6 @@ test("staff manages drafts and only published products appear publicly", async (
   ).toBeVisible();
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
 
-  await page.goto("/");
   await context.addCookies([
     {
       name: "aaraj-e2e-role",
@@ -27,28 +26,72 @@ test("staff manages drafts and only published products appear publicly", async (
       sameSite: "Lax",
     },
   ]);
+  await page.goto("/staff/catalog/size-guides");
+  await expect(
+    page.getByRole("heading", { name: "Size guides", level: 1 }),
+  ).toBeVisible();
+  await page.getByLabel("Guide name").fill("Aaraj Classic Tee");
+  await page.getByLabel("Product category").fill("T-shirts");
+  await page.getByLabel("Fit (optional)").fill("Regular");
+  await page.getByLabel("Enter measurements in").selectOption("in");
+  await page.getByRole("button", { name: "Add size" }).click();
+  await page.getByRole("button", { name: "Add size" }).click();
+  await page.locator("#size-label-0").fill("S");
+  await page.locator("#size-0-chest_width").fill("20.000");
+  await page.locator("#size-0-body_length").fill("28.000");
+  await page.locator("#size-label-1").fill("M");
+  await page.locator("#size-1-chest_width").fill("21.000");
+  await page.locator("#size-1-body_length").fill("29.000");
+  await page.getByLabel("Audit reason").fill("Create apparel size guide");
+  await page.getByRole("button", { name: "Create guide" }).click();
+  await expect(page.getByRole("status")).toContainText("Size guide created.");
   await page.goto("/staff/catalog");
   await expect(
     page.getByRole("heading", { name: "Catalog management" }),
   ).toBeVisible();
-
-  await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E Lamp");
-  await page.locator("#product-slug").fill("aaraj-e2e-lamp");
+  await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E Tee");
+  await page.locator("#product-slug").fill("aaraj-e2e-tee");
   await page
     .getByLabel("Description", { exact: true })
-    .fill("A test product used to verify the catalog workflow.");
+    .fill("A test product used to verify the clothing catalog workflow.");
+  await page.getByLabel("Audience").selectOption("unisex");
+  await page.getByLabel("Category").fill("T-shirts");
+  await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
+  await page.getByRole("button", { name: "Add variant" }).click();
+  await page.getByLabel("Variant 1 SKU").fill("AA-TEE-BLK-S");
+  await page.getByLabel("Variant 1 color").fill("Black");
+  await page.getByLabel("Variant 1 size").fill("S");
+  await page.getByRole("button", { name: "Add variant" }).click();
+  await page.getByLabel("Variant 2 SKU").fill("AA-TEE-BLK-M");
+  await page.getByLabel("Variant 2 color").fill("Black");
+  await page.getByLabel("Variant 2 size").fill("M");
+  const guideOptions = await page
+    .locator("#product-size-guide option")
+    .evaluateAll((options) =>
+      options.map((option) => {
+        const element = option as HTMLOptionElement;
+        return { value: element.value, text: element.textContent ?? "" };
+      }),
+    );
+  const selectedGuide = guideOptions.find((option) =>
+    option.text.includes("Aaraj Classic Tee"),
+  );
+  expect(selectedGuide).toBeDefined();
+  await page.locator("#product-size-guide").selectOption(selectedGuide!.value);
+  await page.getByLabel("Published on the storefront").check();
   await page
     .getByLabel("Audit reason", { exact: true })
-    .fill("Initial catalog draft");
-  await page.getByRole("button", { name: "Create draft" }).click();
-
+    .fill("Publish apparel test product");
+  await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(page.getByRole("status")).toContainText(
-    "Draft product created.",
+    "Product created and published.",
   );
-  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(page.getByText("Published", { exact: true })).toBeVisible();
 
-  await page.getByLabel("Name", { exact: true }).fill("Duplicate lamp");
-  await page.locator("#product-slug").fill("aaraj-e2e-lamp");
+  await page.getByLabel("Name", { exact: true }).fill("Duplicate slug item");
+  await page.locator("#product-slug").fill("aaraj-e2e-tee");
+  await page.getByLabel("Audience").selectOption("unisex");
+  await page.getByLabel("Category").fill("T-shirts");
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Check duplicate slug");
@@ -58,38 +101,36 @@ test("staff manages drafts and only published products appear publicly", async (
   ).toBeVisible();
 
   await page.goto("/");
-  await expect(page.getByText("Aaraj E2E Lamp")).toHaveCount(0);
-  const draftResponse = await page.goto("/products/aaraj-e2e-lamp");
-  expect(draftResponse?.status()).toBe(404);
+  await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
+  await page.getByRole("link", { name: /Aaraj E2E Tee/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Aaraj E2E Tee", level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "A test product used to verify the clothing catalog workflow.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("Available colors and sizes")).toBeVisible();
+  await expect(page.getByText("Size guide: Aaraj Classic Tee")).toBeVisible();
+  await expect(page.getByText("50.8 / 20.0", { exact: true })).toBeVisible();
+  await expect(page.getByText("71.1 / 28.0", { exact: true })).toBeVisible();
 
   await page.goto("/staff/catalog");
-  await page.getByRole("button", { name: "Edit Aaraj E2E Lamp" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E T-shirt");
+  await page.locator("#product-slug").fill("aaraj-e2e-t-shirt");
+  await page.getByLabel("Audience").selectOption("men");
+  await page.getByLabel("Category").fill("T-shirts");
+  await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
+  await page.getByRole("button", { name: "Add variant" }).click();
+  await page.getByLabel("Variant 1 SKU").fill("AA-TEE-WHT-M");
+  await page.getByLabel("Variant 1 color").fill("White");
+  await page.getByLabel("Variant 1 size").fill("M");
+  await page.locator("#product-size-guide").selectOption(selectedGuide!.value);
   await page.getByLabel("Published on the storefront").check();
   await page
     .getByLabel("Audit reason", { exact: true })
-    .fill("Publish catalog item");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("status")).toContainText("Product updated.");
-
-  await page.goto("/");
-  await page.getByRole("link", { name: /Aaraj E2E Lamp/ }).click();
-  await expect(
-    page.getByRole("heading", { name: "Aaraj E2E Lamp", level: 1 }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("A test product used to verify the catalog workflow."),
-  ).toBeVisible();
-
-  await page.goto("/staff/catalog");
-  await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E Mug");
-  await page.locator("#product-slug").fill("aaraj-e2e-mug");
-  await page
-    .getByLabel("Description", { exact: true })
-    .fill("A second product used to verify catalog pagination.");
-  await page.getByLabel("Published on the storefront").check();
-  await page
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Create a second published catalog item");
+    .fill("Create a second product");
   await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(page.getByRole("status")).toContainText(
     "Product created and published.",
@@ -118,7 +159,7 @@ test("staff manages drafts and only published products appear publicly", async (
   await expect(page).toHaveURL(/offset=0/);
 
   await page.goto("/staff/catalog");
-  await page.getByRole("button", { name: "Edit Aaraj E2E Mug" }).click();
+  await page.getByRole("button", { name: "Edit Aaraj E2E T-shirt" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
     .getByLabel("Audit reason", { exact: true })
@@ -127,17 +168,16 @@ test("staff manages drafts and only published products appear publicly", async (
   await expect(page.getByRole("status")).toContainText("Product updated.");
 
   await page.goto("/staff/catalog");
-  await page.getByRole("button", { name: "Edit Aaraj E2E Lamp" }).click();
+  await page.getByRole("button", { name: "Edit Aaraj E2E Tee" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
     .getByLabel("Audit reason", { exact: true })
-    .fill("Unpublish catalog item");
+    .fill("Unpublish catalog test product");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("status")).toContainText("Product updated.");
-
   await page.goto("/");
   await expect(page.getByText("No products are published yet.")).toBeVisible();
-  const unpublishedResponse = await page.goto("/products/aaraj-e2e-lamp");
+  const unpublishedResponse = await page.goto("/products/aaraj-e2e-tee");
   expect(unpublishedResponse?.status()).toBe(404);
 
   await context.clearCookies();
@@ -173,7 +213,7 @@ test("staff manages drafts and only published products appear publicly", async (
     },
   ]);
   await page.goto("/staff/catalog");
-  await page.getByRole("button", { name: "Edit Aaraj E2E Lamp" }).click();
+  await page.getByRole("button", { name: "Edit Aaraj E2E Tee" }).click();
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Verify recent sign-in recovery");

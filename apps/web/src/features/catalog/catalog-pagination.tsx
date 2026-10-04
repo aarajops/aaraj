@@ -8,6 +8,7 @@ interface CatalogPaginationProps {
   limit: number;
   offset: number;
   productCount: number;
+  itemName?: string;
   hasMore: boolean;
   nextOffset: number | null;
 }
@@ -18,6 +19,7 @@ export function CatalogPagination({
   limit,
   offset,
   productCount,
+  itemName = "products",
   hasMore,
   nextOffset,
 }: CatalogPaginationProps) {
@@ -36,8 +38,8 @@ export function CatalogPagination({
     >
       <p aria-live="polite" className="text-sm text-muted-foreground">
         {productCount === 0
-          ? "No products on this page"
-          : `Showing ${offset + 1}–${offset + productCount} products`}
+          ? `No ${itemName} on this page`
+          : `Showing ${offset + 1}–${offset + productCount} ${itemName}`}
         <span className="ml-2 text-muted-foreground/70">Page {pageNumber}</span>
       </p>
       <div className="flex items-center gap-3">

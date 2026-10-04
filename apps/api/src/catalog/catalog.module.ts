@@ -5,10 +5,12 @@ import { PlatformAuthorizationModule } from "../platform/authorization/authoriza
 import { CatalogController } from "./catalog.controller.js";
 import { CatalogPolicy } from "./catalog.policy.js";
 import { CatalogService } from "./catalog.service.js";
+import { SizeGuideController } from "./size-guide.controller.js";
+import { SizeGuideService } from "./size-guide.service.js";
 
 @Module({
   imports: [DatabaseModule, AuditModule, PlatformAuthorizationModule],
-  controllers: [CatalogController],
-  providers: [CatalogService, CatalogPolicy],
+  controllers: [CatalogController, SizeGuideController],
+  providers: [CatalogService, CatalogPolicy, SizeGuideService],
 })
 export class CatalogModule {}

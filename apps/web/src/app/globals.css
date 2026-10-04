@@ -51,14 +51,15 @@
 }
 
 :root {
+  --brand: #7b2220;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: var(--brand);
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -68,7 +69,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: var(--brand);
   --success: var(--color-emerald-700);
   --warning: var(--color-amber-700);
   --chart-1: oklch(0.87 0 0);
@@ -79,12 +80,12 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: var(--brand);
 }
 
 .dark {
@@ -95,8 +96,8 @@
   --card-foreground: var(--color-zinc-100);
   --popover: var(--color-zinc-900);
   --popover-foreground: var(--color-zinc-100);
-  --primary: var(--color-emerald-300);
-  --primary-foreground: var(--color-zinc-950);
+  --primary: var(--brand);
+  --primary-foreground: #ffffff;
   --secondary: var(--color-zinc-800);
   --secondary-foreground: var(--color-zinc-200);
   --muted: var(--color-zinc-900);
@@ -108,7 +109,7 @@
   --warning: var(--color-amber-200);
   --border: var(--color-zinc-800);
   --input: var(--color-zinc-700);
-  --ring: var(--color-emerald-400);
+  --ring: var(--brand);
   --chart-1: var(--color-emerald-300);
   --chart-2: var(--color-emerald-500);
   --chart-3: var(--color-zinc-400);
@@ -116,12 +117,12 @@
   --chart-5: var(--color-red-400);
   --sidebar: var(--color-zinc-900);
   --sidebar-foreground: var(--color-zinc-100);
-  --sidebar-primary: var(--color-emerald-300);
-  --sidebar-primary-foreground: var(--color-zinc-950);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: var(--color-zinc-800);
   --sidebar-accent-foreground: var(--color-zinc-100);
   --sidebar-border: var(--color-zinc-800);
-  --sidebar-ring: var(--color-emerald-400);
+  --sidebar-ring: var(--brand);
 }
 
 @layer base {

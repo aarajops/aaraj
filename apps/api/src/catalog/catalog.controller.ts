@@ -48,6 +48,16 @@ export class CatalogController {
     return this.catalog.listForManagement(session.user, query);
   }
 
+  @Get("manage/:id")
+  @Header("Cache-Control", "no-store")
+  @Can(CatalogPolicy, "manage")
+  findForManagement(
+    @Session() session: UserSession,
+    @Param("id", { schema: CatalogProductIdSchema }) productId: string,
+  ) {
+    return this.catalog.findForManagement(session.user, productId);
+  }
+
   @Get()
   @AllowAnonymous()
   listPublished(

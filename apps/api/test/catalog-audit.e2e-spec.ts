@@ -9,6 +9,7 @@ import { getPostgresPool } from "../src/platform/database/database-client.js";
 import { auditEvent } from "../src/platform/audit/audit-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { AccessService } from "../src/platform/authorization/access.service.js";
+import { catalogProduct } from "../src/catalog/catalog-schema.js";
 
 type Account = { id: string; email: string; cookie: string };
 const origin = "http://localhost:3000";
@@ -84,26 +85,104 @@ describe("catalog and security audit", () => {
       .expect(403);
 
     await request(app.getHttpServer())
+      .get("/api/catalog/size-guides/manage")
+      .expect(401);
+    await request(app.getHttpServer())
+      .get("/api/catalog/size-guides/manage")
+      .set("Cookie", customer.cookie)
+      .expect(403);
+
+    const guide = await request(app.getHttpServer())
+      .post("/api/catalog/size-guides")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Aaraj classic T-shirt",
+        category: "T-shirts",
+        fit: "Regular",
+        measurementBasis: "garment",
+        inputUnit: "in",
+        rows: [
+          {
+            sizeLabel: "M",
+            measurements: [
+              { key: "chest_width", value: "20.000" },
+              { key: "body_length", value: "28.000" },
+            ],
+          },
+          {
+            sizeLabel: "L",
+            measurements: [
+              { key: "chest_width", value: "21.000" },
+              { key: "body_length", value: "29.000" },
+            ],
+          },
+        ],
+        reason: "Create reusable T-shirt size guide",
+      })
+      .expect(201);
+    const guideId = guide.body.id as string;
+    expect(guide.body.rows[0].measurements).toEqual(
+      expect.arrayContaining([
+        { key: "chest_width", valueMm: "508.00" },
+        { key: "body_length", valueMm: "711.20" },
+      ]),
+    );
+    await request(app.getHttpServer())
+      .get("/api/catalog/size-guides/manage?limit=10")
+      .set("Cookie", staff.cookie)
+      .expect("Cache-Control", "no-store")
+      .expect(200);
+
+    await request(app.getHttpServer())
       .post("/api/catalog/products")
       .set("Cookie", customer.cookie)
       .set("Origin", origin)
-      .send({ slug: "draft-bike", name: "Draft bike", reason: "Catalog draft" })
+      .send({
+        slug: "customer-tee",
+        name: "Customer tee",
+        audience: "unisex",
+        category: "T-shirts",
+        reason: "Catalog draft",
+      })
       .expect(403);
+
+    await request(app.getHttpServer())
+      .post("/api/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "missing-size-tee",
+        name: "Missing size tee",
+        audience: "unisex",
+        category: "T-shirts",
+        fit: "Regular",
+        sizeGuideId: guideId,
+        isPublished: true,
+        reason: "Reject unavailable size",
+        variants: [{ sku: "TEE-MISSING-S", color: "Black", sizeLabel: "S" }],
+      })
+      .expect(400);
 
     const created = await request(app.getHttpServer())
       .post("/api/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
-        slug: "aaraj-draft-bike",
-        name: "Aaraj Draft Bike",
-        description: "Local test product",
+        slug: "aaraj-draft-tee",
+        name: "Aaraj Draft Tee",
+        description: "Local apparel test product",
+        audience: "unisex",
+        category: "T-shirts",
+        fit: "Regular",
+        sizeGuideId: guideId,
+        variants: [{ sku: "AA-TEE-BLK-M", color: "Black", sizeLabel: "M" }],
         reason: "Initial catalog entry",
       })
       .expect(201);
     expect(created.body).toMatchObject({
-      slug: "aaraj-draft-bike",
-      name: "Aaraj Draft Bike",
+      slug: "aaraj-draft-tee",
+      name: "Aaraj Draft Tee",
       isPublished: false,
     });
 
@@ -112,7 +191,7 @@ describe("catalog and security audit", () => {
       .expect(200)
       .expect({ products: [], hasMore: false, nextOffset: null });
     await request(app.getHttpServer())
-      .get("/api/catalog/products/aaraj-draft-bike")
+      .get("/api/catalog/products/aaraj-draft-tee")
       .expect(404);
     const managed = await request(app.getHttpServer())
       .get("/api/catalog/products/manage")
@@ -120,6 +199,39 @@ describe("catalog and security audit", () => {
       .expect(200);
     expect(managed.body.products).toHaveLength(1);
     expect(managed.body.products[0].id).toBe(created.body.id);
+    const managedDetail = await request(app.getHttpServer())
+      .get(`/api/catalog/products/manage/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(managedDetail.body.variants).toHaveLength(1);
+    expect(managedDetail.body.sizeGuide.id).toBe(guideId);
+
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        variants: [
+          { sku: "TEE-M-1", color: "Black", sizeLabel: "M" },
+          { sku: "TEE-M-2", color: " black ", sizeLabel: "m" },
+        ],
+        reason: "Reject duplicate color size",
+      })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post("/api/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "duplicate-sku-tee",
+        name: "Duplicate SKU Tee",
+        audience: "men",
+        category: "T-shirts",
+        variants: [{ sku: "aa-tee-blk-m", color: "White", sizeLabel: "M" }],
+        reason: "Reject reused SKU",
+      })
+      .expect(409);
 
     await request(app.getHttpServer())
       .patch(`/api/catalog/products/${created.body.id}`)
@@ -131,25 +243,56 @@ describe("catalog and security audit", () => {
       .patch(`/api/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
-      .send({ name: "Aaraj City Bike", reason: "Corrected product name" })
+      .send({ name: "Aaraj City Tee", reason: "Corrected product name" })
       .expect(200);
 
     const publicProduct = await request(app.getHttpServer())
-      .get("/api/catalog/products/aaraj-draft-bike")
+      .get("/api/catalog/products/aaraj-draft-tee")
       .expect(200);
-    expect(publicProduct.body.name).toBe("Aaraj City Bike");
+    expect(publicProduct.body.name).toBe("Aaraj City Tee");
+    expect(publicProduct.body.variants).toHaveLength(1);
+    expect(publicProduct.body.variants[0]).not.toHaveProperty("sku");
+    expect(publicProduct.body.sizeGuide.rows).toHaveLength(2);
 
     await request(app.getHttpServer())
       .post("/api/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
-        slug: "aaraj-city-mug",
-        name: "Aaraj City Mug",
+        slug: "aaraj-city-shirt",
+        name: "Aaraj City Shirt",
+        audience: "men",
+        category: "T-shirts",
+        fit: "Regular",
+        sizeGuideId: guideId,
+        variants: [{ sku: "AA-TEE-WHT-L", color: "White", sizeLabel: "L" }],
         isPublished: true,
         reason: "Second item for pagination coverage",
       })
       .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/size-guides/${guideId}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Aaraj incomplete chart",
+        category: "T-shirts",
+        fit: "Regular",
+        measurementBasis: "garment",
+        inputUnit: "cm",
+        rows: [
+          {
+            sizeLabel: "M",
+            measurements: [
+              { key: "chest_width", value: "50.8" },
+              { key: "body_length", value: "71.12" },
+            ],
+          },
+        ],
+        reason: "Try removing active size",
+      })
+      .expect(400);
 
     const firstProductPage = await request(app.getHttpServer())
       .get("/api/catalog/products?limit=1")
@@ -329,5 +472,21 @@ describe("catalog and security audit", () => {
     await expect(
       getPostgresPool().query("TRUNCATE audit.event"),
     ).rejects.toThrow("audit.event is append-only");
+
+    const [legacyProduct] = await database.db
+      .insert(catalogProduct)
+      .values({
+        slug: "legacy-unpublished-item",
+        name: "Legacy item",
+        isPublished: true,
+      })
+      .returning();
+    if (!legacyProduct) throw new Error("Legacy product insert failed.");
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/products/${legacyProduct.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({ isPublished: false, reason: "Unpublish legacy catalog row" })
+      .expect(200);
   });
 });

@@ -1,11 +1,14 @@
 "use client";
 
 import {
+  CatalogManagedProductDetailSchema,
   CatalogProductPageSchema,
   CatalogProductSchema,
   type CatalogProduct,
+  type CatalogManagedProductDetail,
   type CatalogProductListQuery,
   type CatalogProductPage,
+  type CatalogSizeGuideSummary,
 } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createCatalogProduct,
+  fetchManagedProduct,
   fetchManagedProducts,
   updateCatalogProduct,
 } from "@/features/catalog/catalog-client";
@@ -21,11 +25,27 @@ import { CatalogPagination } from "@/features/catalog/catalog-pagination";
 import Link from "next/link";
 import { useCallback, useState, type SubmitEvent } from "react";
 
+type SizeGuideOption = CatalogSizeGuideSummary;
+type Audience = "" | "men" | "women" | "unisex";
+type VariantDraft = {
+  sku: string;
+  color: string;
+  sizeLabel: string;
+  gtin: string;
+};
+
 interface ProductForm {
   id: string | null;
   slug: string;
   name: string;
   description: string;
+  audience: Audience;
+  category: string;
+  fit: string;
+  fabricComposition: string;
+  careInstructions: string;
+  sizeGuideId: string;
+  variants: VariantDraft[];
   isPublished: boolean;
   reason: string;
 }
@@ -40,22 +60,35 @@ const blankForm: ProductForm = {
   slug: "",
   name: "",
   description: "",
+  audience: "",
+  category: "",
+  fit: "",
+  fabricComposition: "",
+  careInstructions: "",
+  sizeGuideId: "",
+  variants: [],
   isPublished: false,
   reason: "",
 };
 
+const fieldClassName =
+  "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
 export function CatalogManager({
   initialPage,
+  initialSizeGuides,
   query,
 }: {
   initialPage: CatalogProductPage;
+  initialSizeGuides: SizeGuideOption[];
   query: CatalogProductListQuery;
 }) {
   const [products, setProducts] = useState(initialPage.products);
+  const [sizeGuides] = useState(initialSizeGuides);
   const [hasMore, setHasMore] = useState(initialPage.hasMore);
   const [nextOffset, setNextOffset] = useState(initialPage.nextOffset);
   const [form, setForm] = useState<ProductForm>(blankForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [slugError, setSlugError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -97,22 +130,49 @@ export function CatalogManager({
     if (key === "slug") setSlugError(null);
   }
 
-  function editProduct(product: CatalogProduct) {
-    setForm({
-      id: product.id,
-      slug: product.slug,
-      name: product.name,
-      description: product.description ?? "",
-      isPublished: product.isPublished,
-      reason: "",
-    });
+  function updateVariant<K extends keyof VariantDraft>(
+    index: number,
+    key: K,
+    value: VariantDraft[K],
+  ) {
+    setForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant, variantIndex) =>
+        variantIndex === index ? { ...variant, [key]: value } : variant,
+      ),
+    }));
+  }
+
+  async function editProduct(product: CatalogProduct) {
+    setIsLoadingProduct(true);
     setErrorMessage(null);
-    setSlugError(null);
     setStatusMessage(null);
+    try {
+      const response = await fetchManagedProduct(product.id);
+      if (response.status === 401) {
+        setErrorMessage("Your session expired. Sign in again to continue.");
+        return;
+      }
+      if (response.status === 403) {
+        setErrorMessage("Your account does not have catalog permissions.");
+        return;
+      }
+      if (!response.ok) throw new Error("Product details could not be loaded.");
+      const result = CatalogManagedProductDetailSchema.safeParse(
+        await response.json(),
+      );
+      if (!result.success) throw new Error("The product response was invalid.");
+      setForm(toProductFormState(result.data));
+      setSlugError(null);
+    } catch {
+      setErrorMessage("Product details are temporarily unavailable.");
+    } finally {
+      setIsLoadingProduct(false);
+    }
   }
 
   function resetForm() {
-    setForm(blankForm);
+    setForm({ ...blankForm, variants: [] });
     setErrorMessage(null);
     setSlugError(null);
     setStatusMessage(null);
@@ -124,11 +184,52 @@ export function CatalogManager({
     setErrorMessage(null);
     setSlugError(null);
     setStatusMessage(null);
+    if (
+      (!form.audience && (!form.id || form.isPublished)) ||
+      (!form.id && !form.category.trim())
+    ) {
+      setErrorMessage("Choose an audience and category before saving.");
+      setIsSaving(false);
+      return;
+    }
+
+    const variants = form.variants
+      .filter((variant) =>
+        [variant.sku, variant.color, variant.sizeLabel, variant.gtin].some(
+          (value) => value.trim().length > 0,
+        ),
+      )
+      .map((variant) => ({
+        sku: variant.sku.trim(),
+        color: variant.color.trim(),
+        sizeLabel: variant.sizeLabel.trim(),
+        gtin: variant.gtin.trim() || null,
+      }));
+    if (
+      form.isPublished &&
+      (!variants.length ||
+        !form.sizeGuideId ||
+        !form.audience ||
+        !form.category)
+    ) {
+      setErrorMessage(
+        "Before publishing, choose an audience and category, assign a matching size guide, and add at least one complete color and size variant.",
+      );
+      setIsSaving(false);
+      return;
+    }
 
     const payload = {
       slug: form.slug.trim(),
       name: form.name.trim(),
       description: form.description.trim() || null,
+      audience: form.audience || null,
+      category: form.category.trim() || null,
+      fit: form.fit.trim() || null,
+      fabricComposition: form.fabricComposition.trim() || null,
+      careInstructions: form.careInstructions.trim() || null,
+      sizeGuideId: form.sizeGuideId || null,
+      variants,
       isPublished: form.isPublished,
       reason: form.reason.trim(),
     };
@@ -136,10 +237,14 @@ export function CatalogManager({
     try {
       const response = form.id
         ? await updateCatalogProduct(form.id, payload)
-        : await createCatalogProduct(payload);
+        : await createCatalogProduct({
+            ...payload,
+            audience: form.audience as Exclude<Audience, "">,
+            category: form.category.trim(),
+          });
 
       if (!response.ok) {
-        const problem = await readProblem(response);
+        const problem = await readCatalogApiProblem(response);
         if (response.status === 401) {
           setErrorMessage("Sign in again to continue; your session expired.");
         } else if (
@@ -147,7 +252,10 @@ export function CatalogManager({
           problem.code !== "RECENT_SIGN_IN_REQUIRED"
         ) {
           setErrorMessage("Your account does not have catalog permissions.");
-        } else if (response.status === 409) {
+        } else if (
+          response.status === 409 &&
+          problem.message?.includes("slug")
+        ) {
           setSlugError("That slug is already in use. Choose another one.");
         } else if (problem.code === "RECENT_SIGN_IN_REQUIRED") {
           setErrorMessage(
@@ -172,7 +280,7 @@ export function CatalogManager({
             ? "Product created and published."
             : "Draft product created.",
       );
-      setForm(blankForm);
+      setForm({ ...blankForm, variants: [] });
       await loadProducts();
     } catch {
       setErrorMessage("Could not reach the server. Please try again.");
@@ -180,6 +288,14 @@ export function CatalogManager({
       setIsSaving(false);
     }
   }
+
+  const compatibleGuides = sizeGuides.filter(
+    (guide) =>
+      form.category.trim() &&
+      guide.category.trim().toLowerCase() ===
+        form.category.trim().toLowerCase() &&
+      (guide.fit ?? "").trim().toLowerCase() === form.fit.trim().toLowerCase(),
+  );
 
   return (
     <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
@@ -193,15 +309,27 @@ export function CatalogManager({
               Catalog management
             </h1>
             <p className="mt-2 text-muted-foreground">
-              Create product drafts and choose when they appear publicly.
+              Create one product per style, then add its real color and size
+              options.
             </p>
           </div>
-          <Link className="text-sm text-primary hover:text-primary/80" href="/">
-            View public catalog
-          </Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link
+              className="text-sm text-primary hover:text-primary/80"
+              href="/staff/catalog/size-guides"
+            >
+              Manage size guides
+            </Link>
+            <Link
+              className="text-sm text-primary hover:text-primary/80"
+              href="/"
+            >
+              View public catalog
+            </Link>
+          </div>
         </div>
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.85fr)]">
+        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.9fr)]">
           <section aria-labelledby="managed-products-heading">
             <div className="flex items-center justify-between gap-4">
               <h2
@@ -255,9 +383,12 @@ export function CatalogManager({
                       className="h-auto shrink-0 px-3 py-2"
                       variant="outline"
                       type="button"
-                      onClick={() => editProduct(product)}
+                      disabled={isLoadingProduct}
+                      onClick={() => void editProduct(product)}
                     >
-                      Edit
+                      {isLoadingProduct && form.id === product.id
+                        ? "Loading…"
+                        : "Edit"}
                     </Button>
                   </li>
                 ))}
@@ -285,7 +416,8 @@ export function CatalogManager({
                   {form.id ? "Edit product" : "Create a product"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  New products default to draft. You can publish now or later.
+                  Drafts can be incomplete. Publishing requires sellable
+                  variants and a matching size guide.
                 </p>
               </div>
               {form.id && (
@@ -308,7 +440,7 @@ export function CatalogManager({
                 Name
                 <Input
                   autoComplete="off"
-                  className="h-auto bg-background px-3 py-2.5 text-base md:text-base"
+                  className={fieldClassName}
                   id="product-name"
                   maxLength={160}
                   name="name"
@@ -327,7 +459,7 @@ export function CatalogManager({
                   autoComplete="off"
                   aria-describedby={slugError ? "slug-error" : undefined}
                   aria-invalid={Boolean(slugError)}
-                  className="h-auto bg-background px-3 py-2.5 text-base md:text-base"
+                  className={fieldClassName}
                   id="product-slug"
                   maxLength={120}
                   name="slug"
@@ -356,7 +488,7 @@ export function CatalogManager({
               >
                 Description
                 <Textarea
-                  className="min-h-28 resize-y bg-background px-3 py-2.5 text-base md:text-base"
+                  className="min-h-24 resize-y bg-background px-3 py-2.5 text-base md:text-base"
                   id="product-description"
                   maxLength={5000}
                   name="description"
@@ -365,6 +497,257 @@ export function CatalogManager({
                     updateForm("description", event.target.value)
                   }
                 />
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label
+                  className="block space-y-2 text-sm font-medium"
+                  htmlFor="product-audience"
+                >
+                  Audience
+                  <select
+                    className={fieldClassName}
+                    id="product-audience"
+                    name="audience"
+                    required={!form.id || form.isPublished}
+                    value={form.audience}
+                    onChange={(event) =>
+                      updateForm("audience", event.target.value as Audience)
+                    }
+                  >
+                    <option value="">Choose audience</option>
+                    <option value="men">Men</option>
+                    <option value="women">Women</option>
+                    <option value="unisex">Unisex</option>
+                  </select>
+                </label>
+                <label
+                  className="block space-y-2 text-sm font-medium"
+                  htmlFor="product-category"
+                >
+                  Category
+                  <Input
+                    className={fieldClassName}
+                    id="product-category"
+                    maxLength={80}
+                    required={!form.id || form.isPublished}
+                    value={form.category}
+                    onChange={(event) =>
+                      updateForm("category", event.target.value)
+                    }
+                  />
+                </label>
+              </div>
+
+              <label
+                className="block space-y-2 text-sm font-medium"
+                htmlFor="product-fit"
+              >
+                Fit{" "}
+                <span className="font-normal text-muted-foreground">
+                  (optional, for example Regular)
+                </span>
+                <Input
+                  className={fieldClassName}
+                  id="product-fit"
+                  maxLength={80}
+                  value={form.fit}
+                  onChange={(event) => updateForm("fit", event.target.value)}
+                />
+              </label>
+
+              <label
+                className="block space-y-2 text-sm font-medium"
+                htmlFor="product-fabric"
+              >
+                Fabric composition{" "}
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
+                <Input
+                  className={fieldClassName}
+                  id="product-fabric"
+                  maxLength={1000}
+                  value={form.fabricComposition}
+                  onChange={(event) =>
+                    updateForm("fabricComposition", event.target.value)
+                  }
+                />
+              </label>
+
+              <label
+                className="block space-y-2 text-sm font-medium"
+                htmlFor="product-care"
+              >
+                Care instructions{" "}
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
+                <Textarea
+                  className="min-h-20 resize-y bg-background px-3 py-2.5 text-base md:text-base"
+                  id="product-care"
+                  maxLength={2000}
+                  value={form.careInstructions}
+                  onChange={(event) =>
+                    updateForm("careInstructions", event.target.value)
+                  }
+                />
+              </label>
+
+              <section
+                aria-labelledby="product-variants-heading"
+                className="space-y-3 rounded-xl border border-border p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold" id="product-variants-heading">
+                      Color and size variants
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Each row is one sellable color and size with its own SKU.
+                    </p>
+                  </div>
+                  <Button
+                    className="h-auto px-3 py-2"
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      updateForm("variants", [
+                        ...form.variants,
+                        { sku: "", color: "", sizeLabel: "", gtin: "" },
+                      ])
+                    }
+                  >
+                    Add variant
+                  </Button>
+                </div>
+                {form.variants.map((variant, index) => (
+                  <fieldset
+                    className="grid gap-3 rounded-lg bg-background/70 p-3 sm:grid-cols-2"
+                    key={index}
+                  >
+                    <legend className="sr-only">Variant {index + 1}</legend>
+                    <label className="space-y-1 text-sm">
+                      SKU
+                      <Input
+                        aria-label={`Variant ${index + 1} SKU`}
+                        className={fieldClassName}
+                        maxLength={100}
+                        required
+                        value={variant.sku}
+                        onChange={(event) =>
+                          updateVariant(index, "sku", event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      Color
+                      <Input
+                        aria-label={`Variant ${index + 1} color`}
+                        className={fieldClassName}
+                        maxLength={80}
+                        required
+                        value={variant.color}
+                        onChange={(event) =>
+                          updateVariant(index, "color", event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      Size
+                      <Input
+                        aria-label={`Variant ${index + 1} size`}
+                        className={fieldClassName}
+                        maxLength={40}
+                        required
+                        value={variant.sizeLabel}
+                        onChange={(event) =>
+                          updateVariant(index, "sizeLabel", event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      GTIN{" "}
+                      <span className="font-normal text-muted-foreground">
+                        (optional)
+                      </span>
+                      <Input
+                        aria-label={`Variant ${index + 1} GTIN`}
+                        className={fieldClassName}
+                        inputMode="numeric"
+                        maxLength={14}
+                        value={variant.gtin}
+                        onChange={(event) =>
+                          updateVariant(index, "gtin", event.target.value)
+                        }
+                      />
+                    </label>
+                    <Button
+                      className="h-auto justify-self-start px-2 py-1 text-sm text-destructive"
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        updateForm(
+                          "variants",
+                          form.variants.filter(
+                            (_, itemIndex) => itemIndex !== index,
+                          ),
+                        )
+                      }
+                    >
+                      Remove variant
+                    </Button>
+                  </fieldset>
+                ))}
+                {form.variants.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No variants added. Add them before publishing.
+                  </p>
+                )}
+              </section>
+
+              <label
+                className="block space-y-2 text-sm font-medium"
+                htmlFor="product-size-guide"
+              >
+                Reusable size guide
+                <select
+                  className={fieldClassName}
+                  id="product-size-guide"
+                  value={form.sizeGuideId}
+                  onChange={(event) =>
+                    updateForm("sizeGuideId", event.target.value)
+                  }
+                >
+                  <option value="">No size guide assigned</option>
+                  {compatibleGuides.map((guide) => (
+                    <option key={guide.id} value={guide.id}>
+                      {guide.name} · {guide.measurementBasis} measurements ·{" "}
+                      {guide.sizeLabels.join(", ")}
+                    </option>
+                  ))}
+                </select>
+                {form.category.trim() && compatibleGuides.length === 0 && (
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    No matching size guide is available.{" "}
+                    <Link
+                      className="text-primary underline"
+                      href="/staff/catalog/size-guides"
+                    >
+                      Create one
+                    </Link>
+                    .
+                  </span>
+                )}
+                {form.sizeGuideId &&
+                  compatibleGuides.some(
+                    (guide) => guide.id === form.sizeGuideId,
+                  ) && (
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      Required for published clothing and used beside the size
+                      selector on product details.
+                    </span>
+                  )}
               </label>
 
               <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
@@ -383,7 +766,8 @@ export function CatalogManager({
                     Published on the storefront
                   </span>
                   <span className="mt-1 block text-muted-foreground">
-                    Unchecked products remain visible to authorized staff only.
+                    Only complete products with matching variants and a size
+                    guide can be published.
                   </span>
                 </span>
               </label>
@@ -394,7 +778,7 @@ export function CatalogManager({
               >
                 Audit reason
                 <Input
-                  className="h-auto bg-background px-3 py-2.5 text-base md:text-base"
+                  className={fieldClassName}
                   id="audit-reason"
                   maxLength={500}
                   minLength={3}
@@ -429,7 +813,7 @@ export function CatalogManager({
 
               <Button
                 className="h-auto w-full px-4 py-3 text-base font-semibold"
-                disabled={isSaving}
+                disabled={isSaving || isLoadingProduct}
                 type="submit"
               >
                 {isSaving
@@ -448,7 +832,30 @@ export function CatalogManager({
   );
 }
 
-async function readProblem(response: Response): Promise<ApiProblem> {
+function toProductFormState(product: CatalogManagedProductDetail): ProductForm {
+  return {
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    description: product.description ?? "",
+    audience: product.audience ?? "",
+    category: product.category ?? "",
+    fit: product.fit ?? "",
+    fabricComposition: product.fabricComposition ?? "",
+    careInstructions: product.careInstructions ?? "",
+    sizeGuideId: product.sizeGuideId ?? "",
+    variants: product.variants.map((variant) => ({
+      sku: variant.sku,
+      color: variant.color,
+      sizeLabel: variant.sizeLabel,
+      gtin: variant.gtin ?? "",
+    })),
+    isPublished: product.isPublished,
+    reason: "",
+  };
+}
+
+async function readCatalogApiProblem(response: Response): Promise<ApiProblem> {
   try {
     const body: unknown = await response.json();
     if (typeof body !== "object" || body === null) return {};

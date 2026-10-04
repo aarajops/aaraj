@@ -3,7 +3,10 @@ import {
   AccessUserIdSchema,
   AuditEventQuerySchema,
   CatalogProductSchema,
+  CatalogProductCreateSchema,
   CatalogProductListQuerySchema,
+  CatalogProductUpdateSchema,
+  CatalogSizeGuideCreateSchema,
   DEFAULT_LIST_PAGE_SIZE,
   HealthCheckResponseSchema,
   MAX_LIST_PAGE_SIZE,
@@ -41,11 +44,98 @@ describe("Contracts Schema Validation", () => {
       slug: "premium-leather-wallet",
       name: "Premium Leather Wallet",
       description: null,
+      audience: "unisex",
+      category: "Accessories",
+      fit: null,
+      fabricComposition: null,
+      careInstructions: null,
+      sizeGuideId: null,
       isPublished: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     expect(CatalogProductSchema.safeParse(validProduct).success).toBe(true);
+  });
+
+  it("rejects duplicate or invalid clothing variants", () => {
+    const product = {
+      slug: "aaraj-cotton-tee",
+      name: "Aaraj Cotton Tee",
+      audience: "unisex",
+      category: "T-shirts",
+      reason: "Add the product",
+      variants: [
+        { sku: "TEE-BLK-M", color: "Black", sizeLabel: "M" },
+        { sku: "tee-blk-m", color: "black", sizeLabel: "m" },
+      ],
+    };
+    expect(CatalogProductCreateSchema.safeParse(product).success).toBe(false);
+    expect(
+      CatalogProductCreateSchema.safeParse({
+        ...product,
+        variants: [{ ...product.variants[0], gtin: "4006381333932" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      CatalogProductCreateSchema.safeParse({
+        ...product,
+        variants: [{ ...product.variants[0], gtin: "4006381333931" }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("allows staff to clear legacy apparel fields while unpublishing", () => {
+    expect(
+      CatalogProductUpdateSchema.safeParse({
+        audience: null,
+        category: null,
+        isPublished: false,
+        reason: "Unpublish legacy item",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("requires consistent, unique size guide rows", () => {
+    const guide = {
+      name: "Classic T-shirt",
+      category: "T-shirts",
+      fit: "Regular",
+      measurementBasis: "garment",
+      inputUnit: "in",
+      reason: "Create reusable guide",
+      rows: [
+        {
+          sizeLabel: "M",
+          measurements: [
+            { key: "chest_width", value: "20.00" },
+            { key: "body_length", value: "28.00" },
+          ],
+        },
+        {
+          sizeLabel: "L",
+          measurements: [
+            { key: "chest_width", value: "21.00" },
+            { key: "body_length", value: "29.00" },
+          ],
+        },
+      ],
+    };
+    expect(CatalogSizeGuideCreateSchema.safeParse(guide).success).toBe(true);
+    expect(
+      CatalogSizeGuideCreateSchema.safeParse({
+        ...guide,
+        rows: [guide.rows[0], { ...guide.rows[1], sizeLabel: " m " }],
+      }).success,
+    ).toBe(false);
+    expect(
+      CatalogSizeGuideCreateSchema.safeParse({
+        ...guide,
+        rows: [
+          guide.rows[0],
+          { ...guide.rows[1], measurements: [{ key: "waist", value: "30" }] },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("uses one bounded page-size policy across list contracts", () => {

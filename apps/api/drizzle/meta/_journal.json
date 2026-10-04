@@ -43,6 +43,13 @@
       "when": 1790874108172,
       "tag": "0005_audit_review_order",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791076932901,
+      "tag": "0006_apparel_product_variants_size_guides",
+      "breakpoints": true
     }
   ]
 }
