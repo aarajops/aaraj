@@ -33,13 +33,19 @@ import {
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
-import { NativeSelect } from "@/components/ui/native-select";
 import {
   Field,
   FieldDescription,
   FieldError,
   FieldLabel,
 } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type SizeGuideOption = CatalogSizeGuideSummary;
 type Audience = "" | "men" | "women" | "unisex";
@@ -580,18 +586,47 @@ export function CatalogManager({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field>
-                  <FieldLabel htmlFor="product-audience">Audience</FieldLabel>
-                  <NativeSelect
-                    className={fieldClassName}
-                    id="product-audience"
-                    required={!editingId || isPublished}
-                    {...register("audience")}
+                  <FieldLabel
+                    id="product-audience-label"
+                    htmlFor="product-audience"
                   >
-                    <option value="">Choose audience</option>
-                    <option value="men">Men</option>
-                    <option value="women">Women</option>
-                    <option value="unisex">Unisex</option>
-                  </NativeSelect>
+                    Audience
+                  </FieldLabel>
+                  <Controller
+                    control={control}
+                    name="audience"
+                    render={({ field }) => (
+                      <Select
+                        items={[
+                          { label: "Choose audience", value: null },
+                          { label: "Men", value: "men" },
+                          { label: "Women", value: "women" },
+                          { label: "Unisex", value: "unisex" },
+                        ]}
+                        name={field.name}
+                        required={!editingId || isPublished}
+                        value={field.value || null}
+                        onValueChange={(value) =>
+                          field.onChange(typeof value === "string" ? value : "")
+                        }
+                      >
+                        <SelectTrigger
+                          id="product-audience"
+                          aria-labelledby="product-audience-label"
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                        >
+                          <SelectValue placeholder="Choose audience" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={null}>Choose audience</SelectItem>
+                          <SelectItem value="men">Men</SelectItem>
+                          <SelectItem value="women">Women</SelectItem>
+                          <SelectItem value="unisex">Unisex</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                 </Field>
                 <Controller
                   control={control}
@@ -603,7 +638,7 @@ export function CatalogManager({
                       required={isPublished}
                       value={field.value}
                       name={field.name}
-                      inputRef={field.ref}
+                      triggerRef={field.ref}
                       onBlur={field.onBlur}
                       onChange={field.onChange}
                     />
@@ -777,22 +812,52 @@ export function CatalogManager({
               </section>
 
               <Field>
-                <FieldLabel htmlFor="product-size-guide">
+                <FieldLabel
+                  id="product-size-guide-label"
+                  htmlFor="product-size-guide"
+                >
                   Reusable size guide
                 </FieldLabel>
-                <NativeSelect
-                  className={fieldClassName}
-                  id="product-size-guide"
-                  {...register("sizeGuideId")}
-                >
-                  <option value="">No size guide assigned</option>
-                  {compatibleGuides.map((guide) => (
-                    <option key={guide.id} value={guide.id}>
-                      {guide.name} · {guide.measurementBasis} measurements ·{" "}
-                      {guide.sizeLabels.join(", ")}
-                    </option>
-                  ))}
-                </NativeSelect>
+                <Controller
+                  control={control}
+                  name="sizeGuideId"
+                  render={({ field }) => (
+                    <Select
+                      items={[
+                        { label: "No size guide assigned", value: null },
+                        ...compatibleGuides.map((guide) => ({
+                          label: `${guide.name} · ${guide.measurementBasis} measurements · ${guide.sizeLabels.join(", ")}`,
+                          value: guide.id,
+                        })),
+                      ]}
+                      name={field.name}
+                      value={field.value || null}
+                      onValueChange={(value) =>
+                        field.onChange(typeof value === "string" ? value : "")
+                      }
+                    >
+                      <SelectTrigger
+                        id="product-size-guide"
+                        aria-labelledby="product-size-guide-label"
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                      >
+                        <SelectValue placeholder="No size guide assigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={null}>
+                          No size guide assigned
+                        </SelectItem>
+                        {compatibleGuides.map((guide) => (
+                          <SelectItem key={guide.id} value={guide.id}>
+                            {guide.name} · {guide.measurementBasis} measurements
+                            · {guide.sizeLabels.join(", ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
                 {categoryId && compatibleGuides.length === 0 && (
                   <FieldDescription>
                     No matching size guide is available.{" "}

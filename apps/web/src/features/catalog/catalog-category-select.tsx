@@ -6,13 +6,19 @@ import {
 } from "@aaraj/contracts";
 import { useEffect, useState, type Ref } from "react";
 import { fetchCatalogCategories } from "@/features/catalog/catalog-client";
-import { NativeSelect } from "@/components/ui/native-select";
 import {
   Field,
   FieldDescription,
   FieldError,
   FieldLabel,
 } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
@@ -23,7 +29,7 @@ export function CatalogCategorySelect({
   value,
   required = false,
   name,
-  inputRef,
+  triggerRef,
   onBlur,
   onChange,
 }: {
@@ -32,7 +38,7 @@ export function CatalogCategorySelect({
   value: string;
   required?: boolean;
   name?: string;
-  inputRef?: Ref<HTMLSelectElement>;
+  triggerRef?: Ref<HTMLButtonElement>;
   onBlur?: () => void;
   onChange: (categoryId: string) => void;
 }) {
@@ -62,33 +68,52 @@ export function CatalogCategorySelect({
     };
   }, []);
 
+  const emptyLabel =
+    loadState === "loading"
+      ? "Loading categories…"
+      : categories.length
+        ? "Choose a category"
+        : "No product categories available";
+
   return (
     <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <NativeSelect
-        className={fieldClassName}
+      <FieldLabel id={`${id}-label`} htmlFor={id}>
+        {label}
+      </FieldLabel>
+      <Select
         disabled={loadState !== "ready" || categories.length === 0}
-        id={id}
+        items={[
+          { label: emptyLabel, value: null },
+          ...categories.map((category) => ({
+            label: category.path,
+            value: category.id,
+          })),
+        ]}
         name={name}
-        ref={inputRef}
         required={required}
-        value={value}
-        onBlur={onBlur}
-        onChange={(event) => onChange(event.target.value)}
+        value={value || null}
+        onValueChange={(selectedValue) =>
+          onChange(typeof selectedValue === "string" ? selectedValue : "")
+        }
       >
-        <option value="">
-          {loadState === "loading"
-            ? "Loading categories…"
-            : categories.length
-              ? "Choose a category"
-              : "No product categories available"}
-        </option>
-        {categories.map((category) => (
-          <option key={category.id} value={category.id}>
-            {category.path}
-          </option>
-        ))}
-      </NativeSelect>
+        <SelectTrigger
+          className={fieldClassName}
+          id={id}
+          aria-labelledby={`${id}-label`}
+          ref={triggerRef}
+          onBlur={onBlur}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={null}>{emptyLabel}</SelectItem>
+          {categories.map((category) => (
+            <SelectItem key={category.id} value={category.id}>
+              {category.path}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {loadState === "error" && (
         <FieldError>
           Product categories could not be loaded. Try again later.

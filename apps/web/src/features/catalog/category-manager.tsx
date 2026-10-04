@@ -15,9 +15,15 @@ import {
 } from "@/features/catalog/catalog-client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
-import { NativeSelect } from "@/components/ui/native-select";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface CategoryForm {
   id: string | null;
@@ -135,6 +141,10 @@ export function CategoryManager() {
     });
   }
 
+  const parentOptions = categories
+    .filter((category) => category.isActive && category.id !== editingId)
+    .map((category) => ({ label: category.path, value: category.id }));
+
   return (
     <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
       <div className="mx-auto max-w-6xl">
@@ -249,26 +259,49 @@ export function CategoryManager() {
                 </FieldDescription>
               </Field>
               <Field>
-                <FieldLabel htmlFor="category-parent">
+                <FieldLabel
+                  id="category-parent-label"
+                  htmlFor="category-parent"
+                >
                   Parent category
                 </FieldLabel>
-                <NativeSelect
-                  className={fieldClassName}
-                  id="category-parent"
-                  {...register("parentId")}
-                >
-                  <option value="">Top level</option>
-                  {categories
-                    .filter(
-                      (category) =>
-                        category.isActive && category.id !== editingId,
-                    )
-                    .map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.path}
-                      </option>
-                    ))}
-                </NativeSelect>
+                <Controller
+                  control={control}
+                  name="parentId"
+                  render={({ field }) => (
+                    <Select
+                      items={[
+                        { label: "Top level", value: null },
+                        ...parentOptions,
+                      ]}
+                      name={field.name}
+                      value={field.value || null}
+                      onValueChange={(value) =>
+                        field.onChange(typeof value === "string" ? value : "")
+                      }
+                    >
+                      <SelectTrigger
+                        id="category-parent"
+                        aria-labelledby="category-parent-label"
+                        ref={field.ref}
+                        onBlur={field.onBlur}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={null}>Top level</SelectItem>
+                        {parentOptions.map((category) => (
+                          <SelectItem
+                            key={category.value}
+                            value={category.value}
+                          >
+                            {category.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </Field>
               <Field>
                 <FieldLabel htmlFor="category-order">Display order</FieldLabel>

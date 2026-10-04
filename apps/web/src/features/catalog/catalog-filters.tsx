@@ -3,10 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { useForm } from "react-hook-form";
-import { NativeSelect } from "@/components/ui/native-select";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Controller, useForm, type Control } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type {
   CatalogProductFilterOptions,
   CatalogPublishedProductListQuery,
@@ -33,7 +39,7 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
   );
   const color = selectedFilterValue(options?.colors ?? [], query.color);
   const size = selectedFilterValue(options?.sizes ?? [], query.size);
-  const { register, handleSubmit, reset } = useForm<FilterForm>({
+  const { control, handleSubmit, reset } = useForm<FilterForm>({
     defaultValues: { audience, category, color, size },
   });
   const selectionKey = [audience, category, color, size].join("\u0000");
@@ -55,6 +61,11 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
     router.push(`/?${params.toString()}`);
   }
 
+  const categoryOptions = (options?.categories ?? []).map((category) => ({
+    label: category.path,
+    value: category.slug,
+  }));
+
   return (
     <form
       action="/"
@@ -64,48 +75,48 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
       onSubmit={handleSubmit(applyFilters)}
     >
       <input name="limit" type="hidden" value={query.limit} />
-      <Field>
-        <FieldLabel htmlFor="filter-audience">Audience</FieldLabel>
-        <NativeSelect id="filter-audience" {...register("audience")}>
-          <option value="">All audiences</option>
-          <option value="men">Men</option>
-          <option value="women">Women</option>
-          <option value="unisex">Unisex</option>
-        </NativeSelect>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="filter-category">Category</FieldLabel>
-        <NativeSelect id="filter-category" {...register("category")}>
-          <option value="">All categories</option>
-          {(options?.categories ?? []).map((category) => (
-            <option key={category.id} value={category.slug}>
-              {category.path}
-            </option>
-          ))}
-        </NativeSelect>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="filter-color">Color</FieldLabel>
-        <NativeSelect id="filter-color" {...register("color")}>
-          <option value="">All colors</option>
-          {(options?.colors ?? []).map((color) => (
-            <option key={color} value={color}>
-              {color}
-            </option>
-          ))}
-        </NativeSelect>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="filter-size">Size</FieldLabel>
-        <NativeSelect id="filter-size" {...register("size")}>
-          <option value="">All sizes</option>
-          {(options?.sizes ?? []).map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </NativeSelect>
-      </Field>
+      <FilterSelect
+        control={control}
+        id="filter-audience"
+        label="Audience"
+        name="audience"
+        allLabel="All audiences"
+        options={[
+          { label: "Men", value: "men" },
+          { label: "Women", value: "women" },
+          { label: "Unisex", value: "unisex" },
+        ]}
+      />
+      <FilterSelect
+        control={control}
+        id="filter-category"
+        label="Category"
+        name="category"
+        allLabel="All categories"
+        options={categoryOptions}
+      />
+      <FilterSelect
+        control={control}
+        id="filter-color"
+        label="Color"
+        name="color"
+        allLabel="All colors"
+        options={(options?.colors ?? []).map((color) => ({
+          label: color,
+          value: color,
+        }))}
+      />
+      <FilterSelect
+        control={control}
+        id="filter-size"
+        label="Size"
+        name="size"
+        allLabel="All sizes"
+        options={(options?.sizes ?? []).map((size) => ({
+          label: size,
+          value: size,
+        }))}
+      />
       <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-4">
         <Button className="h-10 px-4" type="submit">
           Apply filters
@@ -120,6 +131,61 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
         )}
       </div>
     </form>
+  );
+}
+
+function FilterSelect({
+  control,
+  id,
+  label,
+  name,
+  allLabel,
+  options,
+}: {
+  control: Control<FilterForm>;
+  id: string;
+  label: string;
+  name: keyof FilterForm;
+  allLabel: string;
+  options: Array<{ label: string; value: string }>;
+}) {
+  return (
+    <Field>
+      <FieldLabel id={`${id}-label`} htmlFor={id}>
+        {label}
+      </FieldLabel>
+      <Controller
+        control={control}
+        name={name}
+        render={({ field }) => (
+          <Select
+            items={[{ label: allLabel, value: null }, ...options]}
+            name={field.name}
+            value={field.value || null}
+            onValueChange={(value) =>
+              field.onChange(typeof value === "string" ? value : "")
+            }
+          >
+            <SelectTrigger
+              id={id}
+              aria-labelledby={`${id}-label`}
+              ref={field.ref}
+              onBlur={field.onBlur}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={null}>{allLabel}</SelectItem>
+              {options.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      />
+    </Field>
   );
 }
 

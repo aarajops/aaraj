@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { chooseSelectOption } from "./select";
 
 test("staff manages reusable size guides and apparel products safely", async ({
   page,
@@ -31,11 +32,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
     page.getByRole("heading", { name: "Size guides", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill("Aaraj Classic Tee");
-  await page
-    .getByLabel("Product category")
-    .selectOption({ label: "Clothing / T-shirts" });
+  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional)").fill("Regular");
-  await page.getByLabel("Enter measurements in").selectOption("in");
+  await chooseSelectOption(page, "Enter measurements in", "Inches (in)");
   await page.getByRole("button", { name: "Add size" }).click();
   await page.getByRole("button", { name: "Add size" }).click();
   await page.locator("#size-label-0").fill("S");
@@ -51,22 +50,20 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("heading", { name: "Catalog management" }),
   ).toBeVisible();
-  await page
-    .getByLabel("Product category")
-    .selectOption({ label: "Clothing / T-shirts" });
+  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Load 100 more size guides" }).click();
+  await page.getByRole("combobox", { name: "Reusable size guide" }).click();
   await expect(
-    page.locator("#product-size-guide option").filter({
-      hasText: "Legacy guide beyond the first page",
-    }),
+    page.getByRole("option", { name: /Legacy guide beyond the first page/ }),
   ).toHaveCount(1);
+  await page.keyboard.press("Escape");
   await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E Tee");
   await page.locator("#product-slug").fill("aaraj-e2e-tee");
   await page
     .getByLabel("Description", { exact: true })
     .fill("A test product used to verify the clothing catalog workflow.");
-  await page.getByLabel("Audience").selectOption("unisex");
+  await chooseSelectOption(page, "Audience", "Unisex");
   await page.getByRole("button", { name: "Add variant" }).click();
   await page.getByLabel("Variant 1 SKU").fill("AA-TEE-BLK-S");
   await page.getByLabel("Variant 1 color").fill("Black");
@@ -77,19 +74,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByLabel("Variant 2 color").fill("Black");
   await page.getByLabel("Variant 2 size").fill("M");
   await page.getByLabel("Variant 2 price in BDT").fill("2200");
-  const guideOptions = await page
-    .locator("#product-size-guide option")
-    .evaluateAll((options) =>
-      options.map((option) => {
-        const element = option as HTMLOptionElement;
-        return { value: element.value, text: element.textContent ?? "" };
-      }),
-    );
-  const selectedGuide = guideOptions.find((option) =>
-    option.text.includes("Aaraj Classic Tee"),
-  );
-  expect(selectedGuide).toBeDefined();
-  await page.locator("#product-size-guide").selectOption(selectedGuide!.value);
+  await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
   await page.getByLabel("Published on the storefront").check();
   await page
     .getByLabel("Audit reason", { exact: true })
@@ -108,11 +93,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
 
   await page.goto("/");
-  await page.getByLabel("Audience").selectOption("unisex");
-  await page.getByLabel("Category").selectOption("t-shirts");
-  await page.getByLabel("Color").selectOption("Black");
-  await page.getByLabel("Size").selectOption("M");
-  await expect(page.getByLabel("Audience")).toHaveValue("unisex");
+  await chooseSelectOption(page, "Audience", "Unisex");
+  await chooseSelectOption(page, "Category", "Clothing / T-shirts");
+  await chooseSelectOption(page, "Color", "Black");
+  await chooseSelectOption(page, "Size", "M");
+  await expect(page.getByRole("combobox", { name: "Audience" })).toHaveText(
+    "Unisex",
+  );
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/audience=unisex/);
   await expect(page).toHaveURL(/category=t-shirts/);
@@ -125,10 +112,8 @@ test("staff manages reusable size guides and apparel products safely", async ({
 
   await page.getByLabel("Name", { exact: true }).fill("Duplicate slug item");
   await page.locator("#product-slug").fill("aaraj-e2e-tee");
-  await page.getByLabel("Audience").selectOption("unisex");
-  await page
-    .getByLabel("Product category")
-    .selectOption({ label: "Clothing / T-shirts" });
+  await chooseSelectOption(page, "Audience", "Unisex");
+  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Check duplicate slug");
@@ -163,17 +148,15 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.goto("/staff/catalog");
   await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E T-shirt");
   await page.locator("#product-slug").fill("aaraj-e2e-t-shirt");
-  await page.getByLabel("Audience").selectOption("men");
-  await page
-    .getByLabel("Product category")
-    .selectOption({ label: "Clothing / T-shirts" });
+  await chooseSelectOption(page, "Audience", "Men");
+  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Add variant" }).click();
   await page.getByLabel("Variant 1 SKU").fill("AA-TEE-WHT-M");
   await page.getByLabel("Variant 1 color").fill("White");
   await page.getByLabel("Variant 1 size").fill("M");
   await page.getByLabel("Variant 1 price in BDT").fill("1999");
-  await page.locator("#product-size-guide").selectOption(selectedGuide!.value);
+  await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
   await page.getByLabel("Published on the storefront").check();
   await page
     .getByLabel("Audit reason", { exact: true })

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { chooseSelectOption } from "../select";
 
 test("real browser session reaches the API through Next and respects roles", async ({
   page,
@@ -92,7 +93,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("status")).toContainText("Category created.");
   await page.getByLabel("Name", { exact: true }).fill("T-shirts");
   await page.getByLabel("Slug").fill("t-shirts");
-  await page.getByLabel("Parent category").selectOption({ label: "Clothing" });
+  await chooseSelectOption(page, "Parent category", "Clothing");
   await page.getByLabel("Reason for change").fill("Create T-shirt category");
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page.getByRole("status")).toContainText("Category created.");
@@ -102,11 +103,9 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("heading", { name: "Size guides", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill(guideName);
-  await page
-    .getByLabel("Product category")
-    .selectOption({ label: "Clothing / T-shirts" });
+  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional)").fill("Regular");
-  await page.getByLabel("Enter measurements in").selectOption("in");
+  await chooseSelectOption(page, "Enter measurements in", "Inches (in)");
   await page.getByRole("button", { name: "Add size" }).click();
   await page.getByRole("button", { name: "Add size" }).click();
   await page.locator("#size-label-0").fill("S");
@@ -129,25 +128,13 @@ test("catalog operator configures a product through to storefront visibility", a
   await page
     .getByLabel("Description", { exact: true })
     .fill("A product configured in a real browser and database flow.");
-  await page.getByLabel("Audience").selectOption("unisex");
-  await page
-    .getByLabel("Product category")
-    .selectOption({ label: "Clothing / T-shirts" });
+  await chooseSelectOption(page, "Audience", "Unisex");
+  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByLabel("Fabric composition").fill("100% cotton");
   await page.getByLabel("Care instructions").fill("Machine wash cold");
 
-  await expect(page.locator("#product-size-guide")).toContainText(guideName);
-  const guideId = await page
-    .locator("#product-size-guide option")
-    .evaluateAll((options, name) => {
-      const match = options.find((option) =>
-        option.textContent?.includes(name as string),
-      );
-      return (match as HTMLOptionElement | undefined)?.value ?? "";
-    }, guideName);
-  expect(guideId).not.toBe("");
-  await page.locator("#product-size-guide").selectOption(guideId);
+  await chooseSelectOption(page, "Reusable size guide", new RegExp(guideName));
 
   await page.getByRole("button", { name: "Add variant" }).click();
   await page.getByLabel("Variant 1 SKU").fill(skuSmall);
@@ -185,7 +172,9 @@ test("catalog operator configures a product through to storefront visibility", a
     inputs.map((input) => (input as HTMLInputElement).value),
   );
   expect(managedSkus).toEqual(expect.arrayContaining([skuSmall, skuMedium]));
-  await expect(page.locator("#product-size-guide")).toHaveValue(guideId);
+  await expect(
+    page.getByRole("combobox", { name: "Reusable size guide" }),
+  ).toContainText(guideName);
   await page.getByLabel("Published on the storefront").check();
   await page
     .getByLabel("Audit reason", { exact: true })
@@ -194,10 +183,10 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("status")).toContainText("Product updated.");
 
   await page.goto("/");
-  await page.getByLabel("Audience").selectOption("unisex");
-  await page.getByLabel("Category").selectOption("t-shirts");
-  await page.getByLabel("Color").selectOption("Black");
-  await page.getByLabel("Size").selectOption("S");
+  await chooseSelectOption(page, "Audience", "Unisex");
+  await chooseSelectOption(page, "Category", "Clothing / T-shirts");
+  await chooseSelectOption(page, "Color", "Black");
+  await chooseSelectOption(page, "Size", "S");
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/audience=unisex/);
   await expect(page.getByRole("link", { name: productName })).toBeVisible();

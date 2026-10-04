@@ -24,8 +24,14 @@ import { CatalogCategorySelect } from "@/features/catalog/catalog-category-selec
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
-import { NativeSelect } from "@/components/ui/native-select";
 import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type MeasurementValues = Partial<Record<CatalogMeasurementKey, string>>;
 interface GuideRowDraft {
@@ -353,7 +359,7 @@ export function SizeGuideManager({
                       required
                       value={field.value}
                       name={field.name}
-                      inputRef={field.ref}
+                      triggerRef={field.ref}
                       onBlur={field.onBlur}
                       onChange={field.onChange}
                     />
@@ -376,43 +382,83 @@ export function SizeGuideManager({
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field>
-                  <FieldLabel htmlFor="measurement-basis">
+                  <FieldLabel
+                    id="measurement-basis-label"
+                    htmlFor="measurement-basis"
+                  >
                     Measurement basis
                   </FieldLabel>
-                  <NativeSelect
-                    className={inputClassName}
-                    id="measurement-basis"
-                    {...register("measurementBasis")}
-                  >
-                    <option value="garment">Garment measurements</option>
-                    <option value="body">Body measurements</option>
-                  </NativeSelect>
+                  <Controller
+                    control={control}
+                    name="measurementBasis"
+                    render={({ field }) => (
+                      <Select
+                        items={[
+                          { label: "Garment measurements", value: "garment" },
+                          { label: "Body measurements", value: "body" },
+                        ]}
+                        name={field.name}
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger
+                          id="measurement-basis"
+                          aria-labelledby="measurement-basis-label"
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="garment">
+                            Garment measurements
+                          </SelectItem>
+                          <SelectItem value="body">
+                            Body measurements
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="measurement-unit">
+                  <FieldLabel
+                    id="measurement-unit-label"
+                    htmlFor="measurement-unit"
+                  >
                     Enter measurements in
                   </FieldLabel>
                   <Controller
                     control={control}
                     name="inputUnit"
                     render={({ field }) => (
-                      <NativeSelect
-                        className={inputClassName}
-                        id="measurement-unit"
+                      <Select
+                        items={[
+                          { label: "Centimetres (cm)", value: "cm" },
+                          { label: "Inches (in)", value: "in" },
+                        ]}
                         name={field.name}
-                        ref={field.ref}
                         value={field.value}
-                        onBlur={field.onBlur}
-                        onChange={(event) =>
+                        onValueChange={(value) =>
                           changeInputUnit(
-                            event.target.value as GuideForm["inputUnit"],
+                            String(value) as GuideForm["inputUnit"],
                             field.onChange,
                           )
                         }
                       >
-                        <option value="cm">Centimetres (cm)</option>
-                        <option value="in">Inches (in)</option>
-                      </NativeSelect>
+                        <SelectTrigger
+                          id="measurement-unit"
+                          aria-labelledby="measurement-unit-label"
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cm">Centimetres (cm)</SelectItem>
+                          <SelectItem value="in">Inches (in)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     )}
                   />
                 </Field>
