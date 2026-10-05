@@ -15,8 +15,11 @@ test("real browser session reaches the API through Next and respects roles", asy
   expect(nextHeaders["x-frame-options"]).toBe("DENY");
   expect(nextHeaders["x-content-type-options"]).toBe("nosniff");
 
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/account$/);
+
   await page.goto("/account");
-  await page.getByRole("button", { name: "Create account" }).first().click();
+  await page.getByRole("tab", { name: "Create account" }).click();
   await page.getByLabel("Name").fill("E2E Customer");
   await page
     .getByLabel("Email", { exact: true })
@@ -28,11 +31,9 @@ test("real browser session reaches the API through Next and respects roles", asy
     .locator("form")
     .getByRole("button", { name: "Create account", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText(
-    "Your Aaraj account is ready.",
-  );
+  await expect(page).toHaveURL(/\/$/);
 
-  await page.reload();
+  await page.goto("/account");
   await expect(page.getByText("Signed in as E2E Customer")).toBeVisible();
 
   const accessResponse = await page.request.get("/api/access/me");
@@ -42,6 +43,9 @@ test("real browser session reaches the API through Next and respects roles", asy
   expect(await accessResponse.json()).toMatchObject({
     roles: ["customer"],
   });
+
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/$/);
 
   await page.goto("/admin/catalog");
   await expect(
@@ -70,7 +74,7 @@ test("catalog operator configures a product through to storefront visibility", a
     .locator("form")
     .getByRole("button", { name: "Sign in", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("You are signed in.");
+  await expect(page).toHaveURL(/\/admin$/);
 
   const accessResponse = await page.request.get("/api/access/me");
   expect(accessResponse.status()).toBe(200);
@@ -81,6 +85,9 @@ test("catalog operator configures a product through to storefront visibility", a
       "catalog.categories.manage",
     ]),
   });
+
+  await page.goto("/account");
+  await expect(page).toHaveURL(/\/admin$/);
 
   await page.goto("/admin/catalog/categories");
   await expect(

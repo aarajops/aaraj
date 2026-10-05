@@ -1,13 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
+import { EffectiveAccessSchema } from "@aaraj/contracts";
 import { authClient } from "@/features/auth/auth-client";
 import type { InitialSession } from "@/features/auth/auth-session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type FormMode = "sign-in" | "sign-up";
 type AuthForm = { name: string; email: string; password: string };
@@ -17,8 +28,10 @@ export function AuthPanel({
 }: {
   initialSession: InitialSession;
 }) {
+  const router = useRouter();
   authClient.hydrateSession(initialSession);
   const [mode, setMode] = useState<FormMode>("sign-in");
+  const [showPassword, setShowPassword] = useState(false);
   const {
     register,
     handleSubmit,
@@ -37,6 +50,8 @@ export function AuthPanel({
   } = authClient.useSession();
   const session = isPending && !isRefetching ? initialSession : data;
   const isSessionPending = isPending && !isRefetching && !initialSession;
+  const visibleErrorMessage =
+    errorMessage?.trim() || sessionError?.message?.trim() || null;
 
   async function submitCredentials({ name, email, password }: AuthForm) {
     setErrorMessage(null);
@@ -70,11 +85,28 @@ export function AuthPanel({
         }
       } else {
         resetField("password");
-        setStatusMessage(
-          mode === "sign-up"
-            ? "Your Aaraj account is ready."
-            : "You are signed in.",
-        );
+        setShowPassword(false);
+        setStatusMessage("Signed in. Redirecting…");
+
+        let destination = "/";
+        try {
+          const response = await fetch("/api/access/me", { cache: "no-store" });
+          if (response.ok) {
+            const access = EffectiveAccessSchema.safeParse(
+              await response.json(),
+            );
+            if (
+              access.success &&
+              access.data.permissions.includes("catalog.manage")
+            ) {
+              destination = "/admin";
+            }
+          }
+        } catch {
+          // If access cannot be confirmed, keep navigation on the public storefront.
+        }
+
+        router.replace(destination);
       }
     } catch {
       setErrorMessage(
@@ -101,6 +133,85 @@ export function AuthPanel({
     }
   }
 
+  const credentialsForm = (
+    <form className="space-y-4" onSubmit={handleSubmit(submitCredentials)}>
+      {mode === "sign-up" && (
+        <Field>
+          <FieldLabel htmlFor="name">Name</FieldLabel>
+          <Input
+            className="h-auto bg-background px-3 py-3 text-base md:text-base"
+            id="name"
+            autoComplete="name"
+            required
+            {...register("name", { required: mode === "sign-up" })}
+          />
+        </Field>
+      )}
+
+      <Field>
+        <FieldLabel htmlFor="email">Email</FieldLabel>
+        <Input
+          className="h-auto bg-background px-3 py-3 text-base md:text-base"
+          id="email"
+          type="email"
+          autoComplete="email"
+          required
+          {...register("email", { required: true })}
+        />
+      </Field>
+
+      <Field>
+        <FieldLabel htmlFor="password">Password</FieldLabel>
+        <InputGroup className="h-auto bg-background">
+          <InputGroupInput
+            className="h-auto px-3 py-3 text-base md:text-base"
+            id="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete={
+              mode === "sign-up" ? "new-password" : "current-password"
+            }
+            minLength={8}
+            maxLength={128}
+            required
+            {...register("password", {
+              required: true,
+              minLength: 8,
+              maxLength: 128,
+            })}
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              size="icon-sm"
+              onClick={() => setShowPassword((visible) => !visible)}
+            >
+              {showPassword ? (
+                <EyeOff aria-hidden="true" />
+              ) : (
+                <Eye aria-hidden="true" />
+              )}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+        {mode === "sign-up" && (
+          <FieldDescription>Use at least 8 characters.</FieldDescription>
+        )}
+      </Field>
+
+      <Button
+        className="h-auto w-full px-4 py-3 text-base font-semibold"
+        type="submit"
+        disabled={isSubmitting}
+      >
+        {isSubmitting
+          ? "Please wait…"
+          : mode === "sign-up"
+            ? "Create account"
+            : "Sign in"}
+      </Button>
+    </form>
+  );
+
   return (
     <main className="flex min-h-[calc(100vh-4rem)] flex-1 items-center justify-center bg-background px-5 py-12 text-foreground">
       <Card
@@ -124,9 +235,27 @@ export function AuthPanel({
         </header>
 
         {isSessionPending ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            Checking your session…
-          </p>
+          <div aria-busy="true" className="space-y-6" role="status">
+            <span className="sr-only">Checking your session…</span>
+            <div
+              aria-hidden="true"
+              className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1"
+            >
+              <Skeleton className="h-8 rounded-md bg-background shadow-sm" />
+              <Skeleton className="h-8 rounded-md bg-muted-foreground/10" />
+            </div>
+            <div aria-hidden="true" className="space-y-4">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-12" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+              </div>
+              <Skeleton className="h-12 w-full rounded-lg" />
+            </div>
+          </div>
         ) : session?.user ? (
           <div className="space-y-5">
             <div className="rounded-xl border border-border bg-background p-4">
@@ -145,104 +274,40 @@ export function AuthPanel({
             </Button>
           </div>
         ) : (
-          <>
-            <div
-              className="mb-6 grid grid-cols-2 rounded-lg bg-background p-1"
+          <Tabs
+            className="gap-0"
+            value={mode}
+            onValueChange={(value) => {
+              if (value !== "sign-in" && value !== "sign-up") return;
+
+              setMode(value);
+              setShowPassword(false);
+              setErrorMessage(null);
+              setStatusMessage(null);
+            }}
+          >
+            <TabsList
+              className="mb-6 grid w-full grid-cols-2 group-data-horizontal/tabs:h-10"
               aria-label="Account action"
             >
-              {(["sign-in", "sign-up"] as const).map((option) => (
-                <Button
-                  key={option}
-                  className="h-auto w-full px-3 py-2"
-                  variant={mode === option ? "secondary" : "ghost"}
-                  type="button"
-                  aria-pressed={mode === option}
-                  onClick={() => {
-                    setMode(option);
-                    setErrorMessage(null);
-                    setStatusMessage(null);
-                  }}
-                >
-                  {option === "sign-in" ? "Sign in" : "Create account"}
-                </Button>
-              ))}
-            </div>
-
-            <form
-              className="space-y-4"
-              onSubmit={handleSubmit(submitCredentials)}
-            >
-              {mode === "sign-up" && (
-                <Field>
-                  <FieldLabel htmlFor="name">Name</FieldLabel>
-                  <Input
-                    className="h-auto bg-background px-3 py-3 text-base md:text-base"
-                    id="name"
-                    autoComplete="name"
-                    required
-                    {...register("name", { required: mode === "sign-up" })}
-                  />
-                </Field>
-              )}
-
-              <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input
-                  className="h-auto bg-background px-3 py-3 text-base md:text-base"
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  {...register("email", { required: true })}
-                />
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="password">Password</FieldLabel>
-                <Input
-                  className="h-auto bg-background px-3 py-3 text-base md:text-base"
-                  id="password"
-                  type="password"
-                  autoComplete={
-                    mode === "sign-up" ? "new-password" : "current-password"
-                  }
-                  minLength={8}
-                  maxLength={128}
-                  required
-                  {...register("password", {
-                    required: true,
-                    minLength: 8,
-                    maxLength: 128,
-                  })}
-                />
-                {mode === "sign-up" && (
-                  <FieldDescription>
-                    Use at least 8 characters.
-                  </FieldDescription>
-                )}
-              </Field>
-
-              <Button
-                className="h-auto w-full px-4 py-3 text-base font-semibold"
-                type="submit"
-                disabled={isSubmitting}
-              >
-                {isSubmitting
-                  ? "Please wait…"
-                  : mode === "sign-up"
-                    ? "Create account"
-                    : "Sign in"}
-              </Button>
-            </form>
-          </>
+              <TabsTrigger value="sign-in">Sign in</TabsTrigger>
+              <TabsTrigger value="sign-up">Create account</TabsTrigger>
+            </TabsList>
+            <TabsContent value="sign-in">
+              {mode === "sign-in" && credentialsForm}
+            </TabsContent>
+            <TabsContent value="sign-up">
+              {mode === "sign-up" && credentialsForm}
+            </TabsContent>
+          </Tabs>
         )}
 
-        {(errorMessage || sessionError) && (
+        {visibleErrorMessage && (
           <p
             className="mt-5 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
             role="alert"
           >
-            {errorMessage ?? sessionError?.message}
+            {visibleErrorMessage}
           </p>
         )}
         {statusMessage && (

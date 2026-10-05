@@ -79,6 +79,8 @@
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
+  --sidebar-width: 16rem;
+  --sidebar-width-icon: 3rem;
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: var(--brand);
   --sidebar-primary-foreground: #ffffff;

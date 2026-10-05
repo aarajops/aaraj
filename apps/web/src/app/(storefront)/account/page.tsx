@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { AuthPanel } from "@/features/auth/auth-panel";
-import { getInitialSession } from "@/features/auth/auth-session";
+import {
+  getInitialAccess,
+  getInitialSession,
+} from "@/features/auth/auth-session";
 
 export const metadata: Metadata = {
   title: "Your account",
@@ -9,5 +13,13 @@ export const metadata: Metadata = {
 
 export default async function AccountPage() {
   const initialSession = await getInitialSession();
+
+  if (initialSession) {
+    const access = await getInitialAccess();
+    if (access?.permissions.includes("catalog.manage")) {
+      redirect("/admin");
+    }
+  }
+
   return <AuthPanel initialSession={initialSession} />;
 }
