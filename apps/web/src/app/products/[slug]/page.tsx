@@ -1,7 +1,38 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPublishedProduct } from "@/features/catalog/catalog-queries";
 import { formatCatalogPrice } from "@/features/catalog/price";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const result = await getPublishedProduct(slug);
+
+  if ("kind" in result) {
+    return {
+      title:
+        result.kind === "not-found" ? "Product not found" : "Product details",
+      description: "Browse products from Aaraj.",
+    };
+  }
+
+  const description =
+    result.product.description || `View details for ${result.product.name}.`;
+
+  return {
+    title: result.product.name,
+    description,
+    openGraph: {
+      title: result.product.name,
+      description,
+      type: "website",
+    },
+  };
+}
 
 export default async function ProductPage({
   params,
@@ -9,6 +40,7 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  // Resolve before rendering so notFound() can preserve the HTTP 404 response.
   const result = await getPublishedProduct(slug);
 
   if ("kind" in result && result.kind === "not-found") notFound();

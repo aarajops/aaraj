@@ -15,8 +15,8 @@ test("staff manages reusable size guides and apparel products safely", async ({
   const malformedSlug = await page.goto("/products/INVALID-SLUG");
   expect(malformedSlug?.status()).toBe(404);
   await expect(
-    page.getByText("Product details are temporarily unavailable."),
-  ).not.toBeVisible();
+    page.getByRole("heading", { name: "Page not found", level: 1 }),
+  ).toBeVisible();
   await page.goto("/");
 
   await page.goto("/account");

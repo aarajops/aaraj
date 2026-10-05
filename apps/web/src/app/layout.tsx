@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteHeader } from "@/app/_components/site-header";
 import "./globals.css";
@@ -14,15 +15,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aaraj | Products",
+  title: {
+    default: "Aaraj | Products",
+    template: "Aaraj | %s",
+  },
   description: "Browse products from Aaraj.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  await connection();
+
   return (
     <html
       lang="en"

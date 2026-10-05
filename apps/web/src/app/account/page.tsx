@@ -3,7 +3,7 @@ import { AuthPanel } from "@/features/auth/auth-panel";
 import { getInitialSession } from "@/features/auth/auth-session";
 
 export const metadata: Metadata = {
-  title: "Aaraj | Your account",
+  title: "Your account",
   description: "Sign in to or create your Aaraj account.",
 };
 

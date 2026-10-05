@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { SizeGuideManager } from "@/features/catalog/size-guide-manager";
 import {
@@ -5,6 +6,11 @@ import {
   parseCatalogSizeGuidePageQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
+
+export const metadata: Metadata = {
+  title: "Size guides",
+  description: "Manage reusable product size guides in the Aaraj catalog.",
+};
 
 export default async function StaffSizeGuidesPage({
   searchParams,

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { CatalogManager } from "@/features/catalog/catalog-manager";
 import {
   getManagedProducts,
@@ -6,6 +7,11 @@ import {
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Catalog management",
+  description: "Manage products in the Aaraj catalog.",
+};
 
 export default async function StaffCatalogPage({
   searchParams,

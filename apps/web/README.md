@@ -18,6 +18,7 @@ e2e/                         Playwright storefront workflow and test API
 - Keep `src/app/**/page.tsx` focused on route behavior and composing feature code.
 - Keep auth and catalog implementation in their feature folders; only create shared code when more than one feature needs it.
 - Keep API contracts in `@aaraj/contracts`. Server reads use `server-only`; browser auth and catalog API modules use `client-only`.
+- The per-request nonce CSP requires request-time rendering so Next.js can attach the matching nonce to generated scripts. Keep the root `connection()` call aligned with `src/proxy.ts`.
 - Send catalog mutations through the same-origin `/api` route. The Nest API enforces permissions and writes audit events; UI visibility is not an access-control check.
 - Preserve the current URLs unless a product or routing requirement calls for a change.
 
@@ -30,6 +31,7 @@ pnpm --filter @aaraj/web typecheck
 pnpm --filter @aaraj/web lint
 pnpm --filter @aaraj/web build
 pnpm --filter @aaraj/web test:e2e
+pnpm --filter @aaraj/web test:e2e:production
 ```
 
-Install the Playwright browser once with `pnpm --filter @aaraj/web exec playwright install chromium`. The browser suite uses its isolated test API; API E2E tests separately cover Nest authorization, persistence, and audit behavior.
+Install the Playwright browser once with `pnpm --filter @aaraj/web exec playwright install chromium`. The standard browser suite uses its isolated test API, and the production smoke suite runs the existing production build against that API. Build and run both production commands with the same `API_INTERNAL_URL` value. API E2E tests separately cover Nest authorization, persistence, and audit behavior.

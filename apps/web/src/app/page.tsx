@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CatalogFilters } from "@/features/catalog/catalog-filters";
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
 import { formatCatalogPrice } from "@/features/catalog/price";
+import { ProductLinkStatus } from "@/features/catalog/product-link-status";
 import {
   getPublishedProducts,
   parsePublishedCatalogPageQuery,
@@ -92,6 +93,7 @@ async function PublishedProductList({
                   <span className="mt-6 text-sm font-medium text-primary">
                     View details <span aria-hidden="true">→</span>
                   </span>
+                  <ProductLinkStatus />
                 </Link>
               </li>
             ))}

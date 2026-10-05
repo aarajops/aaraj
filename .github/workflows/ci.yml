@@ -95,4 +95,9 @@ jobs:
       - name: Production Build
         run: pnpm run build
         env:
-          API_INTERNAL_URL: http://api:3001
+          API_INTERNAL_URL: http://127.0.0.1:3191
+
+      - name: E2E Test (Production Storefront)
+        run: pnpm --filter @aaraj/web test:e2e:production
+        env:
+          API_INTERNAL_URL: http://127.0.0.1:3191
