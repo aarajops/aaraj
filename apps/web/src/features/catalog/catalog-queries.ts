@@ -9,6 +9,7 @@ import {
   CatalogProductPageSchema,
   CatalogPublishedProductListQuerySchema,
   CatalogPublishedProductPageSchema,
+  CatalogCategoryListSchema,
   CatalogSizeGuideListQuerySchema,
   CatalogSizeGuidePageSchema,
   type CatalogProductListQuery,
@@ -150,6 +151,29 @@ export async function getPublishedProduct(
 export type ManagedSizeGuidesResult =
   | { page: CatalogSizeGuidePage }
   | { kind: "unauthenticated" | "forbidden" | "unavailable" };
+
+export async function getManagedCategories() {
+  try {
+    const cookie = (await headers()).get("cookie");
+    const response = await fetch(
+      `${apiBaseUrl()}/api/catalog/categories/manage`,
+      {
+        ...(cookie ? { headers: { cookie } } : {}),
+        cache: "no-store",
+      },
+    );
+    if (response.status === 401) return { kind: "unauthenticated" as const };
+    if (response.status === 403) return { kind: "forbidden" as const };
+    if (!response.ok) return { kind: "unavailable" as const };
+
+    const result = CatalogCategoryListSchema.safeParse(await response.json());
+    return result.success
+      ? { categories: result.data.categories }
+      : { kind: "unavailable" as const };
+  } catch {
+    return { kind: "unavailable" as const };
+  }
+}
 
 export async function getManagedSizeGuides(
   query: Pick<CatalogSizeGuideListQuery, "limit" | "offset">,

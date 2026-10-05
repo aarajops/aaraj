@@ -19,9 +19,9 @@ export function SiteHeader() {
           </Link>
           <Link
             className="text-sm text-muted-foreground hover:text-foreground"
-            href="/staff/catalog"
+            href="/admin/catalog"
           >
-            Staff catalog
+            Catalog management
           </Link>
           <Link
             className="rounded-lg border border-input px-3 py-2 text-sm text-foreground hover:border-ring"

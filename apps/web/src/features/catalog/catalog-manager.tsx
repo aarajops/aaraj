@@ -405,13 +405,13 @@ export function CatalogManager({
           <div className="flex flex-wrap items-center gap-4">
             <Link
               className="text-sm text-primary hover:text-primary/80"
-              href="/staff/catalog/size-guides"
+              href="/admin/catalog/size-guides"
             >
               Manage size guides
             </Link>
             <Link
               className="text-sm text-primary hover:text-primary/80"
-              href="/staff/catalog/categories"
+              href="/admin/catalog/categories"
             >
               Manage categories
             </Link>
@@ -495,8 +495,8 @@ export function CatalogManager({
               </ul>
             )}
             <CatalogPagination
-              label="Staff catalog"
-              pathname="/staff/catalog"
+              label="Catalog management"
+              pathname="/admin/catalog"
               limit={query.limit}
               offset={query.offset}
               productCount={products.length}
@@ -863,7 +863,7 @@ export function CatalogManager({
                     No matching size guide is available.{" "}
                     <Link
                       className="text-primary underline"
-                      href="/staff/catalog/size-guides"
+                      href="/admin/catalog/size-guides"
                     >
                       Create one
                     </Link>

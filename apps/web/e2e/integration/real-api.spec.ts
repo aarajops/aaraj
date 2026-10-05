@@ -43,7 +43,7 @@ test("real browser session reaches the API through Next and respects roles", asy
     roles: ["customer"],
   });
 
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await expect(
     page.getByRole("heading", { name: "Staff access required" }),
   ).toBeVisible();
@@ -82,7 +82,7 @@ test("catalog operator configures a product through to storefront visibility", a
     ]),
   });
 
-  await page.goto("/staff/catalog/categories");
+  await page.goto("/admin/catalog/categories");
   await expect(
     page.getByRole("heading", { name: "Product categories", level: 1 }),
   ).toBeVisible();
@@ -98,7 +98,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page.getByRole("status")).toContainText("Category created.");
 
-  await page.goto("/staff/catalog/size-guides");
+  await page.goto("/admin/catalog/size-guides");
   await expect(
     page.getByRole("heading", { name: "Size guides", level: 1 }),
   ).toBeVisible();
@@ -119,7 +119,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("status")).toContainText("Size guide created.");
   await expect(page.getByText(guideName, { exact: true })).toBeVisible();
 
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await expect(
     page.getByRole("heading", { name: "Catalog management", level: 1 }),
   ).toBeVisible();
@@ -161,7 +161,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.goto("/");
   await expect(page.getByRole("link", { name: productName })).toHaveCount(0);
 
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await page.getByRole("button", { name: `Edit ${productName}` }).click();
   await expect(
     page.getByRole("heading", { name: "Edit product", level: 2 }),
@@ -248,7 +248,7 @@ test("catalog operator configures a product through to storefront visibility", a
     expect(variant).not.toHaveProperty("price");
   }
 
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await page.getByRole("button", { name: `Edit ${productName}` }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page

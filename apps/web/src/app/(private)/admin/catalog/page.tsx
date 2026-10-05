@@ -63,7 +63,7 @@ export default async function StaffCatalogPage({
             ) : (
               <Link
                 className="mt-5 inline-flex rounded-lg border border-input px-4 py-2.5 font-medium text-foreground hover:border-ring"
-                href="/staff/catalog"
+                href="/admin/catalog"
               >
                 Try again
               </Link>

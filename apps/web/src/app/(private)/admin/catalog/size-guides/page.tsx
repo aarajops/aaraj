@@ -27,7 +27,7 @@ export default async function StaffSizeGuidesPage({
         <div className="mx-auto max-w-3xl">
           <Link
             className="text-sm text-primary hover:text-primary/80"
-            href="/staff/catalog"
+            href="/admin/catalog"
           >
             ← Back to catalog management
           </Link>

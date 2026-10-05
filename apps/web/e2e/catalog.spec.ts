@@ -34,7 +34,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
       sameSite: "Lax",
     },
   ]);
-  await page.goto("/staff/catalog/size-guides");
+  await page.goto("/admin/catalog/size-guides");
   await expect(
     page.getByRole("heading", { name: "Size guides", level: 1 }),
   ).toBeVisible();
@@ -53,7 +53,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByLabel("Audit reason").fill("Create apparel size guide");
   await page.getByRole("button", { name: "Create guide" }).click();
   await expect(page.getByRole("status")).toContainText("Size guide created.");
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await expect(
     page.getByRole("heading", { name: "Catalog management" }),
   ).toBeVisible();
@@ -115,7 +115,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
   await page.getByRole("link", { name: "Clear filters" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
 
   await page.getByLabel("Name", { exact: true }).fill("Duplicate slug item");
   await page.locator("#product-slug").fill("aaraj-e2e-tee");
@@ -152,7 +152,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByText("50.8 / 20.0", { exact: true })).toBeVisible();
   await expect(page.getByText("71.1 / 28.0", { exact: true })).toBeVisible();
 
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E T-shirt");
   await page.locator("#product-slug").fill("aaraj-e2e-t-shirt");
   await chooseSelectOption(page, "Audience", "Men");
@@ -173,7 +173,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
     "Product created and published.",
   );
 
-  await page.goto("/staff/catalog?limit=1&offset=0");
+  await page.goto("/admin/catalog?limit=1&offset=0");
   await expect(
     page.locator('section[aria-labelledby="managed-products-heading"] li'),
   ).toHaveCount(1);
@@ -196,7 +196,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByRole("link", { name: "Previous" }).click();
   await expect(page).toHaveURL(/offset=0/);
 
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await page.getByRole("button", { name: "Edit Aaraj E2E T-shirt" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
@@ -205,7 +205,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("status")).toContainText("Product updated.");
 
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await page.getByRole("button", { name: "Edit Aaraj E2E Tee" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
@@ -218,7 +218,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   const unpublishedResponse = await page.goto("/products/aaraj-e2e-tee");
   expect(unpublishedResponse?.status()).toBe(404);
 
-  await page.goto("/staff/catalog/categories");
+  await page.goto("/admin/catalog/categories");
   await expect(
     page.getByRole("alert").filter({
       hasText: "Only administrators can manage product categories.",
@@ -233,7 +233,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
       sameSite: "Lax",
     },
   ]);
-  await page.goto("/staff/catalog/categories");
+  await page.goto("/admin/catalog/categories");
   await page.getByLabel("Name", { exact: true }).fill("Accessories");
   await page.getByLabel("Slug").fill("accessories");
   await page
@@ -255,7 +255,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ]);
 
   await context.clearCookies();
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await expect(
     page.getByRole("heading", { name: "Sign in to continue" }),
   ).toBeVisible();
@@ -269,7 +269,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
       sameSite: "Lax",
     },
   ]);
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await expect(
     page.getByText(
       "Your account does not have permission to manage the catalog.",
@@ -286,7 +286,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
       sameSite: "Lax",
     },
   ]);
-  await page.goto("/staff/catalog");
+  await page.goto("/admin/catalog");
   await page.getByRole("button", { name: "Edit Aaraj E2E Tee" }).click();
   await page
     .getByLabel("Audit reason", { exact: true })

@@ -14,7 +14,7 @@ import {
   updateCatalogCategory,
 } from "@/features/catalog/catalog-client";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import {
@@ -47,8 +47,12 @@ const emptyForm: CategoryForm = {
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
 
-export function CategoryManager() {
-  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+export function CategoryManager({
+  initialCategories,
+}: {
+  initialCategories: CatalogCategory[];
+}) {
+  const [categories, setCategories] = useState(initialCategories);
   const {
     control,
     register,
@@ -57,7 +61,6 @@ export function CategoryManager() {
     formState: { isSubmitting },
   } = useForm<CategoryForm>({ defaultValues: emptyForm });
   const editingId = useWatch({ control, name: "id" });
-  const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -67,29 +70,7 @@ export function CategoryManager() {
       setErrorMessage(null);
     } catch (error) {
       setErrorMessage(readCategoryError(error));
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void requestCategories()
-      .then((loadedCategories) => {
-        if (active) {
-          setCategories(loadedCategories);
-          setErrorMessage(null);
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) setErrorMessage(readCategoryError(error));
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
   }, []);
 
   async function saveCategory(form: CategoryForm) {
@@ -150,7 +131,7 @@ export function CategoryManager() {
       <div className="mx-auto max-w-6xl">
         <Link
           className="text-sm text-primary hover:text-primary/80"
-          href="/staff/catalog"
+          href="/admin/catalog"
         >
           ← Back to products
         </Link>
@@ -187,9 +168,7 @@ export function CategoryManager() {
             <h2 className="text-xl font-semibold" id="categories-heading">
               Category tree
             </h2>
-            {isLoading ? (
-              <p className="mt-4 text-muted-foreground">Loading categories…</p>
-            ) : categories.length === 0 ? (
+            {categories.length === 0 ? (
               <p className="mt-4 rounded-xl border border-border bg-card/60 p-5 text-muted-foreground">
                 No categories yet. Create the first category to enable product
                 and size guide assignment.

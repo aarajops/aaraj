@@ -241,13 +241,13 @@ export function SizeGuideManager({
           </div>
           <Link
             className="text-sm text-primary hover:text-primary/80"
-            href="/staff/catalog"
+            href="/admin/catalog"
           >
             Back to products
           </Link>
           <Link
             className="text-sm text-primary hover:text-primary/80"
-            href="/staff/catalog/categories"
+            href="/admin/catalog/categories"
           >
             Manage categories
           </Link>
@@ -301,7 +301,7 @@ export function SizeGuideManager({
             <CatalogPagination
               itemName="size guides"
               label="Size guides"
-              pathname="/staff/catalog/size-guides"
+              pathname="/admin/catalog/size-guides"
               limit={query.limit}
               offset={query.offset}
               productCount={guides.length}
