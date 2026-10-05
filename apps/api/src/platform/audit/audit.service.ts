@@ -9,6 +9,7 @@ import {
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { getDrizzleDatabase } from "../database/database-client.js";
 import { DatabaseService } from "../database/database.service.js";
+import { getCurrentRequestId } from "../request-context.js";
 import { auditEvent } from "./audit-schema.js";
 import type { AuditTransaction } from "./audit.types.js";
 
@@ -37,7 +38,7 @@ async function insertAuditEvent(
       eventType: event.eventType,
       subjectType: event.subjectType,
       subjectId: event.subjectId,
-      requestId: event.requestId,
+      requestId: event.requestId ?? getCurrentRequestId(),
       reason: event.reason,
       metadata: event.metadata ?? {},
     })

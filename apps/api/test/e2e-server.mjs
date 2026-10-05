@@ -44,6 +44,8 @@ const runtimePassword = randomUUID() + randomUUID();
 const redisUrl = new URL(process.env.REDIS_URL ?? "redis://127.0.0.1:6379");
 redisUrl.pathname = "/15";
 const redisPrefix = `better-auth:integration-${testId}:`;
+const throttlerPrefix = `aaraj:throttler:integration-${testId}:`;
+const catalogCachePrefix = `aaraj:integration-${testId}:catalog:`;
 const admin = new Pool({
   host,
   port,
@@ -95,6 +97,8 @@ try {
   process.env.MIGRATION_POSTGRES_PASSWORD = migrationPassword;
   process.env.REDIS_URL = redisUrl.toString();
   process.env.BETTER_AUTH_REDIS_KEY_PREFIX = redisPrefix;
+  process.env.THROTTLER_REDIS_KEY_PREFIX = throttlerPrefix;
+  process.env.CATALOG_CACHE_KEY_PREFIX = catalogCachePrefix;
   process.env.BETTER_AUTH_SECRET =
     "test-only-better-auth-secret-with-32-bytes-minimum";
   process.env.BETTER_AUTH_URL = `http://${process.env.HOST ?? "127.0.0.1"}:${process.env.PORT ?? 3181}`;
@@ -151,18 +155,20 @@ async function cleanup() {
     await migrationPool?.end();
     const redis = new Redis(redisUrl.toString(), { maxRetriesPerRequest: 1 });
     try {
-      let cursor = "0";
-      do {
-        const [next, keys] = await redis.scan(
-          cursor,
-          "MATCH",
-          `${redisPrefix}*`,
-          "COUNT",
-          100,
-        );
-        cursor = next;
-        if (keys.length) await redis.del(...keys);
-      } while (cursor !== "0");
+      for (const prefix of [redisPrefix, throttlerPrefix, catalogCachePrefix]) {
+        let cursor = "0";
+        do {
+          const [next, keys] = await redis.scan(
+            cursor,
+            "MATCH",
+            `${prefix}*`,
+            "COUNT",
+            100,
+          );
+          cursor = next;
+          if (keys.length) await redis.del(...keys);
+        } while (cursor !== "0");
+      }
     } catch {
       // Continue tearing down the isolated database and roles if Redis is offline.
     } finally {

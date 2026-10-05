@@ -20,6 +20,11 @@ import type {
   CatalogCategoryReference,
   CatalogPrice,
 } from "@aaraj/contracts";
+import {
+  invalidatePublishedFilterOptionsCache,
+  readPublishedFilterOptionsCache,
+  writePublishedFilterOptionsCache,
+} from "./published-filter-cache.js";
 import { MAX_LIST_OFFSET } from "@aaraj/contracts";
 import {
   and,
@@ -196,6 +201,9 @@ export class CatalogService {
   }
 
   private async getPublishedProductFilterOptions(): Promise<CatalogProductFilterOptions> {
+    const cached = await readPublishedFilterOptionsCache();
+    if (cached) return cached;
+
     const [productValues, variantValues, categoryOptions] = await Promise.all([
       this.database.db
         .selectDistinct({
@@ -240,13 +248,15 @@ export class CatalogService {
       }
     }
 
-    return {
+    const options = {
       categories: categoryOptions.categories.filter(({ id }) =>
         visibleCategoryIds.has(id),
       ),
       colors: uniqueFilterValues(variantValues.map(({ color }) => color)),
       sizes: uniqueFilterValues(variantValues.map(({ size }) => size)),
     };
+    await writePublishedFilterOptionsCache(options);
+    return options;
   }
 
   async findPublished(slug: string): Promise<CatalogProductDetail> {
@@ -317,7 +327,7 @@ export class CatalogService {
   }
 
   async create(actor: AccessPrincipal, input: CatalogProductCreateInput) {
-    return this.database.db.transaction(async (transaction) => {
+    const created = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
         "manage",
@@ -383,6 +393,8 @@ export class CatalogService {
         throw error;
       }
     });
+    await invalidatePublishedFilterOptionsCache();
+    return created;
   }
 
   async update(
@@ -390,7 +402,7 @@ export class CatalogService {
     productId: string,
     input: CatalogProductUpdateInput,
   ) {
-    return this.database.db.transaction(async (transaction) => {
+    const updated = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
         "manage",
@@ -526,6 +538,8 @@ export class CatalogService {
         throw error;
       }
     });
+    await invalidatePublishedFilterOptionsCache();
+    return updated;
   }
 }
 
@@ -728,19 +742,35 @@ async function loadProductDetail(
   transaction: AuditTransaction,
   product: typeof catalogProduct.$inferSelect,
 ): Promise<CatalogManagedProductDetail> {
-  const loadedVariants = await transaction
-    .select()
+  const loadedVariantRows = await transaction
+    .select({ variant: catalogProductVariant })
     .from(catalogProductVariant)
+    .innerJoin(
+      catalogProduct,
+      eq(catalogProductVariant.productId, catalogProduct.id),
+    )
+    .leftJoin(
+      catalogSizeGuideRow,
+      and(
+        eq(catalogSizeGuideRow.guideId, catalogProduct.sizeGuideId),
+        eq(
+          sql<string>`lower(btrim(${catalogSizeGuideRow.sizeLabel}))`,
+          sql<string>`lower(btrim(${catalogProductVariant.sizeLabel}))`,
+        ),
+      ),
+    )
     .where(
       and(
         eq(catalogProductVariant.productId, product.id),
         eq(catalogProductVariant.isActive, true),
       ),
-    );
+    )
+    .orderBy(...variantDisplayOrder());
+  const loadedVariants = loadedVariantRows.map(({ variant }) => variant);
   const sizeGuide = product.sizeGuideId
     ? await loadSizeGuideDetail(transaction, product.sizeGuideId)
     : null;
-  const variants = orderVariantsForDisplay(loadedVariants, sizeGuide);
+  const variants = loadedVariants;
 
   return {
     ...toCatalogProduct(
@@ -798,12 +828,7 @@ async function loadFirstVariantPrices(
         eq(catalogProductVariant.isActive, true),
       ),
     )
-    .orderBy(
-      asc(catalogProductVariant.productId),
-      asc(catalogProductVariant.color),
-      asc(sizeGuideOrderExpression()),
-      asc(catalogProductVariant.sizeLabel),
-    );
+    .orderBy(asc(catalogProductVariant.productId), ...variantDisplayOrder());
 
   return new Map(
     rows.map(({ productId, priceBdt }) => [
@@ -840,11 +865,7 @@ async function loadFirstVariantPrice(
         eq(catalogProductVariant.isActive, true),
       ),
     )
-    .orderBy(
-      asc(catalogProductVariant.color),
-      asc(sizeGuideOrderExpression()),
-      asc(catalogProductVariant.sizeLabel),
-    )
+    .orderBy(...variantDisplayOrder())
     .limit(1);
   return variant?.priceBdt == null ? null : toCatalogPrice(variant.priceBdt);
 }
@@ -853,28 +874,15 @@ function sizeGuideOrderExpression() {
   return sql<number>`coalesce(${catalogSizeGuideRow.sortOrder}, 2147483647)`;
 }
 
-function orderVariantsForDisplay<
-  T extends { color: string; sizeLabel: string },
->(
-  variants: T[],
-  sizeGuide: { rows: Array<{ sizeLabel: string; sortOrder: number }> } | null,
-): T[] {
-  const sizeOrder = new Map(
-    sizeGuide?.rows.map((row) => [normalize(row.sizeLabel), row.sortOrder]) ??
-      [],
-  );
-  return [...variants].sort((left, right) => {
-    const colorOrder = left.color.localeCompare(right.color);
-    if (colorOrder !== 0) return colorOrder;
-    const leftSizeOrder = sizeOrder.get(normalize(left.sizeLabel));
-    const rightSizeOrder = sizeOrder.get(normalize(right.sizeLabel));
-    if (leftSizeOrder !== undefined && rightSizeOrder !== undefined) {
-      return leftSizeOrder - rightSizeOrder;
-    }
-    if (leftSizeOrder !== undefined) return -1;
-    if (rightSizeOrder !== undefined) return 1;
-    return left.sizeLabel.localeCompare(right.sizeLabel);
-  });
+function variantDisplayOrder() {
+  return [
+    asc(sql<string>`lower(btrim(${catalogProductVariant.color})) collate "C"`),
+    asc(sizeGuideOrderExpression()),
+    asc(
+      sql<string>`lower(btrim(${catalogProductVariant.sizeLabel})) collate "C"`,
+    ),
+    asc(catalogProductVariant.id),
+  ];
 }
 
 function toCatalogPrice(amountBdt: number): CatalogPrice {

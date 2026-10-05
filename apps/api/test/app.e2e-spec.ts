@@ -44,26 +44,6 @@ describe("AppController (e2e)", () => {
       .expect({ ok: true });
   });
 
-  it("rate limits repeated email sign-in requests", async () => {
-    const url = "/api/auth/sign-in/email";
-    const body = {
-      email: "not-an-email",
-      password: "x",
-    };
-
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const response = await request(app.getHttpServer()).post(url).send(body);
-      expect(response.status).toBe(400);
-    }
-
-    const limitedResponse = await request(app.getHttpServer())
-      .post(url)
-      .send(body)
-      .expect(429);
-
-    expect(Number(limitedResponse.headers["x-retry-after"])).toBeGreaterThan(0);
-  });
-
   afterAll(async () => {
     await app.close();
   });

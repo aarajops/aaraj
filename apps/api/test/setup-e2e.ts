@@ -25,6 +25,10 @@ process.env.REDIS_URL = redisUrl.toString();
 const testId = randomUUID().replaceAll("-", "");
 const prefix = `better-auth:e2e-${testId}:`;
 process.env.BETTER_AUTH_REDIS_KEY_PREFIX = prefix;
+const throttlerPrefix = `aaraj:throttler:e2e-${testId}:`;
+process.env.THROTTLER_REDIS_KEY_PREFIX = throttlerPrefix;
+const catalogCachePrefix = `aaraj:e2e-${testId}:catalog:`;
+process.env.CATALOG_CACHE_KEY_PREFIX = catalogCachePrefix;
 
 // Each test file owns a disposable database. Never migrate or truncate the developer's DB.
 const adminHost =
@@ -76,18 +80,20 @@ afterAll(async () => {
   await closeRedisClient();
   const redis = new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: 1 });
   try {
-    let cursor = "0";
-    do {
-      const [next, keys] = await redis.scan(
-        cursor,
-        "MATCH",
-        `${prefix}*`,
-        "COUNT",
-        100,
-      );
-      cursor = next;
-      if (keys.length) await redis.del(...keys);
-    } while (cursor !== "0");
+    for (const keyPrefix of [prefix, throttlerPrefix, catalogCachePrefix]) {
+      let cursor = "0";
+      do {
+        const [next, keys] = await redis.scan(
+          cursor,
+          "MATCH",
+          `${keyPrefix}*`,
+          "COUNT",
+          100,
+        );
+        cursor = next;
+        if (keys.length) await redis.del(...keys);
+      } while (cursor !== "0");
+    }
   } finally {
     redis.disconnect();
     try {

@@ -6,5 +6,9 @@ export async function chooseSelectOption(
   option: string | RegExp,
 ) {
   await page.getByRole("combobox", { name: label }).click();
-  await page.getByRole("option", { name: option }).click();
+  const optionLocator =
+    typeof option === "string"
+      ? page.getByRole("option", { name: option, exact: true })
+      : page.getByRole("option", { name: option });
+  await optionLocator.click();
 }

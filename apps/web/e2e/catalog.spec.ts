@@ -12,6 +12,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
   await expect(page.getByText("No products are published yet.")).toBeVisible();
 
+  const malformedSlug = await page.goto("/products/INVALID-SLUG");
+  expect(malformedSlug?.status()).toBe(404);
+  await expect(
+    page.getByText("Product details are temporarily unavailable."),
+  ).not.toBeVisible();
+  await page.goto("/");
+
   await page.goto("/account");
   await expect(
     page.getByRole("heading", { name: "Your account", level: 1 }),

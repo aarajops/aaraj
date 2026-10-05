@@ -5,6 +5,7 @@ import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
 import {
   CatalogProductListQuerySchema,
   CatalogProductDetailSchema,
+  CatalogProductSlugSchema,
   CatalogProductPageSchema,
   CatalogPublishedProductListQuerySchema,
   CatalogPublishedProductPageSchema,
@@ -127,6 +128,10 @@ export async function getPublishedProduct(
 ): Promise<
   { product: CatalogProductDetail } | { kind: "not-found" | "unavailable" }
 > {
+  if (!CatalogProductSlugSchema.safeParse(slug).success) {
+    return { kind: "not-found" };
+  }
+
   try {
     const response = await fetch(
       `${apiBaseUrl()}/api/catalog/products/${encodeURIComponent(slug)}`,

@@ -1,4 +1,5 @@
 import { Controller, Get } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import { CONTRACT_VERSION, type HealthCheckResponse } from "@aaraj/contracts";
 import { DatabaseService } from "./platform/database/database.service.js";
@@ -6,6 +7,7 @@ import { RedisService } from "./platform/redis/redis.service.js";
 
 @Controller()
 @AllowAnonymous()
+@SkipThrottle()
 export class AppController {
   constructor(
     private readonly databaseService: DatabaseService,

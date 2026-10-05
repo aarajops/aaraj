@@ -18,6 +18,7 @@ import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AccessPrincipal } from "../platform/authorization/permissions.service.js";
+import { invalidatePublishedFilterOptionsCache } from "./published-filter-cache.js";
 import {
   catalogProduct,
   catalogSizeGuide,
@@ -37,9 +38,13 @@ export class CategoryService {
     const rows = await this.database.db
       .select()
       .from(catalogCategory)
-      .where(eq(catalogCategory.isActive, true))
       .orderBy(asc(catalogCategory.sortOrder), asc(catalogCategory.name));
-    return { categories: toOptions(rows) };
+    return {
+      categories: toOptions(
+        rows.filter((category) => category.isActive),
+        rows,
+      ),
+    };
   }
 
   async listForManagement(
@@ -58,7 +63,7 @@ export class CategoryService {
   }
 
   async create(actor: AccessPrincipal, input: CatalogCategoryCreateInput) {
-    return this.database.db.transaction(async (transaction) => {
+    const created = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
         "manageCategories",
@@ -106,6 +111,8 @@ export class CategoryService {
         throw error;
       }
     });
+    await invalidatePublishedFilterOptionsCache();
+    return created;
   }
 
   async update(
@@ -113,7 +120,7 @@ export class CategoryService {
     categoryId: string,
     input: CatalogCategoryUpdateInput,
   ) {
-    return this.database.db.transaction(async (transaction) => {
+    const updated = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
         "manageCategories",
@@ -195,6 +202,8 @@ export class CategoryService {
         throw error;
       }
     });
+    await invalidatePublishedFilterOptionsCache();
+    return updated;
   }
 }
 
@@ -214,10 +223,15 @@ function toCategories(rows: CategoryRow[]): CatalogCategory[] {
   });
 }
 
-function toOptions(rows: CategoryRow[]): CatalogCategoryOption[] {
+function toOptions(
+  rows: CategoryRow[],
+  hierarchyRows: CategoryRow[] = rows,
+): CatalogCategoryOption[] {
   const byId = new Map(rows.map((category) => [category.id, category]));
   const hasChildren = new Set(
-    rows.flatMap((category) => (category.parentId ? [category.parentId] : [])),
+    hierarchyRows.flatMap((category) =>
+      category.parentId ? [category.parentId] : [],
+    ),
   );
   const children = new Map<string | null, CategoryRow[]>();
   for (const row of rows) {

@@ -10,6 +10,7 @@ import {
 } from "@nestjs/authorization";
 import type { Subscription } from "rxjs";
 import { recordAuditEvent } from "../audit/audit.service.js";
+import { getCurrentRequestId } from "../request-context.js";
 
 @Injectable()
 export class AuthorizationDenialsLogger
@@ -32,12 +33,14 @@ export class AuthorizationDenialsLogger
 
   private logDenial(event: AuthorizationEvent): void {
     const userId = getUserId(event.user);
+    const requestId = getCurrentRequestId();
 
     this.logger.warn("Authorization denied", {
       event: "authorization.denied",
       policy: event.policy,
       ability: event.ability,
       reason: event.reason,
+      ...(requestId ? { requestId } : {}),
       ...(userId ? { userId } : {}),
       ...(event.handler ? { handler: event.handler } : {}),
     });

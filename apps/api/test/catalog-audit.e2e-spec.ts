@@ -9,10 +9,12 @@ import { getPostgresPool } from "../src/platform/database/database-client.js";
 import { auditEvent } from "../src/platform/audit/audit-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { AccessService } from "../src/platform/authorization/access.service.js";
+import { getRedisClient } from "../src/platform/redis/redis-client.js";
 import {
   catalogProduct,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
+import { getPublishedFilterOptionsCacheKey } from "../src/catalog/published-filter-cache.js";
 
 type Account = { id: string; email: string; cookie: string };
 const origin = "http://localhost:3000";
@@ -86,6 +88,9 @@ describe("catalog and security audit", () => {
         nextOffset: null,
         filters: { categories: [], colors: [], sizes: [] },
       });
+    expect(
+      await getRedisClient().get(getPublishedFilterOptionsCacheKey()),
+    ).not.toBeNull();
     await request(app.getHttpServer())
       .get("/api/catalog/categories")
       .expect(200)
@@ -146,6 +151,9 @@ describe("catalog and security audit", () => {
         reason: "Create clothing category group",
       })
       .expect(201);
+    expect(
+      await getRedisClient().get(getPublishedFilterOptionsCacheKey()),
+    ).toBeNull();
     const leafCategory = await request(app.getHttpServer())
       .post("/api/catalog/categories")
       .set("Cookie", owner.cookie)
@@ -201,6 +209,59 @@ describe("catalog and security audit", () => {
       .set("Cookie", admin.cookie)
       .expect(200);
     expect(managedCategories.body.categories).toHaveLength(3);
+
+    const parentWithInactiveChild = await request(app.getHttpServer())
+      .post("/api/catalog/categories")
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Archived hierarchy",
+        slug: "archived-hierarchy",
+        reason: "Check leaf options with an inactive child",
+      })
+      .expect(201);
+    const inactiveChild = await request(app.getHttpServer())
+      .post("/api/catalog/categories")
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Archived child",
+        slug: "archived-child",
+        parentId: parentWithInactiveChild.body.id,
+        reason: "Create child for leaf consistency check",
+      })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch(`/api/catalog/categories/${inactiveChild.body.id}`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({ isActive: false, reason: "Archive the child category" })
+      .expect(200);
+    const inactiveChildOptions = await request(app.getHttpServer())
+      .get("/api/catalog/categories")
+      .expect(200);
+    expect(
+      inactiveChildOptions.body.categories.find(
+        ({ slug }: { slug: string }) => slug === "archived-hierarchy",
+      ),
+    ).toMatchObject({ isLeaf: false });
+    expect(
+      inactiveChildOptions.body.categories.map(
+        ({ slug }: { slug: string }) => slug,
+      ),
+    ).not.toContain("archived-child");
+    await request(app.getHttpServer())
+      .post("/api/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "inactive-child-parent-product",
+        name: "Inactive child parent product",
+        audience: "unisex",
+        categoryId: parentWithInactiveChild.body.id,
+        reason: "Parent with an inactive child remains non-leaf",
+      })
+      .expect(400);
     await request(app.getHttpServer())
       .post("/api/catalog/products")
       .set("Cookie", staff.cookie)
@@ -369,6 +430,11 @@ describe("catalog and security audit", () => {
         reason: "Initial catalog entry",
       })
       .expect(201);
+    const createdRequestId = created.headers["x-request-id"] as
+      string | undefined;
+    expect(createdRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
     expect(created.body).toMatchObject({
       slug: "aaraj-draft-tee",
       name: "Aaraj Draft Tee",
@@ -535,6 +601,12 @@ describe("catalog and security audit", () => {
             price: { amountBdt: 1999 },
           },
           {
+            sku: "AA-PROBE-blk-L",
+            color: "black",
+            sizeLabel: "L",
+            price: { amountBdt: 2399 },
+          },
+          {
             sku: "AA-PROBE-WHT-L",
             color: "White",
             sizeLabel: "L",
@@ -574,7 +646,16 @@ describe("catalog and security audit", () => {
       expect.arrayContaining(["aaraj-draft-tee", "variant-filter-probe"]),
     );
 
-    for (const query of ["color=black&size=l", "color=white&size=m"]) {
+    const matchingLargeVariant = await request(app.getHttpServer())
+      .get("/api/catalog/products?color=black&size=l")
+      .expect(200);
+    expect(
+      matchingLargeVariant.body.products.map(
+        (product: { slug: string }) => product.slug,
+      ),
+    ).toContain("variant-filter-probe");
+
+    for (const query of ["color=white&size=m"]) {
       const noMatchingVariant = await request(app.getHttpServer())
         .get(`/api/catalog/products?${query}`)
         .expect(200);
@@ -592,9 +673,26 @@ describe("catalog and security audit", () => {
           path: "Clothing / T-shirts",
         }),
       ]),
-      colors: ["Black", "Red", "White"],
       sizes: ["L", "M"],
     });
+    expect(
+      filterOptions.body.filters.colors.map((color: string) =>
+        color.toLowerCase(),
+      ),
+    ).toEqual(["black", "red", "white"]);
+    const listedProbe = filterOptions.body.products.find(
+      (product: { slug: string }) => product.slug === "variant-filter-probe",
+    );
+    const probeDetail = await request(app.getHttpServer())
+      .get("/api/catalog/products/variant-filter-probe")
+      .expect(200);
+    expect(probeDetail.body.price).toEqual(listedProbe.price);
+    expect(
+      probeDetail.body.variants.map(
+        ({ color, sizeLabel }: { color: string; sizeLabel: string }) =>
+          `${color.toLowerCase()}:${sizeLabel}`,
+      ),
+    ).toEqual(["black:M", "black:L", "red:M", "white:L"]);
     const parentCategoryProducts = await request(app.getHttpServer())
       .get("/api/catalog/products?category=clothing")
       .expect(200);
@@ -837,6 +935,7 @@ describe("catalog and security audit", () => {
       "catalog.product_updated",
     ]);
     expect(productEvents[0]?.reason).toBe("Initial catalog entry");
+    expect(productEvents[0]?.requestId).toBe(createdRequestId);
     const priceUpdateEvent = productEvents.find(
       (event) => event.reason === "Set price and publish product",
     );

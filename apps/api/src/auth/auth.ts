@@ -7,6 +7,7 @@ import { recordAuditEvent } from "../platform/audit/audit.service.js";
 import { loadLocalEnvironment } from "../platform/config/local-environment.js";
 import { getDrizzleDatabase } from "../platform/database/database-client.js";
 import { getRedisClient } from "../platform/redis/redis-client.js";
+import { getCurrentRequestId } from "../platform/request-context.js";
 import * as authSchema from "./auth-schema.js";
 import { getClientIpOptions } from "./client-ip.js";
 
@@ -65,6 +66,10 @@ export const auth = betterAuth({
     storage: "secondary-storage",
     window: 60,
     max: 100,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+      "/sign-up/email": { window: 60, max: 5 },
+    },
   },
   emailAndPassword: {
     enabled: true,
@@ -80,10 +85,12 @@ export const auth = betterAuth({
       const failed = isAPIError(context.context.returned);
       const actorId =
         context.context.newSession?.user.id ?? context.context.session?.user.id;
+      const requestId = getCurrentRequestId();
       const fields = {
         event,
         outcome: failed ? "failure" : "success",
         ...(actorId ? { userId: actorId } : {}),
+        ...(requestId ? { requestId } : {}),
       };
 
       if (failed) {
