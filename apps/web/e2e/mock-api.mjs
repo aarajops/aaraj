@@ -109,7 +109,7 @@ const server = createServer(async (request, response) => {
     send(response, 200, null);
     return;
   }
-  if (url.pathname === "/api/access/me" && method === "GET") {
+  if (url.pathname === "/api/v1/access/me" && method === "GET") {
     const requestedRole = roleFromCookie(request.headers.cookie);
     if (!requestedRole) {
       send(response, 401, { statusCode: 401, message: "Unauthorized" });
@@ -132,7 +132,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname === "/api/catalog/categories" && method === "GET") {
+  if (url.pathname === "/api/v1/catalog/categories" && method === "GET") {
     send(response, 200, {
       categories: refreshCategoryTree()
         .filter(({ isActive }) => isActive)
@@ -141,13 +141,16 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname === "/api/catalog/categories/manage" && method === "GET") {
+  if (
+    url.pathname === "/api/v1/catalog/categories/manage" &&
+    method === "GET"
+  ) {
     if (!requireCategoryAdmin(request, response)) return;
     send(response, 200, { categories: refreshCategoryTree() });
     return;
   }
 
-  if (url.pathname === "/api/catalog/categories" && method === "POST") {
+  if (url.pathname === "/api/v1/catalog/categories" && method === "POST") {
     if (!requireCategoryAdmin(request, response)) return;
     const parsed = CatalogCategoryCreateSchema.safeParse(
       await readBody(request),
@@ -288,7 +291,10 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname === "/api/catalog/size-guides/manage" && method === "GET") {
+  if (
+    url.pathname === "/api/v1/catalog/size-guides/manage" &&
+    method === "GET"
+  ) {
     if (!requireStaff(request, response)) return;
     const matching = sizeGuides.filter((guide) => {
       const categoryId = url.searchParams.get("categoryId");
@@ -316,7 +322,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname === "/api/catalog/size-guides" && method === "POST") {
+  if (url.pathname === "/api/v1/catalog/size-guides" && method === "POST") {
     if (!requireStaff(request, response)) return;
     if (!requireRecentSignIn(request, response)) return;
     const parsed = CatalogSizeGuideCreateSchema.safeParse(
@@ -389,7 +395,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname === "/api/catalog/products/manage" && method === "GET") {
+  if (url.pathname === "/api/v1/catalog/products/manage" && method === "GET") {
     if (!requireStaff(request, response)) return;
     sendProductPage(response, products, url);
     return;
@@ -409,7 +415,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname === "/api/catalog/products" && method === "GET") {
+  if (url.pathname === "/api/v1/catalog/products" && method === "GET") {
     sendPublishedProductPage(
       response,
       products.filter((product) => product.isPublished),
@@ -418,7 +424,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname === "/api/catalog/products" && method === "POST") {
+  if (url.pathname === "/api/v1/catalog/products" && method === "POST") {
     if (!requireStaff(request, response)) return;
     if (!requireRecentSignIn(request, response)) return;
     const parsed = CatalogProductCreateSchema.safeParse(

@@ -1,36 +1,30 @@
 "use client";
 
 import {
-  CatalogManagedProductDetailSchema,
   CatalogProductPageSchema,
   CatalogProductSchema,
   CatalogSizeGuidePageSchema,
-  type CatalogProduct,
+  type CatalogCategoryOption,
   type CatalogManagedProductDetail,
   type CatalogProductListQuery,
   type CatalogProductPage,
   type CatalogSizeGuideSummary,
 } from "@aaraj/contracts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createCatalogProduct,
   fetchManagedSizeGuides,
-  fetchManagedProduct,
   fetchManagedProducts,
   updateCatalogProduct,
 } from "@/features/catalog/catalog-client";
-import { CatalogPagination } from "@/features/catalog/catalog-pagination";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
-import {
-  formatCatalogPrice,
-  formatBdtInput,
-  parseBdtPrice,
-} from "@/features/catalog/price";
+import { ProductTable } from "@/features/catalog/product-table";
+import { formatBdtInput, parseBdtPrice } from "@/features/catalog/price";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import {
@@ -97,37 +91,49 @@ const blankForm: ProductForm = {
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
 export function CatalogManager({
+  view = "list",
   initialPage,
+  initialProduct,
   initialSizeGuides,
   initialSizeGuidesHasMore,
   initialSizeGuidesNextOffset,
+  categoryOptions = [],
   query,
 }: {
-  initialPage: CatalogProductPage;
-  initialSizeGuides: SizeGuideOption[];
-  initialSizeGuidesHasMore: boolean;
-  initialSizeGuidesNextOffset: number | null;
+  view?: "list" | "create" | "edit";
+  initialPage?: CatalogProductPage;
+  initialProduct?: CatalogManagedProductDetail;
+  initialSizeGuides?: SizeGuideOption[];
+  initialSizeGuidesHasMore?: boolean;
+  initialSizeGuidesNextOffset?: number | null;
+  categoryOptions?: CatalogCategoryOption[];
   query: CatalogProductListQuery;
 }) {
-  const [products, setProducts] = useState(initialPage.products);
-  const [sizeGuides, setSizeGuides] = useState(initialSizeGuides);
+  const router = useRouter();
+  const [products, setProducts] = useState(initialPage?.products ?? []);
+  const [sizeGuides, setSizeGuides] = useState(() =>
+    withProductSizeGuide(initialSizeGuides ?? [], initialProduct),
+  );
   const [hasMoreSizeGuides, setHasMoreSizeGuides] = useState(
-    initialSizeGuidesHasMore,
+    initialSizeGuidesHasMore ?? false,
   );
   const [nextSizeGuideOffset, setNextSizeGuideOffset] = useState(
-    initialSizeGuidesNextOffset,
+    initialSizeGuidesNextOffset ?? null,
   );
-  const [hasMore, setHasMore] = useState(initialPage.hasMore);
-  const [nextOffset, setNextOffset] = useState(initialPage.nextOffset);
+  const [hasMore, setHasMore] = useState(initialPage?.hasMore ?? false);
+  const [nextOffset, setNextOffset] = useState(initialPage?.nextOffset ?? null);
   const {
     control,
     register,
     handleSubmit,
-    reset,
     setError,
     clearErrors,
     formState: { errors, isSubmitting },
-  } = useForm<ProductForm>({ defaultValues: blankForm });
+  } = useForm<ProductForm>({
+    defaultValues: initialProduct
+      ? toProductFormState(initialProduct)
+      : blankForm,
+  });
   const {
     fields: variantFields,
     append: appendVariant,
@@ -138,9 +144,7 @@ export function CatalogManager({
     name: ["id", "categoryId", "fit", "sizeGuideId", "isPublished"],
   });
   const slugError = errors.slug?.message;
-  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
   const [sizeGuideLoadError, setSizeGuideLoadError] = useState<string | null>(
@@ -214,51 +218,9 @@ export function CatalogManager({
     }
   }
 
-  async function editProduct(product: CatalogProduct) {
-    setIsLoadingProduct(true);
-    setErrorMessage(null);
-    setStatusMessage(null);
-    try {
-      const response = await fetchManagedProduct(product.id);
-      if (response.status === 401) {
-        setErrorMessage("Your session expired. Sign in again to continue.");
-        return;
-      }
-      if (response.status === 403) {
-        setErrorMessage("Your account does not have catalog permissions.");
-        return;
-      }
-      if (!response.ok) throw new Error("Product details could not be loaded.");
-      const result = CatalogManagedProductDetailSchema.safeParse(
-        await response.json(),
-      );
-      if (!result.success) throw new Error("The product response was invalid.");
-      if (result.data.sizeGuide) {
-        const existingGuide = toSizeGuideOption(result.data.sizeGuide);
-        setSizeGuides((current) =>
-          current.some(({ id }) => id === existingGuide.id)
-            ? current
-            : [existingGuide, ...current],
-        );
-      }
-      reset(toProductFormState(result.data));
-    } catch {
-      setErrorMessage("Product details are temporarily unavailable.");
-    } finally {
-      setIsLoadingProduct(false);
-    }
-  }
-
-  function resetForm() {
-    reset(blankForm);
-    setErrorMessage(null);
-    setStatusMessage(null);
-  }
-
   async function saveProduct(form: ProductForm) {
     setErrorMessage(null);
     clearErrors("slug");
-    setStatusMessage(null);
     if (!form.audience && (!form.id || form.isPublished)) {
       setErrorMessage("Choose an audience before saving.");
       return;
@@ -365,15 +327,7 @@ export function CatalogManager({
         return;
       }
 
-      setStatusMessage(
-        form.id
-          ? "Product updated."
-          : form.isPublished
-            ? "Product created and published."
-            : "Draft product created.",
-      );
-      reset(blankForm);
-      await loadProducts();
+      router.replace("/admin/catalog");
     } catch {
       setErrorMessage("Could not reach the server. Please try again.");
     }
@@ -395,14 +349,36 @@ export function CatalogManager({
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Catalog management
+              {view === "create"
+                ? "Create product"
+                : view === "edit"
+                  ? "Edit product"
+                  : "Catalog management"}
             </h1>
             <p className="mt-2 text-muted-foreground">
-              Create one product per style, then add its real color and size
-              options.
+              {view === "create"
+                ? "Create one product per style, then add its real color and size options."
+                : view === "edit"
+                  ? "Update the product details, sellable variants, and storefront visibility."
+                  : "Manage products, their color and size options, and storefront visibility."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
+            {view !== "list" ? (
+              <Link
+                className="text-sm text-primary hover:text-primary/80"
+                href="/admin/catalog"
+              >
+                Back to products
+              </Link>
+            ) : (
+              <Link
+                className={buttonVariants({ size: "lg" })}
+                href="/admin/catalog/create"
+              >
+                Create product
+              </Link>
+            )}
             <Link
               className="text-sm text-primary hover:text-primary/80"
               href="/admin/catalog/size-guides"
@@ -424,88 +400,28 @@ export function CatalogManager({
           </div>
         </div>
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.9fr)]">
-          <section aria-labelledby="managed-products-heading">
-            <div className="flex items-center justify-between gap-4">
-              <h2
-                className="text-xl font-semibold"
-                id="managed-products-heading"
-              >
-                Products
-              </h2>
-              <Button
-                className="h-auto px-2 py-1 text-sm text-primary"
-                variant="ghost"
-                disabled={isRefreshing}
-                type="button"
-                onClick={() => void loadProducts()}
-              >
-                {isRefreshing ? "Refreshing…" : "Refresh"}
-              </Button>
+        <div className="mt-10">
+          {view === "list" && <section aria-labelledby="managed-products-heading">
+            <h2
+              className="text-xl font-semibold"
+              id="managed-products-heading"
+            >
+              Products
+            </h2>
+            <div className="mt-4">
+              <ProductTable
+                products={products}
+                categoryOptions={categoryOptions}
+                query={query}
+                onRefresh={() => void loadProducts()}
+                isRefreshing={isRefreshing}
+                hasMore={hasMore}
+                nextOffset={nextOffset}
+              />
             </div>
+          </section>}
 
-            {products.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-border bg-card/60 p-5 text-muted-foreground">
-                No products yet. Create the first draft using the form.
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {products.map((product) => (
-                  <li
-                    className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card/60 p-4"
-                    key={product.id}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-foreground">
-                        {product.name}
-                      </p>
-                      <p className="mt-1 truncate text-sm text-muted-foreground">
-                        /{product.slug}
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-foreground">
-                        {product.price
-                          ? formatCatalogPrice(product.price)
-                          : "Price not set"}
-                      </p>
-                      <Badge
-                        className={
-                          product.isPublished
-                            ? "border-success/30 bg-success/10 text-success"
-                            : ""
-                        }
-                        variant={product.isPublished ? "outline" : "secondary"}
-                      >
-                        {product.isPublished ? "Published" : "Draft"}
-                      </Badge>
-                    </div>
-                    <Button
-                      aria-label={`Edit ${product.name}`}
-                      className="h-auto shrink-0 px-3 py-2"
-                      variant="outline"
-                      type="button"
-                      disabled={isLoadingProduct}
-                      onClick={() => void editProduct(product)}
-                    >
-                      {isLoadingProduct && editingId === product.id
-                        ? "Loading…"
-                        : "Edit"}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <CatalogPagination
-              label="Catalog management"
-              pathname="/admin/catalog"
-              limit={query.limit}
-              offset={query.offset}
-              productCount={products.length}
-              hasMore={hasMore}
-              nextOffset={nextOffset}
-            />
-          </section>
-
-          <Card
+          {view !== "list" && <Card
             aria-labelledby="product-form-heading"
             className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7"
             role="region"
@@ -513,23 +429,13 @@ export function CatalogManager({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold" id="product-form-heading">
-                  {editingId ? "Edit product" : "Create a product"}
+                  {view === "edit" ? "Edit product" : "Create a product"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Drafts can be incomplete. Publishing requires sellable
                   variants and a matching size guide.
                 </p>
               </div>
-              {editingId && (
-                <Button
-                  className="h-auto px-2 py-1 text-sm text-muted-foreground"
-                  variant="ghost"
-                  type="button"
-                  onClick={resetForm}
-                >
-                  New product
-                </Button>
-              )}
             </div>
 
             <form
@@ -940,18 +846,9 @@ export function CatalogManager({
                   )}
                 </p>
               )}
-              {statusMessage && (
-                <p
-                  className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
-                  role="status"
-                >
-                  {statusMessage}
-                </p>
-              )}
-
               <Button
                 className="h-auto w-full px-4 py-3 text-base font-semibold"
-                disabled={isSubmitting || isLoadingProduct}
+                disabled={isSubmitting}
                 type="submit"
               >
                 {isSubmitting
@@ -963,7 +860,7 @@ export function CatalogManager({
                       : "Create draft"}
               </Button>
             </form>
-          </Card>
+          </Card>}
         </div>
       </div>
     </main>
@@ -1006,6 +903,19 @@ function toSizeGuideOption(
     sizeLabels: guide.rows.map(({ sizeLabel }) => sizeLabel),
     updatedAt: guide.updatedAt,
   };
+}
+
+function withProductSizeGuide(
+  guides: SizeGuideOption[],
+  product: CatalogManagedProductDetail | undefined,
+): SizeGuideOption[] {
+  if (
+    !product?.sizeGuide ||
+    guides.some(({ id }) => id === product.sizeGuide?.id)
+  ) {
+    return guides;
+  }
+  return [toSizeGuideOption(product.sizeGuide), ...guides];
 }
 
 async function readCatalogApiProblem(response: Response): Promise<ApiProblem> {

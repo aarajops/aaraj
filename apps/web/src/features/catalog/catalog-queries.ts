@@ -3,20 +3,28 @@ import "server-only";
 import { headers } from "next/headers";
 import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
 import {
+  API_V1_BASE_PATH,
   CatalogProductListQuerySchema,
   CatalogProductDetailSchema,
+  CatalogManagedProductDetailSchema,
+  CatalogProductIdSchema,
   CatalogProductSlugSchema,
   CatalogProductPageSchema,
   CatalogPublishedProductListQuerySchema,
   CatalogPublishedProductPageSchema,
   CatalogCategoryListSchema,
+  CatalogCategoryOptionsSchema,
   CatalogSizeGuideListQuerySchema,
   CatalogSizeGuidePageSchema,
+  CatalogSizeGuideSchema,
   type CatalogProductListQuery,
   type CatalogProductPage,
   type CatalogPublishedProductListQuery,
   type CatalogPublishedProductPage,
   type CatalogProductDetail,
+  type CatalogManagedProductDetail,
+  type CatalogCategoryOption,
+  type CatalogSizeGuide,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
 } from "@aaraj/contracts";
@@ -28,9 +36,16 @@ export type CatalogPageSearchParams = {
   category?: string | string[];
   color?: string | string[];
   size?: string | string[];
+  search?: string | string[];
+  status?: string | string[];
+  categoryId?: string | string[];
+  fit?: string | string[];
+  measurementBasis?: string | string[];
+  kind?: string | string[];
 };
 
 const defaultCatalogQuery = CatalogProductListQuerySchema.parse({});
+const defaultSizeGuideQuery = CatalogSizeGuideListQuerySchema.parse({});
 const defaultPublishedCatalogQuery =
   CatalogPublishedProductListQuerySchema.parse({});
 
@@ -42,6 +57,14 @@ export function parseCatalogPageQuery(
       typeof searchParams.limit === "string" ? searchParams.limit : undefined,
     offset:
       typeof searchParams.offset === "string" ? searchParams.offset : undefined,
+    search:
+      typeof searchParams.search === "string" ? searchParams.search : undefined,
+    status:
+      typeof searchParams.status === "string" ? searchParams.status : undefined,
+    categoryId:
+      typeof searchParams.categoryId === "string"
+        ? searchParams.categoryId
+        : undefined,
   });
   return result.success ? result.data : defaultCatalogQuery;
 }
@@ -81,16 +104,57 @@ export function parsePublishedCatalogPageQuery(
 
 export function parseCatalogSizeGuidePageQuery(
   searchParams: CatalogPageSearchParams,
-): Pick<CatalogSizeGuideListQuery, "limit" | "offset"> {
+): CatalogSizeGuideListQuery {
   const result = CatalogSizeGuideListQuerySchema.safeParse({
     limit:
       typeof searchParams.limit === "string" ? searchParams.limit : undefined,
     offset:
       typeof searchParams.offset === "string" ? searchParams.offset : undefined,
+    search:
+      typeof searchParams.search === "string" ? searchParams.search : undefined,
+    categoryId:
+      typeof searchParams.categoryId === "string"
+        ? searchParams.categoryId
+        : undefined,
+    fit: typeof searchParams.fit === "string" ? searchParams.fit : undefined,
+    measurementBasis:
+      typeof searchParams.measurementBasis === "string"
+        ? searchParams.measurementBasis
+        : undefined,
   });
-  return result.success
-    ? { limit: result.data.limit, offset: result.data.offset }
-    : { limit: defaultCatalogQuery.limit, offset: 0 };
+  return result.success ? result.data : defaultSizeGuideQuery;
+}
+
+export function parseCatalogCategoryTableQuery(
+  searchParams: CatalogPageSearchParams,
+) {
+  const statusParam: "active" | "inactive" | undefined =
+    searchParams.status === "active"
+      ? "active"
+      : searchParams.status === "inactive"
+        ? "inactive"
+        : undefined;
+  const kindParam: "parent" | "leaf" | undefined =
+    searchParams.kind === "parent"
+      ? "parent"
+      : searchParams.kind === "leaf"
+        ? "leaf"
+        : undefined;
+  const result = CatalogProductListQuerySchema.safeParse({
+    limit:
+      typeof searchParams.limit === "string" ? searchParams.limit : undefined,
+    offset:
+      typeof searchParams.offset === "string" ? searchParams.offset : undefined,
+    search:
+      typeof searchParams.search === "string" ? searchParams.search : undefined,
+  });
+  return {
+    limit: result.success ? result.data.limit : defaultCatalogQuery.limit,
+    offset: result.success ? result.data.offset : 0,
+    search: result.success ? result.data.search : undefined,
+    status: statusParam,
+    kind: kindParam,
+  };
 }
 
 function apiBaseUrl(): string {
@@ -110,7 +174,7 @@ export async function getPublishedProducts(
     if (query.color) search.set("color", query.color);
     if (query.size) search.set("size", query.size);
     const response = await fetch(
-      `${apiBaseUrl()}/api/catalog/products?${search}`,
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/products?${search}`,
       { cache: "no-store" },
     );
     if (!response.ok) return null;
@@ -135,7 +199,7 @@ export async function getPublishedProduct(
 
   try {
     const response = await fetch(
-      `${apiBaseUrl()}/api/catalog/products/${encodeURIComponent(slug)}`,
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/products/${encodeURIComponent(slug)}`,
       { cache: "no-store" },
     );
     if (response.status === 404) return { kind: "not-found" };
@@ -156,7 +220,7 @@ export async function getManagedCategories() {
   try {
     const cookie = (await headers()).get("cookie");
     const response = await fetch(
-      `${apiBaseUrl()}/api/catalog/categories/manage`,
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/categories/manage`,
       {
         ...(cookie ? { headers: { cookie } } : {}),
         cache: "no-store",
@@ -175,8 +239,29 @@ export async function getManagedCategories() {
   }
 }
 
+export async function getPublicCatalogCategories(): Promise<
+  CatalogCategoryOption[]
+> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/categories`,
+      {
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return [];
+
+    const result = CatalogCategoryOptionsSchema.safeParse(
+      await response.json(),
+    );
+    return result.success ? result.data.categories : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getManagedSizeGuides(
-  query: Pick<CatalogSizeGuideListQuery, "limit" | "offset">,
+  query: CatalogSizeGuideListQuery,
 ): Promise<ManagedSizeGuidesResult> {
   try {
     const cookie = (await headers()).get("cookie");
@@ -184,8 +269,14 @@ export async function getManagedSizeGuides(
       limit: String(query.limit),
       offset: String(query.offset),
     });
+    if (query.search) search.set("search", query.search);
+    if (query.categoryId) search.set("categoryId", query.categoryId);
+    if (query.fit) search.set("fit", query.fit);
+    if (query.measurementBasis) {
+      search.set("measurementBasis", query.measurementBasis);
+    }
     const response = await fetch(
-      `${apiBaseUrl()}/api/catalog/size-guides/manage?${search}`,
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/size-guides/manage?${search}`,
       {
         ...(cookie ? { headers: { cookie } } : {}),
         cache: "no-store",
@@ -215,8 +306,11 @@ export async function getManagedProducts(
       limit: String(query.limit),
       offset: String(query.offset),
     });
+    if (query.search) search.set("search", query.search);
+    if (query.categoryId) search.set("categoryId", query.categoryId);
+    if (query.status) search.set("status", query.status);
     const response = await fetch(
-      `${apiBaseUrl()}/api/catalog/products/manage?${search}`,
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/products/manage?${search}`,
       {
         ...(cookie ? { headers: { cookie } } : {}),
         cache: "no-store",
@@ -228,6 +322,70 @@ export async function getManagedProducts(
 
     const result = CatalogProductPageSchema.safeParse(await response.json());
     return result.success ? { page: result.data } : { kind: "unavailable" };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
+export type ManagedProductResult =
+  | { product: CatalogManagedProductDetail }
+  | { kind: "unauthenticated" | "forbidden" | "not-found" | "unavailable" };
+
+export async function getManagedProduct(
+  productId: string,
+): Promise<ManagedProductResult> {
+  if (!CatalogProductIdSchema.safeParse(productId).success) {
+    return { kind: "not-found" };
+  }
+
+  try {
+    const cookie = (await headers()).get("cookie");
+    const response = await fetch(
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}`,
+      {
+        ...(cookie ? { headers: { cookie } } : {}),
+        cache: "no-store",
+      },
+    );
+    if (response.status === 401) return { kind: "unauthenticated" };
+    if (response.status === 403) return { kind: "forbidden" };
+    if (response.status === 404) return { kind: "not-found" };
+    if (!response.ok) return { kind: "unavailable" };
+
+    const result = CatalogManagedProductDetailSchema.safeParse(
+      await response.json(),
+    );
+    return result.success ? { product: result.data } : { kind: "unavailable" };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
+export type ManagedSizeGuideResult =
+  | { guide: CatalogSizeGuide }
+  | { kind: "unauthenticated" | "forbidden" | "not-found" | "unavailable" };
+
+export async function getManagedSizeGuide(
+  guideId: string,
+): Promise<ManagedSizeGuideResult> {
+  try {
+    const cookie = (await headers()).get("cookie");
+    const response = await fetch(
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/size-guides/manage/${encodeURIComponent(guideId)}`,
+      {
+        ...(cookie ? { headers: { cookie } } : {}),
+        cache: "no-store",
+      },
+    );
+    if (response.status === 401) return { kind: "unauthenticated" };
+    if (response.status === 403) return { kind: "forbidden" };
+    if (response.status === 404 || response.status === 400) {
+      return { kind: "not-found" };
+    }
+    if (!response.ok) return { kind: "unavailable" };
+
+    const result = CatalogSizeGuideSchema.safeParse(await response.json());
+    return result.success ? { guide: result.data } : { kind: "unavailable" };
   } catch {
     return { kind: "unavailable" };
   }

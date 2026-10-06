@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { CatalogManager } from "@/features/catalog/catalog-manager";
 import {
+  getPublicCatalogCategories,
   getManagedProducts,
-  getManagedSizeGuides,
   parseCatalogPageQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
@@ -19,9 +19,9 @@ export default async function StaffCatalogPage({
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
   const query = parseCatalogPageQuery(await searchParams);
-  const [result, guides] = await Promise.all([
+  const [result, categoryOptions] = await Promise.all([
     getManagedProducts(query),
-    getManagedSizeGuides({ limit: 100, offset: 0 }),
+    getPublicCatalogCategories(),
   ]);
 
   if ("kind" in result) {
@@ -73,31 +73,11 @@ export default async function StaffCatalogPage({
       </main>
     );
   }
-  if ("kind" in guides) {
-    return (
-      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-            Catalog management
-          </h1>
-          <p
-            className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
-            role="alert"
-          >
-            Size guides could not be loaded. Please try again.
-          </p>
-        </div>
-      </main>
-    );
-  }
-
   return (
     <CatalogManager
-      key={`${query.limit}:${query.offset}`}
+      key={JSON.stringify(query)}
       initialPage={result.page}
-      initialSizeGuides={guides.page.guides}
-      initialSizeGuidesHasMore={guides.page.hasMore}
-      initialSizeGuidesNextOffset={guides.page.nextOffset}
+      categoryOptions={categoryOptions}
       query={query}
     />
   );

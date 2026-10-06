@@ -1,20 +1,20 @@
 "use client";
 
 import {
-  CatalogCategoryListSchema,
   CatalogCategorySchema,
   type CatalogCategory,
 } from "@aaraj/contracts";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   createCatalogCategory,
-  fetchManagedCatalogCategories,
   updateCatalogCategory,
 } from "@/features/catalog/catalog-client";
+import { CategoryTable } from "@/features/catalog/category-table";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import {
@@ -48,34 +48,39 @@ const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
 
 export function CategoryManager({
+  view = "list",
   initialCategories,
+  initialCategory,
+  query = { limit: 50, offset: 0 },
 }: {
+  view?: "list" | "create" | "edit";
   initialCategories: CatalogCategory[];
+  initialCategory?: CatalogCategory;
+  query?: {
+    limit: number;
+    offset: number;
+    search?: string;
+    status?: "active" | "inactive";
+    kind?: "parent" | "leaf";
+  };
 }) {
-  const [categories, setCategories] = useState(initialCategories);
+  const router = useRouter();
+  const categories = initialCategories;
   const {
     control,
     register,
     handleSubmit,
-    reset,
     formState: { isSubmitting },
-  } = useForm<CategoryForm>({ defaultValues: emptyForm });
+  } = useForm<CategoryForm>({
+    defaultValues: initialCategory
+      ? toCategoryFormState(initialCategory)
+      : emptyForm,
+  });
   const editingId = useWatch({ control, name: "id" });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  const loadCategories = useCallback(async () => {
-    try {
-      setCategories(await requestCategories());
-      setErrorMessage(null);
-    } catch (error) {
-      setErrorMessage(readCategoryError(error));
-    }
-  }, []);
 
   async function saveCategory(form: CategoryForm) {
     setErrorMessage(null);
-    setStatusMessage(null);
     const payload = {
       name: form.name.trim(),
       slug: form.slug.trim(),
@@ -100,26 +105,10 @@ export function CategoryManager({
         setErrorMessage("The server returned an invalid category.");
         return;
       }
-      setStatusMessage(form.id ? "Category updated." : "Category created.");
-      reset(emptyForm);
-      await loadCategories();
+      router.replace("/admin/catalog/categories");
     } catch {
       setErrorMessage("Could not reach the server. Please try again.");
     }
-  }
-
-  function editCategory(category: CatalogCategory) {
-    setErrorMessage(null);
-    setStatusMessage(null);
-    reset({
-      id: category.id,
-      name: category.name,
-      slug: category.slug,
-      parentId: category.parentId ?? "",
-      sortOrder: String(category.sortOrder),
-      isActive: category.isActive,
-      reason: "",
-    });
   }
 
   const parentOptions = categories
@@ -129,17 +118,31 @@ export function CategoryManager({
   return (
     <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
       <div className="mx-auto max-w-6xl">
-        <Link
-          className="text-sm text-primary hover:text-primary/80"
-          href="/admin/catalog"
-        >
-          ← Back to products
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <Link
+            className="text-sm text-primary hover:text-primary/80"
+            href={view !== "list" ? "/admin/catalog/categories" : "/admin/catalog"}
+          >
+            {view !== "list" ? "← Back to categories" : "← Back to products"}
+          </Link>
+          {view === "list" && (
+            <Link
+              className={buttonVariants({ size: "lg" })}
+              href="/admin/catalog/categories/create"
+            >
+              Create category
+            </Link>
+          )}
+        </div>
         <p className="mt-8 text-sm font-semibold tracking-[0.18em] text-primary">
           AARAJ STAFF
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-          Product categories
+          {view === "create"
+            ? "Create category"
+            : view === "edit"
+              ? "Edit category"
+              : "Product categories"}
         </h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Manage the reusable category tree used by products and size guides.
@@ -154,56 +157,23 @@ export function CategoryManager({
             {errorMessage}
           </p>
         )}
-        {statusMessage && (
-          <p
-            className="mt-6 rounded-xl border border-primary/30 bg-primary/10 p-4 text-foreground"
-            role="status"
-          >
-            {statusMessage}
-          </p>
-        )}
-
-        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.8fr)]">
-          <section aria-labelledby="categories-heading">
+        <div className="mt-8">
+          {view === "list" && <section aria-labelledby="categories-heading">
             <h2 className="text-xl font-semibold" id="categories-heading">
               Category tree
             </h2>
-            {categories.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-border bg-card/60 p-5 text-muted-foreground">
-                No categories yet. Create the first category to enable product
-                and size guide assignment.
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {categories.map((category) => (
-                  <li
-                    className="flex items-start justify-between gap-4 rounded-xl border border-border bg-card/60 p-4"
-                    key={category.id}
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium">{category.path}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        /{category.slug} · {category.isLeaf ? "Leaf" : "Parent"}{" "}
-                        · {category.isActive ? "Active" : "Inactive"}
-                      </p>
-                    </div>
-                    <Button
-                      className="h-auto shrink-0 px-3 py-2"
-                      type="button"
-                      variant="outline"
-                      onClick={() => editCategory(category)}
-                    >
-                      Edit
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+            <div className="mt-4">
+              <CategoryTable
+                categories={categories}
+                query={query}
+                onRefresh={() => router.refresh()}
+              />
+            </div>
+          </section>}
 
-          <Card className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7">
+          {view !== "list" && <Card className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7">
             <h2 className="text-xl font-semibold">
-              {editingId ? "Edit category" : "Create a category"}
+              {view === "edit" ? "Edit category" : "Create a category"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Slugs are stable storefront filter values. Categories in use can
@@ -325,18 +295,12 @@ export function CategoryManager({
                       ? "Save category"
                       : "Create category"}
                 </Button>
-                {editingId && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => reset(emptyForm)}
-                  >
-                    Cancel
-                  </Button>
-                )}
+                <Link className={buttonVariants({ variant: "outline" })} href="/admin/catalog/categories">
+                  Cancel
+                </Link>
               </div>
             </form>
-          </Card>
+          </Card>}
         </div>
       </div>
     </main>
@@ -360,20 +324,14 @@ async function readProblem(response: Response): Promise<string> {
   return `Category change failed (${response.status}).`;
 }
 
-async function requestCategories(): Promise<CatalogCategory[]> {
-  const response = await fetchManagedCatalogCategories();
-  if (response.status === 401) throw new Error("Sign in to manage categories.");
-  if (response.status === 403) {
-    throw new Error("Only administrators can manage product categories.");
-  }
-  if (!response.ok) throw new Error("Categories could not be loaded.");
-  const result = CatalogCategoryListSchema.safeParse(await response.json());
-  if (!result.success) throw new Error("The category response was invalid.");
-  return result.data.categories;
-}
-
-function readCategoryError(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "Categories are temporarily unavailable.";
+function toCategoryFormState(category: CatalogCategory): CategoryForm {
+  return {
+    id: category.id,
+    name: category.name,
+    slug: category.slug,
+    parentId: category.parentId ?? "",
+    sortOrder: String(category.sortOrder),
+    isActive: category.isActive,
+    reason: "",
+  };
 }

@@ -56,7 +56,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     action: "put" | "delete" = "put",
   ) =>
     request(app.getHttpServer())
-      [action](`/api/access/users/${target.id}/roles/${role}`)
+      [action](`/api/v1/access/users/${target.id}/roles/${role}`)
       .set("Cookie", actor.cookie)
       .set("Origin", origin)
       .send(reason);
@@ -85,15 +85,15 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("starts every account as a customer and protects access routes from guests", async () => {
-    await request(app.getHttpServer()).get("/api/access/me").expect(401);
-    await request(app.getHttpServer()).get("/api/access/roles").expect(401);
+    await request(app.getHttpServer()).get("/api/v1/access/me").expect(401);
+    await request(app.getHttpServer()).get("/api/v1/access/roles").expect(401);
     await request(app.getHttpServer())
-      .put(`/api/access/users/${customer.id}/roles/admin`)
+      .put(`/api/v1/access/users/${customer.id}/roles/admin`)
       .set("Origin", origin)
       .send(reason)
       .expect(401);
     const response = await request(app.getHttpServer())
-      .get("/api/access/me")
+      .get("/api/v1/access/me")
       .set("Cookie", owner.cookie)
       .expect(200);
     expect(response.body).toEqual({
@@ -137,7 +137,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     const cookies = login.headers["set-cookie"] as unknown as string[];
     owner.cookie = cookies.map((cookie) => cookie.split(";")[0]).join("; ");
     await request(app.getHttpServer())
-      .get("/api/access/roles")
+      .get("/api/v1/access/roles")
       .set("Cookie", owner.cookie)
       .expect(200);
   });
@@ -151,11 +151,11 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     await change(owner, staff, "staff").expect(200);
     await change(owner, moderator, "moderator").expect(200);
     await request(app.getHttpServer())
-      .get("/api/access/roles")
+      .get("/api/v1/access/roles")
       .set("Cookie", admin.cookie)
       .expect(200);
     await request(app.getHttpServer())
-      .get(`/api/access/users/${staff.id}`)
+      .get(`/api/v1/access/users/${staff.id}`)
       .set("Cookie", admin.cookie)
       .expect(200);
     for (const actor of [admin, staff, moderator, customer]) {
@@ -163,11 +163,11 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     }
     for (const actor of [staff, moderator, customer]) {
       await request(app.getHttpServer())
-        .get("/api/access/roles")
+        .get("/api/v1/access/roles")
         .set("Cookie", actor.cookie)
         .expect(403);
       await request(app.getHttpServer())
-        .get(`/api/access/users/${owner.id}`)
+        .get(`/api/v1/access/users/${owner.id}`)
         .set("Cookie", actor.cookie)
         .expect(403);
     }
@@ -178,7 +178,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
 
   it("does not trust a client-selected user or role and validates mutation inputs", async () => {
     const self = await request(app.getHttpServer())
-      .get(`/api/access/me?userId=${owner.id}&role=superadmin`)
+      .get(`/api/v1/access/me?userId=${owner.id}&role=superadmin`)
       .set("Cookie", customer.cookie)
       .set("X-Role", "superadmin")
       .expect(200);
@@ -187,7 +187,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     for (const role of ["customer", "owner", "*"])
       await change(owner, customer, role).expect(400);
     await request(app.getHttpServer())
-      .put(`/api/access/users/${customer.id}/roles/admin`)
+      .put(`/api/v1/access/users/${customer.id}/roles/admin`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({ reason: "ok", role: "superadmin" })
@@ -214,7 +214,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     const cookies = registration.headers["set-cookie"] as unknown as string[];
     const cookie = cookies.map((value) => value.split(";")[0]).join("; ");
     const response = await request(app.getHttpServer())
-      .get("/api/access/me")
+      .get("/api/v1/access/me")
       .set("Cookie", cookie)
       .expect(200);
     expect(response.body.roles).toEqual(["customer"]);
@@ -237,7 +237,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
       "null",
     ]) {
       const operation = request(app.getHttpServer())
-        .put(`/api/access/users/${customer.id}/roles/staff`)
+        .put(`/api/v1/access/users/${customer.id}/roles/staff`)
         .set("Cookie", owner.cookie);
       if (invalidOrigin) operation.set("Origin", invalidOrigin);
       await operation.send(reason).expect(403);
@@ -259,7 +259,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     await change(owner, admin, "admin", "delete").expect(200);
     await change(owner, admin, "admin", "delete").expect(200);
     await request(app.getHttpServer())
-      .get("/api/access/roles")
+      .get("/api/v1/access/roles")
       .set("Cookie", admin.cookie)
       .expect(403);
     grants = await database.db
@@ -279,7 +279,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     const response = await change(owner, customer, "staff").expect(403);
     expect(response.body.code).toBe("RECENT_SIGN_IN_REQUIRED");
     await request(app.getHttpServer())
-      .get("/api/access/roles")
+      .get("/api/v1/access/roles")
       .set("Cookie", owner.cookie)
       .expect(200);
   });
@@ -330,7 +330,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
       .set("Cookie", customer.cookie)
       .expect(200);
     await request(app.getHttpServer())
-      .get("/api/access/me")
+      .get("/api/v1/access/me")
       .set("Cookie", customer.cookie)
       .expect(401);
   });

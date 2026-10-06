@@ -2,27 +2,25 @@
 
 import {
   CatalogMeasurementKeySchema,
-  CatalogSizeGuidePageSchema,
   CatalogSizeGuideSchema,
   type CatalogMeasurementKey,
+  type CatalogCategoryOption,
   type CatalogSizeGuide,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
 } from "@aaraj/contracts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   createCatalogSizeGuide,
-  fetchManagedSizeGuide,
-  fetchManagedSizeGuides,
   updateCatalogSizeGuide,
 } from "@/features/catalog/catalog-client";
-import { CatalogPagination } from "@/features/catalog/catalog-pagination";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
+import { SizeGuideTable } from "@/features/catalog/size-guide-table";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
@@ -79,47 +77,44 @@ const blankForm: GuideForm = {
 };
 
 export function SizeGuideManager({
+  view = "list",
   initialPage,
+  initialGuide,
   query,
+  categoryOptions = [],
 }: {
-  initialPage: CatalogSizeGuidePage;
-  query: Pick<CatalogSizeGuideListQuery, "limit" | "offset">;
+  view?: "list" | "create" | "edit";
+  initialPage?: CatalogSizeGuidePage;
+  initialGuide?: CatalogSizeGuide;
+  query: CatalogSizeGuideListQuery;
+  categoryOptions?: CatalogCategoryOption[];
 }) {
-  const [guides, setGuides] = useState(initialPage.guides);
-  const [hasMore, setHasMore] = useState(initialPage.hasMore);
-  const [nextOffset, setNextOffset] = useState(initialPage.nextOffset);
+  const router = useRouter();
+  const guides = initialPage?.guides ?? [];
+  const hasMore = initialPage?.hasMore ?? false;
+  const nextOffset = initialPage?.nextOffset ?? null;
   const {
     control,
     register,
     handleSubmit,
-    reset,
     getValues,
     setValue,
     formState: { isSubmitting },
-  } = useForm<GuideForm>({ defaultValues: blankForm });
+  } = useForm<GuideForm>({
+    defaultValues: initialGuide
+      ? toSizeGuideFormState(initialGuide)
+      : blankForm,
+  });
   const {
     fields: rowFields,
     append: appendRow,
     remove: removeRow,
   } = useFieldArray({ control, name: "rows" });
-  const [editingId, selectedKeys, inputUnit] = useWatch({
+  const [selectedKeys, inputUnit] = useWatch({
     control,
-    name: ["id", "keys", "inputUnit"],
+    name: ["keys", "inputUnit"],
   });
-  const [isLoadingGuide, setIsLoadingGuide] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  const loadGuides = useCallback(async () => {
-    const response = await fetchManagedSizeGuides(query);
-    if (!response.ok) throw new Error("Could not refresh size guides.");
-    const page = CatalogSizeGuidePageSchema.safeParse(await response.json());
-    if (!page.success)
-      throw new Error("The server returned an invalid guide list.");
-    setGuides(page.data.guides);
-    setHasMore(page.data.hasMore);
-    setNextOffset(page.data.nextOffset);
-  }, [query]);
 
   function clearKeyValues(key: CatalogMeasurementKey) {
     getValues("rows").forEach((_, index) => {
@@ -149,39 +144,8 @@ export function SizeGuideManager({
     onChange(inputUnit);
   }
 
-  async function editGuide(guideId: string) {
-    setIsLoadingGuide(true);
-    setErrorMessage(null);
-    setStatusMessage(null);
-    try {
-      const response = await fetchManagedSizeGuide(guideId);
-      if (!response.ok) {
-        throw new Error(await readSizeGuideErrorMessage(response));
-      }
-      const result = CatalogSizeGuideSchema.safeParse(await response.json());
-      if (!result.success)
-        throw new Error("The server returned an invalid guide.");
-      reset(toSizeGuideFormState(result.data));
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Size guide details are temporarily unavailable.",
-      );
-    } finally {
-      setIsLoadingGuide(false);
-    }
-  }
-
-  function resetForm() {
-    reset(blankForm);
-    setErrorMessage(null);
-    setStatusMessage(null);
-  }
-
   async function saveGuide(form: GuideForm) {
     setErrorMessage(null);
-    setStatusMessage(null);
     if (form.keys.length === 0 || form.rows.length === 0) {
       setErrorMessage("Choose at least one measurement and add a size row.");
       return;
@@ -215,9 +179,7 @@ export function SizeGuideManager({
         setErrorMessage("The server returned an invalid size guide.");
         return;
       }
-      setStatusMessage(form.id ? "Size guide updated." : "Size guide created.");
-      reset(blankForm);
-      await loadGuides();
+      router.replace("/admin/catalog/size-guides");
     } catch {
       setErrorMessage("Could not reach the server. Please try again.");
     }
@@ -232,13 +194,32 @@ export function SizeGuideManager({
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Size guides
+              {view === "create"
+                ? "Create size guide"
+                : view === "edit"
+                  ? "Edit size guide"
+                  : "Size guides"}
             </h1>
             <p className="mt-2 max-w-2xl text-muted-foreground">
               Create a reusable chart for products with the same category, fit,
               measurement basis, and sizes.
             </p>
           </div>
+          {view === "list" ? (
+            <Link
+              className={buttonVariants({ size: "lg" })}
+              href="/admin/catalog/size-guides/create"
+            >
+              Create size guide
+            </Link>
+          ) : (
+            <Link
+              className="text-sm text-primary hover:text-primary/80"
+              href="/admin/catalog/size-guides"
+            >
+              Back to size guides
+            </Link>
+          )}
           <Link
             className="text-sm text-primary hover:text-primary/80"
             href="/admin/catalog"
@@ -253,64 +234,24 @@ export function SizeGuideManager({
           </Link>
         </div>
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.95fr)]">
-          <section aria-labelledby="size-guide-list-heading">
+        <div className="mt-10">
+          {view === "list" && <section aria-labelledby="size-guide-list-heading">
             <h2 className="text-xl font-semibold" id="size-guide-list-heading">
               Reusable guides
             </h2>
-            {guides.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-border bg-card/60 p-5 text-muted-foreground">
-                No size guides yet. Add a chart using the form.
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {guides.map((guide) => (
-                  <li
-                    className="rounded-xl border border-border bg-card/60 p-4"
-                    key={guide.id}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium">{guide.name}</p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {guide.category.name}
-                          {guide.fit ? ` · ${guide.fit} fit` : ""} ·{" "}
-                          {guide.measurementBasis} measurements
-                        </p>
-                        <p className="mt-2 text-sm">
-                          Sizes: {guide.sizeLabels.join(", ")}
-                        </p>
-                        <Badge className="mt-2" variant="secondary">
-                          Reusable
-                        </Badge>
-                      </div>
-                      <Button
-                        className="h-auto shrink-0 px-3 py-2"
-                        type="button"
-                        variant="outline"
-                        disabled={isLoadingGuide}
-                        onClick={() => void editGuide(guide.id)}
-                      >
-                        Edit
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <CatalogPagination
-              itemName="size guides"
-              label="Size guides"
-              pathname="/admin/catalog/size-guides"
-              limit={query.limit}
-              offset={query.offset}
-              productCount={guides.length}
-              hasMore={hasMore}
-              nextOffset={nextOffset}
-            />
-          </section>
+            <div className="mt-4">
+              <SizeGuideTable
+                guides={guides}
+                categoryOptions={categoryOptions}
+                query={query}
+                onRefresh={() => router.refresh()}
+                hasMore={hasMore}
+                nextOffset={nextOffset}
+              />
+            </div>
+          </section>}
 
-          <Card
+          {view !== "list" && <Card
             aria-labelledby="guide-form-heading"
             className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7"
             role="region"
@@ -318,23 +259,19 @@ export function SizeGuideManager({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold" id="guide-form-heading">
-                  {editingId ? "Edit size guide" : "Create a size guide"}
+                  {view === "edit" ? "Edit size guide" : "Create a size guide"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Measurements are stored once in millimetres and shown in cm
                   and inches.
                 </p>
               </div>
-              {editingId && (
-                <Button
-                  className="h-auto px-2 py-1 text-sm text-muted-foreground"
-                  type="button"
-                  variant="ghost"
-                  onClick={resetForm}
-                >
-                  New guide
-                </Button>
-              )}
+              <Link
+                className="text-sm text-primary hover:text-primary/80"
+                href="/admin/catalog/size-guides"
+              >
+                Cancel
+              </Link>
             </div>
 
             <form className="mt-6 space-y-4" onSubmit={handleSubmit(saveGuide)}>
@@ -597,27 +534,19 @@ export function SizeGuideManager({
                   {errorMessage}
                 </p>
               )}
-              {statusMessage && (
-                <p
-                  className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
-                  role="status"
-                >
-                  {statusMessage}
-                </p>
-              )}
               <Button
                 className="h-auto w-full px-4 py-3 text-base font-semibold"
-                disabled={isSubmitting || isLoadingGuide}
+                disabled={isSubmitting}
                 type="submit"
               >
                 {isSubmitting
                   ? "Saving…"
-                  : editingId
+                  : view === "edit"
                     ? "Save guide"
                     : "Create guide"}
               </Button>
             </form>
-          </Card>
+          </Card>}
         </div>
       </div>
     </main>

@@ -21,6 +21,8 @@ e2e/                         Playwright storefront workflow and test API
 - Parenthesized `(storefront)` and `(admin)` groups are omitted from URLs; `/admin` remains a real URL segment.
 - Route groups do not enforce authorization. Admin pages and Nest API operations enforce their specific catalog permissions, including staff access where granted.
 - Keep auth and catalog implementation in their feature folders; only create shared code when more than one feature needs it.
+- `components/ui/data-table.tsx` owns shared table rendering; each feature owns its typed columns, row actions, query state, and pagination controls.
+- Keep large admin lists server-paginated. Do not sort or filter one loaded page as though it represented the full collection; use the API and route search parameters for collection-wide operations.
 - Keep API contracts in `@aaraj/contracts`. Server reads use `server-only`; browser auth and catalog API modules use `client-only`.
 - The per-request nonce CSP requires request-time rendering so Next.js can attach the matching nonce to generated scripts. Keep the root `connection()` call aligned with `src/proxy.ts`.
 - Send catalog mutations through the same-origin `/api` route. The Nest API enforces permissions and writes audit events; UI visibility is not an access-control check.
@@ -31,9 +33,9 @@ e2e/                         Playwright storefront workflow and test API
 A fresh database has no business categories or product records. For a new local workspace, configure `infrastructure/local/.env.local` from `.env.example`, then run `pnpm dev` from the repository root to start PostgreSQL/Redis, apply migrations, and launch the API and web app.
 
 1. Create the operator account at `/account`. Promote the intended owner to the first superadmin with the audited bootstrap procedure in [the authorization guide](../../docs/backend/security/02-authorization.md#migration-and-first-superadmin); do not assign roles by editing the database directly.
-2. As an admin or superadmin, create the category hierarchy at `/admin/catalog/categories`. Products and size guides must use an active leaf category.
-3. At `/admin/catalog/size-guides`, create a chart for the exact category and fit combination. Add the size labels and garment/body measurements from the supplier's chart; choose cm or inches as the input unit.
-4. At `/admin/catalog`, create the product style, select its matching category, fit, and size guide, then add one variant for each sellable color/size combination. Give every active variant a unique SKU and a whole-number BDT price; a valid GTIN is optional. Add an audit reason for each write.
+2. As an admin or superadmin, manage the category hierarchy at `/admin/catalog/categories` and create categories at `/admin/catalog/categories/create`. Products and size guides must use an active leaf category.
+3. Manage size guides at `/admin/catalog/size-guides` and create a chart at `/admin/catalog/size-guides/create` for the exact category and fit combination. Add the size labels and garment/body measurements from the supplier's chart; choose cm or inches as the input unit.
+4. Manage products at `/admin/catalog` and create a product style at `/admin/catalog/create`. Select its matching category, fit, and size guide, then add one variant for each sellable color/size combination. Give every active variant a unique SKU and a whole-number BDT price; a valid GTIN is optional. Add an audit reason for each write.
 5. Publish only after the product has an audience, active leaf category, matching size guide, at least one active variant, a price for every active variant, and a guide row for every variant size. Verify the listing at `/` and its detail page at `/products/<slug>`.
 
 Users with `catalog.manage` (staff, admins, and superadmins) can manage products and size guides. Category management additionally requires `catalog.categories.manage` (admin or superadmin). This catalog setup does not configure product images, inventory, cart, checkout, or payments; those capabilities are not implemented yet.

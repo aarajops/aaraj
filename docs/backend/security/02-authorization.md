@@ -22,7 +22,7 @@ There is no wildcard or blanket superadmin bypass. Product management is granted
 
 ## API
 
-All paths below have the `/api` prefix. Authentication and explicit Nest policies protect access, audit, and catalog management routes. Public catalog browse routes are intentionally anonymous and return published records only.
+REST paths below are under `/api/v1`; Better Auth's endpoints remain under `/api/auth`. Authentication and explicit Nest policies protect access, audit, and catalog management routes. Public catalog browse routes are intentionally anonymous and return published records only.
 
 | Method and path                            | Requirement        | Result                                                   |
 | ------------------------------------------ | ------------------ | -------------------------------------------------------- |
@@ -44,7 +44,7 @@ Only superadmins can change role assignments. Staff/admin/superadmin may manage 
 
 `AccessService` checks permission inside a PostgreSQL transaction after taking a shared advisory transaction lock for assignment writes. Bootstrap uses the same lock. This serializes competing role changes across API instances, checks the latest grants, and prevents concurrent removal of all superadmins. Role changes and their audit event commit or roll back together. Repeating the same grant/revoke has no additional effect and produces no duplicate audit event. Revocation takes effect on the next permission check using the same session; it does not wait for a cached permission list to expire. Requests already authorized may finish. For sensitive mutations whose authorization depends on mutable state, evaluate that authorization in the transaction immediately before writing, as role changes do.
 
-Audit events cover role grants/revocations/bootstrap, Better Auth sign-up/sign-in/sign-out outcomes, Nest authorization denials, and catalog create/update. Auth events store outcome and route only; authorization denials store policy/ability, reason, and handler; catalog writes and role changes share their business transaction with the audit insert. `GET /api/audit/events` is `audit.read`-protected and currently granted only to superadmins. It supports bounded pages, an opaque cursor, and exact event-type/actor filters. The database trigger rejects UPDATE, DELETE, and TRUNCATE. Production must use a separate migration/owner role and restricted runtime role; a database superuser can still disable the trigger. Production audit retention requires approval from the business/legal owner before launch.
+Audit events cover role grants/revocations/bootstrap, Better Auth sign-up/sign-in/sign-out outcomes, Nest authorization denials, and catalog create/update. Auth events store outcome and route only; authorization denials store policy/ability, reason, and handler; catalog writes and role changes share their business transaction with the audit insert. `GET /api/v1/audit/events` is `audit.read`-protected and currently granted only to superadmins. It supports bounded pages, an opaque cursor, and exact event-type/actor filters. The database trigger rejects UPDATE, DELETE, and TRUNCATE. Production must use a separate migration/owner role and restricted runtime role; a database superuser can still disable the trigger. Production audit retention requires approval from the business/legal owner before launch.
 
 ## Migration and first superadmin
 

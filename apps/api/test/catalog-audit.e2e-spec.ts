@@ -80,7 +80,7 @@ describe("catalog and security audit", () => {
       .send({ email: customer.email, password: "incorrect-password-123" })
       .expect(401);
     await request(app.getHttpServer())
-      .get("/api/catalog/products")
+      .get("/api/v1/catalog/products")
       .expect(200)
       .expect({
         products: [],
@@ -92,56 +92,56 @@ describe("catalog and security audit", () => {
       await getRedisClient().get(getPublishedFilterOptionsCacheKey()),
     ).not.toBeNull();
     await request(app.getHttpServer())
-      .get("/api/catalog/categories")
+      .get("/api/v1/catalog/categories")
       .expect(200)
       .expect({ categories: [] });
     await request(app.getHttpServer())
-      .get("/api/catalog/products?limit=101")
+      .get("/api/v1/catalog/products?limit=101")
       .expect(400);
     await request(app.getHttpServer())
-      .get("/api/catalog/products?limit=49")
+      .get("/api/v1/catalog/products?limit=49")
       .expect(400);
     await request(app.getHttpServer())
-      .get("/api/catalog/products?unexpected=value")
+      .get("/api/v1/catalog/products?unexpected=value")
       .expect(400);
     await request(app.getHttpServer())
-      .get("/api/catalog/products?audience=all")
+      .get("/api/v1/catalog/products?audience=all")
       .expect(400);
     await request(app.getHttpServer())
-      .get("/api/catalog/products?color=Black&color=White")
+      .get("/api/v1/catalog/products?color=Black&color=White")
       .expect(400);
     await request(app.getHttpServer())
-      .get("/api/catalog/products/manage")
+      .get("/api/v1/catalog/products/manage")
       .expect(401);
     await request(app.getHttpServer())
-      .get("/api/catalog/products/manage")
+      .get("/api/v1/catalog/products/manage")
       .set("Cookie", customer.cookie)
       .expect(403);
 
     await request(app.getHttpServer())
-      .get("/api/catalog/size-guides/manage")
+      .get("/api/v1/catalog/size-guides/manage")
       .expect(401);
     await request(app.getHttpServer())
-      .get("/api/catalog/size-guides/manage")
+      .get("/api/v1/catalog/size-guides/manage")
       .set("Cookie", customer.cookie)
       .expect(403);
 
     await request(app.getHttpServer())
-      .get("/api/catalog/categories/manage")
+      .get("/api/v1/catalog/categories/manage")
       .expect(401);
     await request(app.getHttpServer())
-      .get("/api/catalog/categories/manage")
+      .get("/api/v1/catalog/categories/manage")
       .set("Cookie", staff.cookie)
       .expect(403);
     await request(app.getHttpServer())
-      .post("/api/catalog/categories")
+      .post("/api/v1/catalog/categories")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({ name: "Forbidden", slug: "forbidden", reason: "Must be admin" })
       .expect(403);
 
     const parentCategory = await request(app.getHttpServer())
-      .post("/api/catalog/categories")
+      .post("/api/v1/catalog/categories")
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({
@@ -155,7 +155,7 @@ describe("catalog and security audit", () => {
       await getRedisClient().get(getPublishedFilterOptionsCacheKey()),
     ).toBeNull();
     const leafCategory = await request(app.getHttpServer())
-      .post("/api/catalog/categories")
+      .post("/api/v1/catalog/categories")
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({
@@ -166,7 +166,7 @@ describe("catalog and security audit", () => {
       })
       .expect(201);
     const unusedCategory = await request(app.getHttpServer())
-      .post("/api/catalog/categories")
+      .post("/api/v1/catalog/categories")
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
       .send({
@@ -176,13 +176,13 @@ describe("catalog and security audit", () => {
       })
       .expect(201);
     await request(app.getHttpServer())
-      .patch(`/api/catalog/categories/${unusedCategory.body.id}`)
+      .patch(`/api/v1/catalog/categories/${unusedCategory.body.id}`)
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
       .send({ isActive: false, reason: "Archive unused category" })
       .expect(200);
     const activeCategories = await request(app.getHttpServer())
-      .get("/api/catalog/categories")
+      .get("/api/v1/catalog/categories")
       .expect(200);
     expect(
       activeCategories.body.categories.map(
@@ -190,7 +190,7 @@ describe("catalog and security audit", () => {
       ),
     ).not.toContain("accessories");
     await request(app.getHttpServer())
-      .patch(`/api/catalog/categories/${unusedCategory.body.id}`)
+      .patch(`/api/v1/catalog/categories/${unusedCategory.body.id}`)
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
       .send({ isActive: true, reason: "Restore unused category" })
@@ -205,13 +205,13 @@ describe("catalog and security audit", () => {
       isActive: true,
     });
     const managedCategories = await request(app.getHttpServer())
-      .get("/api/catalog/categories/manage")
+      .get("/api/v1/catalog/categories/manage")
       .set("Cookie", admin.cookie)
       .expect(200);
     expect(managedCategories.body.categories).toHaveLength(3);
 
     const parentWithInactiveChild = await request(app.getHttpServer())
-      .post("/api/catalog/categories")
+      .post("/api/v1/catalog/categories")
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
       .send({
@@ -221,7 +221,7 @@ describe("catalog and security audit", () => {
       })
       .expect(201);
     const inactiveChild = await request(app.getHttpServer())
-      .post("/api/catalog/categories")
+      .post("/api/v1/catalog/categories")
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
       .send({
@@ -232,13 +232,13 @@ describe("catalog and security audit", () => {
       })
       .expect(201);
     await request(app.getHttpServer())
-      .patch(`/api/catalog/categories/${inactiveChild.body.id}`)
+      .patch(`/api/v1/catalog/categories/${inactiveChild.body.id}`)
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
       .send({ isActive: false, reason: "Archive the child category" })
       .expect(200);
     const inactiveChildOptions = await request(app.getHttpServer())
-      .get("/api/catalog/categories")
+      .get("/api/v1/catalog/categories")
       .expect(200);
     expect(
       inactiveChildOptions.body.categories.find(
@@ -251,7 +251,7 @@ describe("catalog and security audit", () => {
       ),
     ).not.toContain("archived-child");
     await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -263,7 +263,7 @@ describe("catalog and security audit", () => {
       })
       .expect(400);
     await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -275,7 +275,7 @@ describe("catalog and security audit", () => {
       })
       .expect(400);
     await request(app.getHttpServer())
-      .patch(`/api/catalog/categories/${parentCategory.body.id}`)
+      .patch(`/api/v1/catalog/categories/${parentCategory.body.id}`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({
@@ -285,7 +285,7 @@ describe("catalog and security audit", () => {
       .expect(400);
 
     const guide = await request(app.getHttpServer())
-      .post("/api/catalog/size-guides")
+      .post("/api/v1/catalog/size-guides")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -315,13 +315,13 @@ describe("catalog and security audit", () => {
       .expect(201);
     const guideId = guide.body.id as string;
     await request(app.getHttpServer())
-      .patch(`/api/catalog/categories/${categoryId}`)
+      .patch(`/api/v1/catalog/categories/${categoryId}`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({ isActive: false, reason: "Reject category still in use" })
       .expect(409);
     await request(app.getHttpServer())
-      .post("/api/catalog/categories")
+      .post("/api/v1/catalog/categories")
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({
@@ -332,7 +332,7 @@ describe("catalog and security audit", () => {
       })
       .expect(409);
     await request(app.getHttpServer())
-      .patch(`/api/catalog/categories/${unusedCategory.body.id}`)
+      .patch(`/api/v1/catalog/categories/${unusedCategory.body.id}`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({
@@ -347,13 +347,13 @@ describe("catalog and security audit", () => {
       ]),
     );
     await request(app.getHttpServer())
-      .get("/api/catalog/size-guides/manage?limit=10")
+      .get("/api/v1/catalog/size-guides/manage?limit=10")
       .set("Cookie", staff.cookie)
       .expect("Cache-Control", "no-store")
       .expect(200);
 
     await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", customer.cookie)
       .set("Origin", origin)
       .send({
@@ -366,7 +366,7 @@ describe("catalog and security audit", () => {
       .expect(403);
 
     await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -390,7 +390,7 @@ describe("catalog and security audit", () => {
       .expect(400);
 
     await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -413,7 +413,7 @@ describe("catalog and security audit", () => {
       .expect(400);
 
     const created = await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -442,7 +442,7 @@ describe("catalog and security audit", () => {
     });
 
     await request(app.getHttpServer())
-      .get("/api/catalog/products")
+      .get("/api/v1/catalog/products")
       .expect(200)
       .expect({
         products: [],
@@ -451,16 +451,16 @@ describe("catalog and security audit", () => {
         filters: { categories: [], colors: [], sizes: [] },
       });
     await request(app.getHttpServer())
-      .get("/api/catalog/products/aaraj-draft-tee")
+      .get("/api/v1/catalog/products/aaraj-draft-tee")
       .expect(404);
     const managed = await request(app.getHttpServer())
-      .get("/api/catalog/products/manage")
+      .get("/api/v1/catalog/products/manage")
       .set("Cookie", staff.cookie)
       .expect(200);
     expect(managed.body.products).toHaveLength(1);
     expect(managed.body.products[0].id).toBe(created.body.id);
     const managedDetail = await request(app.getHttpServer())
-      .get(`/api/catalog/products/manage/${created.body.id}`)
+      .get(`/api/v1/catalog/products/manage/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .expect(200);
     expect(managedDetail.body.variants).toHaveLength(1);
@@ -468,14 +468,14 @@ describe("catalog and security audit", () => {
     expect(managedDetail.body.sizeGuide.id).toBe(guideId);
 
     await request(app.getHttpServer())
-      .patch(`/api/catalog/products/${created.body.id}`)
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({ isPublished: true, reason: "Reject a missing variant price" })
       .expect(400);
 
     await request(app.getHttpServer())
-      .patch(`/api/catalog/products/${created.body.id}`)
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -498,7 +498,7 @@ describe("catalog and security audit", () => {
       .expect(400);
 
     await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -519,13 +519,13 @@ describe("catalog and security audit", () => {
       .expect(409);
 
     await request(app.getHttpServer())
-      .patch(`/api/catalog/products/${created.body.id}`)
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({ isPublished: true, reason: "Approved for storefront" })
       .expect(400);
     await request(app.getHttpServer())
-      .patch(`/api/catalog/products/${created.body.id}`)
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -542,14 +542,14 @@ describe("catalog and security audit", () => {
       })
       .expect(200);
     await request(app.getHttpServer())
-      .patch(`/api/catalog/products/${created.body.id}`)
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({ name: "Aaraj City Tee", reason: "Corrected product name" })
       .expect(200);
 
     const publicProduct = await request(app.getHttpServer())
-      .get("/api/catalog/products/aaraj-draft-tee")
+      .get("/api/v1/catalog/products/aaraj-draft-tee")
       .expect(200);
     expect(publicProduct.body.name).toBe("Aaraj City Tee");
     expect(publicProduct.body.variants).toHaveLength(1);
@@ -559,7 +559,7 @@ describe("catalog and security audit", () => {
     expect(publicProduct.body.sizeGuide.rows).toHaveLength(2);
 
     await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -583,7 +583,7 @@ describe("catalog and security audit", () => {
       .expect(201);
 
     const variantFilterProbe = await request(app.getHttpServer())
-      .post("/api/catalog/products")
+      .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -625,7 +625,7 @@ describe("catalog and security audit", () => {
       .expect(201);
 
     const unisexTshirts = await request(app.getHttpServer())
-      .get("/api/catalog/products?audience=unisex&category=t-shirts")
+      .get("/api/v1/catalog/products?audience=unisex&category=t-shirts")
       .expect(200);
     expect(
       unisexTshirts.body.products.map(
@@ -636,7 +636,7 @@ describe("catalog and security audit", () => {
     );
 
     const matchingVariant = await request(app.getHttpServer())
-      .get("/api/catalog/products?color=black&size=m")
+      .get("/api/v1/catalog/products?color=black&size=m")
       .expect(200);
     expect(
       matchingVariant.body.products.map(
@@ -647,7 +647,7 @@ describe("catalog and security audit", () => {
     );
 
     const matchingLargeVariant = await request(app.getHttpServer())
-      .get("/api/catalog/products?color=black&size=l")
+      .get("/api/v1/catalog/products?color=black&size=l")
       .expect(200);
     expect(
       matchingLargeVariant.body.products.map(
@@ -657,13 +657,13 @@ describe("catalog and security audit", () => {
 
     for (const query of ["color=white&size=m"]) {
       const noMatchingVariant = await request(app.getHttpServer())
-        .get(`/api/catalog/products?${query}`)
+        .get(`/api/v1/catalog/products?${query}`)
         .expect(200);
       expect(noMatchingVariant.body.products).toEqual([]);
     }
 
     const filterOptions = await request(app.getHttpServer())
-      .get("/api/catalog/products")
+      .get("/api/v1/catalog/products")
       .expect(200);
     expect(filterOptions.body.filters).toMatchObject({
       categories: expect.arrayContaining([
@@ -684,7 +684,7 @@ describe("catalog and security audit", () => {
       (product: { slug: string }) => product.slug === "variant-filter-probe",
     );
     const probeDetail = await request(app.getHttpServer())
-      .get("/api/catalog/products/variant-filter-probe")
+      .get("/api/v1/catalog/products/variant-filter-probe")
       .expect(200);
     expect(probeDetail.body.price).toEqual(listedProbe.price);
     expect(
@@ -694,12 +694,12 @@ describe("catalog and security audit", () => {
       ),
     ).toEqual(["black:M", "black:L", "red:M", "white:L"]);
     const parentCategoryProducts = await request(app.getHttpServer())
-      .get("/api/catalog/products?category=clothing")
+      .get("/api/v1/catalog/products?category=clothing")
       .expect(200);
     expect(parentCategoryProducts.body.products.length).toBeGreaterThan(0);
 
     await request(app.getHttpServer())
-      .patch(`/api/catalog/products/${variantFilterProbe.body.id}`)
+      .patch(`/api/v1/catalog/products/${variantFilterProbe.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -715,13 +715,13 @@ describe("catalog and security audit", () => {
       })
       .expect(200);
     const activeOnlyFilters = await request(app.getHttpServer())
-      .get("/api/catalog/products?color=red")
+      .get("/api/v1/catalog/products?color=red")
       .expect(200);
     expect(activeOnlyFilters.body.products).toEqual([]);
     expect(activeOnlyFilters.body.filters.colors).not.toContain("Red");
 
     await request(app.getHttpServer())
-      .patch(`/api/catalog/size-guides/${guideId}`)
+      .patch(`/api/v1/catalog/size-guides/${guideId}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
@@ -744,14 +744,14 @@ describe("catalog and security audit", () => {
       .expect(400);
 
     const firstProductPage = await request(app.getHttpServer())
-      .get("/api/catalog/products?limit=1")
+      .get("/api/v1/catalog/products?limit=1")
       .expect(200);
     expect(firstProductPage.body.products).toHaveLength(1);
     expect(firstProductPage.body.hasMore).toBe(true);
     expect(firstProductPage.body.nextOffset).toBe(1);
     const secondProductPage = await request(app.getHttpServer())
       .get(
-        `/api/catalog/products?limit=1&offset=${firstProductPage.body.nextOffset}`,
+        `/api/v1/catalog/products?limit=1&offset=${firstProductPage.body.nextOffset}`,
       )
       .expect(200);
     expect(secondProductPage.body.products).toHaveLength(1);
@@ -762,7 +762,7 @@ describe("catalog and security audit", () => {
     );
     const thirdProductPage = await request(app.getHttpServer())
       .get(
-        `/api/catalog/products?limit=1&offset=${secondProductPage.body.nextOffset}`,
+        `/api/v1/catalog/products?limit=1&offset=${secondProductPage.body.nextOffset}`,
       )
       .expect(200);
     expect(thirdProductPage.body.products).toHaveLength(1);
@@ -773,21 +773,21 @@ describe("catalog and security audit", () => {
     );
 
     const publicList = await request(app.getHttpServer())
-      .get("/api/catalog/products?limit=10")
+      .get("/api/v1/catalog/products?limit=10")
       .expect(200);
     expect(
       publicList.body.products.map((product: { slug: string }) => product.slug),
     ).toHaveLength(3);
 
-    await request(app.getHttpServer()).get("/api/audit/events").expect(401);
+    await request(app.getHttpServer()).get("/api/v1/audit/events").expect(401);
     await request(app.getHttpServer())
-      .get("/api/audit/events")
+      .get("/api/v1/audit/events")
       .set("Cookie", customer.cookie)
       .expect(403);
 
     const page = await request(app.getHttpServer())
       .get(
-        "/api/audit/events?eventType=catalog.product_updated&actorId=" +
+        "/api/v1/audit/events?eventType=catalog.product_updated&actorId=" +
           staff.id +
           "&limit=1",
       )
@@ -795,7 +795,7 @@ describe("catalog and security audit", () => {
       .expect(200);
     const categoryAuditPage = await request(app.getHttpServer())
       .get(
-        `/api/audit/events?eventType=catalog.category_created&actorId=${owner.id}&limit=10`,
+        `/api/v1/audit/events?eventType=catalog.category_created&actorId=${owner.id}&limit=10`,
       )
       .set("Cookie", owner.cookie)
       .expect(200);
@@ -818,13 +818,13 @@ describe("catalog and security audit", () => {
       (finalCursorCharacter === "A" ? "B" : "A");
     await request(app.getHttpServer())
       .get(
-        `/api/audit/events?eventType=catalog.product_updated&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(tamperedCursor)}`,
+        `/api/v1/audit/events?eventType=catalog.product_updated&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(tamperedCursor)}`,
       )
       .set("Cookie", owner.cookie)
       .expect(400);
     await request(app.getHttpServer())
       .get(
-        `/api/audit/events?eventType=catalog.product_created&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(page.body.nextCursor)}`,
+        `/api/v1/audit/events?eventType=catalog.product_created&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(page.body.nextCursor)}`,
       )
       .set("Cookie", owner.cookie)
       .expect(400);
@@ -833,7 +833,7 @@ describe("catalog and security audit", () => {
     while (updateCursor) {
       const updatePage = await request(app.getHttpServer())
         .get(
-          `/api/audit/events?eventType=catalog.product_updated&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(updateCursor)}`,
+          `/api/v1/audit/events?eventType=catalog.product_updated&actorId=${staff.id}&limit=1&cursor=${encodeURIComponent(updateCursor)}`,
         )
         .set("Cookie", owner.cookie)
         .expect(200);
@@ -858,12 +858,12 @@ describe("catalog and security audit", () => {
       )
     ).rows.map((row) => row.id);
     const firstCursorPage = await request(app.getHttpServer())
-      .get("/api/audit/events?eventType=audit.cursor_probe&limit=1")
+      .get("/api/v1/audit/events?eventType=audit.cursor_probe&limit=1")
       .set("Cookie", owner.cookie)
       .expect(200);
     const secondCursorPage = await request(app.getHttpServer())
       .get(
-        `/api/audit/events?eventType=audit.cursor_probe&limit=1&cursor=${encodeURIComponent(firstCursorPage.body.nextCursor)}`,
+        `/api/v1/audit/events?eventType=audit.cursor_probe&limit=1&cursor=${encodeURIComponent(firstCursorPage.body.nextCursor)}`,
       )
       .set("Cookie", owner.cookie)
       .expect(200);
@@ -980,10 +980,10 @@ describe("catalog and security audit", () => {
       priceBdt: null,
     });
     await request(app.getHttpServer())
-      .get(`/api/catalog/products/${legacyProduct.slug}`)
+      .get(`/api/v1/catalog/products/${legacyProduct.slug}`)
       .expect(404);
     await request(app.getHttpServer())
-      .patch(`/api/catalog/products/${legacyProduct.id}`)
+      .patch(`/api/v1/catalog/products/${legacyProduct.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({ isPublished: false, reason: "Unpublish legacy catalog row" })

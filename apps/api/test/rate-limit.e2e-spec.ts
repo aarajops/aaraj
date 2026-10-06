@@ -53,18 +53,18 @@ describe("distributed rate limits", () => {
   it("limits public API reads to 120 requests per minute", async () => {
     for (let attempt = 0; attempt < 120; attempt += 1) {
       await request(app.getHttpServer())
-        .get("/api/catalog/categories")
+        .get("/api/v1/catalog/categories")
         .expect(200);
     }
 
     const limited = await request(app.getHttpServer())
-      .get("/api/catalog/categories")
+      .get("/api/v1/catalog/categories")
       .expect(429);
     const retryAfter = Number(limited.headers["retry-after"]);
     expect(retryAfter).toBeGreaterThan(0);
 
     const repeated = await request(app.getHttpServer())
-      .get("/api/catalog/categories")
+      .get("/api/v1/catalog/categories")
       .expect(429);
     expect(Number(repeated.headers["retry-after"])).toBeLessThanOrEqual(
       retryAfter,

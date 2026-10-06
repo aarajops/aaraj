@@ -127,7 +127,17 @@ export type CatalogProductUpdateInput = z.input<
   typeof CatalogProductUpdateSchema
 >;
 
-export const CatalogProductListQuerySchema = OffsetPaginationQuerySchema;
+const OptionalCatalogManagementSearchSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().trim().min(1).max(160).optional(),
+);
+
+export const CatalogProductListQuerySchema =
+  OffsetPaginationQuerySchema.extend({
+    search: OptionalCatalogManagementSearchSchema,
+    categoryId: z.union([z.uuid(), z.literal("uncategorized")]).optional(),
+    status: z.enum(["draft", "published"]).optional(),
+  });
 export type CatalogProductListQuery = z.infer<
   typeof CatalogProductListQuerySchema
 >;

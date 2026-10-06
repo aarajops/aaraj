@@ -109,10 +109,17 @@ export type CatalogSizeGuideUpdateInput = z.input<
   typeof CatalogSizeGuideUpdateSchema
 >;
 
+const OptionalCatalogSizeGuideSearchSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().trim().min(1).max(160).optional(),
+);
+
 export const CatalogSizeGuideListQuerySchema =
   OffsetPaginationQuerySchema.extend({
+    search: OptionalCatalogSizeGuideSearchSchema,
     categoryId: z.uuid().optional(),
     fit: z.string().trim().min(1).max(80).optional(),
+    measurementBasis: CatalogMeasurementBasisSchema.optional(),
   });
 export type CatalogSizeGuideListQuery = z.infer<
   typeof CatalogSizeGuideListQuerySchema

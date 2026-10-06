@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { EffectiveAccessSchema } from "@aaraj/contracts";
+import { API_V1_BASE_PATH, EffectiveAccessSchema } from "@aaraj/contracts";
 import { authClient } from "@/features/auth/auth-client";
 import type { InitialSession } from "@/features/auth/auth-session";
 import { Button } from "@/components/ui/button";
@@ -90,7 +90,9 @@ export function AuthPanel({
 
         let destination = "/";
         try {
-          const response = await fetch("/api/access/me", { cache: "no-store" });
+          const response = await fetch(`${API_V1_BASE_PATH}/access/me`, {
+            cache: "no-store",
+          });
           if (response.ok) {
             const access = EffectiveAccessSchema.safeParse(
               await response.json(),

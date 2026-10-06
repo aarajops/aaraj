@@ -1,15 +1,26 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CategoryManager } from "@/features/catalog/category-manager";
-import { getManagedCategories } from "@/features/catalog/catalog-queries";
+import {
+  getManagedCategories,
+  parseCatalogCategoryTableQuery,
+  type CatalogPageSearchParams,
+} from "@/features/catalog/catalog-queries";
 
 export const metadata: Metadata = {
   title: "Product categories",
   description: "Manage product categories in the Aaraj catalog.",
 };
 
-export default async function StaffCatalogCategoriesPage() {
-  const result = await getManagedCategories();
+export default async function StaffCatalogCategoriesPage({
+  searchParams,
+}: {
+  searchParams: Promise<CatalogPageSearchParams>;
+}) {
+  const [result, query] = await Promise.all([
+    getManagedCategories(),
+    searchParams.then(parseCatalogCategoryTableQuery),
+  ]);
   if ("kind" in result) {
     const message =
       result.kind === "unauthenticated"
@@ -46,5 +57,11 @@ export default async function StaffCatalogCategoriesPage() {
     );
   }
 
-  return <CategoryManager initialCategories={result.categories} />;
+  return (
+    <CategoryManager
+      key={JSON.stringify(query)}
+      initialCategories={result.categories}
+      query={query}
+    />
+  );
 }

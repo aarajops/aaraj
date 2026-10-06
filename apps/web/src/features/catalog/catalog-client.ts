@@ -1,5 +1,6 @@
 import "client-only";
 
+import { API_V1_BASE_PATH } from "@aaraj/contracts";
 import type {
   CatalogCategoryCreateInput,
   CatalogCategoryUpdateInput,
@@ -12,14 +13,7 @@ import type {
 } from "@aaraj/contracts";
 
 export function fetchCatalogCategories(): Promise<Response> {
-  return fetch("/api/catalog/categories", {
-    cache: "no-store",
-    credentials: "same-origin",
-  });
-}
-
-export function fetchManagedCatalogCategories(): Promise<Response> {
-  return fetch("/api/catalog/categories/manage", {
+  return fetch(`${API_V1_BASE_PATH}/catalog/categories`, {
     cache: "no-store",
     credentials: "same-origin",
   });
@@ -28,7 +22,7 @@ export function fetchManagedCatalogCategories(): Promise<Response> {
 export function createCatalogCategory(
   input: CatalogCategoryCreateInput,
 ): Promise<Response> {
-  return fetch("/api/catalog/categories", {
+  return fetch(`${API_V1_BASE_PATH}/catalog/categories`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -40,12 +34,15 @@ export function updateCatalogCategory(
   categoryId: string,
   input: CatalogCategoryUpdateInput,
 ): Promise<Response> {
-  return fetch(`/api/catalog/categories/${encodeURIComponent(categoryId)}`, {
-    method: "PATCH",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/categories/${encodeURIComponent(categoryId)}`,
+    {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function fetchManagedProducts(
@@ -55,49 +52,38 @@ export function fetchManagedProducts(
     limit: String(query.limit),
     offset: String(query.offset),
   });
-  return fetch(`/api/catalog/products/manage?${search}`, {
+  if (query.search) search.set("search", query.search);
+  if (query.categoryId) search.set("categoryId", query.categoryId);
+  if (query.status) search.set("status", query.status);
+  return fetch(`${API_V1_BASE_PATH}/catalog/products/manage?${search}`, {
     cache: "no-store",
     credentials: "same-origin",
   });
 }
 
-export function fetchManagedProduct(productId: string): Promise<Response> {
-  return fetch(
-    `/api/catalog/products/manage/${encodeURIComponent(productId)}`,
-    {
-      cache: "no-store",
-      credentials: "same-origin",
-    },
-  );
-}
-
 export function fetchManagedSizeGuides(
-  query: Pick<CatalogSizeGuideListQuery, "limit" | "offset">,
+  query: CatalogSizeGuideListQuery,
 ): Promise<Response> {
   const search = new URLSearchParams({
     limit: String(query.limit),
     offset: String(query.offset),
   });
-  return fetch(`/api/catalog/size-guides/manage?${search}`, {
+  if (query.search) search.set("search", query.search);
+  if (query.categoryId) search.set("categoryId", query.categoryId);
+  if (query.fit) search.set("fit", query.fit);
+  if (query.measurementBasis) {
+    search.set("measurementBasis", query.measurementBasis);
+  }
+  return fetch(`${API_V1_BASE_PATH}/catalog/size-guides/manage?${search}`, {
     cache: "no-store",
     credentials: "same-origin",
   });
 }
 
-export function fetchManagedSizeGuide(guideId: string): Promise<Response> {
-  return fetch(
-    `/api/catalog/size-guides/manage/${encodeURIComponent(guideId)}`,
-    {
-      cache: "no-store",
-      credentials: "same-origin",
-    },
-  );
-}
-
 export function createCatalogProduct(
   input: CatalogProductCreateInput,
 ): Promise<Response> {
-  return fetch("/api/catalog/products", {
+  return fetch(`${API_V1_BASE_PATH}/catalog/products`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -109,18 +95,21 @@ export function updateCatalogProduct(
   productId: string,
   input: CatalogProductUpdateInput,
 ): Promise<Response> {
-  return fetch(`/api/catalog/products/${encodeURIComponent(productId)}`, {
-    method: "PATCH",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/${encodeURIComponent(productId)}`,
+    {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function createCatalogSizeGuide(
   input: CatalogSizeGuideCreateInput,
 ): Promise<Response> {
-  return fetch("/api/catalog/size-guides", {
+  return fetch(`${API_V1_BASE_PATH}/catalog/size-guides`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -132,10 +121,13 @@ export function updateCatalogSizeGuide(
   guideId: string,
   input: CatalogSizeGuideUpdateInput,
 ): Promise<Response> {
-  return fetch(`/api/catalog/size-guides/${encodeURIComponent(guideId)}`, {
-    method: "PATCH",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/size-guides/${encodeURIComponent(guideId)}`,
+    {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SizeGuideManager } from "@/features/catalog/size-guide-manager";
 import {
+  getPublicCatalogCategories,
   getManagedSizeGuides,
   parseCatalogSizeGuidePageQuery,
   type CatalogPageSearchParams,
@@ -18,7 +19,10 @@ export default async function StaffSizeGuidesPage({
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
   const query = parseCatalogSizeGuidePageQuery(await searchParams);
-  const result = await getManagedSizeGuides(query);
+  const [result, categoryOptions] = await Promise.all([
+    getManagedSizeGuides(query),
+    getPublicCatalogCategories(),
+  ]);
   if ("kind" in result) {
     const isUnauthenticated = result.kind === "unauthenticated";
     const isForbidden = result.kind === "forbidden";
@@ -63,5 +67,12 @@ export default async function StaffSizeGuidesPage({
     );
   }
 
-  return <SizeGuideManager initialPage={result.page} query={query} />;
+  return (
+    <SizeGuideManager
+      key={JSON.stringify(query)}
+      initialPage={result.page}
+      categoryOptions={categoryOptions}
+      query={query}
+    />
+  );
 }

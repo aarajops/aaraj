@@ -1,4 +1,5 @@
-import type { INestApplication } from "@nestjs/common";
+import { VersioningType, type INestApplication } from "@nestjs/common";
+import { API_V1_ROUTE_VERSION } from "@aaraj/contracts";
 import { requestContextMiddleware } from "./platform/request-context.js";
 
 export function configureApp(app: INestApplication): void {
@@ -19,6 +20,10 @@ export function configureApp(app: INestApplication): void {
     xFrameOptions: { action: "deny" },
   });
   app.setGlobalPrefix("api");
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: API_V1_ROUTE_VERSION,
+  });
 
   const allowedOrigin = process.env.CLIENT_URL ?? "http://localhost:3000";
   app.enableCors({

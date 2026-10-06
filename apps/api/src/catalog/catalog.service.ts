@@ -33,9 +33,11 @@ import {
   eq,
   exists,
   inArray,
+  ilike,
   isNotNull,
   isNull,
   not,
+  or,
   sql,
 } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
@@ -290,9 +292,43 @@ export class CatalogService {
     query: CatalogProductListQuery,
   ): Promise<CatalogProductPage> {
     await this.authorization.authorize(CatalogPolicy, "manage", actor);
+    const predicates = [];
+    if (query.search) {
+      const searchPattern = `%${escapeLikeWildcards(query.search)}%`;
+      predicates.push(
+        or(
+          ilike(catalogProduct.name, searchPattern),
+          ilike(catalogProduct.slug, searchPattern),
+          exists(
+            this.database.db
+              .select({ id: catalogProductVariant.id })
+              .from(catalogProductVariant)
+              .where(
+                and(
+                  eq(catalogProductVariant.productId, catalogProduct.id),
+                  ilike(catalogProductVariant.sku, searchPattern),
+                ),
+              ),
+          ),
+        ),
+      );
+    }
+    if (query.categoryId) {
+      predicates.push(
+        query.categoryId === "uncategorized"
+          ? isNull(catalogProduct.categoryId)
+          : eq(catalogProduct.categoryId, query.categoryId),
+      );
+    }
+    if (query.status) {
+      predicates.push(
+        eq(catalogProduct.isPublished, query.status === "published"),
+      );
+    }
     const rows = await this.database.db
       .select()
       .from(catalogProduct)
+      .where(predicates.length ? and(...predicates) : undefined)
       .orderBy(desc(catalogProduct.updatedAt), desc(catalogProduct.id))
       .limit(query.limit + 1)
       .offset(query.offset);
@@ -1032,6 +1068,10 @@ function combinationKey(color: string, sizeLabel: string): string {
 
 function normalize(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
+}
+
+function escapeLikeWildcards(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
 }
 
 function uniqueFilterValues(values: (string | null)[]): string[] {

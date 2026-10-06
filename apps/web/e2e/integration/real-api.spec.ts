@@ -36,7 +36,7 @@ test("real browser session reaches the API through Next and respects roles", asy
   await page.goto("/account");
   await expect(page.getByText("Signed in as E2E Customer")).toBeVisible();
 
-  const accessResponse = await page.request.get("/api/access/me");
+  const accessResponse = await page.request.get("/api/v1/access/me");
   expect(accessResponse.status()).toBe(200);
   expect(accessResponse.headers()["cache-control"]).toBe("no-store");
   expect(accessResponse.headers()["x-frame-options"]).toBe("DENY");
@@ -76,7 +76,7 @@ test("catalog operator configures a product through to storefront visibility", a
     .click();
   await expect(page).toHaveURL(/\/admin$/);
 
-  const accessResponse = await page.request.get("/api/access/me");
+  const accessResponse = await page.request.get("/api/v1/access/me");
   expect(accessResponse.status()).toBe(200);
   expect(await accessResponse.json()).toMatchObject({
     roles: expect.arrayContaining(["superadmin"]),
@@ -89,25 +89,26 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.goto("/account");
   await expect(page).toHaveURL(/\/admin$/);
 
-  await page.goto("/admin/catalog/categories");
+  await page.goto("/admin/catalog/categories/create");
   await expect(
-    page.getByRole("heading", { name: "Product categories", level: 1 }),
+    page.getByRole("heading", { name: "Create category", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill("Clothing");
   await page.getByLabel("Slug").fill("clothing");
   await page.getByLabel("Reason for change").fill("Create clothing root");
   await page.getByRole("button", { name: "Create category" }).click();
-  await expect(page.getByRole("status")).toContainText("Category created.");
+  await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
+  await page.goto("/admin/catalog/categories/create");
   await page.getByLabel("Name", { exact: true }).fill("T-shirts");
   await page.getByLabel("Slug").fill("t-shirts");
   await chooseSelectOption(page, "Parent category", "Clothing");
   await page.getByLabel("Reason for change").fill("Create T-shirt category");
   await page.getByRole("button", { name: "Create category" }).click();
-  await expect(page.getByRole("status")).toContainText("Category created.");
+  await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
 
-  await page.goto("/admin/catalog/size-guides");
+  await page.goto("/admin/catalog/size-guides/create");
   await expect(
-    page.getByRole("heading", { name: "Size guides", level: 1 }),
+    page.getByRole("heading", { name: "Create size guide", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill(guideName);
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
@@ -123,12 +124,14 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.locator("#size-1-body_length").fill("29");
   await page.getByLabel("Audit reason").fill("Create integration size guide");
   await page.getByRole("button", { name: "Create guide" }).click();
-  await expect(page.getByRole("status")).toContainText("Size guide created.");
-  await expect(page.getByText(guideName, { exact: true })).toBeVisible();
-
-  await page.goto("/admin/catalog");
+  await expect(page).toHaveURL(/\/admin\/catalog\/size-guides$/);
   await expect(
-    page.getByRole("heading", { name: "Catalog management", level: 1 }),
+    page.getByRole("row", { name: new RegExp(guideName) }),
+  ).toBeVisible();
+
+  await page.goto("/admin/catalog/create");
+  await expect(
+    page.getByRole("heading", { name: "Create product", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill(productName);
   await page.locator("#product-slug").fill(slug);
@@ -157,19 +160,17 @@ test("catalog operator configures a product through to storefront visibility", a
     .getByLabel("Audit reason", { exact: true })
     .fill("Create configured integration product draft");
   await page.getByRole("button", { name: "Create draft" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Draft product created.",
-  );
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   expect(
-    (await page.request.get(`/api/catalog/products/${slug}`)).status(),
+    (await page.request.get(`/api/v1/catalog/products/${slug}`)).status(),
   ).toBe(404);
   expect((await page.goto(`/products/${slug}`))?.status()).toBe(404);
   await page.goto("/");
   await expect(page.getByRole("link", { name: productName })).toHaveCount(0);
 
   await page.goto("/admin/catalog");
-  await page.getByRole("button", { name: `Edit ${productName}` }).click();
+  await page.getByRole("link", { name: `Edit ${productName}` }).click();
   await expect(
     page.getByRole("heading", { name: "Edit product", level: 2 }),
   ).toBeVisible();
@@ -187,7 +188,7 @@ test("catalog operator configures a product through to storefront visibility", a
     .getByLabel("Audit reason", { exact: true })
     .fill("Publish configured integration product");
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("status")).toContainText("Product updated.");
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   await page.goto("/");
   await chooseSelectOption(page, "Audience", "Unisex");
@@ -200,7 +201,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
 
   const filteredProducts = await page.request.get(
-    "/api/catalog/products?audience=unisex&category=t-shirts&color=Black&size=S",
+    "/api/v1/catalog/products?audience=unisex&category=t-shirts&color=Black&size=S",
   );
   expect(filteredProducts.status()).toBe(200);
   expect((await filteredProducts.json()).products).toEqual(
@@ -208,7 +209,7 @@ test("catalog operator configures a product through to storefront visibility", a
   );
 
   const unavailableVariant = await page.request.get(
-    "/api/catalog/products?color=White&size=S",
+    "/api/v1/catalog/products?color=White&size=S",
   );
   expect(unavailableVariant.status()).toBe(200);
   expect((await unavailableVariant.json()).products).toEqual([]);
@@ -238,7 +239,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByText(skuMedium)).toHaveCount(0);
 
   const publicResponse = await page.request.get(
-    `/api/catalog/products/${slug}`,
+    `/api/v1/catalog/products/${slug}`,
   );
   expect(publicResponse.status()).toBe(200);
   const publicProduct = await publicResponse.json();
@@ -256,16 +257,16 @@ test("catalog operator configures a product through to storefront visibility", a
   }
 
   await page.goto("/admin/catalog");
-  await page.getByRole("button", { name: `Edit ${productName}` }).click();
+  await page.getByRole("link", { name: `Edit ${productName}` }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Unpublish integration test product");
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("status")).toContainText("Product updated.");
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   expect(
-    (await page.request.get(`/api/catalog/products/${slug}`)).status(),
+    (await page.request.get(`/api/v1/catalog/products/${slug}`)).status(),
   ).toBe(404);
   expect((await page.goto(`/products/${slug}`))?.status()).toBe(404);
   await page.goto("/");

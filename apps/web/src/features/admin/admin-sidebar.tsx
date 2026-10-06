@@ -57,6 +57,16 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
   const availableLinks = adminLinks.filter(({ permission }) =>
     permissions.includes(permission),
   );
+  const activeHref = pathname
+    ? adminLinks.reduce<string | undefined>((active, { href }) => {
+        const matchesRoute =
+          pathname === href || pathname.startsWith(`${href}/`);
+
+        return matchesRoute && (!active || href.length > active.length)
+          ? href
+          : active;
+      }, undefined)
+    : undefined;
   const closeMobileSidebar = () => setOpenMobile(false);
 
   return (
@@ -91,13 +101,13 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
               <nav aria-label="Administration">
                 <SidebarMenu>
                   {availableLinks.map(({ href, label, icon: Icon }) => {
-                    const isActive = pathname === href;
+                    const isActive = activeHref === href;
 
                     return (
                       <SidebarMenuItem key={href}>
                         <SidebarMenuButton
                           isActive={isActive}
-                          aria-current={isActive ? "page" : undefined}
+                          aria-current={pathname === href ? "page" : undefined}
                           render={
                             <Link href={href} onClick={closeMobileSidebar} />
                           }

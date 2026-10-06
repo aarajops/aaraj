@@ -98,9 +98,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
       sameSite: "Lax",
     },
   ]);
-  await page.goto("/admin/catalog/size-guides");
+  await page.goto("/admin/catalog/size-guides/create");
   await expect(
-    page.getByRole("heading", { name: "Size guides", level: 1 }),
+    page.getByRole("heading", { name: "Create size guide", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill("Aaraj Classic Tee");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
@@ -116,11 +116,12 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.locator("#size-1-body_length").fill("29.000");
   await page.getByLabel("Audit reason").fill("Create apparel size guide");
   await page.getByRole("button", { name: "Create guide" }).click();
-  await expect(page.getByRole("status")).toContainText("Size guide created.");
+  await expect(page).toHaveURL(/\/admin\/catalog\/size-guides$/);
   await page.goto("/admin/catalog");
   await expect(
     page.getByRole("heading", { name: "Catalog management" }),
   ).toBeVisible();
+  await page.goto("/admin/catalog/create");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Load 100 more size guides" }).click();
@@ -157,9 +158,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
   await page.getByLabel("Variant 2 price in BDT").fill("2200");
   await page.getByRole("button", { name: "Create and publish" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Product created and published.",
-  );
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
 
@@ -179,7 +178,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
   await page.getByRole("link", { name: "Clear filters" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await page.goto("/admin/catalog");
+  await page.goto("/admin/catalog/create");
 
   await page.getByLabel("Name", { exact: true }).fill("Duplicate slug item");
   await page.locator("#product-slug").fill("aaraj-e2e-tee");
@@ -216,7 +215,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByText("50.8 / 20.0", { exact: true })).toBeVisible();
   await expect(page.getByText("71.1 / 28.0", { exact: true })).toBeVisible();
 
-  await page.goto("/admin/catalog");
+  await page.goto("/admin/catalog/create");
   await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E T-shirt");
   await page.locator("#product-slug").fill("aaraj-e2e-t-shirt");
   await chooseSelectOption(page, "Audience", "Men");
@@ -233,18 +232,20 @@ test("staff manages reusable size guides and apparel products safely", async ({
     .getByLabel("Audit reason", { exact: true })
     .fill("Create a second product");
   await page.getByRole("button", { name: "Create and publish" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Product created and published.",
-  );
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   await page.goto("/admin/catalog?limit=1&offset=0");
   await expect(
-    page.locator('section[aria-labelledby="managed-products-heading"] li'),
+    page.locator(
+      'section[aria-labelledby="managed-products-heading"] tbody tr',
+    ),
   ).toHaveCount(1);
   await page.getByRole("link", { name: "Next" }).click();
   await expect(page).toHaveURL(/offset=1/);
   await expect(
-    page.locator('section[aria-labelledby="managed-products-heading"] li'),
+    page.locator(
+      'section[aria-labelledby="managed-products-heading"] tbody tr',
+    ),
   ).toHaveCount(1);
   await expect(page.getByRole("link", { name: "Previous" })).toBeVisible();
 
@@ -261,28 +262,28 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page).toHaveURL(/offset=0/);
 
   await page.goto("/admin/catalog");
-  await page.getByRole("button", { name: "Edit Aaraj E2E T-shirt" }).click();
+  await page.getByRole("link", { name: "Edit Aaraj E2E T-shirt" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Unpublish second pagination item");
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("status")).toContainText("Product updated.");
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   await page.goto("/admin/catalog");
-  await page.getByRole("button", { name: "Edit Aaraj E2E Tee" }).click();
+  await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Unpublish catalog test product");
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("status")).toContainText("Product updated.");
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
   await page.goto("/");
   await expect(page.getByText("No products are published yet.")).toBeVisible();
   const unpublishedResponse = await page.goto("/products/aaraj-e2e-tee");
   expect(unpublishedResponse?.status()).toBe(404);
 
-  await page.goto("/admin/catalog/categories");
+  await page.goto("/admin/catalog/categories/create");
   await expect(
     page.getByRole("alert").filter({
       hasText: "Only administrators can manage product categories.",
@@ -297,17 +298,15 @@ test("staff manages reusable size guides and apparel products safely", async ({
       sameSite: "Lax",
     },
   ]);
-  await page.goto("/admin/catalog/categories");
+  await page.goto("/admin/catalog/categories/create");
   await page.getByLabel("Name", { exact: true }).fill("Accessories");
   await page.getByLabel("Slug").fill("accessories");
   await page
     .getByLabel("Reason for change")
     .fill("Add an independently managed category");
   await page.getByRole("button", { name: "Create category" }).click();
-  await expect(page.getByRole("status")).toContainText("Category created.");
-  await expect(
-    page.getByRole("list").getByText("Accessories", { exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
+  await expect(page.getByRole("row", { name: /Accessories/ })).toBeVisible();
   await context.addCookies([
     {
       name: "aaraj-e2e-role",
@@ -351,7 +350,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
     },
   ]);
   await page.goto("/admin/catalog");
-  await page.getByRole("button", { name: "Edit Aaraj E2E Tee" }).click();
+  await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Verify recent sign-in recovery");

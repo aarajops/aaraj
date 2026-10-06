@@ -15,7 +15,7 @@ import type {
   CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
 import { MAX_LIST_OFFSET } from "@aaraj/contracts";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, ilike, inArray, or, sql } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AccessPrincipal } from "../platform/authorization/permissions.service.js";
@@ -23,6 +23,7 @@ import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import {
   catalogProduct,
   catalogProductVariant,
+  catalogCategory,
   catalogSizeGuide,
   catalogSizeGuideMeasurement,
   catalogSizeGuideRow,
@@ -54,6 +55,42 @@ export class SizeGuideService {
     if (query.fit) {
       predicates.push(
         sql`lower(${catalogSizeGuide.fit}) = lower(${query.fit})`,
+      );
+    }
+    if (query.measurementBasis) {
+      predicates.push(
+        eq(catalogSizeGuide.measurementBasis, query.measurementBasis),
+      );
+    }
+    if (query.search) {
+      const searchPattern = `%${escapeLikeWildcards(query.search)}%`;
+      predicates.push(
+        or(
+          ilike(catalogSizeGuide.name, searchPattern),
+          ilike(catalogSizeGuide.fit, searchPattern),
+          exists(
+            this.database.db
+              .select({ id: catalogCategory.id })
+              .from(catalogCategory)
+              .where(
+                and(
+                  eq(catalogCategory.id, catalogSizeGuide.categoryId),
+                  ilike(catalogCategory.name, searchPattern),
+                ),
+              ),
+          ),
+          exists(
+            this.database.db
+              .select({ id: catalogSizeGuideRow.id })
+              .from(catalogSizeGuideRow)
+              .where(
+                and(
+                  eq(catalogSizeGuideRow.guideId, catalogSizeGuide.id),
+                  ilike(catalogSizeGuideRow.sizeLabel, searchPattern),
+                ),
+              ),
+          ),
+        ),
       );
     }
 
@@ -403,6 +440,10 @@ function toMillimeters(unit: CatalogMeasurementUnit, value: string): string {
 
 function normalize(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
+}
+
+function escapeLikeWildcards(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
 }
 
 function normalizeOptional(value: string | null): string | null {

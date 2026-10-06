@@ -15,6 +15,7 @@
   "dependencies": {
     "@aaraj/contracts": "workspace:*",
     "@base-ui/react": "^1.8.0",
+    "@tanstack/react-table": "^9.2.6",
     "better-auth": "^1.7.6",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",

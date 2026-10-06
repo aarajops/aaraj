@@ -1,11 +1,11 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, VERSION_NEUTRAL } from "@nestjs/common";
 import { SkipThrottle } from "@nestjs/throttler";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import { CONTRACT_VERSION, type HealthCheckResponse } from "@aaraj/contracts";
 import { DatabaseService } from "./platform/database/database.service.js";
 import { RedisService } from "./platform/redis/redis.service.js";
 
-@Controller()
+@Controller({ version: VERSION_NEUTRAL })
 @AllowAnonymous()
 @SkipThrottle()
 export class AppController {

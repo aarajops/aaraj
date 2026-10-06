@@ -3,7 +3,11 @@ import "server-only";
 import { headers } from "next/headers";
 import type { authClient } from "@/features/auth/auth-client";
 import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
-import { EffectiveAccessSchema, type EffectiveAccess } from "@aaraj/contracts";
+import {
+  API_V1_BASE_PATH,
+  EffectiveAccessSchema,
+  type EffectiveAccess,
+} from "@aaraj/contracts";
 
 export type InitialSession = typeof authClient.$Infer.Session | null;
 
@@ -32,10 +36,13 @@ export async function getInitialAccess(): Promise<EffectiveAccess | null> {
   if (!cookie) return null;
 
   try {
-    const response = await fetch(`${getApiInternalUrl()}/api/access/me`, {
-      headers: { cookie },
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `${getApiInternalUrl()}${API_V1_BASE_PATH}/access/me`,
+      {
+        headers: { cookie },
+        cache: "no-store",
+      },
+    );
 
     if (!response.ok) return null;
     const access = EffectiveAccessSchema.safeParse(await response.json());
