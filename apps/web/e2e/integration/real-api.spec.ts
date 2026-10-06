@@ -195,8 +195,10 @@ test("catalog operator configures a product through to storefront visibility", a
   await chooseSelectOption(page, "Category", "Clothing / T-shirts");
   await chooseSelectOption(page, "Color", "Black");
   await chooseSelectOption(page, "Size", "S");
+  await page.getByLabel("Search products").fill("100% cotton");
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/audience=unisex/);
+  expect(new URL(page.url()).searchParams.get("search")).toBe("100% cotton");
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
   await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
 

@@ -76,6 +76,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
   await expect(page.getByText("No products are published yet.")).toBeVisible();
 
+  await page.goto(`/?search=${"x".repeat(161)}&audience=unisex`);
+  await expect(page.getByRole("alert")).toContainText(
+    "The search or filters in this URL are invalid.",
+  );
+  await expect(page.getByRole("link", { name: /Aaraj E2E/ })).toHaveCount(0);
+  await page.getByRole("link", { name: "Clear search and filters" }).click();
+
   const malformedSlug = await page.goto("/products/INVALID-SLUG");
   expect(malformedSlug?.status()).toBe(404);
   await expect(
@@ -167,6 +174,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await chooseSelectOption(page, "Category", "Clothing / T-shirts");
   await chooseSelectOption(page, "Color", "Black");
   await chooseSelectOption(page, "Size", "M");
+  await page.getByLabel("Search products").fill("Aaraj E2E");
   await expect(page.getByRole("combobox", { name: "Audience" })).toHaveText(
     "Unisex",
   );
@@ -175,6 +183,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page).toHaveURL(/category=t-shirts/);
   await expect(page).toHaveURL(/color=Black/);
   await expect(page).toHaveURL(/size=M/);
+  await expect(page).toHaveURL(/search=Aaraj\+E2E/);
   await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
   await page.getByRole("link", { name: "Clear filters" }).click();
   await expect(page).toHaveURL(/\/$/);

@@ -28,9 +28,15 @@ async function PublishedProductList({
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
   const query = parsePublishedCatalogPageQuery(await searchParams);
+  if (!query) return <InvalidCatalogQuery />;
+
   const page = await getPublishedProducts(query);
   const hasActiveFilters = Boolean(
-    query.audience || query.category || query.color || query.size,
+    query.search ||
+    query.audience ||
+    query.category ||
+    query.color ||
+    query.size,
   );
 
   return (
@@ -68,7 +74,7 @@ async function PublishedProductList({
         ) : page.products.length === 0 ? (
           <p className="mt-10 rounded-xl border border-border bg-card/60 p-8 text-secondary-foreground">
             {hasActiveFilters
-              ? "No products match these filters. Try changing or clearing them."
+              ? "No products match this search and its filters. Try changing or clearing them."
               : "No products are published yet. Please check back soon."}
           </p>
         ) : (
@@ -109,6 +115,7 @@ async function PublishedProductList({
             hasMore={page.hasMore}
             nextOffset={page.nextOffset}
             preservedParams={{
+              search: query.search,
               audience: query.audience,
               category: query.category,
               color: query.color,
@@ -116,6 +123,34 @@ async function PublishedProductList({
             }}
           />
         )}
+      </div>
+    </main>
+  );
+}
+
+function InvalidCatalogQuery() {
+  return (
+    <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
+      <div className="mx-auto max-w-6xl">
+        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
+          THE AARAJ CATALOG
+        </p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
+          Products
+        </h1>
+        <p
+          className="mt-8 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
+          role="alert"
+        >
+          The search or filters in this URL are invalid. Clear them to load the
+          catalog.
+        </p>
+        <Link
+          className="mt-5 inline-block rounded-lg border border-input px-4 py-2.5 text-sm font-medium text-foreground hover:border-ring"
+          href="/"
+        >
+          Clear search and filters
+        </Link>
       </div>
     </main>
   );

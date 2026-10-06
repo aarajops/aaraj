@@ -46,9 +46,6 @@ export type CatalogPageSearchParams = {
 
 const defaultCatalogQuery = CatalogProductListQuerySchema.parse({});
 const defaultSizeGuideQuery = CatalogSizeGuideListQuerySchema.parse({});
-const defaultPublishedCatalogQuery =
-  CatalogPublishedProductListQuerySchema.parse({});
-
 export function parseCatalogPageQuery(
   searchParams: CatalogPageSearchParams,
 ): CatalogProductListQuery {
@@ -71,7 +68,7 @@ export function parseCatalogPageQuery(
 
 export function parsePublishedCatalogPageQuery(
   searchParams: CatalogPageSearchParams,
-): CatalogPublishedProductListQuery {
+): CatalogPublishedProductListQuery | null {
   const searchValues = [
     searchParams.limit,
     searchParams.offset,
@@ -79,14 +76,17 @@ export function parsePublishedCatalogPageQuery(
     searchParams.category,
     searchParams.color,
     searchParams.size,
+    searchParams.search,
   ];
-  if (searchValues.some(Array.isArray)) return defaultPublishedCatalogQuery;
+  if (searchValues.some(Array.isArray)) return null;
 
   const result = CatalogPublishedProductListQuerySchema.safeParse({
     limit:
       typeof searchParams.limit === "string" ? searchParams.limit : undefined,
     offset:
       typeof searchParams.offset === "string" ? searchParams.offset : undefined,
+    search:
+      typeof searchParams.search === "string" ? searchParams.search : undefined,
     audience:
       typeof searchParams.audience === "string"
         ? searchParams.audience
@@ -99,7 +99,7 @@ export function parsePublishedCatalogPageQuery(
       typeof searchParams.color === "string" ? searchParams.color : undefined,
     size: typeof searchParams.size === "string" ? searchParams.size : undefined,
   });
-  return result.success ? result.data : defaultPublishedCatalogQuery;
+  return result.success ? result.data : null;
 }
 
 export function parseCatalogSizeGuidePageQuery(
@@ -169,6 +169,7 @@ export async function getPublishedProducts(
       limit: String(query.limit),
       offset: String(query.offset),
     });
+    if (query.search) search.set("search", query.search);
     if (query.audience) search.set("audience", query.audience);
     if (query.category) search.set("category", query.category);
     if (query.color) search.set("color", query.color);

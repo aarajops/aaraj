@@ -849,6 +849,20 @@ function sendPublishedProductPage(response, source, url) {
 
   const query = parsed.data;
   const matching = source.filter((product) => {
+    if (
+      query.search &&
+      ![
+        product.name,
+        product.description,
+        product.fit,
+        product.fabricComposition,
+        product.careInstructions,
+      ].some((value) =>
+        normalize(value ?? "").includes(normalize(query.search)),
+      )
+    ) {
+      return false;
+    }
     if (query.audience && product.audience !== query.audience) return false;
     if (
       query.category &&

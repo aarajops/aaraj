@@ -73,6 +73,17 @@ export class CatalogService {
     query: CatalogPublishedProductListQuery,
   ): Promise<CatalogPublishedProductPage> {
     const conditions = [...this.publishedProductEligibilityConditions()];
+    if (query.search) {
+      const searchPattern = `%${escapeLikeWildcards(query.search)}%`;
+      const searchCondition = or(
+        ilike(catalogProduct.name, searchPattern),
+        ilike(catalogProduct.description, searchPattern),
+        ilike(catalogProduct.fit, searchPattern),
+        ilike(catalogProduct.fabricComposition, searchPattern),
+        ilike(catalogProduct.careInstructions, searchPattern),
+      );
+      if (searchCondition) conditions.push(searchCondition);
+    }
     if (query.audience) {
       conditions.push(eq(catalogProduct.audience, query.audience));
     }

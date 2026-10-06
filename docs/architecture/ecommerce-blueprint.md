@@ -210,13 +210,13 @@ Use these state rules: a `HELD` reservation blocks availability while payment is
 
 The ordering process manager persists cross-module progress and uses stable commands when calling Inventory. Add an owner-local outbox/inbox only when the checkout/payment workflow introduces durable asynchronous work; Redis TTLs, locks, and cached stock must never decide whether a sale is accepted. Qualify retries, duplicate/out-of-order callbacks, expiry races, process failure before/after commit, multi-variant rollback, and simultaneous staff removal/reservation. Measure hot-variant lock wait and pool saturation under a forecasted workload before choosing queues, replicas, partitioning, or other scale mechanisms.
 
-#### 08. Search, faceting, and read projections
+#### 08. Catalog search, faceting, and read projections
 
-Start with `pg_trgm` indexes and a maintained Catalog-owned search document; use Unicode normalization, Bangla/English names and aliases, SKU exact matches, and explicit ranking. Use `simple` tokenization or a validated language analyzer for Bangla; do not assume an English stemmer handles it. GIN JSONB indexes support product attributes, with targeted expression indexes for hot filters. Facets include category, brand, typed attributes, quoted price ranges, and a timestamped in-stock projection.
+The initial buyer-facing search is a bounded Catalog query over product name, description, fit, fabric composition, and care instructions. It applies the existing published-product eligibility checks and filters before stable pagination. Match the literal Unicode text stored in those fields with PostgreSQL `ILIKE`, escaping pattern wildcards. This supports substring matching but does not provide transliteration, aliases, typo correction, or relevance ranking. Do not search unpublished variants or expose SKU matching in the storefront.
 
-Catalog consumes Inventory/Pricing events into its own search projection, without joining those schemas. Event version checks prevent stale updates; reindex through owner export APIs and a generation swap. Zero results return spelling suggestions, relaxed filters visibly labeled, or popular category items. Never silently alter a checkout SKU. Search results are advisory; live quote and reservation revalidate price and stock.
+Do not add a search projection, cross-module event consumers, JSONB indexes, or a separate search service for this initial slice. Capture representative buyer queries, including Bangla and English where they occur in the catalog, and inspect PostgreSQL plans against representative data. Add an index such as `pg_trgm` only when measured query plans justify it. Add a maintained Catalog-owned projection or dedicated engine only when corpus size, measured latency, or demonstrated search-quality needs justify the added synchronization and operations costs.
 
-An adapter can move indexing to Meilisearch or Elasticsearch once corpus size, ranking quality, or latency warrants it. Track zero-result rate, Bangla query quality, index lag, and conversion by query; pin the selected engine version only after evaluation.
+Zero-result behavior must preserve all selected filters; never silently relax constraints. Search results are advisory, and checkout revalidates price and stock through their owning modules.
 
 #### 09. Pricing, bundles, flash sales, and cache stampedes
 

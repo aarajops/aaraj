@@ -127,14 +127,17 @@ export type CatalogProductUpdateInput = z.input<
   typeof CatalogProductUpdateSchema
 >;
 
-const OptionalCatalogManagementSearchSchema = z.preprocess(
-  (value) => (value === "" ? undefined : value),
-  z.string().trim().min(1).max(160).optional(),
+export const MAX_CATALOG_SEARCH_LENGTH = 160;
+
+const OptionalCatalogSearchSchema = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().trim().min(1).max(MAX_CATALOG_SEARCH_LENGTH).optional(),
 );
 
 export const CatalogProductListQuerySchema = OffsetPaginationQuerySchema.extend(
   {
-    search: OptionalCatalogManagementSearchSchema,
+    search: OptionalCatalogSearchSchema,
     categoryId: z.union([z.uuid(), z.literal("uncategorized")]).optional(),
     status: z.enum(["draft", "published"]).optional(),
   },
@@ -172,6 +175,7 @@ export const CatalogPublishedProductListQuerySchema = z.strictObject({
     .max(MAX_PUBLIC_CATALOG_PAGE_SIZE)
     .default(DEFAULT_PUBLIC_CATALOG_PAGE_SIZE),
   offset: z.coerce.number().int().min(0).max(MAX_LIST_OFFSET).default(0),
+  search: OptionalCatalogSearchSchema,
   audience: OptionalCatalogAudienceQuerySchema,
   category: OptionalCatalogCategoryQuerySchema,
   color: OptionalCatalogColorQuerySchema,

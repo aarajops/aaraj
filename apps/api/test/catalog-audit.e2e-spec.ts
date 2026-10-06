@@ -111,6 +111,12 @@ describe("catalog and security audit", () => {
       .get("/api/v1/catalog/products?color=Black&color=White")
       .expect(400);
     await request(app.getHttpServer())
+      .get(`/api/v1/catalog/products?search=${"x".repeat(161)}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get("/api/v1/catalog/products?search=shirt&search=tee")
+      .expect(400);
+    await request(app.getHttpServer())
       .get("/api/v1/catalog/products/manage")
       .expect(401);
     await request(app.getHttpServer())
@@ -545,7 +551,12 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
-      .send({ name: "Aaraj City Tee", reason: "Corrected product name" })
+      .send({
+        name: "Aaraj City Tee",
+        fabricComposition: "100% cotton",
+        careInstructions: "ঠান্ডা পানিতে হাতে ধুতে হবে",
+        reason: "Corrected product details",
+      })
       .expect(200);
 
     const publicProduct = await request(app.getHttpServer())
@@ -557,6 +568,7 @@ describe("catalog and security audit", () => {
     expect(publicProduct.body.variants[0]).not.toHaveProperty("price");
     expect(publicProduct.body.variants[0]).not.toHaveProperty("sku");
     expect(publicProduct.body.sizeGuide.rows).toHaveLength(2);
+    expect(publicProduct.body.fabricComposition).toBe("100% cotton");
 
     await request(app.getHttpServer())
       .post("/api/v1/catalog/products")
@@ -623,6 +635,81 @@ describe("catalog and security audit", () => {
         reason: "Test filters against individual variants",
       })
       .expect(201);
+
+    const literalPercentSearch = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "%" })
+      .expect(200);
+    expect(
+      literalPercentSearch.body.products.map(
+        (product: { slug: string }) => product.slug,
+      ),
+    ).toEqual(["aaraj-draft-tee"]);
+
+    const unicodeSearch = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "হাতে ধুতে" })
+      .expect(200);
+    expect(
+      unicodeSearch.body.products.map(
+        (product: { slug: string }) => product.slug,
+      ),
+    ).toEqual(["aaraj-draft-tee"]);
+
+    const escapedUnderscoreSearch = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "Aaraj_" })
+      .expect(200);
+    expect(escapedUnderscoreSearch.body.products).toEqual([]);
+
+    const searchPage = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "aaraj city", limit: 1, offset: 0 })
+      .expect(200);
+    expect(searchPage.body.products).toHaveLength(1);
+    expect(searchPage.body.hasMore).toBe(true);
+    const nextSearchPage = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "aaraj city", limit: 1, offset: 1 })
+      .expect(200);
+    expect(nextSearchPage.body.products).toHaveLength(1);
+    expect(nextSearchPage.body.products[0].id).not.toBe(
+      searchPage.body.products[0].id,
+    );
+
+    const combinedSearchAndFilter = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "aaraj city", audience: "men" })
+      .expect(200);
+    expect(
+      combinedSearchAndFilter.body.products.map(
+        (product: { slug: string }) => product.slug,
+      ),
+    ).toEqual(["aaraj-city-shirt"]);
+
+    const descriptionSearch = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "LOCAL APPAREL" })
+      .expect(200);
+    expect(
+      descriptionSearch.body.products.map(
+        (product: { slug: string }) => product.slug,
+      ),
+    ).toContain("aaraj-draft-tee");
+
+    const fitSearch = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "regular" })
+      .expect(200);
+    expect(
+      fitSearch.body.products.map((product: { slug: string }) => product.slug),
+    ).toContain("aaraj-draft-tee");
+
+    const maximumLengthSearch = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products")
+      .query({ search: "x".repeat(160) })
+      .expect(200);
+    expect(maximumLengthSearch.body.products).toEqual([]);
 
     const unisexTshirts = await request(app.getHttpServer())
       .get("/api/v1/catalog/products?audience=unisex&category=t-shirts")
