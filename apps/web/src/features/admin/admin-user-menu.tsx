@@ -9,9 +9,10 @@ import { authClient } from "@/features/auth/auth-client";
 
 type AdminUserMenuProps = {
   user: { name: string; email: string } | null;
+  onNavigate: () => void;
 };
 
-export function AdminUserMenu({ user }: AdminUserMenuProps) {
+export function AdminUserMenu({ user, onNavigate }: AdminUserMenuProps) {
   const router = useRouter();
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -71,6 +72,7 @@ export function AdminUserMenu({ user }: AdminUserMenuProps) {
 
       if (detailsRef.current) detailsRef.current.open = false;
       setIsOpen(false);
+      onNavigate();
       router.replace("/account");
       router.refresh();
     } catch {
@@ -142,6 +144,11 @@ export function AdminUserMenu({ user }: AdminUserMenuProps) {
             <Link
               className="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm outline-hidden hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
               href="/account"
+              onClick={() => {
+                if (detailsRef.current) detailsRef.current.open = false;
+                setIsOpen(false);
+                onNavigate();
+              }}
             >
               <UserRound aria-hidden="true" className="size-4" />
               Account

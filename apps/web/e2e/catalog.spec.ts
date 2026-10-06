@@ -1,6 +1,70 @@
 import { expect, test } from "@playwright/test";
 import { chooseSelectOption } from "./select";
 
+test("admin sidebar follows permissions and closes after mobile navigation", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await context.addCookies([
+    {
+      name: "aaraj-e2e-role",
+      value: "staff",
+      url: baseURL!,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/catalog");
+  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+
+  const navigation = page.getByRole("navigation", { name: "Administration" });
+  await expect(
+    navigation.getByRole("link", { name: "Categories" }),
+  ).toHaveCount(0);
+  await navigation.getByRole("link", { name: "Size guides" }).click();
+  await expect(page).toHaveURL(/\/admin\/catalog\/size-guides$/);
+  await expect(
+    page.locator('[data-slot="sidebar"][data-mobile="true"]'),
+  ).not.toBeVisible();
+  await page.goto("/admin");
+  await expect(
+    page.getByRole("link", { name: "Manage categories" }),
+  ).toHaveCount(0);
+
+  await context.addCookies([
+    {
+      name: "aaraj-e2e-role",
+      value: "admin",
+      url: baseURL!,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+  await page.reload();
+  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await expect(
+    navigation.getByRole("link", { name: "Categories" }),
+  ).toBeVisible();
+  await navigation.getByRole("link", { name: "Categories" }).click();
+  await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
+  await page.goto("/admin");
+  await expect(
+    page.getByRole("link", { name: "Manage categories" }),
+  ).toBeVisible();
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.keyboard.press("Control+b");
+  await expect(
+    page.locator('[data-slot="sidebar"][data-state="collapsed"]'),
+  ).toHaveCount(1);
+  await page.reload();
+  await expect(
+    page.locator('[data-slot="sidebar"][data-state="collapsed"]'),
+  ).toHaveCount(1);
+});
+
 test("staff manages reusable size guides and apparel products safely", async ({
   page,
   context,

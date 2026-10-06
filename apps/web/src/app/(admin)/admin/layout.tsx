@@ -1,8 +1,12 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { getInitialSession } from "@/features/auth/auth-session";
+import {
+  getInitialAccess,
+  getInitialSession,
+} from "@/features/auth/auth-session";
 import { AdminSidebar } from "@/features/admin/admin-sidebar";
 
 export default async function AdminLayout({
@@ -10,12 +14,17 @@ export default async function AdminLayout({
 }: Readonly<{
   children: ReactNode;
 }>) {
-  const session = await getInitialSession();
+  const [session, access] = await Promise.all([
+    getInitialSession(),
+    getInitialAccess(),
+  ]);
+  const defaultOpen = (await cookies()).get("sidebar_state")?.value !== "false";
 
   return (
     <TooltipProvider>
-      <SidebarProvider>
+      <SidebarProvider defaultOpen={defaultOpen}>
         <AdminSidebar
+          permissions={access?.permissions ?? []}
           user={
             session?.user
               ? { name: session.user.name, email: session.user.email }

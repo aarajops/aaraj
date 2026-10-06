@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { Permission } from "@aaraj/contracts";
 import { LayoutDashboard, Package, Ruler, Store, Tags } from "lucide-react";
 import {
   Sidebar,
@@ -14,30 +15,49 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { AdminUserMenu } from "@/features/admin/admin-user-menu";
 
 const adminLinks = [
-  { href: "/admin", label: "Overview", icon: LayoutDashboard },
-  { href: "/admin/catalog", label: "Products", icon: Package },
+  {
+    href: "/admin",
+    label: "Overview",
+    icon: LayoutDashboard,
+    permission: "catalog.manage",
+  },
+  {
+    href: "/admin/catalog",
+    label: "Products",
+    icon: Package,
+    permission: "catalog.manage",
+  },
   {
     href: "/admin/catalog/categories",
     label: "Categories",
     icon: Tags,
+    permission: "catalog.categories.manage",
   },
   {
     href: "/admin/catalog/size-guides",
     label: "Size guides",
     icon: Ruler,
+    permission: "catalog.manage",
   },
 ] as const;
 
 type AdminSidebarProps = {
   user: { name: string; email: string } | null;
+  permissions: Permission[];
 };
 
-export function AdminSidebar({ user }: AdminSidebarProps) {
+export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
   const pathname = usePathname();
+  const { setOpenMobile } = useSidebar();
+  const availableLinks = adminLinks.filter(({ permission }) =>
+    permissions.includes(permission),
+  );
+  const closeMobileSidebar = () => setOpenMobile(false);
 
   return (
     <Sidebar collapsible="icon">
@@ -46,7 +66,7 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              render={<Link href="/admin" />}
+              render={<Link href="/admin" onClick={closeMobileSidebar} />}
               tooltip="Aaraj administration"
             >
               <span className="flex size-8 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
@@ -64,38 +84,44 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Catalog</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {adminLinks.map(({ href, label, icon: Icon }) => {
-                const isActive = pathname === href;
+        {availableLinks.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Catalog</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <nav aria-label="Administration">
+                <SidebarMenu>
+                  {availableLinks.map(({ href, label, icon: Icon }) => {
+                    const isActive = pathname === href;
 
-                return (
-                  <SidebarMenuItem key={href}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      aria-current={isActive ? "page" : undefined}
-                      render={<Link href={href} />}
-                      tooltip={label}
-                    >
-                      <Icon aria-hidden="true" />
-                      <span className="group-data-[collapsible=icon]:hidden">
-                        {label}
-                      </span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                    return (
+                      <SidebarMenuItem key={href}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          aria-current={isActive ? "page" : undefined}
+                          render={
+                            <Link href={href} onClick={closeMobileSidebar} />
+                          }
+                          tooltip={label}
+                        >
+                          <Icon aria-hidden="true" />
+                          <span className="group-data-[collapsible=icon]:hidden">
+                            {label}
+                          </span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </nav>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  render={<Link href="/" />}
+                  render={<Link href="/" onClick={closeMobileSidebar} />}
                   tooltip="View storefront"
                 >
                   <Store aria-hidden="true" />
@@ -111,7 +137,7 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
 
       <SidebarFooter>
         <SidebarMenu>
-          <AdminUserMenu user={user} />
+          <AdminUserMenu user={user} onNavigate={closeMobileSidebar} />
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>

@@ -109,6 +109,28 @@ const server = createServer(async (request, response) => {
     send(response, 200, null);
     return;
   }
+  if (url.pathname === "/api/access/me" && method === "GET") {
+    const requestedRole = roleFromCookie(request.headers.cookie);
+    if (!requestedRole) {
+      send(response, 401, { statusCode: 401, message: "Unauthorized" });
+      return;
+    }
+
+    const role = requestedRole === "staff-stale" ? "staff" : requestedRole;
+    const permissions = ["access.read_self"];
+    if (["staff", "admin", "superadmin"].includes(role)) {
+      permissions.push("catalog.manage");
+    }
+    if (["admin", "superadmin"].includes(role)) {
+      permissions.push("catalog.categories.manage");
+    }
+    send(response, 200, {
+      userId: "aaraj-e2e-user",
+      roles: [role],
+      permissions,
+    });
+    return;
+  }
 
   if (url.pathname === "/api/catalog/categories" && method === "GET") {
     send(response, 200, {

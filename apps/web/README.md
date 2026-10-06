@@ -7,7 +7,7 @@ The Aaraj storefront and catalog administration UI use the Next.js App Router. T
 ```text
 src/                         Application source code
   app/                       Routes, layouts, and route-specific loading UI
-    (private)/admin/         Catalog administration routes under /admin
+    (admin)/admin/           Catalog administration routes under /admin
     (storefront)/            Public home, product, and account routes
     _components/             App-wide route-independent components
   components/ui/             shadcn/ui components used by the app
@@ -18,7 +18,7 @@ e2e/                         Playwright storefront workflow and test API
 ```
 
 - Keep `src/app/**/page.tsx` focused on route behavior and composing feature code.
-- Parenthesized `(storefront)` and `(private)` groups are omitted from URLs; `/admin` remains a real URL segment.
+- Parenthesized `(storefront)` and `(admin)` groups are omitted from URLs; `/admin` remains a real URL segment.
 - Route groups do not enforce authorization. Admin pages and Nest API operations enforce their specific catalog permissions, including staff access where granted.
 - Keep auth and catalog implementation in their feature folders; only create shared code when more than one feature needs it.
 - Keep API contracts in `@aaraj/contracts`. Server reads use `server-only`; browser auth and catalog API modules use `client-only`.

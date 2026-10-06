@@ -10,7 +10,6 @@ export const metadata: Metadata = {
 
 const setupSteps = [
   {
-    number: "01",
     title: "Build categories",
     description:
       "Create the active category tree first. Products and size guides use active leaf categories.",
@@ -18,7 +17,6 @@ const setupSteps = [
     action: "Manage categories",
   },
   {
-    number: "02",
     title: "Add size guides",
     description:
       "Record the supplier’s size labels and measurements for each category and fit.",
@@ -26,7 +24,6 @@ const setupSteps = [
     action: "Manage size guides",
   },
   {
-    number: "03",
     title: "Configure products",
     description:
       "Create each style, then add its sellable color and size variants, SKU, and BDT price.",
@@ -41,6 +38,11 @@ export default async function AdminOverviewPage() {
   if (!access) redirect("/account");
   if (!access.permissions.includes("catalog.manage")) redirect("/");
 
+  const canManageCategories = access.permissions.includes(
+    "catalog.categories.manage",
+  );
+  const visibleSteps = canManageCategories ? setupSteps : setupSteps.slice(1);
+
   return (
     <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10">
       <div className="mx-auto w-full max-w-6xl">
@@ -51,7 +53,9 @@ export default async function AdminOverviewPage() {
           Catalog overview
         </h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">
-          Prepare the catalog in order: categories, size guides, then products.
+          {canManageCategories
+            ? "Prepare the catalog in order: categories, size guides, then products."
+            : "Set up size guides and products using the available categories."}{" "}
           Review the public catalog after publishing.
         </p>
 
@@ -69,13 +73,13 @@ export default async function AdminOverviewPage() {
           </div>
 
           <ol className="mt-5 grid gap-4 lg:grid-cols-3">
-            {setupSteps.map((step) => (
+            {visibleSteps.map((step, index) => (
               <li
                 className="flex min-h-56 flex-col rounded-xl border border-border bg-card p-5 shadow-sm"
-                key={step.number}
+                key={step.href}
               >
                 <p className="text-sm font-semibold tabular-nums text-primary">
-                  STEP {step.number}
+                  STEP {String(index + 1).padStart(2, "0")}
                 </p>
                 <h3 className="mt-4 text-lg font-semibold">{step.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
