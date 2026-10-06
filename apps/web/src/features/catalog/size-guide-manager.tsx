@@ -24,6 +24,10 @@ import { useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
+  getApiErrorMessage,
+  readApiErrorResponse,
+} from "@/lib/api-error-response";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -171,7 +175,11 @@ export function SizeGuideManager({
         ? await updateCatalogSizeGuide(form.id, payload)
         : await createCatalogSizeGuide(payload);
       if (!response.ok) {
-        setErrorMessage(await readSizeGuideErrorMessage(response));
+        const problem = await readApiErrorResponse(response);
+        setErrorMessage(
+          getApiErrorMessage(problem) ??
+            "The API returned an unreadable error response.",
+        );
         return;
       }
       const result = CatalogSizeGuideSchema.safeParse(await response.json());
@@ -596,22 +604,4 @@ function convertMeasurementUnit(
       ? millimeterHundredths
       : Math.floor((millimeterHundredths * 100 + 127) / 254);
   return `${Math.floor(converted / 1000)}.${String(converted % 1000).padStart(3, "0")}`;
-}
-
-async function readSizeGuideErrorMessage(response: Response): Promise<string> {
-  try {
-    const body: unknown = await response.json();
-    if (typeof body !== "object" || body === null || !("message" in body)) {
-      return "Could not save this size guide.";
-    }
-    if (typeof body.message === "string") return body.message;
-    if (Array.isArray(body.message)) {
-      return body.message
-        .filter((item): item is string => typeof item === "string")
-        .join(" ");
-    }
-    return "Could not save this size guide.";
-  } catch {
-    return "Could not reach the server. Please try again.";
-  }
 }

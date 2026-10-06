@@ -11,6 +11,7 @@ import { AuditModule } from "./platform/audit/audit.module.js";
 import { PlatformAuthorizationModule } from "./platform/authorization/authorization.module.js";
 import { DatabaseModule } from "./platform/database/database.module.js";
 import { RedisModule } from "./platform/redis/redis.module.js";
+import { InventoryModule } from "./inventory/inventory.module.js";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { RedisModule } from "./platform/redis/redis.module.js";
     AuthModule,
     PlatformAuthorizationModule,
     CatalogModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ApiThrottlerGuard }],

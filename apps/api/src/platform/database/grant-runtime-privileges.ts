@@ -3,7 +3,13 @@ import { resolve } from "node:path";
 import { Pool } from "pg";
 import { getPostgresSslOptions } from "./postgres-ssl.js";
 
-const applicationSchemas = ["identity", "audit", "access", "catalog"] as const;
+const applicationSchemas = [
+  "identity",
+  "audit",
+  "access",
+  "catalog",
+  "inventory",
+] as const;
 
 const runtimeTableGrants = [
   ["identity", "user", ["SELECT", "INSERT", "UPDATE"]],
@@ -18,6 +24,8 @@ const runtimeTableGrants = [
   ["catalog", "size_guide", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "size_guide_row", ["SELECT", "INSERT", "DELETE"]],
   ["catalog", "size_guide_measurement", ["SELECT", "INSERT"]],
+  ["inventory", "stock_balance", ["SELECT", "INSERT", "UPDATE"]],
+  ["inventory", "stock_movement", ["SELECT", "INSERT"]],
 ] as const;
 const runtimeTablePrivilegeMap: ReadonlyMap<string, readonly string[]> =
   new Map(
@@ -88,28 +96,28 @@ export async function grantRuntimePrivileges(
      UNION ALL
      SELECT 1
        FROM pg_namespace
-       WHERE nspname IN ('identity', 'audit', 'access', 'catalog')
+       WHERE nspname = ANY($3::text[])
          AND nspowner = $2
      UNION ALL
      SELECT 1
        FROM pg_class c
        JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname IN ('identity', 'audit', 'access', 'catalog')
+       WHERE n.nspname = ANY($3::text[])
          AND c.relowner = $2
      UNION ALL
      SELECT 1
        FROM pg_type t
        JOIN pg_namespace n ON n.oid = t.typnamespace
-       WHERE n.nspname IN ('identity', 'audit', 'access', 'catalog')
+       WHERE n.nspname = ANY($3::text[])
          AND t.typowner = $2
      UNION ALL
      SELECT 1
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
-       WHERE n.nspname IN ('identity', 'audit', 'access', 'catalog')
+       WHERE n.nspname = ANY($3::text[])
          AND p.proowner = $2
      LIMIT 1`,
-    [database, runtime.oid],
+    [database, runtime.oid, [...applicationSchemas]],
   );
   if (ownership.rowCount) {
     throw new Error(

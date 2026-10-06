@@ -18,6 +18,10 @@ import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import {
+  getApiErrorMessage,
+  readApiErrorResponse,
+} from "@/lib/api-error-response";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -97,7 +101,11 @@ export function CategoryManager({
           })
         : await createCatalogCategory(payload);
       if (!response.ok) {
-        setErrorMessage(await readProblem(response));
+        const problem = await readApiErrorResponse(response);
+        setErrorMessage(
+          getApiErrorMessage(problem) ??
+            "The API returned an unreadable error response.",
+        );
         return;
       }
       const result = CatalogCategorySchema.safeParse(await response.json());
@@ -305,23 +313,6 @@ export function CategoryManager({
       </div>
     </main>
   );
-}
-
-async function readProblem(response: Response): Promise<string> {
-  try {
-    const body: unknown = await response.json();
-    if (
-      typeof body === "object" &&
-      body !== null &&
-      "message" in body &&
-      typeof body.message === "string"
-    ) {
-      return body.message;
-    }
-  } catch {
-    // Use the status fallback below for an empty or malformed response.
-  }
-  return `Category change failed (${response.status}).`;
 }
 
 function toCategoryFormState(category: CatalogCategory): CategoryForm {

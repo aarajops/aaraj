@@ -71,6 +71,13 @@
       "when": 1791137714669,
       "tag": "0009_variant_base_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791271448563,
+      "tag": "0010_variant_inventory",
+      "breakpoints": true
     }
   ]
 }

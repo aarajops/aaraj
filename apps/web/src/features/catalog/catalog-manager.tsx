@@ -23,6 +23,10 @@ import {
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
 import { ProductTable } from "@/features/catalog/product-table";
 import { formatBdtInput, parseBdtPrice } from "@/features/catalog/price";
+import {
+  getApiErrorMessage,
+  readApiErrorResponse,
+} from "@/lib/api-error-response";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -65,11 +69,6 @@ interface ProductForm {
   variants: VariantDraft[];
   isPublished: boolean;
   reason: string;
-}
-
-interface ApiProblem {
-  code?: string;
-  message?: string;
 }
 
 const blankForm: ProductForm = {
@@ -126,7 +125,6 @@ export function CatalogManager({
     control,
     register,
     handleSubmit,
-    setError,
     clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<ProductForm>({
@@ -155,15 +153,14 @@ export function CatalogManager({
     setIsRefreshing(true);
     try {
       const response = await fetchManagedProducts(query);
-      if (response.status === 401) {
-        setErrorMessage("Your session expired. Sign in again to continue.");
+      if (!response.ok) {
+        const problem = await readApiErrorResponse(response);
+        setErrorMessage(
+          getApiErrorMessage(problem) ??
+            "The API returned an unreadable error response.",
+        );
         return;
       }
-      if (response.status === 403) {
-        setErrorMessage("Your account does not have catalog permissions.");
-        return;
-      }
-      if (!response.ok) throw new Error("Catalog request failed.");
 
       const result = CatalogProductPageSchema.safeParse(await response.json());
       if (!result.success) throw new Error("Catalog response was invalid.");
@@ -189,13 +186,14 @@ export function CatalogManager({
         limit: 100,
         offset: nextSizeGuideOffset,
       });
-      if (response.status === 401 || response.status === 403) {
+      if (!response.ok) {
+        const problem = await readApiErrorResponse(response);
         setSizeGuideLoadError(
-          "Your session no longer has permission to load size guides.",
+          getApiErrorMessage(problem) ??
+            "The API returned an unreadable error response.",
         );
         return;
       }
-      if (!response.ok) throw new Error("Size guide request failed.");
 
       const result = CatalogSizeGuidePageSchema.safeParse(
         await response.json(),
@@ -295,29 +293,11 @@ export function CatalogManager({
           });
 
       if (!response.ok) {
-        const problem = await readCatalogApiProblem(response);
-        if (response.status === 401) {
-          setErrorMessage("Sign in again to continue; your session expired.");
-        } else if (
-          response.status === 403 &&
-          problem.code !== "RECENT_SIGN_IN_REQUIRED"
-        ) {
-          setErrorMessage("Your account does not have catalog permissions.");
-        } else if (
-          response.status === 409 &&
-          problem.message?.includes("slug")
-        ) {
-          setError("slug", {
-            type: "server",
-            message: "That slug is already in use. Choose another one.",
-          });
-        } else if (problem.code === "RECENT_SIGN_IN_REQUIRED") {
-          setErrorMessage(
-            "Sign in again before saving: sign out, then sign back in to renew your 15-minute confirmation.",
-          );
-        } else {
-          setErrorMessage(problem.message ?? "Could not save this product.");
-        }
+        const problem = await readApiErrorResponse(response);
+        setErrorMessage(
+          getApiErrorMessage(problem) ??
+            "The API returned an unreadable error response.",
+        );
         return;
       }
 
@@ -916,26 +896,4 @@ function withProductSizeGuide(
     return guides;
   }
   return [toSizeGuideOption(product.sizeGuide), ...guides];
-}
-
-async function readCatalogApiProblem(response: Response): Promise<ApiProblem> {
-  try {
-    const body: unknown = await response.json();
-    if (typeof body !== "object" || body === null) return {};
-
-    const code =
-      "code" in body && typeof body.code === "string" ? body.code : undefined;
-    const rawMessage = "message" in body ? body.message : undefined;
-    const message =
-      typeof rawMessage === "string"
-        ? rawMessage
-        : Array.isArray(rawMessage)
-          ? rawMessage
-              .filter((item): item is string => typeof item === "string")
-              .join(" ")
-          : undefined;
-    return { code, message };
-  } catch {
-    return {};
-  }
 }

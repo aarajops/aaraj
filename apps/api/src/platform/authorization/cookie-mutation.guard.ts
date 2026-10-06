@@ -22,16 +22,23 @@ export class CookieMutationGuard implements CanActivate {
         ? undefined
         : "http://localhost:3000");
     if (!trustedOrigin || request.headers.origin !== trustedOrigin) {
-      throw new ForbiddenException("A trusted Origin is required");
+      throw new ForbiddenException(
+        "The request origin could not be verified.",
+        {
+          errorCode: "UNTRUSTED_ORIGIN",
+        },
+      );
     }
     const createdAt = request.session?.session?.createdAt;
     const age = createdAt ? Date.now() - new Date(createdAt).getTime() : NaN;
     // A new password sign-in creates a new session. Session renewal does not reset createdAt.
     if (!Number.isFinite(age) || age < 0 || age > 15 * 60 * 1000) {
-      throw new ForbiddenException({
-        code: "RECENT_SIGN_IN_REQUIRED",
-        message: "Sign in again before this action (within 15 minutes).",
-      });
+      throw new ForbiddenException(
+        "Sign out and sign in again before retrying this action.",
+        {
+          errorCode: "RECENT_SIGN_IN_REQUIRED",
+        },
+      );
     }
     return true;
   }

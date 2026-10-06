@@ -13,6 +13,7 @@ src/                         Application source code
   components/ui/             shadcn/ui components used by the app
   features/auth/             Sign-in UI, Better Auth client, server session read
   features/catalog/          Catalog UI, server queries, browser API client
+  features/inventory/        Staff on-hand stock management
   lib/                       Shared application utilities
 e2e/                         Playwright storefront workflow and test API
 ```
@@ -37,8 +38,9 @@ A fresh database has no business categories or product records. For a new local 
 3. Manage size guides at `/admin/catalog/size-guides` and create a chart at `/admin/catalog/size-guides/create` for the exact category and fit combination. Add the size labels and garment/body measurements from the supplier's chart; choose cm or inches as the input unit.
 4. Manage products at `/admin/catalog` and create a product style at `/admin/catalog/create`. Select its matching category, fit, and size guide, then add one variant for each sellable color/size combination. Give every active variant a unique SKU and a whole-number BDT price; a valid GTIN is optional. Add an audit reason for each write.
 5. Publish only after the product has an audience, active leaf category, matching size guide, at least one active variant, a price for every active variant, and a guide row for every variant size. Verify the listing at `/` and its detail page at `/products/<slug>`.
+6. Record received stock or physical count corrections at `/admin/inventory`. Each adjustment requires a reason and is retry-safe and audited. Checkout reservations are not enabled until the checkout and payment lifecycle is implemented.
 
-Users with `catalog.manage` (staff, admins, and superadmins) can manage products and size guides. Category management additionally requires `catalog.categories.manage` (admin or superadmin). This catalog setup does not configure product images, inventory, cart, checkout, or payments; those capabilities are not implemented yet.
+Users with `catalog.manage` (staff, admins, and superadmins) can manage products and size guides. Category management additionally requires `catalog.categories.manage` (admin or superadmin). Inventory adjustments require `inventory.manage` (staff, admins, and superadmins). Product images, cart, checkout, and payments are not implemented yet.
 
 ## Commands
 

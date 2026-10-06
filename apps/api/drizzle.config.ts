@@ -39,10 +39,11 @@ export default defineConfig({
     "./src/platform/audit/audit-schema.ts",
     "./src/platform/authorization/access-schema.ts",
     "./src/catalog/catalog-schema.ts",
+    "./src/inventory/inventory-schema.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",
-  schemaFilter: ["identity", "audit", "access", "catalog"],
+  schemaFilter: ["identity", "audit", "access", "catalog", "inventory"],
   dbCredentials: {
     host: process.env.POSTGRES_HOST ?? "127.0.0.1",
     port: Number(process.env.POSTGRES_PORT ?? 5432),

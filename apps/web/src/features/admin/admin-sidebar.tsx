@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Permission } from "@aaraj/contracts";
-import { LayoutDashboard, Package, Ruler, Store, Tags } from "lucide-react";
+import {
+  Boxes,
+  LayoutDashboard,
+  Package,
+  Ruler,
+  Store,
+  Tags,
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -46,6 +53,15 @@ const adminLinks = [
   },
 ] as const;
 
+const operationsLinks = [
+  {
+    href: "/admin/inventory",
+    label: "Inventory",
+    icon: Boxes,
+    permission: "inventory.manage",
+  },
+] as const;
+
 type AdminSidebarProps = {
   user: { name: string; email: string } | null;
   permissions: Permission[];
@@ -57,15 +73,21 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
   const availableLinks = adminLinks.filter(({ permission }) =>
     permissions.includes(permission),
   );
+  const availableOperationsLinks = operationsLinks.filter(({ permission }) =>
+    permissions.includes(permission),
+  );
   const activeHref = pathname
-    ? adminLinks.reduce<string | undefined>((active, { href }) => {
-        const matchesRoute =
-          pathname === href || pathname.startsWith(`${href}/`);
+    ? [...adminLinks, ...operationsLinks].reduce<string | undefined>(
+        (active, { href }) => {
+          const matchesRoute =
+            pathname === href || pathname.startsWith(`${href}/`);
 
-        return matchesRoute && (!active || href.length > active.length)
-          ? href
-          : active;
-      }, undefined)
+          return matchesRoute && (!active || href.length > active.length)
+            ? href
+            : active;
+        },
+        undefined,
+      )
     : undefined;
   const closeMobileSidebar = () => setOpenMobile(false);
 
@@ -121,6 +143,41 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
                       </SidebarMenuItem>
                     );
                   })}
+                </SidebarMenu>
+              </nav>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {availableOperationsLinks.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Operations</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <nav aria-label="Operations">
+                <SidebarMenu>
+                  {availableOperationsLinks.map(
+                    ({ href, label, icon: Icon }) => {
+                      const isActive = activeHref === href;
+                      return (
+                        <SidebarMenuItem key={href}>
+                          <SidebarMenuButton
+                            isActive={isActive}
+                            aria-current={
+                              pathname === href ? "page" : undefined
+                            }
+                            render={
+                              <Link href={href} onClick={closeMobileSidebar} />
+                            }
+                            tooltip={label}
+                          >
+                            <Icon aria-hidden="true" />
+                            <span className="group-data-[collapsible=icon]:hidden">
+                              {label}
+                            </span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    },
+                  )}
                 </SidebarMenu>
               </nav>
             </SidebarGroupContent>

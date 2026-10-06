@@ -249,6 +249,11 @@ CREATE TABLE catalog.search_projection_jobs (
   indexed_version bigint NOT NULL DEFAULT 0 CHECK (indexed_version >= 0), last_error_code text
 );
 
+-- SUPERSEDED LAUNCH PROPOSAL: the tables below model warehouses and quarantine,
+-- which conflict with the approved launch policy of one shared pool per
+-- sellable variant and no location model. Do not apply this inventory block.
+-- Use the policy and staged design in ecommerce-blueprint.md instead; introduce
+-- locations or return dispositions only after an explicit operations decision.
 -- INVENTORY: physical_stock is saleable on-hand stock; quarantine is separate.
 CREATE TABLE inventory.warehouses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), code text NOT NULL UNIQUE,
