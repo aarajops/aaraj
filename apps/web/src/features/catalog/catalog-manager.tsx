@@ -381,466 +381,481 @@ export function CatalogManager({
         </div>
 
         <div className="mt-10">
-          {view === "list" && <section aria-labelledby="managed-products-heading">
-            <h2
-              className="text-xl font-semibold"
-              id="managed-products-heading"
-            >
-              Products
-            </h2>
-            <div className="mt-4">
-              <ProductTable
-                products={products}
-                categoryOptions={categoryOptions}
-                query={query}
-                onRefresh={() => void loadProducts()}
-                isRefreshing={isRefreshing}
-                hasMore={hasMore}
-                nextOffset={nextOffset}
-              />
-            </div>
-          </section>}
-
-          {view !== "list" && <Card
-            aria-labelledby="product-form-heading"
-            className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7"
-            role="region"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold" id="product-form-heading">
-                  {view === "edit" ? "Edit product" : "Create a product"}
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Drafts can be incomplete. Publishing requires sellable
-                  variants and a matching size guide.
-                </p>
+          {view === "list" && (
+            <section aria-labelledby="managed-products-heading">
+              <h2
+                className="text-xl font-semibold"
+                id="managed-products-heading"
+              >
+                Products
+              </h2>
+              <div className="mt-4">
+                <ProductTable
+                  products={products}
+                  categoryOptions={categoryOptions}
+                  query={query}
+                  onRefresh={() => void loadProducts()}
+                  isRefreshing={isRefreshing}
+                  hasMore={hasMore}
+                  nextOffset={nextOffset}
+                />
               </div>
-            </div>
+            </section>
+          )}
 
-            <form
-              className="mt-6 space-y-4"
-              onSubmit={handleSubmit(saveProduct)}
+          {view !== "list" && (
+            <Card
+              aria-labelledby="product-form-heading"
+              className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7"
+              role="region"
             >
-              <Field>
-                <FieldLabel htmlFor="product-name">Name</FieldLabel>
-                <Input
-                  autoComplete="off"
-                  className={fieldClassName}
-                  id="product-name"
-                  maxLength={160}
-                  required
-                  {...register("name", { required: true, maxLength: 160 })}
-                />
-              </Field>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2
+                    className="text-xl font-semibold"
+                    id="product-form-heading"
+                  >
+                    {view === "edit" ? "Edit product" : "Create a product"}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Drafts can be incomplete. Publishing requires sellable
+                    variants and a matching size guide.
+                  </p>
+                </div>
+              </div>
 
-              <Field data-invalid={Boolean(slugError)}>
-                <FieldLabel htmlFor="product-slug">Slug</FieldLabel>
-                <Input
-                  autoComplete="off"
-                  aria-describedby={slugError ? "slug-error" : undefined}
-                  aria-invalid={Boolean(slugError)}
-                  className={fieldClassName}
-                  id="product-slug"
-                  maxLength={120}
-                  pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                  required
-                  {...register("slug", {
-                    required: true,
-                    onChange: () => clearErrors("slug"),
-                  })}
-                />
-                {slugError && (
-                  <FieldError id="slug-error">{slugError}</FieldError>
-                )}
-                <FieldDescription>
-                  Use lowercase letters, numbers, and single hyphens.
-                </FieldDescription>
-              </Field>
+              <form
+                className="mt-6 space-y-4"
+                onSubmit={handleSubmit(saveProduct)}
+              >
+                <Field>
+                  <FieldLabel htmlFor="product-name">Name</FieldLabel>
+                  <Input
+                    autoComplete="off"
+                    className={fieldClassName}
+                    id="product-name"
+                    maxLength={160}
+                    required
+                    {...register("name", { required: true, maxLength: 160 })}
+                  />
+                </Field>
 
-              <Field>
-                <FieldLabel htmlFor="product-description">
-                  Description
-                </FieldLabel>
-                <Textarea
-                  className="min-h-24 resize-y bg-background px-3 py-2.5 text-base md:text-base"
-                  id="product-description"
-                  maxLength={5000}
-                  {...register("description")}
-                />
-              </Field>
+                <Field data-invalid={Boolean(slugError)}>
+                  <FieldLabel htmlFor="product-slug">Slug</FieldLabel>
+                  <Input
+                    autoComplete="off"
+                    aria-describedby={slugError ? "slug-error" : undefined}
+                    aria-invalid={Boolean(slugError)}
+                    className={fieldClassName}
+                    id="product-slug"
+                    maxLength={120}
+                    pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                    required
+                    {...register("slug", {
+                      required: true,
+                      onChange: () => clearErrors("slug"),
+                    })}
+                  />
+                  {slugError && (
+                    <FieldError id="slug-error">{slugError}</FieldError>
+                  )}
+                  <FieldDescription>
+                    Use lowercase letters, numbers, and single hyphens.
+                  </FieldDescription>
+                </Field>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="product-description">
+                    Description
+                  </FieldLabel>
+                  <Textarea
+                    className="min-h-24 resize-y bg-background px-3 py-2.5 text-base md:text-base"
+                    id="product-description"
+                    maxLength={5000}
+                    {...register("description")}
+                  />
+                </Field>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel
+                      id="product-audience-label"
+                      htmlFor="product-audience"
+                    >
+                      Audience
+                    </FieldLabel>
+                    <Controller
+                      control={control}
+                      name="audience"
+                      render={({ field }) => (
+                        <Select
+                          items={[
+                            { label: "Choose audience", value: null },
+                            { label: "Men", value: "men" },
+                            { label: "Women", value: "women" },
+                            { label: "Unisex", value: "unisex" },
+                          ]}
+                          name={field.name}
+                          required={!editingId || isPublished}
+                          value={field.value || null}
+                          onValueChange={(value) =>
+                            field.onChange(
+                              typeof value === "string" ? value : "",
+                            )
+                          }
+                        >
+                          <SelectTrigger
+                            id="product-audience"
+                            aria-labelledby="product-audience-label"
+                            ref={field.ref}
+                            onBlur={field.onBlur}
+                          >
+                            <SelectValue placeholder="Choose audience" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={null}>
+                              Choose audience
+                            </SelectItem>
+                            <SelectItem value="men">Men</SelectItem>
+                            <SelectItem value="women">Women</SelectItem>
+                            <SelectItem value="unisex">Unisex</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </Field>
+                  <Controller
+                    control={control}
+                    name="categoryId"
+                    render={({ field }) => (
+                      <CatalogCategorySelect
+                        id="product-category"
+                        label="Product category"
+                        required={isPublished}
+                        value={field.value}
+                        name={field.name}
+                        triggerRef={field.ref}
+                        onBlur={field.onBlur}
+                        onChange={field.onChange}
+                      />
+                    )}
+                  />
+                </div>
+
+                <label
+                  className="block space-y-2 text-sm font-medium"
+                  htmlFor="product-fit"
+                >
+                  Fit{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional, for example Regular)
+                  </span>
+                  <Input
+                    className={fieldClassName}
+                    id="product-fit"
+                    maxLength={80}
+                    {...register("fit")}
+                  />
+                </label>
+
+                <label
+                  className="block space-y-2 text-sm font-medium"
+                  htmlFor="product-fabric"
+                >
+                  Fabric composition{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                  <Input
+                    className={fieldClassName}
+                    id="product-fabric"
+                    maxLength={1000}
+                    {...register("fabricComposition")}
+                  />
+                </label>
+
+                <label
+                  className="block space-y-2 text-sm font-medium"
+                  htmlFor="product-care"
+                >
+                  Care instructions{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                  <Textarea
+                    className="min-h-20 resize-y bg-background px-3 py-2.5 text-base md:text-base"
+                    id="product-care"
+                    maxLength={2000}
+                    {...register("careInstructions")}
+                  />
+                </label>
+
+                <section
+                  aria-labelledby="product-variants-heading"
+                  className="space-y-3 rounded-xl border border-border p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3
+                        className="font-semibold"
+                        id="product-variants-heading"
+                      >
+                        Color and size variants
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Each row is one sellable color and size with its own
+                        SKU.
+                      </p>
+                    </div>
+                    <Button
+                      className="h-auto px-3 py-2"
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        appendVariant({
+                          sku: "",
+                          color: "",
+                          sizeLabel: "",
+                          priceBdt: "",
+                          gtin: "",
+                        })
+                      }
+                    >
+                      Add variant
+                    </Button>
+                  </div>
+                  {variantFields.map((variant, index) => (
+                    <fieldset
+                      className="grid gap-3 rounded-lg bg-background/70 p-3 sm:grid-cols-2"
+                      key={variant.id}
+                    >
+                      <legend className="sr-only">Variant {index + 1}</legend>
+                      <label className="space-y-1 text-sm">
+                        SKU
+                        <Input
+                          aria-label={`Variant ${index + 1} SKU`}
+                          className={fieldClassName}
+                          maxLength={100}
+                          required
+                          {...register(`variants.${index}.sku` as const, {
+                            required: true,
+                          })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        Color
+                        <Input
+                          aria-label={`Variant ${index + 1} color`}
+                          className={fieldClassName}
+                          maxLength={80}
+                          required
+                          {...register(`variants.${index}.color` as const, {
+                            required: true,
+                          })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        Size
+                        <Input
+                          aria-label={`Variant ${index + 1} size`}
+                          className={fieldClassName}
+                          maxLength={40}
+                          required
+                          {...register(`variants.${index}.sizeLabel` as const, {
+                            required: true,
+                          })}
+                        />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        Price (BDT)
+                        <Input
+                          aria-label={`Variant ${index + 1} price in BDT`}
+                          className={fieldClassName}
+                          inputMode="numeric"
+                          maxLength={10}
+                          placeholder="1999"
+                          {...register(`variants.${index}.priceBdt` as const)}
+                        />
+                        <span className="block text-xs text-muted-foreground">
+                          Enter whole BDT only. Use 0 for a free product.
+                          Required to publish.
+                        </span>
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        GTIN{" "}
+                        <span className="font-normal text-muted-foreground">
+                          (optional)
+                        </span>
+                        <Input
+                          aria-label={`Variant ${index + 1} GTIN`}
+                          className={fieldClassName}
+                          inputMode="numeric"
+                          maxLength={14}
+                          {...register(`variants.${index}.gtin` as const)}
+                        />
+                      </label>
+                      <Button
+                        className="h-auto justify-self-start px-2 py-1 text-sm text-destructive"
+                        type="button"
+                        variant="ghost"
+                        onClick={() => removeVariant(index)}
+                      >
+                        Remove variant
+                      </Button>
+                    </fieldset>
+                  ))}
+                  {variantFields.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No variants added. Add them before publishing.
+                    </p>
+                  )}
+                </section>
+
                 <Field>
                   <FieldLabel
-                    id="product-audience-label"
-                    htmlFor="product-audience"
+                    id="product-size-guide-label"
+                    htmlFor="product-size-guide"
                   >
-                    Audience
+                    Reusable size guide
                   </FieldLabel>
                   <Controller
                     control={control}
-                    name="audience"
+                    name="sizeGuideId"
                     render={({ field }) => (
                       <Select
                         items={[
-                          { label: "Choose audience", value: null },
-                          { label: "Men", value: "men" },
-                          { label: "Women", value: "women" },
-                          { label: "Unisex", value: "unisex" },
+                          { label: "No size guide assigned", value: null },
+                          ...compatibleGuides.map((guide) => ({
+                            label: `${guide.name} · ${guide.measurementBasis} measurements · ${guide.sizeLabels.join(", ")}`,
+                            value: guide.id,
+                          })),
                         ]}
                         name={field.name}
-                        required={!editingId || isPublished}
                         value={field.value || null}
                         onValueChange={(value) =>
                           field.onChange(typeof value === "string" ? value : "")
                         }
                       >
                         <SelectTrigger
-                          id="product-audience"
-                          aria-labelledby="product-audience-label"
+                          id="product-size-guide"
+                          aria-labelledby="product-size-guide-label"
                           ref={field.ref}
                           onBlur={field.onBlur}
                         >
-                          <SelectValue placeholder="Choose audience" />
+                          <SelectValue placeholder="No size guide assigned" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={null}>Choose audience</SelectItem>
-                          <SelectItem value="men">Men</SelectItem>
-                          <SelectItem value="women">Women</SelectItem>
-                          <SelectItem value="unisex">Unisex</SelectItem>
+                          <SelectItem value={null}>
+                            No size guide assigned
+                          </SelectItem>
+                          {compatibleGuides.map((guide) => (
+                            <SelectItem key={guide.id} value={guide.id}>
+                              {guide.name} · {guide.measurementBasis}{" "}
+                              measurements · {guide.sizeLabels.join(", ")}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     )}
                   />
-                </Field>
-                <Controller
-                  control={control}
-                  name="categoryId"
-                  render={({ field }) => (
-                    <CatalogCategorySelect
-                      id="product-category"
-                      label="Product category"
-                      required={isPublished}
-                      value={field.value}
-                      name={field.name}
-                      triggerRef={field.ref}
-                      onBlur={field.onBlur}
-                      onChange={field.onChange}
-                    />
-                  )}
-                />
-              </div>
-
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="product-fit"
-              >
-                Fit{" "}
-                <span className="font-normal text-muted-foreground">
-                  (optional, for example Regular)
-                </span>
-                <Input
-                  className={fieldClassName}
-                  id="product-fit"
-                  maxLength={80}
-                  {...register("fit")}
-                />
-              </label>
-
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="product-fabric"
-              >
-                Fabric composition{" "}
-                <span className="font-normal text-muted-foreground">
-                  (optional)
-                </span>
-                <Input
-                  className={fieldClassName}
-                  id="product-fabric"
-                  maxLength={1000}
-                  {...register("fabricComposition")}
-                />
-              </label>
-
-              <label
-                className="block space-y-2 text-sm font-medium"
-                htmlFor="product-care"
-              >
-                Care instructions{" "}
-                <span className="font-normal text-muted-foreground">
-                  (optional)
-                </span>
-                <Textarea
-                  className="min-h-20 resize-y bg-background px-3 py-2.5 text-base md:text-base"
-                  id="product-care"
-                  maxLength={2000}
-                  {...register("careInstructions")}
-                />
-              </label>
-
-              <section
-                aria-labelledby="product-variants-heading"
-                className="space-y-3 rounded-xl border border-border p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold" id="product-variants-heading">
-                      Color and size variants
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Each row is one sellable color and size with its own SKU.
-                    </p>
-                  </div>
-                  <Button
-                    className="h-auto px-3 py-2"
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      appendVariant({
-                        sku: "",
-                        color: "",
-                        sizeLabel: "",
-                        priceBdt: "",
-                        gtin: "",
-                      })
-                    }
-                  >
-                    Add variant
-                  </Button>
-                </div>
-                {variantFields.map((variant, index) => (
-                  <fieldset
-                    className="grid gap-3 rounded-lg bg-background/70 p-3 sm:grid-cols-2"
-                    key={variant.id}
-                  >
-                    <legend className="sr-only">Variant {index + 1}</legend>
-                    <label className="space-y-1 text-sm">
-                      SKU
-                      <Input
-                        aria-label={`Variant ${index + 1} SKU`}
-                        className={fieldClassName}
-                        maxLength={100}
-                        required
-                        {...register(`variants.${index}.sku` as const, {
-                          required: true,
-                        })}
-                      />
-                    </label>
-                    <label className="space-y-1 text-sm">
-                      Color
-                      <Input
-                        aria-label={`Variant ${index + 1} color`}
-                        className={fieldClassName}
-                        maxLength={80}
-                        required
-                        {...register(`variants.${index}.color` as const, {
-                          required: true,
-                        })}
-                      />
-                    </label>
-                    <label className="space-y-1 text-sm">
-                      Size
-                      <Input
-                        aria-label={`Variant ${index + 1} size`}
-                        className={fieldClassName}
-                        maxLength={40}
-                        required
-                        {...register(`variants.${index}.sizeLabel` as const, {
-                          required: true,
-                        })}
-                      />
-                    </label>
-                    <label className="space-y-1 text-sm">
-                      Price (BDT)
-                      <Input
-                        aria-label={`Variant ${index + 1} price in BDT`}
-                        className={fieldClassName}
-                        inputMode="numeric"
-                        maxLength={10}
-                        placeholder="1999"
-                        {...register(`variants.${index}.priceBdt` as const)}
-                      />
-                      <span className="block text-xs text-muted-foreground">
-                        Enter whole BDT only. Use 0 for a free product. Required
-                        to publish.
-                      </span>
-                    </label>
-                    <label className="space-y-1 text-sm">
-                      GTIN{" "}
-                      <span className="font-normal text-muted-foreground">
-                        (optional)
-                      </span>
-                      <Input
-                        aria-label={`Variant ${index + 1} GTIN`}
-                        className={fieldClassName}
-                        inputMode="numeric"
-                        maxLength={14}
-                        {...register(`variants.${index}.gtin` as const)}
-                      />
-                    </label>
-                    <Button
-                      className="h-auto justify-self-start px-2 py-1 text-sm text-destructive"
-                      type="button"
-                      variant="ghost"
-                      onClick={() => removeVariant(index)}
-                    >
-                      Remove variant
-                    </Button>
-                  </fieldset>
-                ))}
-                {variantFields.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    No variants added. Add them before publishing.
-                  </p>
-                )}
-              </section>
-
-              <Field>
-                <FieldLabel
-                  id="product-size-guide-label"
-                  htmlFor="product-size-guide"
-                >
-                  Reusable size guide
-                </FieldLabel>
-                <Controller
-                  control={control}
-                  name="sizeGuideId"
-                  render={({ field }) => (
-                    <Select
-                      items={[
-                        { label: "No size guide assigned", value: null },
-                        ...compatibleGuides.map((guide) => ({
-                          label: `${guide.name} · ${guide.measurementBasis} measurements · ${guide.sizeLabels.join(", ")}`,
-                          value: guide.id,
-                        })),
-                      ]}
-                      name={field.name}
-                      value={field.value || null}
-                      onValueChange={(value) =>
-                        field.onChange(typeof value === "string" ? value : "")
-                      }
-                    >
-                      <SelectTrigger
-                        id="product-size-guide"
-                        aria-labelledby="product-size-guide-label"
-                        ref={field.ref}
-                        onBlur={field.onBlur}
-                      >
-                        <SelectValue placeholder="No size guide assigned" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={null}>
-                          No size guide assigned
-                        </SelectItem>
-                        {compatibleGuides.map((guide) => (
-                          <SelectItem key={guide.id} value={guide.id}>
-                            {guide.name} · {guide.measurementBasis} measurements
-                            · {guide.sizeLabels.join(", ")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                {categoryId && compatibleGuides.length === 0 && (
-                  <FieldDescription>
-                    No matching size guide is available.{" "}
-                    <Link
-                      className="text-primary underline"
-                      href="/admin/catalog/size-guides"
-                    >
-                      Create one
-                    </Link>
-                    .
-                  </FieldDescription>
-                )}
-                {sizeGuideId &&
-                  compatibleGuides.some(
-                    (guide) => guide.id === sizeGuideId,
-                  ) && (
+                  {categoryId && compatibleGuides.length === 0 && (
                     <FieldDescription>
-                      Required for published clothing and used beside the size
-                      selector on product details.
+                      No matching size guide is available.{" "}
+                      <Link
+                        className="text-primary underline"
+                        href="/admin/catalog/size-guides"
+                      >
+                        Create one
+                      </Link>
+                      .
                     </FieldDescription>
                   )}
-                {hasMoreSizeGuides && nextSizeGuideOffset !== null && (
-                  <Button
-                    className="h-auto px-2 py-1 text-sm text-primary"
-                    disabled={isLoadingSizeGuides}
-                    type="button"
-                    variant="ghost"
-                    onClick={() => void loadMoreSizeGuides()}
-                  >
-                    {isLoadingSizeGuides
-                      ? "Loading size guides…"
-                      : "Load 100 more size guides"}
-                  </Button>
-                )}
-                {sizeGuideLoadError && (
-                  <FieldError>{sizeGuideLoadError}</FieldError>
-                )}
-              </Field>
-
-              <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
-                <input
-                  aria-label="Published on the storefront"
-                  className="mt-0.5 accent-primary"
-                  type="checkbox"
-                  {...register("isPublished")}
-                />
-                <span>
-                  <span className="block font-medium">
-                    Published on the storefront
-                  </span>
-                  <span className="mt-1 block text-muted-foreground">
-                    Only complete products with matching variants and a size
-                    guide can be published.
-                  </span>
-                </span>
-              </label>
-
-              <Field>
-                <FieldLabel htmlFor="audit-reason">Audit reason</FieldLabel>
-                <Input
-                  className={fieldClassName}
-                  id="audit-reason"
-                  maxLength={500}
-                  minLength={3}
-                  required
-                  {...register("reason", { required: true, minLength: 3 })}
-                />
-              </Field>
-
-              {errorMessage && (
-                <p
-                  className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-                  role="alert"
-                >
-                  {errorMessage}
-                  {errorMessage.startsWith("Sign in again") && (
-                    <Link className="ml-1 underline" href="/account">
-                      Go to your account
-                    </Link>
+                  {sizeGuideId &&
+                    compatibleGuides.some(
+                      (guide) => guide.id === sizeGuideId,
+                    ) && (
+                      <FieldDescription>
+                        Required for published clothing and used beside the size
+                        selector on product details.
+                      </FieldDescription>
+                    )}
+                  {hasMoreSizeGuides && nextSizeGuideOffset !== null && (
+                    <Button
+                      className="h-auto px-2 py-1 text-sm text-primary"
+                      disabled={isLoadingSizeGuides}
+                      type="button"
+                      variant="ghost"
+                      onClick={() => void loadMoreSizeGuides()}
+                    >
+                      {isLoadingSizeGuides
+                        ? "Loading size guides…"
+                        : "Load 100 more size guides"}
+                    </Button>
                   )}
-                </p>
-              )}
-              <Button
-                className="h-auto w-full px-4 py-3 text-base font-semibold"
-                disabled={isSubmitting}
-                type="submit"
-              >
-                {isSubmitting
-                  ? "Saving…"
-                  : editingId
-                    ? "Save changes"
-                    : isPublished
-                      ? "Create and publish"
-                      : "Create draft"}
-              </Button>
-            </form>
-          </Card>}
+                  {sizeGuideLoadError && (
+                    <FieldError>{sizeGuideLoadError}</FieldError>
+                  )}
+                </Field>
+
+                <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
+                  <input
+                    aria-label="Published on the storefront"
+                    className="mt-0.5 accent-primary"
+                    type="checkbox"
+                    {...register("isPublished")}
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      Published on the storefront
+                    </span>
+                    <span className="mt-1 block text-muted-foreground">
+                      Only complete products with matching variants and a size
+                      guide can be published.
+                    </span>
+                  </span>
+                </label>
+
+                <Field>
+                  <FieldLabel htmlFor="audit-reason">Audit reason</FieldLabel>
+                  <Input
+                    className={fieldClassName}
+                    id="audit-reason"
+                    maxLength={500}
+                    minLength={3}
+                    required
+                    {...register("reason", { required: true, minLength: 3 })}
+                  />
+                </Field>
+
+                {errorMessage && (
+                  <p
+                    className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                    role="alert"
+                  >
+                    {errorMessage}
+                    {errorMessage.startsWith("Sign in again") && (
+                      <Link className="ml-1 underline" href="/account">
+                        Go to your account
+                      </Link>
+                    )}
+                  </p>
+                )}
+                <Button
+                  className="h-auto w-full px-4 py-3 text-base font-semibold"
+                  disabled={isSubmitting}
+                  type="submit"
+                >
+                  {isSubmitting
+                    ? "Saving…"
+                    : editingId
+                      ? "Save changes"
+                      : isPublished
+                        ? "Create and publish"
+                        : "Create draft"}
+                </Button>
+              </form>
+            </Card>
+          )}
         </div>
       </div>
     </main>

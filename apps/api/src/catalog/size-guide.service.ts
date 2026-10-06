@@ -15,7 +15,17 @@ import type {
   CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
 import { MAX_LIST_OFFSET } from "@aaraj/contracts";
-import { and, asc, desc, eq, exists, ilike, inArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  ilike,
+  inArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AccessPrincipal } from "../platform/authorization/permissions.service.js";

@@ -243,318 +243,330 @@ export function SizeGuideManager({
         </div>
 
         <div className="mt-10">
-          {view === "list" && <section aria-labelledby="size-guide-list-heading">
-            <h2 className="text-xl font-semibold" id="size-guide-list-heading">
-              Reusable guides
-            </h2>
-            <div className="mt-4">
-              <SizeGuideTable
-                guides={guides}
-                categoryOptions={categoryOptions}
-                query={query}
-                onRefresh={() => router.refresh()}
-                hasMore={hasMore}
-                nextOffset={nextOffset}
-              />
-            </div>
-          </section>}
-
-          {view !== "list" && <Card
-            aria-labelledby="guide-form-heading"
-            className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7"
-            role="region"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold" id="guide-form-heading">
-                  {view === "edit" ? "Edit size guide" : "Create a size guide"}
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Measurements are stored once in millimetres and shown in cm
-                  and inches.
-                </p>
-              </div>
-              <Link
-                className="text-sm text-primary hover:text-primary/80"
-                href="/admin/catalog/size-guides"
+          {view === "list" && (
+            <section aria-labelledby="size-guide-list-heading">
+              <h2
+                className="text-xl font-semibold"
+                id="size-guide-list-heading"
               >
-                Cancel
-              </Link>
-            </div>
+                Reusable guides
+              </h2>
+              <div className="mt-4">
+                <SizeGuideTable
+                  guides={guides}
+                  categoryOptions={categoryOptions}
+                  query={query}
+                  onRefresh={() => router.refresh()}
+                  hasMore={hasMore}
+                  nextOffset={nextOffset}
+                />
+              </div>
+            </section>
+          )}
 
-            <form className="mt-6 space-y-4" onSubmit={handleSubmit(saveGuide)}>
-              <Field>
-                <FieldLabel htmlFor="guide-name">Guide name</FieldLabel>
-                <Input
-                  className={inputClassName}
-                  id="guide-name"
-                  maxLength={120}
-                  required
-                  {...register("name", { required: true, maxLength: 120 })}
-                />
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Controller
-                  control={control}
-                  name="categoryId"
-                  render={({ field }) => (
-                    <CatalogCategorySelect
-                      id="guide-category"
-                      label="Product category"
-                      required
-                      value={field.value}
-                      name={field.name}
-                      triggerRef={field.ref}
-                      onBlur={field.onBlur}
-                      onChange={field.onChange}
-                    />
-                  )}
-                />
+          {view !== "list" && (
+            <Card
+              aria-labelledby="guide-form-heading"
+              className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7"
+              role="region"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold" id="guide-form-heading">
+                    {view === "edit"
+                      ? "Edit size guide"
+                      : "Create a size guide"}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Measurements are stored once in millimetres and shown in cm
+                    and inches.
+                  </p>
+                </div>
+                <Link
+                  className="text-sm text-primary hover:text-primary/80"
+                  href="/admin/catalog/size-guides"
+                >
+                  Cancel
+                </Link>
+              </div>
+
+              <form
+                className="mt-6 space-y-4"
+                onSubmit={handleSubmit(saveGuide)}
+              >
                 <Field>
-                  <FieldLabel htmlFor="guide-fit">
-                    Fit{" "}
-                    <span className="font-normal text-muted-foreground">
-                      (optional)
-                    </span>
+                  <FieldLabel htmlFor="guide-name">Guide name</FieldLabel>
+                  <Input
+                    className={inputClassName}
+                    id="guide-name"
+                    maxLength={120}
+                    required
+                    {...register("name", { required: true, maxLength: 120 })}
+                  />
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Controller
+                    control={control}
+                    name="categoryId"
+                    render={({ field }) => (
+                      <CatalogCategorySelect
+                        id="guide-category"
+                        label="Product category"
+                        required
+                        value={field.value}
+                        name={field.name}
+                        triggerRef={field.ref}
+                        onBlur={field.onBlur}
+                        onChange={field.onChange}
+                      />
+                    )}
+                  />
+                  <Field>
+                    <FieldLabel htmlFor="guide-fit">
+                      Fit{" "}
+                      <span className="font-normal text-muted-foreground">
+                        (optional)
+                      </span>
+                    </FieldLabel>
+                    <Input
+                      className={inputClassName}
+                      id="guide-fit"
+                      maxLength={80}
+                      {...register("fit")}
+                    />
+                  </Field>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel
+                      id="measurement-basis-label"
+                      htmlFor="measurement-basis"
+                    >
+                      Measurement basis
+                    </FieldLabel>
+                    <Controller
+                      control={control}
+                      name="measurementBasis"
+                      render={({ field }) => (
+                        <Select
+                          items={[
+                            { label: "Garment measurements", value: "garment" },
+                            { label: "Body measurements", value: "body" },
+                          ]}
+                          name={field.name}
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <SelectTrigger
+                            id="measurement-basis"
+                            aria-labelledby="measurement-basis-label"
+                            ref={field.ref}
+                            onBlur={field.onBlur}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="garment">
+                              Garment measurements
+                            </SelectItem>
+                            <SelectItem value="body">
+                              Body measurements
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel
+                      id="measurement-unit-label"
+                      htmlFor="measurement-unit"
+                    >
+                      Enter measurements in
+                    </FieldLabel>
+                    <Controller
+                      control={control}
+                      name="inputUnit"
+                      render={({ field }) => (
+                        <Select
+                          items={[
+                            { label: "Centimetres (cm)", value: "cm" },
+                            { label: "Inches (in)", value: "in" },
+                          ]}
+                          name={field.name}
+                          value={field.value}
+                          onValueChange={(value) =>
+                            changeInputUnit(
+                              String(value) as GuideForm["inputUnit"],
+                              field.onChange,
+                            )
+                          }
+                        >
+                          <SelectTrigger
+                            id="measurement-unit"
+                            aria-labelledby="measurement-unit-label"
+                            ref={field.ref}
+                            onBlur={field.onBlur}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cm">Centimetres (cm)</SelectItem>
+                            <SelectItem value="in">Inches (in)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </Field>
+                </div>
+
+                <fieldset className="space-y-2 rounded-xl border border-border p-4">
+                  <legend className="px-1 text-sm font-medium">
+                    Measurements included
+                  </legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {keys.map((key) => (
+                      <label
+                        className="flex items-center gap-2 text-sm"
+                        key={key}
+                      >
+                        <input
+                          type="checkbox"
+                          value={key}
+                          {...register("keys", {
+                            onChange: () => clearKeyValues(key),
+                          })}
+                        />
+                        {labels[key]}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
+                <section
+                  aria-labelledby="guide-sizes-heading"
+                  className="space-y-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="font-semibold" id="guide-sizes-heading">
+                      Size rows
+                    </h3>
+                    <Button
+                      className="h-auto px-3 py-2"
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        appendRow({
+                          sizeLabel: "",
+                          values: Object.fromEntries(
+                            selectedKeys.map((key) => [key, ""]),
+                          ),
+                        })
+                      }
+                    >
+                      Add size
+                    </Button>
+                  </div>
+                  {rowFields.map((row, index) => (
+                    <fieldset
+                      className="space-y-3 rounded-xl border border-border bg-background/70 p-4"
+                      key={row.id}
+                    >
+                      <legend className="sr-only">Size row {index + 1}</legend>
+                      <label
+                        className="block space-y-1 text-sm font-medium"
+                        htmlFor={`size-label-${index}`}
+                      >
+                        Size label
+                        <Input
+                          className={inputClassName}
+                          id={`size-label-${index}`}
+                          maxLength={40}
+                          required
+                          {...register(`rows.${index}.sizeLabel` as const, {
+                            required: true,
+                          })}
+                          placeholder="Example: M or One Size"
+                        />
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {selectedKeys.map((key) => (
+                          <label
+                            className="block space-y-1 text-sm"
+                            htmlFor={`size-${index}-${key}`}
+                            key={key}
+                          >
+                            {labels[key]} ({inputUnit})
+                            <Input
+                              className={inputClassName}
+                              id={`size-${index}-${key}`}
+                              inputMode="decimal"
+                              max="9999.999"
+                              min="0.001"
+                              required
+                              step="0.001"
+                              type="number"
+                              {...register(
+                                `rows.${index}.values.${key}` as const,
+                                { required: true },
+                              )}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <Button
+                        className="h-auto px-2 py-1 text-sm text-destructive"
+                        type="button"
+                        variant="ghost"
+                        onClick={() => removeRow(index)}
+                      >
+                        Remove size
+                      </Button>
+                    </fieldset>
+                  ))}
+                  {rowFields.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Add each size sold for this guide. “One Size” is a valid
+                      label.
+                    </p>
+                  )}
+                </section>
+
+                <Field>
+                  <FieldLabel htmlFor="guide-audit-reason">
+                    Audit reason
                   </FieldLabel>
                   <Input
                     className={inputClassName}
-                    id="guide-fit"
-                    maxLength={80}
-                    {...register("fit")}
+                    id="guide-audit-reason"
+                    maxLength={500}
+                    minLength={3}
+                    required
+                    {...register("reason", { required: true, minLength: 3 })}
                   />
                 </Field>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel
-                    id="measurement-basis-label"
-                    htmlFor="measurement-basis"
+                {errorMessage && (
+                  <p
+                    className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                    role="alert"
                   >
-                    Measurement basis
-                  </FieldLabel>
-                  <Controller
-                    control={control}
-                    name="measurementBasis"
-                    render={({ field }) => (
-                      <Select
-                        items={[
-                          { label: "Garment measurements", value: "garment" },
-                          { label: "Body measurements", value: "body" },
-                        ]}
-                        name={field.name}
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <SelectTrigger
-                          id="measurement-basis"
-                          aria-labelledby="measurement-basis-label"
-                          ref={field.ref}
-                          onBlur={field.onBlur}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="garment">
-                            Garment measurements
-                          </SelectItem>
-                          <SelectItem value="body">
-                            Body measurements
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel
-                    id="measurement-unit-label"
-                    htmlFor="measurement-unit"
-                  >
-                    Enter measurements in
-                  </FieldLabel>
-                  <Controller
-                    control={control}
-                    name="inputUnit"
-                    render={({ field }) => (
-                      <Select
-                        items={[
-                          { label: "Centimetres (cm)", value: "cm" },
-                          { label: "Inches (in)", value: "in" },
-                        ]}
-                        name={field.name}
-                        value={field.value}
-                        onValueChange={(value) =>
-                          changeInputUnit(
-                            String(value) as GuideForm["inputUnit"],
-                            field.onChange,
-                          )
-                        }
-                      >
-                        <SelectTrigger
-                          id="measurement-unit"
-                          aria-labelledby="measurement-unit-label"
-                          ref={field.ref}
-                          onBlur={field.onBlur}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cm">Centimetres (cm)</SelectItem>
-                          <SelectItem value="in">Inches (in)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </Field>
-              </div>
-
-              <fieldset className="space-y-2 rounded-xl border border-border p-4">
-                <legend className="px-1 text-sm font-medium">
-                  Measurements included
-                </legend>
-                <div className="grid grid-cols-2 gap-2">
-                  {keys.map((key) => (
-                    <label
-                      className="flex items-center gap-2 text-sm"
-                      key={key}
-                    >
-                      <input
-                        type="checkbox"
-                        value={key}
-                        {...register("keys", {
-                          onChange: () => clearKeyValues(key),
-                        })}
-                      />
-                      {labels[key]}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              <section
-                aria-labelledby="guide-sizes-heading"
-                className="space-y-3"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="font-semibold" id="guide-sizes-heading">
-                    Size rows
-                  </h3>
-                  <Button
-                    className="h-auto px-3 py-2"
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      appendRow({
-                        sizeLabel: "",
-                        values: Object.fromEntries(
-                          selectedKeys.map((key) => [key, ""]),
-                        ),
-                      })
-                    }
-                  >
-                    Add size
-                  </Button>
-                </div>
-                {rowFields.map((row, index) => (
-                  <fieldset
-                    className="space-y-3 rounded-xl border border-border bg-background/70 p-4"
-                    key={row.id}
-                  >
-                    <legend className="sr-only">Size row {index + 1}</legend>
-                    <label
-                      className="block space-y-1 text-sm font-medium"
-                      htmlFor={`size-label-${index}`}
-                    >
-                      Size label
-                      <Input
-                        className={inputClassName}
-                        id={`size-label-${index}`}
-                        maxLength={40}
-                        required
-                        {...register(`rows.${index}.sizeLabel` as const, {
-                          required: true,
-                        })}
-                        placeholder="Example: M or One Size"
-                      />
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {selectedKeys.map((key) => (
-                        <label
-                          className="block space-y-1 text-sm"
-                          htmlFor={`size-${index}-${key}`}
-                          key={key}
-                        >
-                          {labels[key]} ({inputUnit})
-                          <Input
-                            className={inputClassName}
-                            id={`size-${index}-${key}`}
-                            inputMode="decimal"
-                            max="9999.999"
-                            min="0.001"
-                            required
-                            step="0.001"
-                            type="number"
-                            {...register(
-                              `rows.${index}.values.${key}` as const,
-                              { required: true },
-                            )}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <Button
-                      className="h-auto px-2 py-1 text-sm text-destructive"
-                      type="button"
-                      variant="ghost"
-                      onClick={() => removeRow(index)}
-                    >
-                      Remove size
-                    </Button>
-                  </fieldset>
-                ))}
-                {rowFields.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Add each size sold for this guide. “One Size” is a valid
-                    label.
+                    {errorMessage}
                   </p>
                 )}
-              </section>
-
-              <Field>
-                <FieldLabel htmlFor="guide-audit-reason">
-                  Audit reason
-                </FieldLabel>
-                <Input
-                  className={inputClassName}
-                  id="guide-audit-reason"
-                  maxLength={500}
-                  minLength={3}
-                  required
-                  {...register("reason", { required: true, minLength: 3 })}
-                />
-              </Field>
-              {errorMessage && (
-                <p
-                  className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-                  role="alert"
+                <Button
+                  className="h-auto w-full px-4 py-3 text-base font-semibold"
+                  disabled={isSubmitting}
+                  type="submit"
                 >
-                  {errorMessage}
-                </p>
-              )}
-              <Button
-                className="h-auto w-full px-4 py-3 text-base font-semibold"
-                disabled={isSubmitting}
-                type="submit"
-              >
-                {isSubmitting
-                  ? "Saving…"
-                  : view === "edit"
-                    ? "Save guide"
-                    : "Create guide"}
-              </Button>
-            </form>
-          </Card>}
+                  {isSubmitting
+                    ? "Saving…"
+                    : view === "edit"
+                      ? "Save guide"
+                      : "Create guide"}
+                </Button>
+              </form>
+            </Card>
+          )}
         </div>
       </div>
     </main>

@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  CatalogCategorySchema,
-  type CatalogCategory,
-} from "@aaraj/contracts";
+import { CatalogCategorySchema, type CatalogCategory } from "@aaraj/contracts";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -129,7 +126,9 @@ export function CategoryManager({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Link
             className="text-sm text-primary hover:text-primary/80"
-            href={view !== "list" ? "/admin/catalog/categories" : "/admin/catalog"}
+            href={
+              view !== "list" ? "/admin/catalog/categories" : "/admin/catalog"
+            }
           >
             {view !== "list" ? "← Back to categories" : "← Back to products"}
           </Link>
@@ -166,149 +165,159 @@ export function CategoryManager({
           </p>
         )}
         <div className="mt-8">
-          {view === "list" && <section aria-labelledby="categories-heading">
-            <h2 className="text-xl font-semibold" id="categories-heading">
-              Category tree
-            </h2>
-            <div className="mt-4">
-              <CategoryTable
-                categories={categories}
-                query={query}
-                onRefresh={() => router.refresh()}
-              />
-            </div>
-          </section>}
-
-          {view !== "list" && <Card className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7">
-            <h2 className="text-xl font-semibold">
-              {view === "edit" ? "Edit category" : "Create a category"}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Slugs are stable storefront filter values. Categories in use can
-              be renamed, but cannot be deactivated.
-            </p>
-            <form
-              className="mt-5 space-y-4"
-              onSubmit={handleSubmit(saveCategory)}
-            >
-              <Field>
-                <FieldLabel htmlFor="category-name">Name</FieldLabel>
-                <Input
-                  className={fieldClassName}
-                  id="category-name"
-                  maxLength={80}
-                  required
-                  {...register("name", { required: true, maxLength: 80 })}
+          {view === "list" && (
+            <section aria-labelledby="categories-heading">
+              <h2 className="text-xl font-semibold" id="categories-heading">
+                Category tree
+              </h2>
+              <div className="mt-4">
+                <CategoryTable
+                  categories={categories}
+                  query={query}
+                  onRefresh={() => router.refresh()}
                 />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="category-slug">Slug</FieldLabel>
-                <Input
-                  className={fieldClassName}
-                  id="category-slug"
-                  maxLength={100}
-                  pattern="[a-z0-9]+(-[a-z0-9]+)*"
-                  required
-                  {...register("slug", { required: true, maxLength: 100 })}
-                />
-                <FieldDescription>
-                  Used in storefront URLs; keep it stable once products use it.
-                </FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel
-                  id="category-parent-label"
-                  htmlFor="category-parent"
-                >
-                  Parent category
-                </FieldLabel>
-                <Controller
-                  control={control}
-                  name="parentId"
-                  render={({ field }) => (
-                    <Select
-                      items={[
-                        { label: "Top level", value: null },
-                        ...parentOptions,
-                      ]}
-                      name={field.name}
-                      value={field.value || null}
-                      onValueChange={(value) =>
-                        field.onChange(typeof value === "string" ? value : "")
-                      }
-                    >
-                      <SelectTrigger
-                        id="category-parent"
-                        aria-labelledby="category-parent-label"
-                        ref={field.ref}
-                        onBlur={field.onBlur}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={null}>Top level</SelectItem>
-                        {parentOptions.map((category) => (
-                          <SelectItem
-                            key={category.value}
-                            value={category.value}
-                          >
-                            {category.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="category-order">Display order</FieldLabel>
-                <Input
-                  className={fieldClassName}
-                  id="category-order"
-                  max={10000}
-                  min={0}
-                  required
-                  type="number"
-                  {...register("sortOrder", { required: true })}
-                />
-              </Field>
-              {editingId && (
-                <Field className="flex flex-row items-center gap-2">
-                  <input
-                    id="category-active"
-                    type="checkbox"
-                    {...register("isActive")}
-                  />
-                  <FieldLabel htmlFor="category-active">Active</FieldLabel>
-                </Field>
-              )}
-              <Field>
-                <FieldLabel htmlFor="category-reason">
-                  Reason for change
-                </FieldLabel>
-                <Input
-                  className={fieldClassName}
-                  id="category-reason"
-                  maxLength={500}
-                  minLength={3}
-                  required
-                  {...register("reason", { required: true, minLength: 3 })}
-                />
-              </Field>
-              <div className="flex gap-3 pt-2">
-                <Button disabled={isSubmitting} type="submit">
-                  {isSubmitting
-                    ? "Saving…"
-                    : editingId
-                      ? "Save category"
-                      : "Create category"}
-                </Button>
-                <Link className={buttonVariants({ variant: "outline" })} href="/admin/catalog/categories">
-                  Cancel
-                </Link>
               </div>
-            </form>
-          </Card>}
+            </section>
+          )}
+
+          {view !== "list" && (
+            <Card className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7">
+              <h2 className="text-xl font-semibold">
+                {view === "edit" ? "Edit category" : "Create a category"}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Slugs are stable storefront filter values. Categories in use can
+                be renamed, but cannot be deactivated.
+              </p>
+              <form
+                className="mt-5 space-y-4"
+                onSubmit={handleSubmit(saveCategory)}
+              >
+                <Field>
+                  <FieldLabel htmlFor="category-name">Name</FieldLabel>
+                  <Input
+                    className={fieldClassName}
+                    id="category-name"
+                    maxLength={80}
+                    required
+                    {...register("name", { required: true, maxLength: 80 })}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="category-slug">Slug</FieldLabel>
+                  <Input
+                    className={fieldClassName}
+                    id="category-slug"
+                    maxLength={100}
+                    pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                    required
+                    {...register("slug", { required: true, maxLength: 100 })}
+                  />
+                  <FieldDescription>
+                    Used in storefront URLs; keep it stable once products use
+                    it.
+                  </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel
+                    id="category-parent-label"
+                    htmlFor="category-parent"
+                  >
+                    Parent category
+                  </FieldLabel>
+                  <Controller
+                    control={control}
+                    name="parentId"
+                    render={({ field }) => (
+                      <Select
+                        items={[
+                          { label: "Top level", value: null },
+                          ...parentOptions,
+                        ]}
+                        name={field.name}
+                        value={field.value || null}
+                        onValueChange={(value) =>
+                          field.onChange(typeof value === "string" ? value : "")
+                        }
+                      >
+                        <SelectTrigger
+                          id="category-parent"
+                          aria-labelledby="category-parent-label"
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={null}>Top level</SelectItem>
+                          {parentOptions.map((category) => (
+                            <SelectItem
+                              key={category.value}
+                              value={category.value}
+                            >
+                              {category.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="category-order">
+                    Display order
+                  </FieldLabel>
+                  <Input
+                    className={fieldClassName}
+                    id="category-order"
+                    max={10000}
+                    min={0}
+                    required
+                    type="number"
+                    {...register("sortOrder", { required: true })}
+                  />
+                </Field>
+                {editingId && (
+                  <Field className="flex flex-row items-center gap-2">
+                    <input
+                      id="category-active"
+                      type="checkbox"
+                      {...register("isActive")}
+                    />
+                    <FieldLabel htmlFor="category-active">Active</FieldLabel>
+                  </Field>
+                )}
+                <Field>
+                  <FieldLabel htmlFor="category-reason">
+                    Reason for change
+                  </FieldLabel>
+                  <Input
+                    className={fieldClassName}
+                    id="category-reason"
+                    maxLength={500}
+                    minLength={3}
+                    required
+                    {...register("reason", { required: true, minLength: 3 })}
+                  />
+                </Field>
+                <div className="flex gap-3 pt-2">
+                  <Button disabled={isSubmitting} type="submit">
+                    {isSubmitting
+                      ? "Saving…"
+                      : editingId
+                        ? "Save category"
+                        : "Create category"}
+                  </Button>
+                  <Link
+                    className={buttonVariants({ variant: "outline" })}
+                    href="/admin/catalog/categories"
+                  >
+                    Cancel
+                  </Link>
+                </div>
+              </form>
+            </Card>
+          )}
         </div>
       </div>
     </main>

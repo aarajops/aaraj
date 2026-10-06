@@ -88,10 +88,7 @@ export function SizeGuideTable({
   );
 
   const hasFilters = Boolean(
-    query.search ||
-      query.categoryId ||
-      query.fit ||
-      query.measurementBasis,
+    query.search || query.categoryId || query.fit || query.measurementBasis,
   );
 
   return (

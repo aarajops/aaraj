@@ -132,12 +132,13 @@ const OptionalCatalogManagementSearchSchema = z.preprocess(
   z.string().trim().min(1).max(160).optional(),
 );
 
-export const CatalogProductListQuerySchema =
-  OffsetPaginationQuerySchema.extend({
+export const CatalogProductListQuerySchema = OffsetPaginationQuerySchema.extend(
+  {
     search: OptionalCatalogManagementSearchSchema,
     categoryId: z.union([z.uuid(), z.literal("uncategorized")]).optional(),
     status: z.enum(["draft", "published"]).optional(),
-  });
+  },
+);
 export type CatalogProductListQuery = z.infer<
   typeof CatalogProductListQuerySchema
 >;

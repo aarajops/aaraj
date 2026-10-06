@@ -101,7 +101,11 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
 
     const params = new URLSearchParams();
     for (const [name, value] of Object.entries(nextQuery)) {
-      if (value === undefined || value === "" || (name === "offset" && value === 0)) {
+      if (
+        value === undefined ||
+        value === "" ||
+        (name === "offset" && value === 0)
+      ) {
         continue;
       }
       params.set(name, String(value));
@@ -187,10 +191,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
               }
             }}
           >
-            <SelectTrigger
-              aria-label={filter.label}
-              className="w-full sm:w-44"
-            >
+            <SelectTrigger aria-label={filter.label} className="w-full sm:w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="start">
@@ -294,7 +295,11 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
               Previous
             </Link>
           ) : (
-            <Button aria-label={`Previous ${itemName} page`} disabled variant="outline">
+            <Button
+              aria-label={`Previous ${itemName} page`}
+              disabled
+              variant="outline"
+            >
               Previous
             </Button>
           )}
@@ -309,7 +314,11 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
               Next
             </Link>
           ) : (
-            <Button aria-label={`Next ${itemName} page`} disabled variant="outline">
+            <Button
+              aria-label={`Next ${itemName} page`}
+              disabled
+              variant="outline"
+            >
               Next
             </Button>
           )}
