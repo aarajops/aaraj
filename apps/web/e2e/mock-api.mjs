@@ -82,8 +82,8 @@ function requireRecentSignIn(request, response) {
   if (roleFromCookie(request.headers.cookie) !== "staff-stale") return true;
   send(response, 403, {
     statusCode: 403,
-    code: "RECENT_SIGN_IN_REQUIRED",
-    message: "Sign in again before this action (within 15 minutes).",
+    errorCode: "RECENT_SIGN_IN_REQUIRED",
+    message: "Sign out and sign in again before retrying this action.",
   });
   return false;
 }
@@ -196,7 +196,7 @@ const server = createServer(async (request, response) => {
   }
 
   const categoryPath = url.pathname.match(
-    /^\/api\/catalog\/categories\/([^/]+)$/,
+    /^\/api\/v1\/catalog\/categories\/([^/]+)$/,
   );
   if (categoryPath && method === "PATCH") {
     if (!requireCategoryAdmin(request, response)) return;
@@ -309,7 +309,7 @@ const server = createServer(async (request, response) => {
   }
 
   const managedGuidePath = url.pathname.match(
-    /^\/api\/catalog\/size-guides\/manage\/([^/]+)$/,
+    /^\/api\/v1\/catalog\/size-guides\/manage\/([^/]+)$/,
   );
   if (managedGuidePath && method === "GET") {
     if (!requireStaff(request, response)) return;
@@ -350,7 +350,7 @@ const server = createServer(async (request, response) => {
   }
 
   const guidePath = url.pathname.match(
-    /^\/api\/catalog\/size-guides\/([^/]+)$/,
+    /^\/api\/v1\/catalog\/size-guides\/([^/]+)$/,
   );
   if (guidePath && method === "PATCH") {
     if (!requireStaff(request, response)) return;
@@ -402,7 +402,7 @@ const server = createServer(async (request, response) => {
   }
 
   const managedProductPath = url.pathname.match(
-    /^\/api\/catalog\/products\/manage\/([^/]+)$/,
+    /^\/api\/v1\/catalog\/products\/manage\/([^/]+)$/,
   );
   if (managedProductPath && method === "GET") {
     if (!requireStaff(request, response)) return;
@@ -503,7 +503,9 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  const productPath = url.pathname.match(/^\/api\/catalog\/products\/([^/]+)$/);
+  const productPath = url.pathname.match(
+    /^\/api\/v1\/catalog\/products\/([^/]+)$/,
+  );
   if (productPath && method === "GET") {
     const product = products.find(
       (candidate) =>

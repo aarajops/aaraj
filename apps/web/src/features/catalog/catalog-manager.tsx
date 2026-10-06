@@ -143,6 +143,7 @@ export function CatalogManager({
   });
   const slugError = errors.slug?.message;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
   const [sizeGuideLoadError, setSizeGuideLoadError] = useState<string | null>(
@@ -218,6 +219,7 @@ export function CatalogManager({
 
   async function saveProduct(form: ProductForm) {
     setErrorMessage(null);
+    setErrorCode(null);
     clearErrors("slug");
     if (!form.audience && (!form.id || form.isPublished)) {
       setErrorMessage("Choose an audience before saving.");
@@ -294,6 +296,7 @@ export function CatalogManager({
 
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
+        setErrorCode(problem?.errorCode ?? null);
         setErrorMessage(
           getApiErrorMessage(problem) ??
             "The API returned an unreadable error response.",
@@ -833,7 +836,7 @@ export function CatalogManager({
                     role="alert"
                   >
                     {errorMessage}
-                    {errorMessage.startsWith("Sign in again") && (
+                    {errorCode === "RECENT_SIGN_IN_REQUIRED" && (
                       <Link className="ml-1 underline" href="/account">
                         Go to your account
                       </Link>

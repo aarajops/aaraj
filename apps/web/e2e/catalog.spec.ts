@@ -189,7 +189,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
     .fill("Check duplicate slug");
   await page.getByRole("button", { name: "Create draft" }).click();
   await expect(
-    page.getByText("That slug is already in use. Choose another one."),
+    page.getByText("A product with this slug already exists"),
   ).toBeVisible();
 
   await page.goto("/");
@@ -356,7 +356,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
     .fill("Verify recent sign-in recovery");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.locator('p[role="alert"]')).toContainText(
-    "sign out, then sign back in to renew your 15-minute confirmation.",
+    "Sign out and sign in again before retrying this action.",
   );
   await page.getByRole("link", { name: "Go to your account" }).click();
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
