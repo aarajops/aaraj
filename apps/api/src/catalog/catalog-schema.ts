@@ -5,6 +5,7 @@ import {
   AnyPgColumn,
   index,
   integer,
+  jsonb,
   numeric,
   pgSchema,
   text,
@@ -12,7 +13,13 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { CatalogMeasurementKey } from "@aaraj/contracts";
+import {
+  MAX_CATALOG_MEDIA_UPLOAD_BYTES,
+  type CatalogMediaContentType,
+  type CatalogMediaDerivatives,
+  type CatalogMediaStatus,
+  type CatalogMeasurementKey,
+} from "@aaraj/contracts";
 
 export const catalogSchema = pgSchema("catalog");
 
@@ -224,6 +231,91 @@ export const catalogProductVariant = catalogSchema.table(
     check(
       "product_variant_price_bdt_check",
       sql`${table.priceBdt} is null OR ${table.priceBdt} >= 0`,
+    ),
+  ],
+);
+
+export const catalogProductMedia = catalogSchema.table(
+  "product_media",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    commandId: uuid("command_id").notNull(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => catalogProduct.id, { onDelete: "restrict" }),
+    variantId: uuid("variant_id").references(() => catalogProductVariant.id, {
+      onDelete: "set null",
+    }),
+    objectKey: text("object_key").notNull(),
+    contentType: text("content_type")
+      .$type<CatalogMediaContentType>()
+      .notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sourceSha256: text("source_sha256").notNull(),
+    derivatives: jsonb("derivatives")
+      .$type<CatalogMediaDerivatives>()
+      .notNull()
+      .default([]),
+    altText: text("alt_text").notNull(),
+    reason: text("reason").notNull(),
+    deletionReason: text("deletion_reason"),
+    sortOrder: integer("sort_order").notNull(),
+    status: text("status").$type<CatalogMediaStatus>().notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("product_media_command_uidx").on(table.commandId),
+    uniqueIndex("product_media_product_order_uidx").on(
+      table.productId,
+      table.sortOrder,
+    ),
+    index("product_media_variant_idx").on(table.variantId),
+    check(
+      "product_media_object_key_check",
+      sql`${table.objectKey} = 'quarantine/' || ${table.id}::text || '/source'`,
+    ),
+    check(
+      "product_media_content_type_check",
+      sql`${table.contentType} in ('image/jpeg', 'image/png', 'image/webp')`,
+    ),
+    check(
+      "product_media_size_check",
+      sql`${table.sizeBytes} between 1 and ${sql.raw(String(MAX_CATALOG_MEDIA_UPLOAD_BYTES))}`,
+    ),
+    check(
+      "product_media_sha256_check",
+      sql`${table.sourceSha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "product_media_alt_text_check",
+      sql`${table.altText} = btrim(${table.altText}) and length(${table.altText}) between 1 and 500`,
+    ),
+    check(
+      "product_media_reason_check",
+      sql`${table.reason} = btrim(${table.reason}) and length(${table.reason}) between 3 and 500`,
+    ),
+    check(
+      "product_media_deletion_reason_check",
+      sql`${table.deletionReason} is null or (${table.deletionReason} = btrim(${table.deletionReason}) and length(${table.deletionReason}) between 3 and 500)`,
+    ),
+    check("product_media_sort_order_check", sql`${table.sortOrder} >= 0`),
+    check(
+      "product_media_status_check",
+      sql`${table.status} in ('uploading', 'quarantined', 'processing', 'ready', 'rejected', 'deleting', 'deleted')`,
+    ),
+    check(
+      "product_media_derivatives_check",
+      sql`jsonb_typeof(${table.derivatives}) = 'array' and jsonb_array_length(${table.derivatives}) <= 2 and (${table.status} <> 'ready' or jsonb_array_length(${table.derivatives}) = 2)`,
+    ),
+    check(
+      "product_media_created_by_check",
+      sql`${table.createdBy} = btrim(${table.createdBy}) and length(${table.createdBy}) > 0`,
     ),
   ],
 );

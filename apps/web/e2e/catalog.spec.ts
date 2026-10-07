@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { CatalogMedia } from "@aaraj/contracts";
 import { chooseSelectOption } from "./select";
 
 test("admin sidebar follows permissions and closes after mobile navigation", async ({
@@ -274,15 +275,136 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByRole("link", { name: "Edit Aaraj E2E T-shirt" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
+    .getByRole("region", { name: "Edit product" })
     .getByLabel("Audit reason", { exact: true })
     .fill("Unpublish second pagination item");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
+  const mediaEditHref = await page
+    .getByRole("link", { name: "Edit Aaraj E2E Tee" })
+    .getAttribute("href");
+  if (!mediaEditHref) throw new Error("Product edit link has no href.");
+  const mediaProductId = mediaEditHref.split("/").at(-2);
+  if (!mediaProductId) throw new Error("Product edit link has no product ID.");
+  const mediaRow: CatalogMedia = {
+    id: "7a641e03-941b-4605-9a6c-5d97f9684cf7",
+    commandId: "b3dd6b45-82ac-4bf4-88d9-7c76cb14e879",
+    productId: mediaProductId,
+    variantId: null,
+    altText: "Front view of Aaraj E2E Tee",
+    reason: "Recover interrupted media upload",
+    deletionReason: null,
+    contentType: "image/png",
+    sizeBytes: 68,
+    sortOrder: 0,
+    status: "uploading",
+    createdAt: "2026-10-07T00:00:00.000Z",
+    updatedAt: "2026-10-07T00:00:00.000Z",
+  };
+  let mediaRows: CatalogMedia[] = [mediaRow];
+  let uploadAttempts = 0;
+  let deleteAttempts = 0;
+  await page.route(
+    "**/api/v1/catalog/products/manage/*/media**",
+    async (route) => {
+      const method = route.request().method();
+      if (method === "GET") {
+        await route.fulfill({ status: 200, json: { media: mediaRows } });
+        return;
+      }
+      if (method === "POST") {
+        uploadAttempts += 1;
+        if (uploadAttempts === 1) {
+          await route.fulfill({
+            status: 503,
+            json: {
+              statusCode: 503,
+              message: "Storage is temporarily unavailable.",
+              errorCode: "CATALOG_MEDIA_STORAGE_UNAVAILABLE",
+            },
+          });
+          return;
+        }
+        mediaRows = [{ ...mediaRows[0]!, status: "ready" }];
+        await route.fulfill({ status: 201, json: mediaRows[0] });
+        return;
+      }
+      if (method === "DELETE") {
+        const body = route.request().postDataJSON() as { reason: string };
+        deleteAttempts += 1;
+        if (deleteAttempts === 1) {
+          mediaRows = [
+            {
+              ...mediaRows[0]!,
+              status: "deleting",
+              deletionReason: body.reason,
+            },
+          ];
+          await route.fulfill({
+            status: 503,
+            json: {
+              statusCode: 503,
+              message: "Storage is temporarily unavailable.",
+              errorCode: "CATALOG_MEDIA_STORAGE_UNAVAILABLE",
+            },
+          });
+          return;
+        }
+        mediaRows = [];
+        await route.fulfill({ status: 204, body: "" });
+        return;
+      }
+      await route.fulfill({ status: 405 });
+    },
+  );
+
+  await page.goto("/admin/catalog");
+  await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Product media" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Upload incomplete", { exact: true }),
+  ).toBeVisible();
+  const retryFile = page.getByLabel(
+    "Choose original file to retry Front view of Aaraj E2E Tee",
+  );
+  const pngBuffer = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
+    "base64",
+  );
+  await retryFile.setInputFiles({
+    name: "front.png",
+    mimeType: "image/png",
+    buffer: pngBuffer,
+  });
+  await expect(
+    page.getByRole("region", { name: "Product media" }).getByRole("alert"),
+  ).toContainText("Storage is temporarily unavailable.");
+  await retryFile.setInputFiles({
+    name: "front.png",
+    mimeType: "image/png",
+    buffer: pngBuffer,
+  });
+  await expect(page.getByText("Processed", { exact: true })).toBeVisible();
+  await page
+    .getByLabel("Deletion reason")
+    .fill("Remove outdated product photo");
+  await page.getByRole("button", { name: "Delete media" }).click();
+  await expect(
+    page.getByText("Deletion incomplete", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Retry deletion" }).click();
+  await expect(
+    page.getByText("No media has been uploaded for this product."),
+  ).toBeVisible();
+
   await page.goto("/admin/catalog");
   await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
+    .getByRole("region", { name: "Edit product" })
     .getByLabel("Audit reason", { exact: true })
     .fill("Unpublish catalog test product");
   await page.getByRole("button", { name: "Save changes" }).click();
@@ -361,6 +483,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.goto("/admin/catalog");
   await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
   await page
+    .getByRole("region", { name: "Edit product" })
     .getByLabel("Audit reason", { exact: true })
     .fill("Verify recent sign-in recovery");
   await page.getByRole("button", { name: "Save changes" }).click();

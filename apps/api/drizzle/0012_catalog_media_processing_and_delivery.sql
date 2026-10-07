@@ -1,0 +1,4 @@
+ALTER TABLE "catalog"."product_media" DROP CONSTRAINT "product_media_status_check";--> statement-breakpoint
+ALTER TABLE "catalog"."product_media" ADD COLUMN "derivatives" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "catalog"."product_media" ADD CONSTRAINT "product_media_derivatives_check" CHECK (jsonb_typeof("catalog"."product_media"."derivatives") = 'array' and jsonb_array_length("catalog"."product_media"."derivatives") <= 2 and ("catalog"."product_media"."status" <> 'ready' or jsonb_array_length("catalog"."product_media"."derivatives") = 2));--> statement-breakpoint
+ALTER TABLE "catalog"."product_media" ADD CONSTRAINT "product_media_status_check" CHECK ("catalog"."product_media"."status" in ('uploading', 'quarantined', 'processing', 'ready', 'rejected', 'deleting', 'deleted'));

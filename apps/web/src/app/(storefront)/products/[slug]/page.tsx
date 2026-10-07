@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPublishedProduct } from "@/features/catalog/catalog-queries";
@@ -126,6 +127,36 @@ export default async function ProductPage({
           ← All products
         </Link>
         <div className="mt-8 rounded-2xl border border-border bg-card/70 p-7 sm:p-10">
+          {product.images.length > 0 && (
+            <ul
+              aria-label={`${product.name} product images`}
+              className="mb-8 grid gap-3 sm:grid-cols-2"
+            >
+              {product.images.map((image, index) => (
+                <li
+                  className="aspect-[3/4] overflow-hidden rounded-xl bg-muted/30"
+                  key={image.id}
+                >
+                  <picture>
+                    <source
+                      media="(max-width: 640px)"
+                      srcSet={image.card.src}
+                    />
+                    <Image
+                      alt={image.altText}
+                      className="h-full w-full object-contain"
+                      height={image.detail.height}
+                      fetchPriority={index === 0 ? "high" : "auto"}
+                      loading={index === 0 ? "eager" : "lazy"}
+                      src={image.detail.src}
+                      unoptimized
+                      width={image.detail.width}
+                    />
+                  </picture>
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="text-sm font-semibold tracking-[0.16em] text-primary">
             AARAJ PRODUCT
           </p>

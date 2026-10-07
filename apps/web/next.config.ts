@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import {
+  API_V1_BASE_PATH,
+  MAX_CATALOG_MEDIA_DERIVATIVE_BYTES,
+} from "@aaraj/contracts";
 import { getApiInternalUrl } from "./src/lib/api-internal-url.mjs";
 
 const apiUrl = getApiInternalUrl();
@@ -18,6 +22,15 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   transpilePackages: ["@aaraj/contracts"],
+  images: {
+    localPatterns: [
+      {
+        pathname: `${API_V1_BASE_PATH}/catalog/media/*/*/*.webp`,
+        search: "",
+      },
+    ],
+    maximumResponseBody: MAX_CATALOG_MEDIA_DERIVATIVE_BYTES,
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

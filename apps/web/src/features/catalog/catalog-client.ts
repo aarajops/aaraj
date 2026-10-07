@@ -2,6 +2,8 @@ import "client-only";
 
 import { API_V1_BASE_PATH } from "@aaraj/contracts";
 import type {
+  CatalogMediaDeleteInput,
+  CatalogMediaUploadInput,
   CatalogCategoryCreateInput,
   CatalogCategoryUpdateInput,
   CatalogProductCreateInput,
@@ -99,6 +101,54 @@ export function updateCatalogProduct(
     `${API_V1_BASE_PATH}/catalog/products/${encodeURIComponent(productId)}`,
     {
       method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function fetchManagedProductMedia(productId: string): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/media`,
+    {
+      cache: "no-store",
+      credentials: "same-origin",
+    },
+  );
+}
+
+export function uploadCatalogProductMedia(
+  productId: string,
+  input: CatalogMediaUploadInput,
+  file: File,
+): Promise<Response> {
+  const body = new FormData();
+  body.set("commandId", input.commandId);
+  if (input.variantId) body.set("variantId", input.variantId);
+  body.set("altText", input.altText);
+  body.set("reason", input.reason);
+  body.set("file", file, file.name);
+
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/media`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      body,
+    },
+  );
+}
+
+export function deleteCatalogProductMedia(
+  productId: string,
+  mediaId: string,
+  input: CatalogMediaDeleteInput,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/media/${encodeURIComponent(mediaId)}`,
+    {
+      method: "DELETE",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),

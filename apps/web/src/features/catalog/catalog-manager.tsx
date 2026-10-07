@@ -21,6 +21,7 @@ import {
   updateCatalogProduct,
 } from "@/features/catalog/catalog-client";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
+import { CatalogMediaManager } from "@/features/catalog/catalog-media-manager";
 import { ProductTable } from "@/features/catalog/product-table";
 import { formatBdtInput, parseBdtPrice } from "@/features/catalog/price";
 import {
@@ -858,6 +859,15 @@ export function CatalogManager({
                 </Button>
               </form>
             </Card>
+          )}
+
+          {view === "edit" && initialProduct && (
+            <div className="mt-6">
+              <CatalogMediaManager
+                productId={initialProduct.id}
+                variants={initialProduct.variants}
+              />
+            </div>
           )}
         </div>
       </div>

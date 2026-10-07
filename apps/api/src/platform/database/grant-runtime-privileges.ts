@@ -21,6 +21,7 @@ const runtimeTableGrants = [
   ["catalog", "category", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "product", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "product_variant", ["SELECT", "INSERT", "UPDATE"]],
+  ["catalog", "product_media", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "size_guide", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "size_guide_row", ["SELECT", "INSERT", "DELETE"]],
   ["catalog", "size_guide_measurement", ["SELECT", "INSERT"]],
@@ -296,6 +297,7 @@ async function main(): Promise<void> {
     await runtimePool.query('SELECT 1 FROM "audit"."event" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "access"."role_assignment" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "catalog"."product" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "catalog"."product_media" LIMIT 0');
     console.log("Runtime PostgreSQL privileges applied.");
   } finally {
     await Promise.all([pool.end(), runtimePool.end()]);

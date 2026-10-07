@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
 import type {
+  CatalogProductImage,
   CatalogProduct,
   CatalogProductCreateInput,
   CatalogProductDetail,
@@ -19,6 +20,11 @@ import type {
   CatalogProductVariantInput,
   CatalogCategoryReference,
   CatalogPrice,
+} from "@aaraj/contracts";
+import {
+  API_V1_BASE_PATH,
+  CatalogMediaDerivativesSchema,
+  MAX_CATALOG_PRODUCT_MEDIA,
 } from "@aaraj/contracts";
 import {
   invalidatePublishedFilterOptionsCache,
@@ -47,6 +53,7 @@ import type { AccessPrincipal } from "../platform/authorization/permissions.serv
 import {
   catalogProduct,
   catalogProductVariant,
+  catalogProductMedia,
   catalogCategory,
   catalogSizeGuide,
   catalogSizeGuideMeasurement,
@@ -149,10 +156,83 @@ export class CatalogService {
         selectedRows.map(({ id }) => id),
       ),
     ]);
+    const imagesByProduct = await this.loadPublishedProductImages(
+      selectedRows.map(({ id }) => id),
+    );
+    const page = toProductPage(
+      rows,
+      query,
+      categoryReferences,
+      firstVariantPrices,
+    );
     return {
-      ...toProductPage(rows, query, categoryReferences, firstVariantPrices),
+      ...page,
+      products: page.products.map((product) => ({
+        ...product,
+        images: imagesByProduct.get(product.id) ?? [],
+      })),
       filters: filterOptions,
     };
+  }
+
+  private async loadPublishedProductImages(
+    productIds: string[],
+  ): Promise<Map<string, CatalogProductImage[]>> {
+    const imagesByProduct = new Map<string, CatalogProductImage[]>();
+    if (!productIds.length) return imagesByProduct;
+
+    const rows = await this.database.db
+      .select({
+        id: catalogProductMedia.id,
+        productId: catalogProductMedia.productId,
+        altText: catalogProductMedia.altText,
+        derivatives: catalogProductMedia.derivatives,
+      })
+      .from(catalogProductMedia)
+      .leftJoin(
+        catalogProductVariant,
+        eq(catalogProductVariant.id, catalogProductMedia.variantId),
+      )
+      .where(
+        and(
+          inArray(catalogProductMedia.productId, productIds),
+          eq(catalogProductMedia.status, "ready"),
+          or(
+            isNull(catalogProductMedia.variantId),
+            eq(catalogProductVariant.isActive, true),
+          ),
+        ),
+      )
+      .orderBy(asc(catalogProductMedia.sortOrder), asc(catalogProductMedia.id));
+
+    for (const row of rows) {
+      const parsed = CatalogMediaDerivativesSchema.safeParse(row.derivatives);
+      if (!parsed.success) continue;
+      const card = parsed.data.find(({ rendition }) => rendition === "card");
+      const detail = parsed.data.find(
+        ({ rendition }) => rendition === "detail",
+      );
+      if (!card || !detail) continue;
+
+      const images = imagesByProduct.get(row.productId) ?? [];
+      if (images.length >= MAX_CATALOG_PRODUCT_MEDIA) continue;
+      images.push({
+        id: row.id,
+        altText: row.altText,
+        card: {
+          src: publicDerivativePath(row.id, "card", card.sha256),
+          width: card.width,
+          height: card.height,
+        },
+        detail: {
+          src: publicDerivativePath(row.id, "detail", detail.sha256),
+          width: detail.width,
+          height: detail.height,
+        },
+      });
+      imagesByProduct.set(row.productId, images);
+    }
+    return imagesByProduct;
   }
 
   private publishedProductEligibilityConditions() {
@@ -273,7 +353,7 @@ export class CatalogService {
   }
 
   async findPublished(slug: string): Promise<CatalogProductDetail> {
-    return this.database.db.transaction(async (transaction) => {
+    const product = await this.database.db.transaction(async (transaction) => {
       const [product] = await transaction
         .select()
         .from(catalogProduct)
@@ -294,8 +374,13 @@ export class CatalogService {
           sizeLabel,
         })),
         sizeGuide: detail.sizeGuide,
-      } satisfies CatalogProductDetail;
+      };
     });
+    const imagesByProduct = await this.loadPublishedProductImages([product.id]);
+    return {
+      ...product,
+      images: imagesByProduct.get(product.id) ?? [],
+    };
   }
 
   async listForManagement(
@@ -934,6 +1019,14 @@ function variantDisplayOrder() {
 
 function toCatalogPrice(amountBdt: number): CatalogPrice {
   return { amountBdt: safeAmountBdt(amountBdt) };
+}
+
+function publicDerivativePath(
+  mediaId: string,
+  rendition: "card" | "detail",
+  sha256: string,
+): string {
+  return `${API_V1_BASE_PATH}/catalog/media/${mediaId}/${rendition}/${sha256}.webp`;
 }
 
 function safeAmountBdt(amountBdt: number): number {

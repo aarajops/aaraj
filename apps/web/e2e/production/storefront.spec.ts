@@ -20,7 +20,11 @@ test("production storefront serves routes, rewrites, and the strict CSP", async 
 
   const healthResponse = await page.request.get("/api/health/ready");
   expect(healthResponse.status()).toBe(200);
-  expect(await healthResponse.json()).toEqual({ status: "ok" });
+  expect(await healthResponse.json()).toEqual({
+    status: "ok",
+    database: "ok",
+    redis: "ok",
+  });
 
   await page.goto("/account");
   await expect(
@@ -39,4 +43,34 @@ test("production storefront serves routes, rewrites, and the strict CSP", async 
   await expect(
     page.getByRole("heading", { name: "Page not found", level: 1 }),
   ).toBeVisible();
+});
+
+test("production storefront renders processed media through the same-origin API rewrite", async ({
+  page,
+}) => {
+  const imageResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname.startsWith("/api/v1/catalog/media/");
+  });
+  const productResponse = await page.goto("/products/media-e2e-fixture");
+  expect(productResponse?.status()).toBe(200);
+  await expect(
+    page.getByRole("heading", { name: "Media E2E fixture", level: 1 }),
+  ).toBeVisible();
+
+  const image = page.getByRole("img", {
+    name: "A one-pixel product image used to verify media delivery.",
+  });
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() =>
+      image.evaluate((element) => (element as HTMLImageElement).naturalWidth),
+    )
+    .toBe(1);
+
+  const response = await imageResponse;
+  expect(new URL(response.url()).origin).toBe(new URL(page.url()).origin);
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("image/webp");
+  expect(response.headers()["cache-control"]).toBe("private, no-store");
 });

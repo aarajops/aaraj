@@ -78,6 +78,20 @@
       "when": 1791271448563,
       "tag": "0010_variant_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791288784127,
+      "tag": "0011_catalog_product_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791348707049,
+      "tag": "0012_catalog_media_processing_and_delivery",
+      "breakpoints": true
     }
   ]
 }

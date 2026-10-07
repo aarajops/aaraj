@@ -10,6 +10,7 @@ import {
   CatalogCategorySlugSchema,
 } from "./categories.js";
 import { CatalogSizeGuideSchema } from "./size-guides.js";
+import { CatalogProductImageSchema } from "./media.js";
 
 export const CatalogAudienceSchema = z.enum(["men", "women", "unisex"]);
 export type CatalogAudience = z.infer<typeof CatalogAudienceSchema>;
@@ -77,7 +78,14 @@ export const CatalogProductSchema = z.strictObject({
 });
 export type CatalogProduct = z.infer<typeof CatalogProductSchema>;
 
-export const CatalogProductDetailSchema = CatalogProductSchema.extend({
+export const CatalogPublishedProductSchema = CatalogProductSchema.extend({
+  images: CatalogProductImageSchema.array().max(12),
+});
+export type CatalogPublishedProduct = z.infer<
+  typeof CatalogPublishedProductSchema
+>;
+
+export const CatalogProductDetailSchema = CatalogPublishedProductSchema.extend({
   variants: CatalogProductVariantSchema.array(),
   sizeGuide: CatalogSizeGuideSchema.nullable(),
 });
@@ -200,10 +208,12 @@ export type CatalogProductFilterOptions = z.infer<
   typeof CatalogProductFilterOptionsSchema
 >;
 
-export const CatalogPublishedProductPageSchema =
-  CatalogProductPageSchema.extend({
-    filters: CatalogProductFilterOptionsSchema,
-  });
+export const CatalogPublishedProductPageSchema = z.strictObject({
+  products: CatalogPublishedProductSchema.array(),
+  hasMore: OffsetPaginationMetadataSchema.shape.hasMore,
+  nextOffset: OffsetPaginationMetadataSchema.shape.nextOffset,
+  filters: CatalogProductFilterOptionsSchema,
+});
 export type CatalogPublishedProductPage = z.infer<
   typeof CatalogPublishedProductPageSchema
 >;

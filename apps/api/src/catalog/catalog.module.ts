@@ -11,15 +11,29 @@ import { CategoryController } from "./category.controller.js";
 import { CategoryService } from "./category.service.js";
 import { SizeGuideController } from "./size-guide.controller.js";
 import { SizeGuideService } from "./size-guide.service.js";
+import { CatalogMediaManageGuard } from "./media/catalog-media.guard.js";
+import { CatalogMediaUploadLifecycleInterceptor } from "./media/catalog-media-upload-lifecycle.interceptor.js";
+import { CatalogMediaService } from "./media/catalog-media.service.js";
+import { CatalogMediaPublicController } from "./media/catalog-media-public.controller.js";
+import { R2Storage } from "./media/r2-storage.js";
 
 @Module({
   imports: [DatabaseModule, AuditModule, PlatformAuthorizationModule],
-  controllers: [CatalogController, CategoryController, SizeGuideController],
+  controllers: [
+    CatalogController,
+    CatalogMediaPublicController,
+    CategoryController,
+    SizeGuideController,
+  ],
   providers: [
     CatalogService,
     CatalogPolicy,
     CategoryService,
     SizeGuideService,
+    CatalogMediaManageGuard,
+    CatalogMediaUploadLifecycleInterceptor,
+    CatalogMediaService,
+    R2Storage,
     CatalogInventoryReader,
     {
       provide: CATALOG_INVENTORY_PORT,

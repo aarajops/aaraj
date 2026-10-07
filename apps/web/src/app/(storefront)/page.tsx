@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { CatalogFilters } from "@/features/catalog/catalog-filters";
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
@@ -85,6 +86,18 @@ async function PublishedProductList({
                   className="group flex h-full flex-col rounded-2xl border border-border bg-card/70 p-6 transition hover:border-primary/50 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   href={`/products/${product.slug}`}
                 >
+                  {product.images[0] && (
+                    <div className="mb-5 aspect-[3/4] overflow-hidden rounded-xl bg-muted/30">
+                      <Image
+                        alt={product.images[0].altText}
+                        className="h-full w-full object-contain"
+                        height={product.images[0].card.height}
+                        unoptimized
+                        src={product.images[0].card.src}
+                        width={product.images[0].card.width}
+                      />
+                    </div>
+                  )}
                   <h2 className="text-xl font-semibold text-foreground group-hover:text-accent-foreground">
                     {product.name}
                   </h2>

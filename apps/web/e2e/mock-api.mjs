@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   CatalogProductCreateSchema,
   CatalogPublishedProductListQuerySchema,
@@ -43,6 +43,46 @@ const sizeGuides = Array.from({ length: 100 }, (_, index) =>
     new Date(Date.UTC(2020, 0, index + 1)).toISOString(),
   ),
 );
+const mediaFixtureId = "a2c3f2f8-1a15-4c64-a1cb-902b30443dc2";
+const mediaFixtureBytes = Buffer.from(
+  "UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAdQjyIXpf+BiOh/AAA=",
+  "base64",
+);
+const mediaFixtureSha256 = createHash("sha256")
+  .update(mediaFixtureBytes)
+  .digest("hex");
+const mediaFixturePath = `/api/v1/catalog/media/${mediaFixtureId}/detail/${mediaFixtureSha256}.webp`;
+const mediaFixtureCardPath = mediaFixturePath.replace("/detail/", "/card/");
+const mediaFixtureProduct = {
+  id: "6bdb0de0-08da-497d-8c95-173875a9eaa5",
+  slug: "media-e2e-fixture",
+  name: "Media E2E fixture",
+  description: "A storefront image delivery fixture.",
+  audience: "unisex",
+  category: null,
+  fit: null,
+  fabricComposition: null,
+  careInstructions: null,
+  sizeGuideId: null,
+  price: null,
+  isPublished: true,
+  createdAt: "2026-10-07T00:00:00.000Z",
+  updatedAt: "2026-10-07T00:00:00.000Z",
+  images: [
+    {
+      id: mediaFixtureId,
+      altText: "A one-pixel product image used to verify media delivery.",
+      card: {
+        src: mediaFixtureCardPath,
+        width: 1,
+        height: 1,
+      },
+      detail: { src: mediaFixturePath, width: 1, height: 1 },
+    },
+  ],
+  variants: [],
+  sizeGuide: null,
+};
 
 function send(response, status, body) {
   response.writeHead(status, { "Content-Type": "application/json" });
@@ -102,7 +142,7 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${host}:${port}`);
   const method = request.method ?? "GET";
   if (url.pathname === "/api/health/ready") {
-    send(response, 200, { status: "ok" });
+    send(response, 200, { status: "ok", database: "ok", redis: "ok" });
     return;
   }
   if (url.pathname === "/api/auth/get-session") {
@@ -421,6 +461,28 @@ const server = createServer(async (request, response) => {
       products.filter((product) => product.isPublished),
       url,
     );
+    return;
+  }
+
+  if (
+    url.pathname === "/api/v1/catalog/products/media-e2e-fixture" &&
+    method === "GET"
+  ) {
+    send(response, 200, mediaFixtureProduct);
+    return;
+  }
+
+  if (
+    [mediaFixturePath, mediaFixtureCardPath].includes(url.pathname) &&
+    method === "GET"
+  ) {
+    response.writeHead(200, {
+      "Content-Type": "image/webp",
+      "Content-Length": String(mediaFixtureBytes.byteLength),
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    response.end(mediaFixtureBytes);
     return;
   }
 
@@ -747,6 +809,7 @@ function categoryMatches(categoryId, slug) {
 function productDetail(product, management = false) {
   return {
     ...summary(product),
+    ...(management ? {} : { images: product.images ?? [] }),
     variants: product.variants
       .filter(({ isActive }) => isActive)
       .map((variant) =>
@@ -891,7 +954,10 @@ function sendPublishedProductPage(response, source, url) {
   const pageRows = rows.slice(0, query.limit);
   const candidateNextOffset = query.offset + pageRows.length;
   send(response, 200, {
-    products: pageRows.map(summary),
+    products: pageRows.map((product) => ({
+      ...summary(product),
+      images: product.images ?? [],
+    })),
     hasMore,
     nextOffset:
       hasMore && candidateNextOffset <= MAX_LIST_OFFSET
