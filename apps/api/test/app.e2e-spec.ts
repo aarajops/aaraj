@@ -3,6 +3,7 @@ import { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { AppModule } from "./../src/app.module.js";
 import { configureApp } from "./../src/configure-app.js";
+import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 
 describe("AppController (e2e)", () => {
   let app: INestApplication;
@@ -12,7 +13,10 @@ describe("AppController (e2e)", () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication({ bodyParser: false });
+    app = moduleFixture.createNestApplication({
+      bodyParser: false,
+      cookies: { secret: deriveCartCookieSigningSecret() },
+    });
     configureApp(app);
     await app.init();
   });

@@ -1,4 +1,5 @@
 import { SiteHeader } from "@/app/_components/site-header";
+import { CartProvider } from "@/features/cart/cart-provider";
 
 export default function StorefrontLayout({
   children,
@@ -6,9 +7,9 @@ export default function StorefrontLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <>
+    <CartProvider>
       <SiteHeader />
       {children}
-    </>
+    </CartProvider>
   );
 }

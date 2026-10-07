@@ -9,6 +9,11 @@ const applicationSchemas = [
   "access",
   "catalog",
   "inventory",
+  "cart",
+  "geography",
+  "delivery",
+  "tax",
+  "quote",
 ] as const;
 
 const runtimeTableGrants = [
@@ -27,6 +32,15 @@ const runtimeTableGrants = [
   ["catalog", "size_guide_measurement", ["SELECT", "INSERT"]],
   ["inventory", "stock_balance", ["SELECT", "INSERT", "UPDATE"]],
   ["inventory", "stock_movement", ["SELECT", "INSERT"]],
+  ["cart", "customer_cart", ["SELECT", "INSERT", "UPDATE"]],
+  ["cart", "customer_cart_line", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+  ["cart", "merge_receipt", ["SELECT", "INSERT"]],
+  ["geography", "snapshot", ["SELECT"]],
+  ["geography", "location", ["SELECT"]],
+  ["delivery", "tariff", ["SELECT"]],
+  ["delivery", "tariff_district", ["SELECT"]],
+  ["tax", "profile", ["SELECT"]],
+  ["quote", "snapshot", ["SELECT", "INSERT"]],
 ] as const;
 const runtimeTablePrivilegeMap: ReadonlyMap<string, readonly string[]> =
   new Map(
@@ -298,6 +312,40 @@ async function main(): Promise<void> {
     await runtimePool.query('SELECT 1 FROM "access"."role_assignment" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "catalog"."product" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "catalog"."product_media" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "cart"."customer_cart" LIMIT 0');
+    await runtimePool.query(
+      'SELECT 1 FROM "cart"."customer_cart_line" LIMIT 0',
+    );
+    await runtimePool.query('SELECT 1 FROM "cart"."merge_receipt" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "geography"."snapshot" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "geography"."location" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "delivery"."tariff" LIMIT 0');
+    await runtimePool.query(
+      'SELECT 1 FROM "delivery"."tariff_district" LIMIT 0',
+    );
+    await runtimePool.query('SELECT 1 FROM "tax"."profile" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "quote"."snapshot" LIMIT 0');
+    const quotePrivileges = await runtimePool.query<{
+      can_insert: boolean;
+      can_update: boolean;
+      can_delete: boolean;
+      can_truncate: boolean;
+    }>(
+      `SELECT has_table_privilege(current_user, 'quote.snapshot', 'INSERT') AS can_insert,
+              has_table_privilege(current_user, 'quote.snapshot', 'UPDATE') AS can_update,
+              has_table_privilege(current_user, 'quote.snapshot', 'DELETE') AS can_delete,
+              has_table_privilege(current_user, 'quote.snapshot', 'TRUNCATE') AS can_truncate`,
+    );
+    if (
+      !quotePrivileges.rows[0]?.can_insert ||
+      quotePrivileges.rows[0].can_update ||
+      quotePrivileges.rows[0].can_delete ||
+      quotePrivileges.rows[0].can_truncate
+    ) {
+      throw new Error(
+        "Quote snapshots must be insertable and immutable to the runtime role.",
+      );
+    }
     console.log("Runtime PostgreSQL privileges applied.");
   } finally {
     await Promise.all([pool.end(), runtimePool.end()]);

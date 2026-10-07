@@ -12,6 +12,11 @@ import { PlatformAuthorizationModule } from "./platform/authorization/authorizat
 import { DatabaseModule } from "./platform/database/database.module.js";
 import { RedisModule } from "./platform/redis/redis.module.js";
 import { InventoryModule } from "./inventory/inventory.module.js";
+import { CartModule } from "./cart/cart.module.js";
+import { GeographyModule } from "./geography/geography.module.js";
+import { DeliveryModule } from "./delivery/delivery.module.js";
+import { TaxModule } from "./tax/tax.module.js";
+import { QuoteModule } from "./quote/quote.module.js";
 
 @Module({
   imports: [
@@ -26,6 +31,11 @@ import { InventoryModule } from "./inventory/inventory.module.js";
     PlatformAuthorizationModule,
     CatalogModule,
     InventoryModule,
+    CartModule,
+    GeographyModule,
+    DeliveryModule,
+    TaxModule,
+    QuoteModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ApiThrottlerGuard }],

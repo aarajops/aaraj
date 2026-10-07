@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
+import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 import { getPostgresPool } from "../src/platform/database/database-client.js";
 import { auditEvent } from "../src/platform/audit/audit-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
@@ -51,7 +52,11 @@ describe("catalog and security audit", () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({ bodyParser: false, logger: false });
+    app = module.createNestApplication({
+      bodyParser: false,
+      logger: false,
+      cookies: { secret: deriveCartCookieSigningSecret() },
+    });
     configureApp(app);
     await app.init();
     database = app.get(DatabaseService);

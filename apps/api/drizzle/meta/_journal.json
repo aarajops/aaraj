@@ -92,6 +92,20 @@
       "when": 1791348707049,
       "tag": "0012_catalog_media_processing_and_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791366419957,
+      "tag": "0013_customer_carts_and_merge_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791372920563,
+      "tag": "0014_bangladesh_geography_delivery_quote_tax",
+      "breakpoints": true
     }
   ]
 }

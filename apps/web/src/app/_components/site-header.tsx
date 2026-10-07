@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CartBadge } from "@/features/cart/cart-badge";
 
 export function SiteHeader() {
   return (
@@ -10,13 +11,17 @@ export function SiteHeader() {
         >
           AARAJ
         </Link>
-        <nav aria-label="Main navigation" className="flex items-center gap-5">
+        <nav
+          aria-label="Main navigation"
+          className="flex items-center gap-3 sm:gap-5"
+        >
           <Link
             className="text-sm text-muted-foreground hover:text-foreground"
             href="/"
           >
             Products
           </Link>
+          <CartBadge />
           <Link
             className="text-sm text-muted-foreground hover:text-foreground"
             href="/admin"

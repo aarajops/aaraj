@@ -6,6 +6,7 @@ import { CatalogController } from "./catalog.controller.js";
 import { CatalogPolicy } from "./catalog.policy.js";
 import { CatalogService } from "./catalog.service.js";
 import { CATALOG_INVENTORY_PORT } from "./catalog-inventory.port.js";
+import { CATALOG_CART_PORT } from "./catalog-cart.port.js";
 import { CatalogInventoryReader } from "./catalog-inventory.reader.js";
 import { CategoryController } from "./category.controller.js";
 import { CategoryService } from "./category.service.js";
@@ -39,7 +40,11 @@ import { R2Storage } from "./media/r2-storage.js";
       provide: CATALOG_INVENTORY_PORT,
       useExisting: CatalogInventoryReader,
     },
+    {
+      provide: CATALOG_CART_PORT,
+      useExisting: CatalogService,
+    },
   ],
-  exports: [CATALOG_INVENTORY_PORT],
+  exports: [CATALOG_INVENTORY_PORT, CATALOG_CART_PORT],
 })
 export class CatalogModule {}

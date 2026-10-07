@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -46,6 +46,7 @@ redisUrl.pathname = "/15";
 const redisPrefix = `better-auth:integration-${testId}:`;
 const throttlerPrefix = `aaraj:throttler:integration-${testId}:`;
 const catalogCachePrefix = `aaraj:integration-${testId}:catalog:`;
+const cartPrefix = `aaraj:integration-${testId}:cart:guest:`;
 const admin = new Pool({
   host,
   port,
@@ -82,6 +83,21 @@ try {
   await migrate(drizzle(migrationPool), {
     migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
   });
+  await migrationPool.query(
+    `INSERT INTO "tax"."profile" (
+       "version", "effective_from", "legal_merchant_reference",
+       "registration_status", "operating_model", "price_presentation",
+       "product_treatment", "product_rate_numerator", "product_rate_denominator",
+       "delivery_treatment", "rounding_rule", "source_reference", "source_version",
+       "approval_reference", "approved", "test_only"
+     ) VALUES (
+       'TEST_ONLY_BD_RETAIL_TAX_RULE_V1', '2020-01-01', 'TEST_ONLY synthetic merchant fixture',
+       'not_required', 'direct_retailer', 'vat_inclusive',
+       'taxable', 3, 17, 'exempt', 'half_up_bdt_v1',
+       'TEST_ONLY synthetic fixture; not legal guidance', 'TEST_ONLY_V1',
+       'TEST_ONLY_AUTOMATED_FIXTURE', true, true
+     )`,
+  );
   const { grantRuntimePrivileges } =
     await import("../dist/platform/database/grant-runtime-privileges.js");
   await grantRuntimePrivileges(migrationPool, database, runtimeRole);
@@ -99,6 +115,7 @@ try {
   process.env.BETTER_AUTH_REDIS_KEY_PREFIX = redisPrefix;
   process.env.THROTTLER_REDIS_KEY_PREFIX = throttlerPrefix;
   process.env.CATALOG_CACHE_KEY_PREFIX = catalogCachePrefix;
+  process.env.CART_REDIS_KEY_PREFIX = cartPrefix;
   process.env.BETTER_AUTH_SECRET =
     "test-only-better-auth-secret-with-32-bytes-minimum";
   process.env.BETTER_AUTH_URL = `http://${process.env.HOST ?? "127.0.0.1"}:${process.env.PORT ?? 3181}`;
@@ -114,6 +131,11 @@ try {
   app = await NestFactory.create(AppModule, {
     bodyParser: false,
     logger: false,
+    cookies: {
+      secret: createHmac("sha256", process.env.BETTER_AUTH_SECRET)
+        .update("aaraj/cart-cookie-signing/v1")
+        .digest("hex"),
+    },
   });
   configureApp(app);
   await app.init();

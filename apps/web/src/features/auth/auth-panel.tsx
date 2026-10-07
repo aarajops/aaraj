@@ -19,6 +19,8 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CartRequestError } from "@/features/cart/cart-client";
+import { useCartStore } from "@/features/cart/cart-provider";
 
 type FormMode = "sign-in" | "sign-up";
 type AuthForm = { name: string; email: string; password: string };
@@ -29,6 +31,8 @@ export function AuthPanel({
   initialSession: InitialSession;
 }) {
   const router = useRouter();
+  const mergeCart = useCartStore((state) => state.merge);
+  const refreshCart = useCartStore((state) => state.refresh);
   authClient.hydrateSession(initialSession);
   const [mode, setMode] = useState<FormMode>("sign-in");
   const [showPassword, setShowPassword] = useState(false);
@@ -88,6 +92,21 @@ export function AuthPanel({
         setShowPassword(false);
         setStatusMessage("Signed in. Redirecting…");
 
+        let cartDestination: string | null = null;
+        try {
+          const merge = await mergeCart();
+          if (merge.guestCartCleanupPending)
+            cartDestination = "/cart?merge=cleanup";
+        } catch (error) {
+          const code =
+            error instanceof CartRequestError ? error.errorCode : null;
+          cartDestination =
+            code === "CART_LIMIT_EXCEEDED" ||
+            code === "CART_VARIANT_UNAVAILABLE"
+              ? "/cart?merge=required"
+              : "/cart?merge=retry";
+        }
+
         let destination = "/";
         try {
           const response = await fetch(`${API_V1_BASE_PATH}/access/me`, {
@@ -108,7 +127,7 @@ export function AuthPanel({
           // If access cannot be confirmed, keep navigation on the public storefront.
         }
 
-        router.replace(destination);
+        router.replace(cartDestination ?? destination);
       }
     } catch {
       setErrorMessage(
@@ -127,6 +146,7 @@ export function AuthPanel({
         setErrorMessage(result.error.message ?? "Could not sign out.");
       } else {
         setStatusMessage("You are signed out.");
+        await refreshCart();
       }
     } catch {
       setErrorMessage(

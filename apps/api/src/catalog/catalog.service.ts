@@ -60,6 +60,7 @@ import {
   catalogSizeGuideRow,
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
+import type { CatalogCartVariant } from "./catalog-cart.port.js";
 import { CategoryService } from "./category.service.js";
 import {
   loadCategoryReference,
@@ -75,6 +76,47 @@ export class CatalogService {
     private readonly audit: AuditService,
     private readonly categories: CategoryService,
   ) {}
+
+  async findPurchasableVariants(
+    variantIds: readonly string[],
+  ): Promise<CatalogCartVariant[]> {
+    if (variantIds.length === 0) return [];
+
+    const rows = await this.database.db
+      .select({
+        variantId: catalogProductVariant.id,
+        slug: catalogProduct.slug,
+        name: catalogProduct.name,
+        color: catalogProductVariant.color,
+        sizeLabel: catalogProductVariant.sizeLabel,
+        unitPriceBdt: catalogProductVariant.priceBdt,
+      })
+      .from(catalogProductVariant)
+      .innerJoin(
+        catalogProduct,
+        eq(catalogProduct.id, catalogProductVariant.productId),
+      )
+      .where(
+        and(
+          inArray(catalogProductVariant.id, [...new Set(variantIds)]),
+          eq(catalogProductVariant.isActive, true),
+          isNotNull(catalogProductVariant.priceBdt),
+          ...this.publishedProductEligibilityConditions(),
+        ),
+      );
+
+    return rows.flatMap((row) =>
+      row.unitPriceBdt === null
+        ? []
+        : [
+            {
+              ...row,
+              unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
+              currency: "BDT" as const,
+            },
+          ],
+    );
+  }
 
   async listPublished(
     query: CatalogPublishedProductListQuery,

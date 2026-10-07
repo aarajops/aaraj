@@ -185,6 +185,7 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toContainText(guideName);
   await page.getByLabel("Published on the storefront").check();
   await page
+    .getByRole("region", { name: "Edit product" })
     .getByLabel("Audit reason", { exact: true })
     .fill("Publish configured integration product");
   await page.getByRole("button", { name: "Save changes" }).click();
@@ -261,6 +262,203 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByText(skuSmall)).toHaveCount(0);
   await expect(page.getByText(skuMedium)).toHaveCount(0);
 
+  await page.goto("/admin");
+  await page.locator("summary[aria-label^='Account menu for']").click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/account$/);
+
+  let cartReadIsCorrupt = true;
+  await page.route("**/api/v1/cart", async (route) => {
+    if (route.request().method() === "GET" && cartReadIsCorrupt) {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          statusCode: 500,
+          message:
+            "Your saved cart cannot be read. Clear it to start a fresh cart.",
+          errorCode: "CART_DATA_INVALID",
+        }),
+      });
+      return;
+    }
+    if (route.request().method() === "DELETE") cartReadIsCorrupt = false;
+    await route.continue();
+  });
+  await page.goto(`/products/${slug}`);
+  await page.getByLabel("Choose a color and size").selectOption({
+    label: "Black · S",
+  });
+  await page.getByRole("button", { name: "Clear unreadable cart" }).click();
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Your unreadable saved cart was cleared. Add this item again.",
+    }),
+  ).toBeVisible();
+  expect(cartReadIsCorrupt).toBe(false);
+  await page.unroute("**/api/v1/cart");
+  await page.getByRole("button", { name: "Add to cart" }).click();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: `${productName} added to your cart.` }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Cart, 1 item" })).toBeVisible();
+
+  await page.goto("/cart");
+  await expect(page.getByRole("heading", { name: "Your cart" })).toBeVisible();
+  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+
+  const quoteSection = page.getByRole("region", { name: "Delivery and quote" });
+  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
+  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await page.getByLabel("Recipient name").fill("Browser E2E Recipient");
+  await page.getByLabel("Phone").fill("+8801712345678");
+  await page.getByLabel("Area / locality").fill("Browser test locality");
+  await quoteSection
+    .getByRole("button", { name: "Get delivery quote" })
+    .click();
+  await expect(
+    quoteSection.getByRole("heading", { name: "Current quote" }),
+  ).toBeVisible();
+  await expect(
+    quoteSection.getByText("Delivery · AARAJ_DELIVERY_2026_10_07_V1"),
+  ).toBeVisible();
+  await expect(quoteSection.getByText("৳80", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Division").selectOption({ label: "চট্টগ্রাম বিভাগ" });
+  await page.getByLabel("District").selectOption({ label: "চট্টগ্রাম জেলা" });
+  await expect(
+    quoteSection
+      .getByRole("status")
+      .filter({ hasText: "This quote is no longer current." }),
+  ).toBeVisible();
+  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
+  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await expect(
+    quoteSection.getByRole("heading", { name: "Current quote" }),
+  ).toBeVisible();
+
+  await page
+    .getByLabel(`Quantity for ${productName}, Black, S`)
+    .selectOption("2");
+  await expect(
+    page.getByLabel(`Quantity for ${productName}, Black, S`),
+  ).toHaveValue("2");
+  await expect(
+    quoteSection
+      .getByRole("status")
+      .filter({ hasText: "This quote is no longer current." }),
+  ).toBeVisible();
+  await quoteSection
+    .getByRole("button", { name: "Request updated quote" })
+    .click();
+  await expect(
+    quoteSection.getByRole("heading", { name: "Current quote" }),
+  ).toBeVisible();
+  await expect(quoteSection.getByText("৳80", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByLabel(`Quantity for ${productName}, Black, S`),
+  ).toHaveValue("2");
+  await page.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Your cart is empty.")).toBeVisible();
+
+  await page.goto(`/products/${slug}`);
+  await page.getByLabel("Choose a color and size").selectOption({
+    label: "Black · S",
+  });
+  await page.getByRole("button", { name: "Add to cart" }).click();
+  await expect(page.getByRole("link", { name: "Cart, 1 item" })).toBeVisible();
+  const browserStorage = await page.evaluate(() =>
+    JSON.stringify({
+      local: Object.fromEntries(
+        Array.from({ length: localStorage.length }, (_, index) => {
+          const key = localStorage.key(index)!;
+          return [key, localStorage.getItem(key)];
+        }),
+      ),
+      session: Object.fromEntries(
+        Array.from({ length: sessionStorage.length }, (_, index) => {
+          const key = sessionStorage.key(index)!;
+          return [key, sessionStorage.getItem(key)];
+        }),
+      ),
+    }),
+  );
+  expect(browserStorage).not.toContain(productName);
+  expect(browserStorage.toLowerCase()).not.toContain("cart");
+
+  await page.goto("/cart");
+  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
+  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await page.getByLabel("Recipient name").fill("Guest Quote Recipient");
+  await page.getByLabel("Phone").fill("+8801712345678");
+  await page.getByLabel("Area / locality").fill("Guest quote locality");
+  const guestQuoteResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith("/api/v1/quotes"),
+  );
+  await page
+    .getByRole("region", { name: "Delivery and quote" })
+    .getByRole("button", { name: "Get delivery quote" })
+    .click();
+  const guestQuoteResponse = await guestQuoteResponsePromise;
+  expect(guestQuoteResponse.status()).toBe(201);
+  const guestQuote = await guestQuoteResponse.json();
+
+  await page.goto("/account");
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill("catalog-e2e@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("CatalogE2E-Only-Password-2026!");
+  await page
+    .locator("form")
+    .getByRole("button", { name: "Sign in", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await page.goto("/cart");
+  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+  await expect(
+    page.getByLabel(`Quantity for ${productName}, Black, S`),
+  ).toHaveValue("1");
+
+  const oldGuestQuoteQuery = new URLSearchParams({
+    geographyVersion: guestQuote.destination.geographyVersion,
+    divisionId: guestQuote.destination.divisionId,
+    districtId: guestQuote.destination.districtId,
+  });
+  expect(
+    (
+      await page.request.get(
+        `/api/v1/quotes/${guestQuote.id}?${oldGuestQuoteQuery}`,
+      )
+    ).status(),
+  ).toBe(404);
+
+  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
+  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await page.getByLabel("Recipient name").fill("Customer Quote Recipient");
+  await page.getByLabel("Phone").fill("+8801712345678");
+  await page.getByLabel("Area / locality").fill("Customer quote locality");
+  const customerQuoteResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith("/api/v1/quotes"),
+  );
+  await quoteSection
+    .getByRole("button", { name: "Get delivery quote" })
+    .click();
+  const customerQuoteResponse = await customerQuoteResponsePromise;
+  expect(customerQuoteResponse.status()).toBe(201);
+  await expect(
+    quoteSection.getByRole("heading", { name: "Current quote" }),
+  ).toBeVisible();
+  await expect(quoteSection.getByText("৳80", { exact: true })).toBeVisible();
+
   const publicResponse = await page.request.get(
     `/api/v1/catalog/products/${slug}`,
   );
@@ -283,6 +481,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("link", { name: `Edit ${productName}` }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page
+    .getByRole("region", { name: "Edit product" })
     .getByLabel("Audit reason", { exact: true })
     .fill("Unpublish integration test product");
   await page.getByRole("button", { name: "Save changes" }).click();

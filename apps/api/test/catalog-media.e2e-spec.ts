@@ -8,6 +8,7 @@ import { vi } from "vitest";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
+import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 import { AccessService } from "../src/platform/authorization/access.service.js";
 import { AuditService } from "../src/platform/audit/audit.service.js";
 import { auditEvent } from "../src/platform/audit/audit-schema.js";
@@ -206,7 +207,11 @@ describe("catalog media management", () => {
       .overrideProvider(R2Storage)
       .useValue(storage)
       .compile();
-    app = module.createNestApplication({ bodyParser: false, logger: false });
+    app = module.createNestApplication({
+      bodyParser: false,
+      logger: false,
+      cookies: { secret: deriveCartCookieSigningSecret() },
+    });
     configureApp(app);
     await app.init();
     database = app.get(DatabaseService);

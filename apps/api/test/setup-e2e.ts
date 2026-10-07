@@ -28,7 +28,9 @@ process.env.BETTER_AUTH_REDIS_KEY_PREFIX = prefix;
 const throttlerPrefix = `aaraj:throttler:e2e-${testId}:`;
 process.env.THROTTLER_REDIS_KEY_PREFIX = throttlerPrefix;
 const catalogCachePrefix = `aaraj:e2e-${testId}:catalog:`;
+const cartPrefix = `aaraj:e2e-${testId}:cart:guest:`;
 process.env.CATALOG_CACHE_KEY_PREFIX = catalogCachePrefix;
+process.env.CART_REDIS_KEY_PREFIX = cartPrefix;
 
 // Each test file owns a disposable database. Never migrate or truncate the developer's DB.
 const adminHost =
@@ -65,6 +67,7 @@ process.env.POSTGRES_PASSWORD = connection.password;
 const migrationPool = new Pool({ ...connection, database: testDatabase });
 try {
   await migrate(drizzle(migrationPool), { migrationsFolder: "./drizzle" });
+  await seedSyntheticTaxProfile(migrationPool);
 } catch (error) {
   await migrationPool.end();
   await admin.query(
@@ -80,13 +83,18 @@ afterAll(async () => {
   await closeRedisClient();
   const redis = new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: 1 });
   try {
-    for (const keyPrefix of [prefix, throttlerPrefix, catalogCachePrefix]) {
+    for (const pattern of [
+      `${prefix}*`,
+      `{${throttlerPrefix}*`,
+      `${catalogCachePrefix}*`,
+      `${cartPrefix}*`,
+    ]) {
       let cursor = "0";
       do {
         const [next, keys] = await redis.scan(
           cursor,
           "MATCH",
-          `${keyPrefix}*`,
+          pattern,
           "COUNT",
           100,
         );
@@ -117,4 +125,22 @@ function isLoopbackHost(host: string): boolean {
 
 function quoteIdentifier(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+async function seedSyntheticTaxProfile(pool: Pool): Promise<void> {
+  await pool.query(
+    `INSERT INTO "tax"."profile" (
+       "version", "effective_from", "legal_merchant_reference",
+       "registration_status", "operating_model", "price_presentation",
+       "product_treatment", "product_rate_numerator", "product_rate_denominator",
+       "delivery_treatment", "rounding_rule", "source_reference", "source_version",
+       "approval_reference", "approved", "test_only"
+     ) VALUES (
+       'TEST_ONLY_BD_RETAIL_TAX_RULE_V1', '2020-01-01', 'TEST_ONLY synthetic merchant fixture',
+       'not_required', 'direct_retailer', 'vat_inclusive',
+       'taxable', 3, 17, 'exempt', 'half_up_bdt_v1',
+       'TEST_ONLY synthetic fixture; not legal guidance', 'TEST_ONLY_V1',
+       'TEST_ONLY_AUTOMATED_FIXTURE', true, true
+     ) ON CONFLICT ("version") DO NOTHING`,
+  );
 }

@@ -1,9 +1,15 @@
 import { VersioningType, type INestApplication } from "@nestjs/common";
 import { API_V1_ROUTE_VERSION } from "@aaraj/contracts";
 import { requestContextMiddleware } from "./platform/request-context.js";
+import { getStorefrontOrigin } from "./platform/config/storefront-origin.js";
 
 export function configureApp(app: INestApplication): void {
   const isProduction = process.env.NODE_ENV === "production";
+  const allowedOrigin = getStorefrontOrigin();
+  if (isProduction && new URL(allowedOrigin).protocol !== "https:") {
+    throw new Error("CLIENT_URL must use HTTPS in production.");
+  }
+  app.enableCsrfProtection({ trustedOrigins: [allowedOrigin] });
   const trustedProxies = process.env.BETTER_AUTH_TRUSTED_PROXIES?.trim();
   if (isProduction && trustedProxies) {
     app
@@ -25,7 +31,6 @@ export function configureApp(app: INestApplication): void {
     defaultVersion: API_V1_ROUTE_VERSION,
   });
 
-  const allowedOrigin = process.env.CLIENT_URL ?? "http://localhost:3000";
   app.enableCors({
     origin: allowedOrigin,
     credentials: true,

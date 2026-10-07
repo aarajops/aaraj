@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPublishedProduct } from "@/features/catalog/catalog-queries";
 import { formatCatalogPrice } from "@/features/catalog/price";
+import { AddToCart } from "@/features/cart/add-to-cart";
 
 export async function generateMetadata({
   params,
@@ -223,6 +224,7 @@ export default async function ProductPage({
               </ul>
             </section>
           )}
+          <AddToCart productName={product.name} variants={product.variants} />
           {product.sizeGuide && (
             <section
               aria-labelledby="size-guide-heading"

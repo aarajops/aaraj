@@ -5,6 +5,7 @@ import request from "supertest";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
+import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 
 const origin = "http://localhost:3000";
 const password = "aaraj-e2e-password-123";
@@ -16,7 +17,11 @@ describe("distributed rate limits", () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({ bodyParser: false, logger: false });
+    app = module.createNestApplication({
+      bodyParser: false,
+      logger: false,
+      cookies: { secret: deriveCartCookieSigningSecret() },
+    });
     configureApp(app);
     await app.init();
   });

@@ -6,6 +6,7 @@ import { AppModule } from "../src/app.module.js";
 import { auth } from "../src/auth/auth.js";
 import { user } from "../src/auth/auth-schema.js";
 import { configureApp } from "../src/configure-app.js";
+import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 import { AccessService } from "../src/platform/authorization/access.service.js";
 import { PermissionsService } from "../src/platform/authorization/permissions.service.js";
 import { roleAssignment } from "../src/platform/authorization/access-schema.js";
@@ -65,7 +66,11 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({ bodyParser: false, logger: false });
+    app = module.createNestApplication({
+      bodyParser: false,
+      logger: false,
+      cookies: { secret: deriveCartCookieSigningSecret() },
+    });
     configureApp(app);
     await app.init();
     await app.get(RedisService).checkConnection();
