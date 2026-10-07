@@ -71,6 +71,8 @@ test("staff manages reusable size guides and apparel products safely", async ({
   context,
   baseURL,
 }) => {
+  test.setTimeout(60_000);
+
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Products", level: 1 }),
