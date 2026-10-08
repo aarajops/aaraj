@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  primaryKey,
   pgSchema,
   text,
   timestamp,
@@ -17,6 +18,7 @@ export const inventoryStockBalance = inventorySchema.table(
   {
     variantId: uuid("variant_id").primaryKey(),
     quantityOnHand: integer("quantity_on_hand").notNull().default(0),
+    quantityReserved: integer("quantity_reserved").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -25,6 +27,78 @@ export const inventoryStockBalance = inventorySchema.table(
     check(
       "stock_balance_quantity_nonnegative_check",
       sql`${table.quantityOnHand} >= 0`,
+    ),
+    check(
+      "stock_balance_reserved_quantity_check",
+      sql`${table.quantityReserved} >= 0 AND ${table.quantityReserved} <= ${table.quantityOnHand}`,
+    ),
+  ],
+);
+
+export const inventoryStockReservation = inventorySchema.table(
+  "stock_reservation",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status").$type<"held" | "released" | "consumed">().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "stock_reservation_status_check",
+      sql`${table.status} in ('held', 'released', 'consumed')`,
+    ),
+  ],
+);
+
+export const inventoryStockReservationLine = inventorySchema.table(
+  "stock_reservation_line",
+  {
+    reservationId: uuid("reservation_id")
+      .notNull()
+      .references(() => inventoryStockReservation.id, { onDelete: "restrict" }),
+    variantId: uuid("variant_id").notNull(),
+    quantity: integer("quantity").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: "stock_reservation_line_pk",
+      columns: [table.reservationId, table.variantId],
+    }),
+    check("stock_reservation_line_quantity_check", sql`${table.quantity} > 0`),
+  ],
+);
+
+export const inventoryReservationCommand = inventorySchema.table(
+  "reservation_command",
+  {
+    commandId: uuid("command_id").primaryKey(),
+    reservationId: uuid("reservation_id")
+      .notNull()
+      .references(() => inventoryStockReservation.id, { onDelete: "restrict" }),
+    operation: text("operation")
+      .$type<"reserve" | "release" | "consume">()
+      .notNull(),
+    requestFingerprint: text("request_fingerprint").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("reservation_command_reserve_uidx")
+      .on(table.reservationId)
+      .where(sql`${table.operation} = 'reserve'`),
+    check(
+      "reservation_command_operation_check",
+      sql`${table.operation} in ('reserve', 'release', 'consume')`,
+    ),
+    check(
+      "reservation_command_fingerprint_check",
+      sql`${table.requestFingerprint} ~ '^[0-9a-f]{64}$'`,
     ),
   ],
 );

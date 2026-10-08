@@ -113,6 +113,13 @@
       "when": 1791432585584,
       "tag": "0015_bangladesh_geography_reconciliation",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791436427583,
+      "tag": "0016_inventory_reservations",
+      "breakpoints": true
     }
   ]
 }

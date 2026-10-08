@@ -21,6 +21,8 @@ export const InventoryVariantSchema = z.strictObject({
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),
   quantityOnHand: z.number().int().nonnegative().max(2_147_483_647),
+  quantityReserved: z.number().int().nonnegative().max(2_147_483_647),
+  quantityAvailable: z.number().int().nonnegative().max(2_147_483_647),
   stockUpdatedAt: z.iso.datetime().nullable(),
 });
 export type InventoryVariant = z.infer<typeof InventoryVariantSchema>;

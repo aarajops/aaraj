@@ -60,9 +60,13 @@ export class InventoryService {
     );
     const variants: InventoryVariant[] = catalogPage.variants.map((variant) => {
       const balance = balancesByVariant.get(variant.id);
+      const quantityOnHand = balance?.quantityOnHand ?? 0;
+      const quantityReserved = balance?.quantityReserved ?? 0;
       return {
         ...variant,
-        quantityOnHand: balance?.quantityOnHand ?? 0,
+        quantityOnHand,
+        quantityReserved,
+        quantityAvailable: quantityOnHand - quantityReserved,
         stockUpdatedAt: balance?.updatedAt.toISOString() ?? null,
       };
     });
@@ -92,9 +96,13 @@ export class InventoryService {
       .from(inventoryStockBalance)
       .where(eq(inventoryStockBalance.variantId, variantId))
       .limit(1);
+    const quantityOnHand = balance?.quantityOnHand ?? 0;
+    const quantityReserved = balance?.quantityReserved ?? 0;
     return {
       ...variant,
-      quantityOnHand: balance?.quantityOnHand ?? 0,
+      quantityOnHand,
+      quantityReserved,
+      quantityAvailable: quantityOnHand - quantityReserved,
       stockUpdatedAt: balance?.updatedAt.toISOString() ?? null,
     };
   }
@@ -160,6 +168,7 @@ export class InventoryService {
             and(
               eq(inventoryStockBalance.variantId, variantId),
               sql`${inventoryStockBalance.quantityOnHand}::bigint + ${input.delta}::bigint BETWEEN 0 AND ${MAX_STOCK_QUANTITY}`,
+              sql`${inventoryStockBalance.quantityOnHand}::bigint + ${input.delta}::bigint >= ${inventoryStockBalance.quantityReserved}`,
             ),
           )
           .returning({
@@ -169,7 +178,10 @@ export class InventoryService {
 
         if (!balance) {
           const [current] = await transaction
-            .select({ quantityOnHand: inventoryStockBalance.quantityOnHand })
+            .select({
+              quantityOnHand: inventoryStockBalance.quantityOnHand,
+              quantityReserved: inventoryStockBalance.quantityReserved,
+            })
             .from(inventoryStockBalance)
             .where(eq(inventoryStockBalance.variantId, variantId))
             .limit(1);
@@ -181,6 +193,11 @@ export class InventoryService {
           if (nextQuantity < 0n) {
             throw new ConflictException(
               "The adjustment cannot reduce stock below zero.",
+            );
+          }
+          if (nextQuantity < BigInt(current.quantityReserved)) {
+            throw new ConflictException(
+              "The adjustment cannot reduce stock below actively reserved units.",
             );
           }
           throw new BadRequestException(

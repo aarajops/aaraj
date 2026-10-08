@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
@@ -17,7 +17,13 @@ import {
 import {
   inventoryStockBalance,
   inventoryStockMovement,
+  inventoryStockReservation,
+  inventoryReservationCommand,
 } from "../src/inventory/inventory-schema.js";
+import {
+  INVENTORY_RESERVATION_PORT,
+  type InventoryReservationPort,
+} from "../src/inventory/inventory-reservation.port.js";
 
 type Account = { id: string; email: string; cookie: string };
 const origin = "http://localhost:3000";
@@ -26,6 +32,7 @@ const password = "aaraj-inventory-e2e-password-123";
 describe("variant inventory adjustments", () => {
   let app: INestApplication;
   let database: DatabaseService;
+  let reservations: InventoryReservationPort;
   let owner: Account;
   let staff: Account;
   let customer: Account;
@@ -50,26 +57,89 @@ describe("variant inventory adjustments", () => {
     };
   }
 
-  function adjustment(commandId: string, delta: number, reason: string) {
+  function adjustmentFor(
+    targetVariantId: string,
+    commandId: string,
+    delta: number,
+    reason: string,
+  ) {
     return request(app.getHttpServer())
-      .post(`/api/v1/inventory/manage/${variantId}/adjustments`)
+      .post(`/api/v1/inventory/manage/${targetVariantId}/adjustments`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({ commandId, delta, reason });
   }
 
-  beforeAll(async () => {
+  function adjustment(commandId: string, delta: number, reason: string) {
+    return adjustmentFor(variantId, commandId, delta, reason);
+  }
+
+  async function createApplication(): Promise<INestApplication> {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({
+    const application = module.createNestApplication({
       bodyParser: false,
       logger: false,
       cookies: { secret: deriveCartCookieSigningSecret() },
     });
-    configureApp(app);
-    await app.init();
+    configureApp(application);
+    await application.init();
+    return application;
+  }
+
+  async function createPurchasableVariant(): Promise<string> {
+    const [product] = await database.db
+      .insert(catalogProduct)
+      .values({
+        slug: `inventory-reservation-${randomUUID()}`,
+        name: "Inventory reservation E2E product",
+        audience: "unisex",
+        isPublished: true,
+      })
+      .returning();
+    if (!product)
+      throw new Error("Could not create the reservation test product.");
+
+    const [variant] = await database.db
+      .insert(catalogProductVariant)
+      .values({
+        productId: product.id,
+        sku: `RSV-${randomUUID()}`,
+        color: "Blue",
+        sizeLabel: "M",
+        priceBdt: 100,
+      })
+      .returning();
+    if (!variant)
+      throw new Error("Could not create the reservation test variant.");
+    return variant.id;
+  }
+
+  async function receiveStock(targetVariantId: string, quantity: number) {
+    await adjustmentFor(
+      targetVariantId,
+      randomUUID(),
+      quantity,
+      "Receive reservation test stock",
+    ).expect(201);
+  }
+
+  async function readBalance(targetVariantId: string) {
+    const [balance] = await database.db
+      .select({
+        quantityOnHand: inventoryStockBalance.quantityOnHand,
+        quantityReserved: inventoryStockBalance.quantityReserved,
+      })
+      .from(inventoryStockBalance)
+      .where(eq(inventoryStockBalance.variantId, targetVariantId));
+    return balance ?? { quantityOnHand: 0, quantityReserved: 0 };
+  }
+
+  beforeAll(async () => {
+    app = await createApplication();
     database = app.get(DatabaseService);
+    reservations = app.get(INVENTORY_RESERVATION_PORT);
 
     owner = await createAccount("owner");
     staff = await createAccount("staff");
@@ -166,6 +236,8 @@ describe("variant inventory adjustments", () => {
           productName: "Inventory E2E product",
           sku: expect.stringContaining("INV-"),
           quantityOnHand: 0,
+          quantityReserved: 0,
+          quantityAvailable: 0,
           stockUpdatedAt: null,
         },
       ],
@@ -277,5 +349,400 @@ describe("variant inventory adjustments", () => {
       .get(`/api/v1/inventory/manage/${variantId}`)
       .set("Cookie", staff.cookie)
       .expect(404);
+  });
+
+  it("reserves single and multiple variants, aggregates duplicates, and replays commands", async () => {
+    const singleVariantId = await createPurchasableVariant();
+    await receiveStock(singleVariantId, 5);
+
+    const command = {
+      commandId: randomUUID(),
+      lines: [
+        { variantId: singleVariantId, quantity: 2 },
+        { variantId: singleVariantId, quantity: 1 },
+      ],
+    };
+    const [first, replay] = await Promise.all([
+      reservations.reserve(command),
+      reservations.reserve(command),
+    ]);
+    expect(first.id).toBe(replay.id);
+    expect(first.status).toBe("held");
+    expect(first.lines).toEqual([{ variantId: singleVariantId, quantity: 3 }]);
+    expect(await readBalance(singleVariantId)).toEqual({
+      quantityOnHand: 5,
+      quantityReserved: 3,
+    });
+    await expect(
+      reservations.reserve({
+        ...command,
+        lines: [{ variantId: singleVariantId, quantity: 4 }],
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const multiVariantIds = [
+      await createPurchasableVariant(),
+      await createPurchasableVariant(),
+    ];
+    await Promise.all(multiVariantIds.map((id) => receiveStock(id, 2)));
+    const multi = await reservations.reserve({
+      commandId: randomUUID(),
+      lines: multiVariantIds.map((variantId) => ({ variantId, quantity: 1 })),
+    });
+    expect(multi.status).toBe("held");
+    expect(multi.lines).toHaveLength(2);
+    for (const id of multiVariantIds) {
+      expect(await readBalance(id)).toEqual({
+        quantityOnHand: 2,
+        quantityReserved: 1,
+      });
+    }
+  });
+
+  it("rolls back every allocation when one variant is unavailable", async () => {
+    const variantIds = [
+      await createPurchasableVariant(),
+      await createPurchasableVariant(),
+    ].sort();
+    const availableVariantId = variantIds[0];
+    const unavailableVariantId = variantIds[1];
+    if (!availableVariantId || !unavailableVariantId)
+      throw new Error("Reservation rollback test needs two variants.");
+    await receiveStock(availableVariantId, 2);
+
+    const commandId = randomUUID();
+    const reservationCountBefore = (
+      await database.db
+        .select({ id: inventoryStockReservation.id })
+        .from(inventoryStockReservation)
+    ).length;
+    await expect(
+      reservations.reserve({
+        commandId,
+        lines: [
+          { variantId: availableVariantId, quantity: 1 },
+          { variantId: unavailableVariantId, quantity: 1 },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    expect(await readBalance(availableVariantId)).toEqual({
+      quantityOnHand: 2,
+      quantityReserved: 0,
+    });
+    expect(await readBalance(unavailableVariantId)).toEqual({
+      quantityOnHand: 0,
+      quantityReserved: 0,
+    });
+    expect(
+      await database.db
+        .select()
+        .from(inventoryReservationCommand)
+        .where(eq(inventoryReservationCommand.commandId, commandId)),
+    ).toHaveLength(0);
+    expect(
+      await database.db
+        .select({ id: inventoryStockReservation.id })
+        .from(inventoryStockReservation),
+    ).toHaveLength(reservationCountBefore);
+  });
+
+  it("allows only one buyer to reserve the final unit", async () => {
+    const finalUnitVariantId = await createPurchasableVariant();
+    await receiveStock(finalUnitVariantId, 1);
+
+    const results = await Promise.allSettled([
+      reservations.reserve({
+        commandId: randomUUID(),
+        lines: [{ variantId: finalUnitVariantId, quantity: 1 }],
+      }),
+      reservations.reserve({
+        commandId: randomUUID(),
+        lines: [{ variantId: finalUnitVariantId, quantity: 1 }],
+      }),
+    ]);
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(
+      1,
+    );
+    const rejected = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toMatchObject({ status: 409 });
+    expect(await readBalance(finalUnitVariantId)).toEqual({
+      quantityOnHand: 1,
+      quantityReserved: 1,
+    });
+  });
+
+  it("releases and consumes stock exactly once with guarded terminal states", async () => {
+    const releaseVariantId = await createPurchasableVariant();
+    await receiveStock(releaseVariantId, 4);
+    const released = await reservations.reserve({
+      commandId: randomUUID(),
+      lines: [{ variantId: releaseVariantId, quantity: 2 }],
+    });
+    const releaseCommand = {
+      commandId: randomUUID(),
+      reservationId: released.id,
+    };
+    const [releaseResult, releaseReplay] = await Promise.all([
+      reservations.release(releaseCommand),
+      reservations.release(releaseCommand),
+    ]);
+    expect(releaseResult.id).toBe(releaseReplay.id);
+    expect(releaseResult.status).toBe("released");
+    expect(await readBalance(releaseVariantId)).toEqual({
+      quantityOnHand: 4,
+      quantityReserved: 0,
+    });
+    expect(
+      (
+        await reservations.release({
+          commandId: randomUUID(),
+          reservationId: released.id,
+        })
+      ).status,
+    ).toBe("released");
+    await expect(
+      reservations.consume({
+        commandId: randomUUID(),
+        reservationId: released.id,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const consumeVariantId = await createPurchasableVariant();
+    await receiveStock(consumeVariantId, 4);
+    const held = await reservations.reserve({
+      commandId: randomUUID(),
+      lines: [{ variantId: consumeVariantId, quantity: 3 }],
+    });
+    const consumeCommand = {
+      commandId: randomUUID(),
+      reservationId: held.id,
+    };
+    const [consumeResult, consumeReplay] = await Promise.all([
+      reservations.consume(consumeCommand),
+      reservations.consume(consumeCommand),
+    ]);
+    expect(consumeResult.id).toBe(consumeReplay.id);
+    expect(consumeResult.status).toBe("consumed");
+    expect(await readBalance(consumeVariantId)).toEqual({
+      quantityOnHand: 1,
+      quantityReserved: 0,
+    });
+    expect(
+      (
+        await reservations.consume({
+          commandId: randomUUID(),
+          reservationId: held.id,
+        })
+      ).status,
+    ).toBe("consumed");
+    await expect(
+      reservations.release({
+        commandId: randomUUID(),
+        reservationId: held.id,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("serializes release versus consume and preserves stock invariants", async () => {
+    const targetVariantId = await createPurchasableVariant();
+    await receiveStock(targetVariantId, 2);
+    const held = await reservations.reserve({
+      commandId: randomUUID(),
+      lines: [{ variantId: targetVariantId, quantity: 1 }],
+    });
+
+    const outcomes = await Promise.allSettled([
+      reservations.release({
+        commandId: randomUUID(),
+        reservationId: held.id,
+      }),
+      reservations.consume({
+        commandId: randomUUID(),
+        reservationId: held.id,
+      }),
+    ]);
+    expect(
+      outcomes.filter(({ status }) => status === "fulfilled"),
+    ).toHaveLength(1);
+    const rejected = outcomes.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toMatchObject({ status: 409 });
+
+    const state = await reservations.getReservation(held.id);
+    expect(["released", "consumed"]).toContain(state?.status);
+    const balance = await readBalance(targetVariantId);
+    expect(balance.quantityReserved).toBe(0);
+    expect(balance.quantityOnHand).toBe(state?.status === "consumed" ? 1 : 2);
+  });
+
+  it("prevents staff reductions from crossing actively reserved stock", async () => {
+    const targetVariantId = await createPurchasableVariant();
+    await receiveStock(targetVariantId, 3);
+    const held = await reservations.reserve({
+      commandId: randomUUID(),
+      lines: [{ variantId: targetVariantId, quantity: 2 }],
+    });
+
+    await adjustmentFor(
+      targetVariantId,
+      randomUUID(),
+      -2,
+      "Remove reserved stock",
+    ).expect(409);
+    expect(await readBalance(targetVariantId)).toEqual({
+      quantityOnHand: 3,
+      quantityReserved: 2,
+    });
+    await request(app.getHttpServer())
+      .get(`/api/v1/inventory/manage/${targetVariantId}`)
+      .set("Cookie", staff.cookie)
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          quantityOnHand: 3,
+          quantityReserved: 2,
+          quantityAvailable: 1,
+        }),
+      );
+
+    await adjustmentFor(
+      targetVariantId,
+      randomUUID(),
+      -1,
+      "Remove available stock",
+    ).expect(201);
+    expect(await readBalance(targetVariantId)).toEqual({
+      quantityOnHand: 2,
+      quantityReserved: 2,
+    });
+    await reservations.release({
+      commandId: randomUUID(),
+      reservationId: held.id,
+    });
+    expect(await readBalance(targetVariantId)).toEqual({
+      quantityOnHand: 2,
+      quantityReserved: 0,
+    });
+  });
+
+  it("serializes a staff removal racing the reservation of the same final unit", async () => {
+    const targetVariantId = await createPurchasableVariant();
+    await receiveStock(targetVariantId, 1);
+    const reservationCommand = {
+      commandId: randomUUID(),
+      lines: [{ variantId: targetVariantId, quantity: 1 }],
+    };
+    const [reserveOutcome, adjustmentOutcome] = await Promise.all([
+      reservations.reserve(reservationCommand).then(
+        (reservation) => ({ kind: "reserved" as const, reservation }),
+        (error: unknown) => ({ kind: "reserve-rejected" as const, error }),
+      ),
+      adjustmentFor(
+        targetVariantId,
+        randomUUID(),
+        -1,
+        "Remove final unit during reservation",
+      ).then(({ status }) => ({ kind: "adjustment" as const, status })),
+    ]);
+
+    if (reserveOutcome.kind === "reserved") {
+      expect(adjustmentOutcome).toMatchObject({ status: 409 });
+      expect(reserveOutcome.reservation.status).toBe("held");
+      expect(await readBalance(targetVariantId)).toEqual({
+        quantityOnHand: 1,
+        quantityReserved: 1,
+      });
+    } else {
+      expect(reserveOutcome.error).toMatchObject({ status: 409 });
+      expect(adjustmentOutcome).toMatchObject({ status: 201 });
+      expect(await readBalance(targetVariantId)).toEqual({
+        quantityOnHand: 0,
+        quantityReserved: 0,
+      });
+    }
+  });
+
+  it("rolls back allocations when PostgreSQL fails during a multi-variant reserve", async () => {
+    const variantIds = [
+      await createPurchasableVariant(),
+      await createPurchasableVariant(),
+    ].sort();
+    const firstVariantId = variantIds[0];
+    const failingVariantId = variantIds[1];
+    if (!firstVariantId || !failingVariantId)
+      throw new Error("Database failure test needs two variants.");
+    await Promise.all([
+      receiveStock(firstVariantId, 2),
+      receiveStock(failingVariantId, 2),
+    ]);
+
+    const constraintName = "inventory_e2e_reservation_failure_check";
+    await database.db.execute(
+      sql.raw(
+        `ALTER TABLE inventory.stock_balance ADD CONSTRAINT ${constraintName} CHECK (variant_id <> '${failingVariantId}'::uuid OR quantity_reserved = 0)`,
+      ),
+    );
+    const commandId = randomUUID();
+    try {
+      await expect(
+        reservations.reserve({
+          commandId,
+          lines: [
+            { variantId: firstVariantId, quantity: 1 },
+            { variantId: failingVariantId, quantity: 1 },
+          ],
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await database.db.execute(
+        sql.raw(
+          `ALTER TABLE inventory.stock_balance DROP CONSTRAINT IF EXISTS ${constraintName}`,
+        ),
+      );
+    }
+
+    expect(await readBalance(firstVariantId)).toEqual({
+      quantityOnHand: 2,
+      quantityReserved: 0,
+    });
+    expect(await readBalance(failingVariantId)).toEqual({
+      quantityOnHand: 2,
+      quantityReserved: 0,
+    });
+    expect(
+      await database.db
+        .select()
+        .from(inventoryReservationCommand)
+        .where(eq(inventoryReservationCommand.commandId, commandId)),
+    ).toHaveLength(0);
+  });
+
+  it("replays a committed reservation after the Inventory service restarts", async () => {
+    const targetVariantId = await createPurchasableVariant();
+    await receiveStock(targetVariantId, 2);
+    const command = {
+      commandId: randomUUID(),
+      lines: [{ variantId: targetVariantId, quantity: 1 }],
+    };
+    const committed = await reservations.reserve(command);
+
+    await app.close();
+    app = await createApplication();
+    database = app.get(DatabaseService);
+    reservations = app.get(INVENTORY_RESERVATION_PORT);
+
+    const replay = await reservations.reserve(command);
+    expect(replay.id).toBe(committed.id);
+    expect(replay.status).toBe("held");
+    expect(await readBalance(targetVariantId)).toEqual({
+      quantityOnHand: 2,
+      quantityReserved: 1,
+    });
   });
 });

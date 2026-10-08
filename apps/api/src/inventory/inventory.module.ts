@@ -5,6 +5,8 @@ import { DatabaseModule } from "../platform/database/database.module.js";
 import { CatalogModule } from "../catalog/catalog.module.js";
 import { InventoryController } from "./inventory.controller.js";
 import { InventoryPolicy } from "./inventory.policy.js";
+import { InventoryReservationService } from "./inventory-reservation.service.js";
+import { INVENTORY_RESERVATION_PORT } from "./inventory-reservation.port.js";
 import { InventoryService } from "./inventory.service.js";
 
 @Module({
@@ -15,6 +17,15 @@ import { InventoryService } from "./inventory.service.js";
     CatalogModule,
   ],
   controllers: [InventoryController],
-  providers: [InventoryPolicy, InventoryService],
+  providers: [
+    InventoryPolicy,
+    InventoryService,
+    InventoryReservationService,
+    {
+      provide: INVENTORY_RESERVATION_PORT,
+      useExisting: InventoryReservationService,
+    },
+  ],
+  exports: [INVENTORY_RESERVATION_PORT],
 })
 export class InventoryModule {}

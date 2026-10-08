@@ -67,9 +67,17 @@ export function InventoryTable({
             </Badge>
           ),
         }),
+        columnHelper.accessor("quantityReserved", {
+          header: "Reserved",
+          cell: ({ getValue }) => getValue(),
+        }),
+        columnHelper.accessor("quantityAvailable", {
+          header: "Available",
+          cell: ({ getValue }) => getValue(),
+        }),
         columnHelper.display({
           id: "stockUpdatedAt",
-          header: "Last adjustment",
+          header: "Last stock change",
           cell: ({ row }) =>
             row.original.stockUpdatedAt
               ? row.original.stockUpdatedAt.slice(0, 10)

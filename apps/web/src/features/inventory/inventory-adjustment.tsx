@@ -165,9 +165,14 @@ export function InventoryAdjustment({
           <p className="mt-1 text-3xl font-semibold tabular-nums">
             {variant.quantityOnHand}
           </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Reserved: {variant.quantityReserved} · Available:{" "}
+            {variant.quantityAvailable}
+          </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            This records stock corrections and receipts. Checkout reservations
-            will be added with the checkout and payment workflow.
+            This records stock corrections and receipts. Stock already reserved
+            by an active reservation cannot be removed until that reservation is
+            released or consumed.
           </p>
 
           {error && (
