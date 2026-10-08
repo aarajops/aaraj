@@ -34,7 +34,7 @@ export const geographySnapshot = geographySchema.table(
     check("snapshot_schema_version_check", sql`${table.schemaVersion} = 1`),
     check(
       "snapshot_authority_check",
-      sql`${table.authority} = 'Bangladesh National Portal'`,
+      sql`${table.authority} in ('Bangladesh National Portal', 'Bangladesh National Portal and Bangladesh Government Press (Cabinet Division)')`,
     ),
     check(
       "snapshot_checksum_check",

@@ -314,12 +314,19 @@ test("catalog operator configures a product through to storefront visibility", a
   const quoteSection = page.getByRole("region", { name: "Delivery and quote" });
   await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
   await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
-  await page.getByLabel("Recipient name").fill("Browser E2E Recipient");
-  await page.getByLabel("Phone").fill("+8801712345678");
-  await page.getByLabel("Area / locality").fill("Browser test locality");
+  const quoteRequestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" && request.url().endsWith("/api/v1/quotes"),
+  );
   await quoteSection
     .getByRole("button", { name: "Get delivery quote" })
     .click();
+  const quoteRequest = await quoteRequestPromise;
+  expect(Object.keys(quoteRequest.postDataJSON()).sort()).toEqual([
+    "districtId",
+    "divisionId",
+    "geographyVersion",
+  ]);
   await expect(
     quoteSection.getByRole("heading", { name: "Current quote" }),
   ).toBeVisible();
@@ -394,9 +401,6 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.goto("/cart");
   await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
   await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
-  await page.getByLabel("Recipient name").fill("Guest Quote Recipient");
-  await page.getByLabel("Phone").fill("+8801712345678");
-  await page.getByLabel("Area / locality").fill("Guest quote locality");
   const guestQuoteResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
@@ -443,9 +447,6 @@ test("catalog operator configures a product through to storefront visibility", a
 
   await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
   await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
-  await page.getByLabel("Recipient name").fill("Customer Quote Recipient");
-  await page.getByLabel("Phone").fill("+8801712345678");
-  await page.getByLabel("Area / locality").fill("Customer quote locality");
   const customerQuoteResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&

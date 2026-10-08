@@ -191,9 +191,6 @@ export class QuoteService {
 
     if (!sameDestination(row, destinationRef))
       return stale(row.id, "destination_requoted");
-    if ((await this.geography.getActiveVersion()) !== row.geographyVersion) {
-      return stale(row.id, "destination_requoted");
-    }
     if (
       context.cart.revision !== row.cartRevision ||
       !sameCartLines(context.cart, row.lines)

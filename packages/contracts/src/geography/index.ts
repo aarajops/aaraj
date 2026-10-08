@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const BANGLADESH_GEOGRAPHY_SCHEMA_VERSION = 1 as const;
 export const BANGLADESH_GEOGRAPHY_VERSION =
-  "BANGLADESH_NATIONAL_PORTAL_2026_10_07_V1" as const;
+  "BANGLADESH_GOVERNMENT_2026_10_08_V2" as const;
 
 export const BangladeshGeographyLevelSchema = z.enum([
   "division",
@@ -23,7 +23,10 @@ export type BangladeshGeographyLocation = z.infer<
 export const BangladeshGeographySchema = z.strictObject({
   schemaVersion: z.literal(BANGLADESH_GEOGRAPHY_SCHEMA_VERSION),
   datasetVersion: z.string().min(1).max(80),
-  authority: z.literal("Bangladesh National Portal"),
+  authority: z.enum([
+    "Bangladesh National Portal",
+    "Bangladesh National Portal and Bangladesh Government Press (Cabinet Division)",
+  ]),
   snapshotDate: z.iso.date(),
   locations: z.array(BangladeshGeographyLocationSchema),
 });

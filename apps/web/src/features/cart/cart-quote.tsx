@@ -22,13 +22,6 @@ export function CartQuote({ cart }: { cart: Cart }) {
   const [divisionId, setDivisionId] = useState("");
   const [districtId, setDistrictId] = useState("");
   const [upazilaId, setUpazilaId] = useState("");
-  const [recipientName, setRecipientName] = useState("");
-  const [recipientPhone, setRecipientPhone] = useState("");
-  const [locality, setLocality] = useState("");
-  const [street, setStreet] = useState("");
-  const [building, setBuilding] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [quote, setQuote] = useState<AuthoritativeQuote | null>(null);
   const [lookupState, setLookupState] = useState<LookupState>("unchecked");
   const [loadingLocations, setLoadingLocations] = useState(true);
@@ -148,13 +141,6 @@ export function CartQuote({ cart }: { cart: Cart }) {
         divisionId,
         districtId,
         ...(upazilaId ? { upazilaId } : {}),
-        recipientName,
-        recipientPhone,
-        locality,
-        ...(street ? { street } : {}),
-        ...(building ? { building } : {}),
-        ...(postalCode ? { postalCode } : {}),
-        ...(deliveryInstructions ? { deliveryInstructions } : {}),
       });
       setQuote(next);
       setLookupState("current");
@@ -198,7 +184,8 @@ export function CartQuote({ cart }: { cart: Cart }) {
       <h2 className="text-xl font-semibold">Delivery and order total</h2>
       <p className="mt-2 text-sm text-muted-foreground">
         Choose a Bangladesh delivery district. The server checks the destination
-        and calculates the current price.
+        and calculates the current price. Recipient and full delivery-address
+        details will be collected during checkout.
       </p>
       {error && (
         <p
@@ -272,80 +259,6 @@ export function CartQuote({ cart }: { cart: Cart }) {
                 </option>
               ))}
             </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Recipient name
-            <input
-              autoComplete="name"
-              className="h-10 rounded-lg border border-input bg-background px-3 font-normal"
-              maxLength={120}
-              required
-              value={recipientName}
-              onChange={(event) => setRecipientName(event.currentTarget.value)}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Phone
-            <input
-              autoComplete="tel"
-              className="h-10 rounded-lg border border-input bg-background px-3 font-normal"
-              maxLength={24}
-              required
-              type="tel"
-              value={recipientPhone}
-              onChange={(event) => setRecipientPhone(event.currentTarget.value)}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Area / locality
-            <input
-              autoComplete="address-level3"
-              className="h-10 rounded-lg border border-input bg-background px-3 font-normal"
-              maxLength={120}
-              required
-              value={locality}
-              onChange={(event) => setLocality(event.currentTarget.value)}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Road / street (optional)
-            <input
-              autoComplete="street-address"
-              className="h-10 rounded-lg border border-input bg-background px-3 font-normal"
-              maxLength={160}
-              value={street}
-              onChange={(event) => setStreet(event.currentTarget.value)}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            House / building (optional)
-            <input
-              className="h-10 rounded-lg border border-input bg-background px-3 font-normal"
-              maxLength={120}
-              value={building}
-              onChange={(event) => setBuilding(event.currentTarget.value)}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Postal code (optional)
-            <input
-              autoComplete="postal-code"
-              className="h-10 rounded-lg border border-input bg-background px-3 font-normal"
-              maxLength={16}
-              value={postalCode}
-              onChange={(event) => setPostalCode(event.currentTarget.value)}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium sm:col-span-2">
-            Delivery instructions (optional)
-            <textarea
-              className="min-h-20 rounded-lg border border-input bg-background px-3 py-2 font-normal"
-              maxLength={300}
-              value={deliveryInstructions}
-              onChange={(event) =>
-                setDeliveryInstructions(event.currentTarget.value)
-              }
-            />
           </label>
           <div className="sm:col-span-2">
             <Button

@@ -11,28 +11,6 @@ export const QUOTE_VALIDITY_POLICY_VERSION =
 export const QUOTE_VALIDITY_SECONDS = 15 * 60;
 export const QuoteIdSchema = z.uuid();
 
-const AddressTextSchema = z.string().trim().min(1).max(240);
-
-export const QuoteDestinationInputSchema = z.strictObject({
-  geographyVersion: z.string().trim().min(1).max(80),
-  divisionId: z.uuid(),
-  districtId: z.uuid(),
-  upazilaId: z.uuid().optional(),
-  recipientName: AddressTextSchema.max(120),
-  recipientPhone: z
-    .string()
-    .trim()
-    .min(6)
-    .max(24)
-    .regex(/^[+0-9()\-\s]+$/),
-  locality: AddressTextSchema.max(120),
-  street: z.string().trim().max(160).optional(),
-  building: z.string().trim().max(120).optional(),
-  postalCode: z.string().trim().max(16).optional(),
-  deliveryInstructions: z.string().trim().max(300).optional(),
-});
-export type QuoteDestinationInput = z.infer<typeof QuoteDestinationInputSchema>;
-
 export const QuoteDestinationRefSchema = z.strictObject({
   geographyVersion: z.string().trim().min(1).max(80),
   divisionId: z.uuid(),
@@ -40,6 +18,9 @@ export const QuoteDestinationRefSchema = z.strictObject({
   upazilaId: z.uuid().optional(),
 });
 export type QuoteDestinationRef = z.infer<typeof QuoteDestinationRefSchema>;
+
+export const QuoteDestinationInputSchema = QuoteDestinationRefSchema;
+export type QuoteDestinationInput = QuoteDestinationRef;
 
 const QuoteLineSchema = z.strictObject({
   variantId: z.uuid(),

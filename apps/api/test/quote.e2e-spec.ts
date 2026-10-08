@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { beforeEach } from "vitest";
 import {
   API_V1_BASE_PATH,
@@ -25,10 +25,12 @@ import {
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
 import { taxProfile } from "../src/tax/tax-schema.js";
+import { geographySnapshot } from "../src/geography/geography-schema.js";
 
 const origin = "http://localhost:3000";
 const password = "aaraj-quote-e2e-password-123";
 const guestCookieName = "aaraj_guest_cart";
+const historicalGeographyVersion = "BANGLADESH_NATIONAL_PORTAL_2026_10_07_V1";
 
 type Account = { id: string; cookie: string };
 
@@ -42,6 +44,8 @@ describe("authoritative Bangladesh quotes", () => {
   let dhakaDivision: BangladeshGeography["locations"][number];
   let chattogram: BangladeshGeography["locations"][number];
   let chattogramDivision: BangladeshGeography["locations"][number];
+  let coxsbazar: BangladeshGeography["locations"][number];
+  let coxsbazarDivision: BangladeshGeography["locations"][number];
 
   async function account(name: string): Promise<Account> {
     const response = await auth.api.signUpEmail({
@@ -86,22 +90,23 @@ describe("authoritative Bangladesh quotes", () => {
     divisionId = dhakaDivision.id,
     districtId = dhaka.id,
     upazilaId?: string,
+    geographyVersion = geography.datasetVersion,
   ) {
     return {
-      geographyVersion: geography.datasetVersion,
+      geographyVersion,
       divisionId,
       districtId,
       ...(upazilaId ? { upazilaId } : {}),
-      recipientName: "Test Recipient",
-      recipientPhone: "+8801712345678",
-      locality: "Test locality",
-      street: "Test road",
     };
   }
 
-  function quoteRef(divisionId = dhakaDivision.id, districtId = dhaka.id) {
+  function quoteRef(
+    divisionId = dhakaDivision.id,
+    districtId = dhaka.id,
+    geographyVersion = geography.datasetVersion,
+  ) {
     const query = new URLSearchParams({
-      geographyVersion: geography.datasetVersion,
+      geographyVersion,
       divisionId,
       districtId,
     });
@@ -162,6 +167,14 @@ describe("authoritative Bangladesh quotes", () => {
       .get(`${API_V1_BASE_PATH}/geography`)
       .expect(200);
     geography = response.body as BangladeshGeography;
+    const observedCounts = geography.locations.reduce(
+      (total, { level }) => {
+        total[level] += 1;
+        return total;
+      },
+      { division: 0, district: 0, upazila: 0 },
+    );
+    expect(observedCounts).toEqual({ division: 8, district: 64, upazila: 500 });
     dhaka = geography.locations.find(
       (location) =>
         location.level === "district" && location.name === "ঢাকা জেলা",
@@ -176,8 +189,22 @@ describe("authoritative Bangladesh quotes", () => {
     chattogramDivision = geography.locations.find(
       (location) => location.id === chattogram.parentId,
     )!;
+    coxsbazar = geography.locations.find(
+      (location) =>
+        location.level === "district" && location.name === "কক্সবাজার জেলা",
+    )!;
+    coxsbazarDivision = geography.locations.find(
+      (location) => location.id === coxsbazar.parentId,
+    )!;
     expect(geography.datasetVersion).toBe(BANGLADESH_GEOGRAPHY_VERSION);
-    if (!dhaka || !dhakaDivision || !chattogram || !chattogramDivision) {
+    if (
+      !dhaka ||
+      !dhakaDivision ||
+      !chattogram ||
+      !chattogramDivision ||
+      !coxsbazar ||
+      !coxsbazarDivision
+    ) {
       throw new Error("The approved Bangladesh geography rows are missing.");
     }
     const districtIds = new Set(
@@ -189,9 +216,12 @@ describe("authoritative Bangladesh quotes", () => {
       .select({ districtId: deliveryTariffDistrict.districtId })
       .from(deliveryTariffDistrict)
       .where(
-        eq(
-          deliveryTariffDistrict.tariffVersion,
-          "AARAJ_DELIVERY_2026_10_07_V1",
+        and(
+          eq(
+            deliveryTariffDistrict.tariffVersion,
+            "AARAJ_DELIVERY_2026_10_07_V1",
+          ),
+          eq(deliveryTariffDistrict.geographyVersion, geography.datasetVersion),
         ),
       );
     expect(new Set(tariffRows.map(({ districtId }) => districtId))).toEqual(
@@ -297,6 +327,12 @@ describe("authoritative Bangladesh quotes", () => {
       .set("Cookie", guest.cookie)
       .send({ ...quoteBody(), deliveryAmountBdt: 0 })
       .expect(400);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/quotes`)
+      .set("Origin", origin)
+      .set("Cookie", guest.cookie)
+      .send({ ...quoteBody(), recipientPhone: "+8801712345678" })
+      .expect(400);
   });
 
   it("quotes a supported non-Dhaka district at BDT 130 and rejects invalid hierarchy", async () => {
@@ -313,6 +349,25 @@ describe("authoritative Bangladesh quotes", () => {
       quoteBody(chattogramDivision.id, chattogram.id, chattogramUpazila.id),
     );
     expect(quote.body.delivery.grossAmountBdt).toBe(130);
+
+    const matamuhuri = geography.locations.find(
+      (location) =>
+        location.level === "upazila" && location.name === "মাতামুহুরী উপজেলা",
+    );
+    expect(matamuhuri?.parentId).toBe(coxsbazar.id);
+    if (!matamuhuri) {
+      throw new Error("The reconciled geography must include Matamuhuri.");
+    }
+    const matamuhuriQuote = await createQuote(
+      guest.cookie,
+      quoteBody(coxsbazarDivision.id, coxsbazar.id, matamuhuri.id),
+    );
+    expect(matamuhuriQuote.body.delivery.grossAmountBdt).toBe(130);
+    expect(matamuhuriQuote.body.destination).toMatchObject({
+      geographyVersion: "BANGLADESH_GOVERNMENT_2026_10_08_V2",
+      districtId: coxsbazar.id,
+      upazilaId: matamuhuri.id,
+    });
     await request(app.getHttpServer())
       .post(`${API_V1_BASE_PATH}/quotes`)
       .set("Origin", origin)
@@ -333,6 +388,62 @@ describe("authoritative Bangladesh quotes", () => {
         ...quoteBody(dhakaDivision.id, dhaka.id, chattogramUpazila.id),
       })
       .expect(400);
+  });
+
+  it("keeps an unexpired V1 quote reproducible after V2 becomes active", async () => {
+    const guest = await newGuestCart();
+    await database.db
+      .update(geographySnapshot)
+      .set({ active: false })
+      .where(eq(geographySnapshot.version, geography.datasetVersion));
+    await database.db
+      .update(geographySnapshot)
+      .set({ active: true })
+      .where(eq(geographySnapshot.version, historicalGeographyVersion));
+
+    let historicalQuote: Awaited<ReturnType<typeof createQuote>>;
+    try {
+      historicalQuote = await createQuote(
+        guest.cookie,
+        quoteBody(
+          dhakaDivision.id,
+          dhaka.id,
+          undefined,
+          historicalGeographyVersion,
+        ),
+      );
+    } finally {
+      await database.db
+        .update(geographySnapshot)
+        .set({ active: false })
+        .where(eq(geographySnapshot.version, historicalGeographyVersion));
+      await database.db
+        .update(geographySnapshot)
+        .set({ active: true })
+        .where(eq(geographySnapshot.version, geography.datasetVersion));
+    }
+
+    expect(historicalQuote!.body.destination.geographyVersion).toBe(
+      historicalGeographyVersion,
+    );
+    await getQuote(
+      historicalQuote!.body.id,
+      guest.cookie,
+      quoteRef(dhakaDivision.id, dhaka.id, historicalGeographyVersion),
+    )
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body).toEqual({
+          status: "current",
+          quote: historicalQuote!.body,
+        }),
+      );
+
+    const currentGuest = await newGuestCart();
+    const currentQuote = await createQuote(currentGuest.cookie);
+    expect(currentQuote.body.destination.geographyVersion).toBe(
+      "BANGLADESH_GOVERNMENT_2026_10_08_V2",
+    );
   });
 
   it("does not accept the synthetic tax profile in production mode", async () => {
