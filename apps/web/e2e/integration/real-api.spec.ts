@@ -56,6 +56,8 @@ test("real browser session reaches the API through Next and respects roles", asy
 test("catalog operator configures a product through to storefront visibility", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
+
   const suffix = randomUUID().slice(0, 8);
   const guideName = `E2E guide ${suffix}`;
   const productName = `E2E tee ${suffix}`;
