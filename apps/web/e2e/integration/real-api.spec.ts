@@ -56,7 +56,7 @@ test("real browser session reaches the API through Next and respects roles", asy
 test("catalog operator configures a product through to storefront visibility", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
 
   const suffix = randomUUID().slice(0, 8);
   const guideName = `E2E guide ${suffix}`;
@@ -461,6 +461,208 @@ test("catalog operator configures a product through to storefront visibility", a
     quoteSection.getByRole("heading", { name: "Current quote" }),
   ).toBeVisible();
   await expect(quoteSection.getByText("৳80", { exact: true })).toBeVisible();
+
+  await quoteSection
+    .getByRole("link", { name: "Continue to checkout" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Place your order", level: 1 }),
+  ).toBeVisible();
+  await page.getByLabel("Recipient name").fill("Integration Customer");
+  await page.getByLabel("Bangladesh mobile number").fill("01712345678");
+  await page.getByLabel("Locality / area").fill("Dhanmondi");
+  await page
+    .getByLabel("Doorstep delivery details")
+    .fill("House 12, Road 5, beside the park");
+
+  const checkoutUrl = page.url();
+  let checkoutRequestAborted = false;
+  await page.route("**/api/v1/orders", async (route) => {
+    if (route.request().method() !== "POST" || checkoutRequestAborted) {
+      await route.continue();
+      return;
+    }
+    checkoutRequestAborted = true;
+    await route.abort("connectionreset");
+  });
+  await page.getByRole("button", { name: "Place COD order" }).click();
+  await expect.poll(() => checkoutRequestAborted).toBe(true);
+  await expect(page.locator("form").getByRole("alert")).toBeVisible();
+  expect(checkoutRequestAborted).toBe(true);
+  await page.unroute("**/api/v1/orders");
+
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Place your order", level: 1 }),
+  ).toBeVisible();
+  await page.getByLabel("Recipient name").fill("Integration Customer");
+  await page.getByLabel("Bangladesh mobile number").fill("01712345678");
+  await page.getByLabel("Locality / area").fill("Dhanmondi");
+  await page
+    .getByLabel("Doorstep delivery details")
+    .fill("House 12, Road 5, beside the park");
+  await page.getByRole("button", { name: "Place COD order" }).click();
+  await expect(page).toHaveURL(/\/orders\/[0-9a-f-]{36}$/i);
+  await expect(page.getByTestId("order-reference")).toBeVisible();
+  const customerOrderStatus = page.getByRole("status").filter({
+    hasText: "awaiting manual delivery serviceability review",
+  });
+  await expect(customerOrderStatus).toBeVisible();
+  await expect(customerOrderStatus).toContainText("after 7 days");
+  await expect(
+    page.getByText("Cash on Delivery", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Uncollected; no payment was taken at checkout"),
+  ).toBeVisible();
+  await expect(page.getByText("Integration Customer")).toBeVisible();
+  const customerOrderId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const storageAfterCheckout = await page.evaluate(() =>
+    JSON.stringify({
+      local: Object.fromEntries(
+        Array.from({ length: localStorage.length }, (_, index) => {
+          const key = localStorage.key(index)!;
+          return [key, localStorage.getItem(key)];
+        }),
+      ),
+      session: Object.fromEntries(
+        Array.from({ length: sessionStorage.length }, (_, index) => {
+          const key = sessionStorage.key(index)!;
+          return [key, sessionStorage.getItem(key)];
+        }),
+      ),
+    }),
+  );
+  expect(storageAfterCheckout).not.toContain("Integration Customer");
+  expect(storageAfterCheckout).not.toContain("01712345678");
+
+  const orderReference = await page.getByTestId("order-reference").innerText();
+  await page.goto(checkoutUrl);
+  await expect(page).toHaveURL(`/orders/${customerOrderId}`);
+  await expect(page.getByTestId("order-reference")).toHaveText(orderReference);
+  const managementListResponse = await page.request.get(
+    "/api/v1/orders/manage?limit=50&offset=0",
+  );
+  expect(managementListResponse.status()).toBe(200);
+  const managementList = await managementListResponse.json();
+  expect(
+    managementList.rows.filter(
+      (row: { reference: string }) => row.reference === orderReference,
+    ),
+  ).toHaveLength(1);
+
+  await page.goto("/admin/orders");
+  await expect(
+    page.getByRole("heading", { name: "Orders", level: 1 }),
+  ).toBeVisible();
+  const customerOrderRow = page.getByRole("row").filter({
+    has: page.getByRole("link", { name: "Review" }).first(),
+  });
+  await expect(customerOrderRow).toContainText("Pending Manual Review");
+  const managedOrderResponse = await page.request.get(
+    `/api/v1/orders/manage/${customerOrderId}`,
+  );
+  expect(managedOrderResponse.status()).toBe(200);
+  await page.goto(`/admin/orders/${customerOrderId}`);
+  await expect(
+    page.getByRole("heading", { name: "Manual serviceability review" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Review within 7 days of Order creation.", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText("Integration Customer")).toBeVisible();
+  await page.getByLabel("Decision note").fill("Courier does not cover area");
+  await page.getByRole("button", { name: "Reject as unserviceable" }).click();
+  await expect(
+    page.getByText("Rejected · Unserviceable", { exact: true }),
+  ).toBeVisible();
+
+  await page.goto("/admin");
+  await page.locator("summary[aria-label^='Account menu for']").click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/account$/);
+  await page.goto(`/products/${slug}`);
+  await page.getByLabel("Choose a color and size").selectOption({
+    label: "Black · S",
+  });
+  await page.getByRole("button", { name: "Add to cart" }).click();
+  await expect(page.getByRole("link", { name: "Cart, 1 item" })).toBeVisible();
+  await page.goto("/cart");
+  const guestQuoteSection = page.getByRole("region", {
+    name: "Delivery and quote",
+  });
+  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
+  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await guestQuoteSection
+    .getByRole("button", { name: "Get delivery quote" })
+    .click();
+  await expect(
+    guestQuoteSection.getByRole("heading", { name: "Current quote" }),
+  ).toBeVisible();
+  await guestQuoteSection
+    .getByRole("link", { name: "Continue to checkout" })
+    .click();
+  await page.getByLabel("Recipient name").fill("Guest Integration Customer");
+  await page.getByLabel("Bangladesh mobile number").fill("01712345679");
+  await page.getByLabel("Locality / area").fill("Mirpur");
+  await page
+    .getByLabel("Doorstep delivery details")
+    .fill("House 8, Road 3, near the market");
+  await page.getByRole("button", { name: "Place COD order" }).click();
+  await expect(page).toHaveURL(/\/orders\/[0-9a-f-]{36}$/i);
+  const guestOrderUrl = page.url();
+  expect(guestOrderUrl).not.toMatch(/token|credential|access/i);
+  await expect(page.getByTestId("order-reference")).toBeVisible();
+  await expect(
+    page.getByText("Guest tracking is available in this browser until"),
+  ).toBeVisible();
+  const guestOrderId = new URL(guestOrderUrl).pathname.split("/").at(-1)!;
+  const guestOrderCookie = (await page.context().cookies()).find(
+    ({ name }) => name === `aaraj_order_${guestOrderId}`,
+  );
+  expect(guestOrderCookie).toMatchObject({
+    httpOnly: true,
+    sameSite: "Lax",
+    path: `/api/v1/orders/${guestOrderId}`,
+  });
+  expect(
+    (await page.context().cookies()).some(({ name }) =>
+      name.startsWith("aaraj_order_attempt_"),
+    ),
+  ).toBe(false);
+  const guestBrowserStorage = await page.evaluate(() =>
+    JSON.stringify({
+      local: Object.fromEntries(
+        Array.from({ length: localStorage.length }, (_, index) => {
+          const key = localStorage.key(index)!;
+          return [key, localStorage.getItem(key)];
+        }),
+      ),
+      session: Object.fromEntries(
+        Array.from({ length: sessionStorage.length }, (_, index) => {
+          const key = sessionStorage.key(index)!;
+          return [key, sessionStorage.getItem(key)];
+        }),
+      ),
+    }),
+  );
+  expect(guestBrowserStorage).not.toContain("Guest Integration Customer");
+  expect(guestBrowserStorage).not.toContain("01712345679");
+  await page.reload();
+  await expect(page.getByTestId("order-reference")).toBeVisible();
+
+  await page.goto("/account");
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill("catalog-e2e@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("CatalogE2E-Only-Password-2026!");
+  await page
+    .locator("form")
+    .getByRole("button", { name: "Sign in", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/admin$/);
 
   const publicResponse = await page.request.get(
     `/api/v1/catalog/products/${slug}`,

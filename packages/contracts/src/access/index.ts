@@ -30,6 +30,7 @@ export const PermissionSchema = z.enum([
   "catalog.manage",
   "catalog.categories.manage",
   "inventory.manage",
+  "orders.manage",
 ]);
 export type Permission = z.infer<typeof PermissionSchema>;
 

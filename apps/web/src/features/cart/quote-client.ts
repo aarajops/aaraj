@@ -47,6 +47,16 @@ export async function requestQuote(
   return readResponse(response, AuthoritativeQuoteSchema);
 }
 
+export async function fetchCurrentQuote(
+  id: string,
+): Promise<AuthoritativeQuote> {
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/quotes/${encodeURIComponent(id)}/current`,
+    { cache: "no-store", credentials: "same-origin" },
+  );
+  return readResponse(response, AuthoritativeQuoteSchema);
+}
+
 export async function lookupQuote(
   id: string,
   destination: QuoteDestinationRef,

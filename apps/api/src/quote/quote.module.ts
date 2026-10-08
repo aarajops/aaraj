@@ -19,5 +19,6 @@ import { QuoteService } from "./quote.service.js";
   ],
   controllers: [QuoteController],
   providers: [QuoteService],
+  exports: [QuoteService],
 })
 export class QuoteModule {}

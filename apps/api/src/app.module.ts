@@ -17,6 +17,7 @@ import { GeographyModule } from "./geography/geography.module.js";
 import { DeliveryModule } from "./delivery/delivery.module.js";
 import { TaxModule } from "./tax/tax.module.js";
 import { QuoteModule } from "./quote/quote.module.js";
+import { OrdersModule } from "./orders/orders.module.js";
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { QuoteModule } from "./quote/quote.module.js";
     DeliveryModule,
     TaxModule,
     QuoteModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ApiThrottlerGuard }],

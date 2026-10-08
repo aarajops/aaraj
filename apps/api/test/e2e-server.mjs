@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -118,6 +118,7 @@ try {
   process.env.CART_REDIS_KEY_PREFIX = cartPrefix;
   process.env.BETTER_AUTH_SECRET =
     "test-only-better-auth-secret-with-32-bytes-minimum";
+  process.env.ORDER_PII_ENCRYPTION_KEY = randomBytes(32).toString("base64url");
   process.env.BETTER_AUTH_URL = `http://${process.env.HOST ?? "127.0.0.1"}:${process.env.PORT ?? 3181}`;
   process.env.CLIENT_URL = `http://${process.env.HOST ?? "127.0.0.1"}:3180`;
 

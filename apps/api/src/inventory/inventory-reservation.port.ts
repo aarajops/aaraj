@@ -1,3 +1,5 @@
+import type { AuditTransaction } from "../platform/audit/audit.types.js";
+
 export const INVENTORY_RESERVATION_PORT = Symbol("INVENTORY_RESERVATION_PORT");
 
 export type InventoryReservationStatus = "held" | "released" | "consumed";
@@ -29,7 +31,16 @@ export interface InventoryReservation {
 /** Internal module contract for Order; it is not exposed as a customer API. */
 export interface InventoryReservationPort {
   reserve(command: InventoryReserveCommand): Promise<InventoryReservation>;
+  /** Caller has revalidated current catalog sellability before entering this transaction. */
+  reserveWithinTransaction(
+    transaction: AuditTransaction,
+    command: InventoryReserveCommand,
+  ): Promise<InventoryReservation>;
   release(
+    command: InventoryReservationTransitionCommand,
+  ): Promise<InventoryReservation>;
+  releaseWithinTransaction(
+    transaction: AuditTransaction,
     command: InventoryReservationTransitionCommand,
   ): Promise<InventoryReservation>;
   consume(

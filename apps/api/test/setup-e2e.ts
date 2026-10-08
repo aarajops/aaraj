@@ -1,5 +1,6 @@
 import { loadLocalEnvironment } from "../src/platform/config/local-environment.js";
 import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -15,6 +16,7 @@ process.env.NODE_ENV = "test";
 process.env.BETTER_AUTH_SECRET =
   "test-only-better-auth-secret-with-32-bytes-minimum";
 process.env.BETTER_AUTH_URL = "http://localhost:3001";
+process.env.ORDER_PII_ENCRYPTION_KEY ??= randomBytes(32).toString("base64url");
 process.env.CLIENT_URL = "http://localhost:3000";
 process.env.POSTGRES_DB ??= "aaraj_test";
 process.env.POSTGRES_USER ??= "aaraj_test";

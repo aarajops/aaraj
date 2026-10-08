@@ -45,6 +45,7 @@ export default defineConfig({
     "./src/delivery/delivery-schema.ts",
     "./src/tax/tax-schema.ts",
     "./src/quote/quote-schema.ts",
+    "./src/orders/orders-schema.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",
@@ -59,6 +60,7 @@ export default defineConfig({
     "delivery",
     "tax",
     "quote",
+    "orders",
   ],
   dbCredentials: {
     host: process.env.POSTGRES_HOST ?? "127.0.0.1",

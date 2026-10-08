@@ -16,6 +16,7 @@ import type { AuditTransaction } from "./audit.types.js";
 export type AuditActorType = "user" | "service" | "anonymous";
 
 export interface AuditEventInput {
+  occurredAt?: Date;
   actorType: AuditActorType;
   actorId?: string;
   eventType: string;
@@ -33,6 +34,7 @@ async function insertAuditEvent(
   const [record] = await transaction
     .insert(auditEvent)
     .values({
+      occurredAt: event.occurredAt,
       actorType: event.actorType,
       actorId: event.actorId,
       eventType: event.eventType,

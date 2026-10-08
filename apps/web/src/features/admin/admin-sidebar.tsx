@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { Permission } from "@aaraj/contracts";
 import {
   Boxes,
+  ClipboardList,
   LayoutDashboard,
   Package,
   Ruler,
@@ -54,6 +55,12 @@ const adminLinks = [
 ] as const;
 
 const operationsLinks = [
+  {
+    href: "/admin/orders",
+    label: "Orders",
+    icon: ClipboardList,
+    permission: "orders.manage",
+  },
   {
     href: "/admin/inventory",
     label: "Inventory",

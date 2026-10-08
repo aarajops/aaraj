@@ -9,6 +9,7 @@ import { AccessService } from "./access.service.js";
 import { AuditPolicy } from "./audit.policy.js";
 import { AuthorizationDenialsLogger } from "./authorization-denials.logger.js";
 import { PermissionsService } from "./permissions.service.js";
+import { OrdersPolicy } from "./orders.policy.js";
 
 @Module({
   imports: [DatabaseModule, AuditModule, AuthorizationModule.forRoot()],
@@ -18,6 +19,7 @@ import { PermissionsService } from "./permissions.service.js";
     PermissionsService,
     AccessPolicy,
     AuditPolicy,
+    OrdersPolicy,
     AccessService,
     CookieMutationGuard,
   ],

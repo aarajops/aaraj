@@ -495,3 +495,96 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByRole("link", { name: "Go to your account" }).click();
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
 });
+
+test("customer Order page explains serviceability timeout cancellation", async ({
+  page,
+}) => {
+  const orderId = "b7e38a23-2ef7-49f0-a30f-8c25877e631e";
+  await page.route(`**/api/v1/orders/${orderId}`, async (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        id: orderId,
+        reference: "AA-0123456789AB",
+        currency: "BDT",
+        status: "cancelled",
+        serviceability: "pending_manual_review",
+        paymentMethod: "cod",
+        collectionStatus: "uncollected",
+        fulfillmentStatus: "cancelled",
+        lines: [
+          {
+            variantId: "0d8c92cf-d31c-4ca7-9c99-4aad8e103565",
+            productName: "Test shirt",
+            color: "Blue",
+            sizeLabel: "M",
+            quantity: 1,
+            unitPriceBdt: 250,
+            grossAmountBdt: 250,
+          },
+        ],
+        merchandiseGrossBdt: 250,
+        tax: {
+          profileVersion: "TEST_TAX_V1",
+          sourceReference: "Test fixture",
+          sourceVersion: "TEST_V1",
+          roundingRule: "half_up_bdt_v1",
+          merchandise: {
+            treatment: "taxable",
+            grossAmountBdt: 250,
+            taxableBaseBdt: 243,
+            taxAmountBdt: 7,
+            rateNumerator: 3,
+            rateDenominator: 100,
+          },
+          delivery: {
+            treatment: "exempt",
+            grossAmountBdt: 80,
+            taxableBaseBdt: 80,
+            taxAmountBdt: 0,
+            rateNumerator: null,
+            rateDenominator: null,
+          },
+          totalTaxAmountBdt: 7,
+        },
+        delivery: {
+          tariffVersion: "TEST_DELIVERY_V1",
+          effectiveFrom: "2026-10-08",
+          grossAmountBdt: 80,
+        },
+        totalBdt: 330,
+        codAmountDueBdt: 330,
+        cancellationReason: "serviceability_review_timeout",
+        cancelledAt: "2026-10-08T12:00:00.000Z",
+        address: {
+          recipientName: "Test Recipient",
+          phone: "+8801712345678",
+          geographyVersion: "TEST_BD_V1",
+          divisionId: "5a4cf93c-c6ed-4bcb-8f4a-73db80e4896d",
+          divisionName: "Dhaka",
+          districtId: "2a1dc97b-b8b4-47e3-a1db-1a5d2c7bcffc",
+          districtName: "Dhaka",
+          upazilaId: null,
+          upazilaName: null,
+          locality: "Dhanmondi",
+          doorstepDetails: "House 12, Road 5",
+          street: null,
+          house: null,
+          postalCode: null,
+          instructions: null,
+        },
+        createdAt: "2026-10-01T12:00:00.000Z",
+        guestAccessExpiresAt: "2026-10-31T12:00:00.000Z",
+      },
+    }),
+  );
+
+  await page.goto(`/orders/${orderId}`);
+  await expect(page.getByRole("status")).toContainText(
+    "automatically cancelled because delivery serviceability was not reviewed by its deadline",
+  );
+  await expect(page.getByText("Not payable; Order closed")).toBeVisible();
+  await expect(
+    page.getByText("stock reservation was released", { exact: false }),
+  ).toBeVisible();
+});

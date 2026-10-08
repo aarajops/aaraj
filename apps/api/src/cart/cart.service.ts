@@ -183,6 +183,39 @@ export class CartService {
     return this.toCart(await this.clearGuestCartState(id));
   }
 
+  async clearCustomerCartForCheckout(
+    transaction: AuditTransaction,
+    customerId: string,
+    expectedRevision: number,
+  ): Promise<boolean> {
+    const [row] = await transaction
+      .select({ id: customerCart.id, revision: customerCart.revision })
+      .from(customerCart)
+      .where(eq(customerCart.customerId, customerId))
+      .for("update")
+      .limit(1);
+    if (!row || row.revision !== expectedRevision) return false;
+    const removed = await transaction
+      .delete(customerCartLine)
+      .where(eq(customerCartLine.cartId, row.id))
+      .returning({ id: customerCartLine.id });
+    if (removed.length === 0) return false;
+    await transaction
+      .update(customerCart)
+      .set({ revision: incrementRevision(row.revision), updatedAt: new Date() })
+      .where(eq(customerCart.id, row.id));
+    return true;
+  }
+
+  async clearGuestCartAfterCheckout(
+    guestCartId: string | undefined,
+    expectedRevision: number,
+  ): Promise<boolean> {
+    const id = parseGuestCartId(guestCartId);
+    if (!id) return false;
+    return this.deleteGuestState(id, expectedRevision);
+  }
+
   private async clearGuestCartState(id: string): Promise<CartStoredState> {
     try {
       const result = (await getRedisClient().eval(

@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -10,6 +11,7 @@ import {
   QUOTE_SCHEMA_VERSION,
   QUOTE_VALIDITY_POLICY_VERSION,
   QuoteLookupSchema,
+  QuoteIdSchema,
   type AuthoritativeQuote,
   type QuoteDestinationInput,
   type QuoteDestinationRef,
@@ -236,6 +238,53 @@ export class QuoteService {
       status: "current",
       quote: this.toPublicQuote(row),
     });
+  }
+
+  /** Internal checkout boundary: only returns a quote after owner and currentness checks. */
+  async getCurrentForCheckout(
+    customerId: string | undefined,
+    guestCartId: string | undefined,
+    rawId: string,
+  ): Promise<AuthoritativeQuote> {
+    const parsedId = QuoteIdSchema.safeParse(rawId);
+    if (!parsedId.success) throw quoteNotFound();
+    const context = await this.cart.getQuoteContext(customerId, guestCartId);
+    if (!context.owner) throw quoteNotFound();
+    const [row] = await this.database.db
+      .select()
+      .from(quoteSnapshot)
+      .where(
+        and(
+          eq(quoteSnapshot.id, parsedId.data),
+          quoteOwnerCondition(context.owner),
+        ),
+      )
+      .limit(1);
+    if (!row) throw quoteNotFound();
+
+    const lookup = await this.get(customerId, guestCartId, parsedId.data, {
+      geographyVersion: row.geographyVersion,
+      divisionId: row.divisionId,
+      districtId: row.districtId,
+      ...(row.upazilaId ? { upazilaId: row.upazilaId } : {}),
+    });
+    if (lookup.status === "expired") {
+      throw new ConflictException(
+        "The quote has expired. Request a new quote.",
+        {
+          errorCode: "QUOTE_EXPIRED",
+        },
+      );
+    }
+    if (lookup.status === "stale") {
+      throw new ConflictException(
+        "The quote is no longer current. Request a new quote.",
+        {
+          errorCode: "QUOTE_STALE",
+        },
+      );
+    }
+    return lookup.quote;
   }
 
   private toPublicQuote(

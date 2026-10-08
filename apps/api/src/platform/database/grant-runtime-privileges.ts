@@ -14,6 +14,7 @@ const applicationSchemas = [
   "delivery",
   "tax",
   "quote",
+  "orders",
 ] as const;
 
 const runtimeTableGrants = [
@@ -32,6 +33,9 @@ const runtimeTableGrants = [
   ["catalog", "size_guide_measurement", ["SELECT", "INSERT"]],
   ["inventory", "stock_balance", ["SELECT", "INSERT", "UPDATE"]],
   ["inventory", "stock_movement", ["SELECT", "INSERT"]],
+  ["inventory", "stock_reservation", ["SELECT", "INSERT", "UPDATE"]],
+  ["inventory", "stock_reservation_line", ["SELECT", "INSERT"]],
+  ["inventory", "reservation_command", ["SELECT", "INSERT"]],
   ["cart", "customer_cart", ["SELECT", "INSERT", "UPDATE"]],
   ["cart", "customer_cart_line", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
   ["cart", "merge_receipt", ["SELECT", "INSERT"]],
@@ -41,6 +45,9 @@ const runtimeTableGrants = [
   ["delivery", "tariff_district", ["SELECT"]],
   ["tax", "profile", ["SELECT"]],
   ["quote", "snapshot", ["SELECT", "INSERT"]],
+  ["orders", "order_header", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "order_line", ["SELECT", "INSERT"]],
+  ["orders", "idempotency", ["SELECT", "INSERT"]],
 ] as const;
 const runtimeTablePrivilegeMap: ReadonlyMap<string, readonly string[]> =
   new Map(
@@ -325,6 +332,9 @@ async function main(): Promise<void> {
     );
     await runtimePool.query('SELECT 1 FROM "tax"."profile" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "quote"."snapshot" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "orders"."order_header" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "orders"."order_line" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "orders"."idempotency" LIMIT 0');
     const quotePrivileges = await runtimePool.query<{
       can_insert: boolean;
       can_update: boolean;

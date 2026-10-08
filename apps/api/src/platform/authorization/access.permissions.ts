@@ -15,6 +15,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     "catalog.manage",
     "catalog.categories.manage",
     "inventory.manage",
+    "orders.manage",
   ],
   admin: [
     "access.read_self",
@@ -22,8 +23,14 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     "catalog.manage",
     "catalog.categories.manage",
     "inventory.manage",
+    "orders.manage",
   ],
-  staff: ["access.read_self", "catalog.manage", "inventory.manage"],
+  staff: [
+    "access.read_self",
+    "catalog.manage",
+    "inventory.manage",
+    "orders.manage",
+  ],
   moderator: ["access.read_self"],
   customer: ["access.read_self"],
 };

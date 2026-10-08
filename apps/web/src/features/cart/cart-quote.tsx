@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type SyntheticEvent } from "react";
+import Link from "next/link";
 import {
   type AuthoritativeQuote,
   type BangladeshGeography,
@@ -337,6 +338,12 @@ export function CartQuote({ cart }: { cart: Cart }) {
                 Tax amounts are accounted within the displayed tax-inclusive
                 prices. This quote is not an order and does not reserve stock.
               </p>
+              <Link
+                className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                href={`/checkout?quote=${encodeURIComponent(quote.id)}`}
+              >
+                Continue to checkout
+              </Link>
             </>
           )}
         </div>

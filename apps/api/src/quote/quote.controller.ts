@@ -52,4 +52,18 @@ export class QuoteController {
   ) {
     return this.quotes.get(session?.user.id, guestCartId, quoteId, destination);
   }
+
+  @Get(":quoteId/current")
+  @Header("Cache-Control", "no-store")
+  getCurrentForCheckout(
+    @Session() session: UserSession | undefined,
+    @SignedCookies(CART_COOKIE_NAME) guestCartId: string | undefined,
+    @Param("quoteId", { schema: QuoteIdSchema }) quoteId: string,
+  ) {
+    return this.quotes.getCurrentForCheckout(
+      session?.user.id,
+      guestCartId,
+      quoteId,
+    );
+  }
 }

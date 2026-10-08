@@ -120,6 +120,27 @@
       "when": 1791436427583,
       "tag": "0016_inventory_reservations",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791438232559,
+      "tag": "0017_cod_checkout_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791440971629,
+      "tag": "0018_expire_unverified_cod_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791442163019,
+      "tag": "0019_seven_day_cod_serviceability_review_expiry",
+      "breakpoints": true
     }
   ]
 }
