@@ -572,9 +572,117 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBeVisible();
   await expect(page.getByText("Integration Customer")).toBeVisible();
   await page.getByLabel("Decision note").fill("Courier does not cover area");
-  await page.getByRole("button", { name: "Reject as unserviceable" }).click();
+  await page.getByRole("button", { name: "Confirm serviceable" }).click();
   await expect(
-    page.getByText("Rejected · Unserviceable", { exact: true }),
+    page.getByText("Confirmed · Serviceable", { exact: true }),
+  ).toBeVisible();
+
+  const pathaoPanel = page.getByRole("region", {
+    name: "Pathao courier booking",
+  });
+  await expect(pathaoPanel).toBeVisible();
+  await expect(pathaoPanel.getByLabel("Approved Pathao store")).toHaveValue(
+    "101",
+  );
+  await pathaoPanel.getByLabel("Actual parcel count").first().fill("1");
+  await pathaoPanel
+    .getByLabel("Actual parcel weight (kg)")
+    .first()
+    .fill("0.75");
+  const pathaoBookingRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      request
+        .url()
+        .endsWith(
+          `/api/v1/delivery/pathao/manage/orders/${customerOrderId}/book`,
+        ),
+  );
+  await pathaoPanel
+    .getByRole("button", { name: "Create Pathao booking" })
+    .click();
+  const pathaoRequest = await pathaoBookingRequest;
+  expect(pathaoRequest.headers()["idempotency-key"]).toMatch(
+    /^[0-9a-f-]{36}$/i,
+  );
+  expect(pathaoRequest.postDataJSON()).toMatchObject({
+    storeId: 101,
+    deliveryType: 48,
+    parcelQuantity: 1,
+    parcelWeightKg: 0.75,
+  });
+  await expect(pathaoPanel.getByText("Booked", { exact: true })).toBeVisible();
+  await expect(pathaoPanel.getByText("PATHAO-BROWSER-E2E-01")).toBeVisible();
+  await expect(pathaoPanel).toContainText(
+    "This is a merchant cost observation; it does not change the customer's COD amount.",
+  );
+
+  await page.getByLabel("Delivery operator").fill("Integration Dispatch Desk");
+  await page
+    .getByLabel("Handoff reference (optional)")
+    .fill("BROWSER-HANDOFF-01");
+
+  const dispatchCommandIds: string[] = [];
+  let firstDispatchCommitted = false;
+  const dispatchPath =
+    `**/api/v1/orders/manage/${customerOrderId}/dispatch` as const;
+  await page.route(dispatchPath, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    dispatchCommandIds.push(route.request().headers()["idempotency-key"] ?? "");
+    if (!firstDispatchCommitted) {
+      firstDispatchCommitted = true;
+      const committedResponse = await route.fetch();
+      expect(committedResponse.status()).toBe(201);
+      await route.abort("connectionreset");
+      return;
+    }
+    await route.continue();
+  });
+  await page.getByRole("button", { name: "Record dispatch" }).click();
+  await expect(page.locator('p[role="alert"]')).toContainText("dispatch", {
+    ignoreCase: true,
+  });
+  await page.getByRole("button", { name: "Retry dispatch" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dispatched", level: 2 }),
+  ).toBeVisible();
+  expect(dispatchCommandIds).toHaveLength(2);
+  expect(dispatchCommandIds[0]).toBeTruthy();
+  expect(dispatchCommandIds[1]).toBe(dispatchCommandIds[0]);
+  await page.unroute(dispatchPath);
+
+  await page.goto(`/orders/${customerOrderId}`);
+  await expect(
+    page.getByRole("region", { name: "Dispatch details" }),
+  ).toContainText("Integration Dispatch Desk");
+  await expect(
+    page.getByRole("region", { name: "Dispatch details" }),
+  ).toContainText("BROWSER-HANDOFF-01");
+  await expect(
+    page.getByText("Uncollected; no payment was taken at checkout", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("COD due on delivery", { exact: true }),
+  ).toBeVisible();
+  const pathaoTracking = page.getByRole("region", {
+    name: "Pathao delivery tracking",
+  });
+  await expect(pathaoTracking).toBeVisible();
+  await expect(pathaoTracking).toContainText("PATHAO-BROWSER-E2E-01");
+  await expect(pathaoTracking).toContainText("Booked");
+  await expect(pathaoTracking).toContainText(
+    "Courier tracking does not confirm COD collection or remittance.",
+  );
+  await expect(pathaoTracking).not.toContainText("83.46");
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "has not been marked delivered or paid",
+    }),
   ).toBeVisible();
 
   await page.goto("/admin");

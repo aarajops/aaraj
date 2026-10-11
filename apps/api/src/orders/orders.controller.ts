@@ -24,11 +24,14 @@ import {
 } from "@thallesp/nestjs-better-auth";
 import {
   CreateOrderInputSchema,
+  OrderDispatchCommandIdSchema,
+  OrderDispatchInputSchema,
   OrderIdempotencyKeySchema,
   OrderIdSchema,
   OrderListQuerySchema,
   OrderServiceabilityInputSchema,
   type CreateOrderInput,
+  type OrderDispatchInput,
   type OrderListQuery,
   type OrderServiceabilityInput,
 } from "@aaraj/contracts";
@@ -178,6 +181,32 @@ export class OrdersController {
     input: OrderServiceabilityInput,
   ) {
     return this.orders.reviewServiceability(orderId, session.user.id, input);
+  }
+
+  @Post("manage/:orderId/dispatch")
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  dispatch(
+    @Session() session: UserSession,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @Headers("idempotency-key") rawCommandId: string | undefined,
+    @Body({ schema: OrderDispatchInputSchema }) input: OrderDispatchInput,
+  ) {
+    const parsedCommandId =
+      OrderDispatchCommandIdSchema.safeParse(rawCommandId);
+    if (!parsedCommandId.success) {
+      throw new BadRequestException(
+        "A UUID Idempotency-Key header is required for dispatch.",
+        { errorCode: "IDEMPOTENCY_KEY_REQUIRED" },
+      );
+    }
+    return this.orders.dispatch(
+      orderId,
+      session.user.id,
+      parsedCommandId.data.toLowerCase(),
+      input,
+    );
   }
 
   @Get(":orderId")

@@ -1,0 +1,2 @@
+ALTER TABLE "orders"."order_header" DROP CONSTRAINT "order_delivery_provider_check";--> statement-breakpoint
+ALTER TABLE "orders"."order_header" ADD CONSTRAINT "order_delivery_provider_check" CHECK (("orders"."order_header"."fulfillment_status" = 'dispatched' and ("orders"."order_header"."delivery_provider" is null or "orders"."order_header"."delivery_provider" in ('manual', 'pathao'))) or ("orders"."order_header"."fulfillment_status" <> 'dispatched' and "orders"."order_header"."delivery_provider" is null));

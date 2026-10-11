@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
-import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import sharp from "sharp";
 import request from "supertest";
 import { eq } from "drizzle-orm";
@@ -103,7 +103,7 @@ const png = Buffer.from(
 );
 
 describe("catalog media management", () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let database: DatabaseService;
   let operator: Account;
   let customer: Account;
@@ -207,7 +207,7 @@ describe("catalog media management", () => {
       .overrideProvider(R2Storage)
       .useValue(storage)
       .compile();
-    app = module.createNestApplication({
+    app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       logger: false,
       cookies: { secret: deriveCartCookieSigningSecret() },

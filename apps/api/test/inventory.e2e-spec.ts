@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
-import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
 import { and, eq, sql } from "drizzle-orm";
 import { auth } from "../src/auth/auth.js";
@@ -30,7 +30,7 @@ const origin = "http://localhost:3000";
 const password = "aaraj-inventory-e2e-password-123";
 
 describe("variant inventory adjustments", () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let database: DatabaseService;
   let reservations: InventoryReservationPort;
   let owner: Account;
@@ -74,11 +74,11 @@ describe("variant inventory adjustments", () => {
     return adjustmentFor(variantId, commandId, delta, reason);
   }
 
-  async function createApplication(): Promise<INestApplication> {
+  async function createApplication(): Promise<NestExpressApplication> {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    const application = module.createNestApplication({
+    const application = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       logger: false,
       cookies: { secret: deriveCartCookieSigningSecret() },

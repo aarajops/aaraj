@@ -122,6 +122,84 @@ try {
   process.env.BETTER_AUTH_URL = `http://${process.env.HOST ?? "127.0.0.1"}:${process.env.PORT ?? 3181}`;
   process.env.CLIENT_URL = `http://${process.env.HOST ?? "127.0.0.1"}:3180`;
 
+  Object.assign(process.env, {
+    PATHAO_MODE: "sandbox",
+    PATHAO_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
+    PATHAO_SANDBOX_CLIENT_ID: "pathao-browser-e2e-client",
+    PATHAO_SANDBOX_CLIENT_SECRET: "pathao-browser-e2e-client-secret",
+    PATHAO_SANDBOX_USERNAME: "pathao-browser-e2e@example.invalid",
+    PATHAO_SANDBOX_PASSWORD: "pathao-browser-e2e-only-password",
+    PATHAO_SANDBOX_WEBHOOK_SECRET: "pathao-browser-e2e-webhook-secret",
+    PATHAO_SANDBOX_APPROVED_STORE_IDS: "101",
+    PATHAO_SANDBOX_DELIVERY_TYPES: "48",
+  });
+
+  const networkFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = async (input, init) => {
+    const requestUrl = input instanceof Request ? input.url : input.toString();
+    const url = new URL(requestUrl);
+    if (url.origin !== "https://courier-api-sandbox.pathao.com") {
+      return networkFetch(input, init);
+    }
+    if (url.pathname.endsWith("/issue-token")) {
+      return new Response(
+        JSON.stringify({
+          token_type: "Bearer",
+          expires_in: 3600,
+          access_token: "pathao-browser-e2e-access",
+          refresh_token: "pathao-browser-e2e-refresh",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url.pathname.endsWith("/stores")) {
+      return new Response(
+        JSON.stringify({
+          data: {
+            data: [
+              { store_id: 101, store_name: "Browser E2E Store", is_active: 1 },
+            ],
+            last_page: 1,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url.pathname.endsWith("/orders") && init?.method === "POST") {
+      const body = typeof init.body === "string" ? JSON.parse(init.body) : {};
+      return new Response(
+        JSON.stringify({
+          data: {
+            consignment_id: "PATHAO-BROWSER-E2E-01",
+            merchant_order_id: body.merchant_order_id,
+            order_status: "Pending",
+            delivery_fee: 83.46,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url.pathname.includes("/orders/") && url.pathname.endsWith("/info")) {
+      const consignmentId = decodeURIComponent(url.pathname.split("/").at(-2));
+      return new Response(
+        JSON.stringify({
+          data: {
+            consignment_id: consignmentId,
+            merchant_order_id: null,
+            order_status_slug: "pending",
+            updated_at: "2026-10-10T00:00:00Z",
+            invoice_id: null,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return new Response("{}", {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
   const [{ AppModule }, { configureApp }, { auth }, { AccessService }] =
     await Promise.all([
       import("../dist/app.module.js"),

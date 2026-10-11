@@ -30,6 +30,8 @@ A relationship between bounded contexts means a public application call or event
 
 Identity owns user facts; commerce schemas hold opaque customer/actor IDs. Geography validates address ancestry through its port. Order and Fulfillment preserve encrypted delivery and zone snapshots. Notification verifies and transports social messages; Support owns conversation and draft-order state. Payment receives a verified collection event and records the refundable COD source; no context reads another's tables.
 
+**Scoped implementation exception:** COD dispatch currently keeps an Order-to-Inventory-reservation foreign key, passes one database transaction from Orders through the Inventory reservation port, and uses the Orders transition guard to read Inventory reservation/command rows and require a matching consume. This exception was explicitly approved to keep stock consumption and Order dispatch atomic. Pathao booking claims remain Orders-owned, while Delivery stores an opaque Order ID and resolves Order references through the Orders port; Delivery has no foreign key to or SQL join against Orders.
+
 ## Physical table inventory
 
 The following inventory is derived from CREATE TABLE statements in the companion DDL. Owner-local command receipt/outbox/inbox tables are created by its SQL helper.

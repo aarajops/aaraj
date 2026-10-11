@@ -46,5 +46,9 @@ export interface InventoryReservationPort {
   consume(
     command: InventoryReservationTransitionCommand,
   ): Promise<InventoryReservation>;
+  consumeWithinTransaction(
+    transaction: AuditTransaction,
+    command: InventoryReservationTransitionCommand,
+  ): Promise<InventoryReservation>;
   getReservation(reservationId: string): Promise<InventoryReservation | null>;
 }

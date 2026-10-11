@@ -7,6 +7,7 @@ import type { OrderManagementList } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatCatalogPrice } from "@/features/catalog/price";
+import { PathaoIssuesPanel } from "./pathao-issues-panel";
 
 export function OrdersManager({
   initialPage,
@@ -27,6 +28,7 @@ export function OrdersManager({
           confirmation. Address details appear only on an authorized Order
           detail page.
         </p>
+        <PathaoIssuesPanel />
         <Card className="mt-8 gap-0 rounded-2xl border border-border bg-card/70 p-4 sm:p-6">
           <div className="mb-4 flex justify-end">
             <Button
@@ -60,7 +62,10 @@ export function OrdersManager({
                       <td className="px-3 py-3 font-medium">
                         {order.reference}
                       </td>
-                      <td className="px-3 py-3">{humanize(order.status)}</td>
+                      <td className="px-3 py-3">
+                        {humanize(order.status)} ·{" "}
+                        {humanize(order.fulfillmentStatus)}
+                      </td>
                       <td className="px-3 py-3">
                         {humanize(order.serviceability)}
                       </td>

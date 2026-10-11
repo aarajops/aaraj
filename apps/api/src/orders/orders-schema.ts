@@ -49,8 +49,17 @@ export const customerOrder = ordersSchema.table(
       .notNull()
       .default("uncollected"),
     fulfillmentStatus: text("fulfillment_status")
-      .$type<"not_started" | "awaiting_dispatch" | "cancelled">()
+      .$type<"not_started" | "awaiting_dispatch" | "dispatched" | "cancelled">()
       .notNull(),
+    dispatchCommandId: uuid("dispatch_command_id"),
+    dispatchRequestFingerprint: text("dispatch_request_fingerprint"),
+    deliveryProvider: text("delivery_provider").$type<"manual" | "pathao">(),
+    deliveryOperator: text("delivery_operator"),
+    handoffReference: text("handoff_reference"),
+    dispatchedBy: text("dispatched_by").references(() => user.id, {
+      onDelete: "restrict",
+    }),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     cancellationReason: text(
       "cancellation_reason",
     ).$type<"serviceability_review_timeout">(),
@@ -86,6 +95,7 @@ export const customerOrder = ordersSchema.table(
       table.serviceability,
       table.createdAt,
     ),
+    uniqueIndex("order_dispatch_command_uidx").on(table.dispatchCommandId),
     check(
       "order_reference_check",
       sql`${table.reference} ~ '^AA-[0-9A-F]{12}$'`,
@@ -112,7 +122,11 @@ export const customerOrder = ordersSchema.table(
     ),
     check(
       "order_initial_state_check",
-      sql`(${table.status} <> 'awaiting_confirmation' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'not_started')) and (${table.status} <> 'confirmed' or (${table.serviceability} = 'serviceable' and ${table.fulfillmentStatus} = 'awaiting_dispatch' and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and (${table.status} <> 'rejected' or (${table.serviceability} = 'unserviceable' and ${table.fulfillmentStatus} = 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and (${table.status} <> 'cancelled' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'cancelled' and ${table.cancellationReason} = 'serviceability_review_timeout' and ${table.cancelledAt} is not null and ${table.cancelledAt} >= ${table.createdAt})) and ((${table.status} = 'cancelled' and ${table.cancellationReason} is not null and ${table.cancelledAt} is not null) or (${table.status} <> 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null))`,
+      sql`(${table.status} <> 'awaiting_confirmation' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'not_started')) and (${table.status} <> 'confirmed' or (${table.serviceability} = 'serviceable' and ${table.fulfillmentStatus} in ('awaiting_dispatch', 'dispatched') and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and (${table.status} <> 'rejected' or (${table.serviceability} = 'unserviceable' and ${table.fulfillmentStatus} = 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and (${table.status} <> 'cancelled' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'cancelled' and ${table.cancellationReason} = 'serviceability_review_timeout' and ${table.cancelledAt} is not null and ${table.cancelledAt} >= ${table.createdAt})) and ((${table.status} = 'cancelled' and ${table.cancellationReason} is not null and ${table.cancelledAt} is not null) or (${table.status} <> 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and ((${table.fulfillmentStatus} = 'dispatched' and ${table.dispatchCommandId} is not null and ${table.dispatchRequestFingerprint} is not null and ${table.dispatchRequestFingerprint} ~ '^[0-9a-f]{64}$' and ${table.deliveryOperator} is not null and ${table.deliveryOperator} = btrim(${table.deliveryOperator}) and length(${table.deliveryOperator}) between 2 and 120 and ${table.dispatchedBy} is not null and ${table.dispatchedAt} is not null) or (${table.fulfillmentStatus} <> 'dispatched' and ${table.dispatchCommandId} is null and ${table.dispatchRequestFingerprint} is null and ${table.deliveryOperator} is null and ${table.handoffReference} is null and ${table.dispatchedBy} is null and ${table.dispatchedAt} is null)) and (${table.handoffReference} is null or (${table.handoffReference} = btrim(${table.handoffReference}) and length(${table.handoffReference}) between 1 and 160))`,
+    ),
+    check(
+      "order_delivery_provider_check",
+      sql`(${table.fulfillmentStatus} = 'dispatched' and (${table.deliveryProvider} is null or ${table.deliveryProvider} in ('manual', 'pathao'))) or (${table.fulfillmentStatus} <> 'dispatched' and ${table.deliveryProvider} is null)`,
     ),
     check("order_cod_method_check", sql`${table.paymentMethod} = 'cod'`),
     check(
@@ -130,6 +144,47 @@ export const customerOrder = ordersSchema.table(
     check(
       "order_address_ciphertext_check",
       sql`${table.addressCiphertext} like 'v1.%'`,
+    ),
+  ],
+);
+
+export const orderPathaoBookingClaim = ordersSchema.table(
+  "pathao_booking_claim",
+  {
+    orderId: uuid("order_id")
+      .primaryKey()
+      .references(() => customerOrder.id, { onDelete: "restrict" }),
+    commandId: uuid("command_id").notNull(),
+    requestFingerprint: text("request_fingerprint").notNull(),
+    status: text("status")
+      .$type<
+        "submitting" | "booked" | "outcome_unknown" | "reconciliation_required"
+      >()
+      .notNull(),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("order_pathao_booking_claim_command_uidx").on(table.commandId),
+    index("order_pathao_booking_claim_stale_idx")
+      .on(table.createdAt, table.orderId)
+      .where(sql`${table.status} = 'submitting'`),
+    check(
+      "order_pathao_booking_claim_fingerprint_check",
+      sql`${table.requestFingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "order_pathao_booking_claim_status_check",
+      sql`${table.status} in ('submitting', 'booked', 'outcome_unknown', 'reconciliation_required')`,
+    ),
+    check(
+      "order_pathao_booking_claim_error_check",
+      sql`${table.lastErrorCode} is null or ${table.lastErrorCode} ~ '^PATHAO_[A-Z0-9_]+$'`,
     ),
   ],
 );

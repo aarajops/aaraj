@@ -18,6 +18,7 @@ import {
   type Order,
   type OrderAddress,
   type OrderCreated,
+  type OrderDispatchInput,
   type OrderListQuery,
   type OrderServiceabilityInput,
 } from "@aaraj/contracts";
@@ -30,7 +31,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import { AuditService } from "../platform/audit/audit.service.js";
@@ -41,11 +42,21 @@ import {
   type InventoryReservationPort,
 } from "../inventory/inventory-reservation.port.js";
 import { QuoteService } from "../quote/quote.service.js";
+import type {
+  OrdersPathaoPort,
+  PathaoFulfillmentSnapshot,
+  PathaoOrderBookingSnapshot,
+} from "./orders-pathao.port.js";
 import {
   customerOrder,
   customerOrderLine,
   orderIdempotency,
+  orderPathaoBookingClaim,
 } from "./orders-schema.js";
+import type {
+  PathaoBookingClaimUpdate,
+  PathaoOrderReference,
+} from "./orders-pathao.port.js";
 
 const ORDER_GUEST_COOKIE_PREFIX = "aaraj_order_";
 const ORDER_ATTEMPT_COOKIE_PREFIX = "aaraj_order_attempt_";
@@ -65,7 +76,7 @@ type IdempotencyRow = typeof orderIdempotency.$inferSelect;
 type NormalizedAddress = OrderAddress;
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OrdersPathaoPort {
   private readonly logger = new Logger(OrdersService.name);
 
   constructor(
@@ -483,6 +494,7 @@ export class OrdersService {
         id: customerOrder.id,
         reference: customerOrder.reference,
         status: customerOrder.status,
+        fulfillmentStatus: customerOrder.fulfillmentStatus,
         serviceability: customerOrder.serviceability,
         totalBdt: customerOrder.totalBdt,
         createdAt: customerOrder.createdAt,
@@ -510,6 +522,283 @@ export class OrdersService {
       .limit(1);
     if (!row) throw orderNotFound();
     return this.loadPrivateOrder(row);
+  }
+
+  async getPathaoBookingSnapshot(
+    orderId: string,
+  ): Promise<PathaoOrderBookingSnapshot> {
+    const [row] = await this.database.db
+      .select()
+      .from(customerOrder)
+      .where(eq(customerOrder.id, orderId))
+      .limit(1);
+    if (!row) throw orderNotFound();
+    if (
+      row.status !== "confirmed" ||
+      row.serviceability !== "serviceable" ||
+      row.fulfillmentStatus !== "awaiting_dispatch"
+    ) {
+      throw new ConflictException(
+        "Only confirmed, serviceable Orders awaiting dispatch can be booked with Pathao.",
+        { errorCode: "PATHAO_ORDER_NOT_ELIGIBLE" },
+      );
+    }
+    const order = await this.loadPrivateOrder(row);
+    const address = order.address;
+    const recipientAddress = [
+      address.house,
+      address.street,
+      address.locality,
+      address.doorstepDetails,
+      address.upazilaName,
+      address.districtName,
+      address.divisionName,
+      address.postalCode,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(", ");
+    return {
+      id: order.id,
+      reference: order.reference,
+      status: order.status,
+      serviceability: order.serviceability,
+      fulfillmentStatus: order.fulfillmentStatus,
+      recipientName: order.address.recipientName,
+      recipientPhone: order.address.phone,
+      recipientAddress,
+      codAmountDueBdt: order.codAmountDueBdt,
+    };
+  }
+
+  async getPathaoBookingClaimStatus(
+    orderId: string,
+  ): Promise<
+    | "submitting"
+    | "booked"
+    | "outcome_unknown"
+    | "reconciliation_required"
+    | null
+  > {
+    const [claim] = await this.database.db
+      .select({ status: orderPathaoBookingClaim.status })
+      .from(orderPathaoBookingClaim)
+      .where(eq(orderPathaoBookingClaim.orderId, orderId))
+      .limit(1);
+    return claim?.status ?? null;
+  }
+
+  async beginPathaoBookingClaim(
+    orderId: string,
+    commandId: string,
+    requestFingerprint: string,
+    status: "submitting" | "reconciliation_required",
+  ): Promise<PathaoOrderBookingSnapshot> {
+    return this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+      if (
+        row.status !== "confirmed" ||
+        row.serviceability !== "serviceable" ||
+        row.fulfillmentStatus !== "awaiting_dispatch"
+      ) {
+        throw new ConflictException(
+          "Only confirmed, serviceable Orders awaiting dispatch can be booked with Pathao.",
+          { errorCode: "PATHAO_ORDER_NOT_ELIGIBLE" },
+        );
+      }
+      const [claim] = await transaction
+        .select()
+        .from(orderPathaoBookingClaim)
+        .where(eq(orderPathaoBookingClaim.orderId, orderId))
+        .for("update")
+        .limit(1);
+      if (claim) {
+        if (
+          claim.commandId === commandId &&
+          claim.requestFingerprint === requestFingerprint
+        ) {
+          return this.pathaoSnapshotFromRow(row);
+        }
+        if (
+          status !== "reconciliation_required" ||
+          !["outcome_unknown", "reconciliation_required"].includes(claim.status)
+        ) {
+          throw new ConflictException(
+            "This Order has an active or unresolved Pathao booking claim.",
+            { errorCode: "PATHAO_BOOKING_ALREADY_EXISTS" },
+          );
+        }
+        await transaction
+          .update(orderPathaoBookingClaim)
+          .set({
+            commandId,
+            requestFingerprint,
+            status,
+            lastErrorCode: null,
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(eq(orderPathaoBookingClaim.orderId, orderId));
+      } else {
+        await transaction.insert(orderPathaoBookingClaim).values({
+          orderId,
+          commandId,
+          requestFingerprint,
+          status,
+        });
+      }
+      return this.pathaoSnapshotFromRow(row);
+    });
+  }
+
+  async setPathaoBookingClaim(update: PathaoBookingClaimUpdate): Promise<void> {
+    await this.database.db
+      .insert(orderPathaoBookingClaim)
+      .values({
+        ...update,
+        updatedAt: sql`clock_timestamp()`,
+      })
+      .onConflictDoUpdate({
+        target: orderPathaoBookingClaim.orderId,
+        set: {
+          status: update.status,
+          lastErrorCode: update.lastErrorCode,
+          updatedAt: sql`clock_timestamp()`,
+        },
+        setWhere: and(
+          eq(orderPathaoBookingClaim.commandId, update.commandId),
+          eq(
+            orderPathaoBookingClaim.requestFingerprint,
+            update.requestFingerprint,
+          ),
+        ),
+      });
+  }
+
+  async assertPathaoBookingClaim(
+    orderId: string,
+    commandId: string,
+    requestFingerprint: string,
+  ): Promise<void> {
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select({ id: customerOrder.id })
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+      const [claim] = await transaction
+        .select()
+        .from(orderPathaoBookingClaim)
+        .where(eq(orderPathaoBookingClaim.orderId, orderId))
+        .for("update")
+        .limit(1);
+      if (
+        !claim ||
+        claim.commandId !== commandId ||
+        claim.requestFingerprint !== requestFingerprint ||
+        claim.status !== "submitting"
+      ) {
+        throw new ConflictException(
+          "The Pathao booking intent expired before a provider request could be sent.",
+          { errorCode: "PATHAO_BOOKING_CLAIM_EXPIRED" },
+        );
+      }
+    });
+  }
+
+  async recoverPathaoBookingClaims(
+    activeOrderIds: readonly string[],
+  ): Promise<void> {
+    await this.database.db.transaction(async (transaction) => {
+      const stale = await transaction
+        .select({ orderId: orderPathaoBookingClaim.orderId })
+        .from(orderPathaoBookingClaim)
+        .where(
+          sql`${orderPathaoBookingClaim.status} = 'submitting' and ${orderPathaoBookingClaim.updatedAt} <= clock_timestamp() - interval '15 seconds'`,
+        )
+        .for("update", { skipLocked: true })
+        .limit(100);
+      const orphanIds = stale
+        .map((claim) => claim.orderId)
+        .filter((id) => !activeOrderIds.includes(id));
+      if (orphanIds.length > 0) {
+        await transaction
+          .delete(orderPathaoBookingClaim)
+          .where(inArray(orderPathaoBookingClaim.orderId, orphanIds));
+      }
+    });
+  }
+
+  async getOrderReferences(
+    orderIds: readonly string[],
+  ): Promise<PathaoOrderReference[]> {
+    if (orderIds.length === 0) return [];
+    return this.database.db
+      .select({ id: customerOrder.id, reference: customerOrder.reference })
+      .from(customerOrder)
+      .where(inArray(customerOrder.id, [...new Set(orderIds)]));
+  }
+
+  private async pathaoSnapshotFromRow(
+    row: OrderRow,
+  ): Promise<PathaoOrderBookingSnapshot> {
+    const order = await this.loadPrivateOrder(row);
+    const address = order.address;
+    const recipientAddress = [
+      address.house,
+      address.street,
+      address.locality,
+      address.doorstepDetails,
+      address.upazilaName,
+      address.districtName,
+      address.divisionName,
+      address.postalCode,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(", ");
+    return {
+      id: order.id,
+      reference: order.reference,
+      status: order.status,
+      serviceability: order.serviceability,
+      fulfillmentStatus: order.fulfillmentStatus,
+      recipientName: address.recipientName,
+      recipientPhone: address.phone,
+      recipientAddress,
+      codAmountDueBdt: order.codAmountDueBdt,
+    };
+  }
+
+  async getPathaoFulfillmentSnapshot(
+    orderId: string,
+  ): Promise<PathaoFulfillmentSnapshot> {
+    const [row] = await this.database.db
+      .select({
+        fulfillmentStatus: customerOrder.fulfillmentStatus,
+        dispatchedAt: customerOrder.dispatchedAt,
+      })
+      .from(customerOrder)
+      .where(eq(customerOrder.id, orderId))
+      .limit(1);
+    if (!row) throw orderNotFound();
+    return {
+      fulfillmentStatus: row.fulfillmentStatus,
+      dispatchedAt: row.dispatchedAt?.toISOString() ?? null,
+    };
+  }
+
+  async authorizePathaoTrackingRead(
+    orderId: string,
+    customerId: string | undefined,
+    signedCookies: Record<string, string>,
+  ): Promise<void> {
+    await this.getForOwner(orderId, customerId, signedCookies);
   }
 
   async reviewServiceability(
@@ -584,6 +873,159 @@ export class OrdersService {
         metadata: { outcome: input.outcome },
       });
     });
+    return this.getForManagement(orderId);
+  }
+
+  async dispatch(
+    orderId: string,
+    staffId: string,
+    commandId: string,
+    input: OrderDispatchInput,
+  ): Promise<Order> {
+    const deliveryProvider = input.deliveryProvider ?? "manual";
+    const normalizedInput = { ...input, deliveryProvider };
+    const fingerprint = fingerprintDispatch(orderId, normalizedInput);
+    try {
+      await this.database.db.transaction(async (transaction) => {
+        const [row] = await transaction
+          .select()
+          .from(customerOrder)
+          .where(eq(customerOrder.id, orderId))
+          .for("update")
+          .limit(1);
+        if (!row) throw orderNotFound();
+
+        if (row.fulfillmentStatus === "dispatched") {
+          if (
+            row.dispatchCommandId !== commandId ||
+            row.dispatchRequestFingerprint !== fingerprint
+          ) {
+            throw new ConflictException(
+              "This Order has already been dispatched with a different command or payload.",
+              { errorCode: "ORDER_ALREADY_DISPATCHED" },
+            );
+          }
+          return;
+        }
+
+        if (
+          row.status !== "confirmed" ||
+          row.serviceability !== "serviceable" ||
+          row.fulfillmentStatus !== "awaiting_dispatch"
+        ) {
+          throw new ConflictException(
+            "Only a confirmed, serviceable Order awaiting dispatch can be dispatched.",
+            { errorCode: "ORDER_NOT_DISPATCHABLE" },
+          );
+        }
+
+        const [pathaoClaim] = await transaction
+          .select()
+          .from(orderPathaoBookingClaim)
+          .where(eq(orderPathaoBookingClaim.orderId, row.id))
+          .for("update")
+          .limit(1);
+        if (
+          (pathaoClaim?.status === "booked" && deliveryProvider !== "pathao") ||
+          (pathaoClaim && pathaoClaim.status !== "booked") ||
+          (!pathaoClaim && deliveryProvider === "pathao")
+        ) {
+          throw new ConflictException(
+            pathaoClaim && pathaoClaim.status !== "booked"
+              ? "Resolve the Pathao booking outcome before dispatching this Order."
+              : "Dispatch provider must match the Order's confirmed Pathao booking.",
+            { errorCode: "ORDER_DELIVERY_PROVIDER_MISMATCH" },
+          );
+        }
+
+        const orderLines = await transaction
+          .select({
+            variantId: customerOrderLine.variantId,
+            quantity: customerOrderLine.quantity,
+          })
+          .from(customerOrderLine)
+          .where(eq(customerOrderLine.orderId, orderId))
+          .orderBy(asc(customerOrderLine.variantId));
+        const consumed = await this.inventory.consumeWithinTransaction(
+          transaction,
+          { commandId, reservationId: row.reservationId },
+        );
+        if (
+          consumed.status !== "consumed" ||
+          !sameReservationLines(consumed.lines, orderLines)
+        ) {
+          throw new ConflictException(
+            "The Order reservation does not match its saved item quantities.",
+            { errorCode: "ORDER_RESERVATION_MISMATCH" },
+          );
+        }
+
+        const [dispatched] = await transaction
+          .update(customerOrder)
+          .set({
+            fulfillmentStatus: "dispatched",
+            deliveryProvider,
+            dispatchCommandId: commandId,
+            dispatchRequestFingerprint: fingerprint,
+            deliveryOperator: input.deliveryOperator,
+            handoffReference: input.handoffReference ?? null,
+            dispatchedBy: staffId,
+            dispatchedAt: sql`clock_timestamp()`,
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(
+            and(
+              eq(customerOrder.id, row.id),
+              eq(customerOrder.status, "confirmed"),
+              eq(customerOrder.serviceability, "serviceable"),
+              eq(customerOrder.fulfillmentStatus, "awaiting_dispatch"),
+            ),
+          )
+          .returning({ dispatchedAt: customerOrder.dispatchedAt });
+        if (!dispatched?.dispatchedAt) {
+          throw new ConflictException(
+            "The Order changed before dispatch could be recorded.",
+            { errorCode: "ORDER_NOT_DISPATCHABLE" },
+          );
+        }
+
+        await this.audit.append(transaction, {
+          actorType: "user",
+          actorId: staffId,
+          eventType: "commerce.cod_order_dispatched",
+          subjectType: "order",
+          subjectId: row.id,
+          occurredAt: dispatched.dispatchedAt,
+          metadata: {
+            commandId,
+            reservationId: row.reservationId,
+            deliveryProvider,
+          },
+        });
+      });
+    } catch (error) {
+      if (isUniqueConstraintViolation(error, "order_dispatch_command_uidx")) {
+        const [existing] = await this.database.db
+          .select({
+            id: customerOrder.id,
+            dispatchRequestFingerprint:
+              customerOrder.dispatchRequestFingerprint,
+          })
+          .from(customerOrder)
+          .where(eq(customerOrder.dispatchCommandId, commandId))
+          .limit(1);
+        if (existing) {
+          if (
+            existing.id !== orderId ||
+            existing.dispatchRequestFingerprint !== fingerprint
+          ) {
+            throw dispatchCommandConflict();
+          }
+          return this.getForManagement(orderId);
+        }
+      }
+      throw error;
+    }
     return this.getForManagement(orderId);
   }
 
@@ -769,6 +1211,17 @@ export class OrdersService {
       paymentMethod: row.paymentMethod,
       collectionStatus: row.collectionStatus,
       fulfillmentStatus: row.fulfillmentStatus,
+      dispatch:
+        row.fulfillmentStatus === "dispatched" &&
+        row.deliveryOperator !== null &&
+        row.dispatchedAt !== null
+          ? {
+              deliveryProvider: row.deliveryProvider,
+              deliveryOperator: row.deliveryOperator,
+              handoffReference: row.handoffReference,
+              dispatchedAt: row.dispatchedAt.toISOString(),
+            }
+          : null,
       lines: lines.map((line) => ({
         variantId: line.variantId,
         ...(typeof line.productSnapshot === "object" &&
@@ -914,6 +1367,42 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function fingerprintDispatch(
+  orderId: string,
+  input: OrderDispatchInput,
+): string {
+  return sha256(
+    JSON.stringify({
+      version: 1,
+      orderId: orderId.toLowerCase(),
+      deliveryProvider: input.deliveryProvider ?? "manual",
+      deliveryOperator: input.deliveryOperator,
+      handoffReference: input.handoffReference ?? null,
+    }),
+  );
+}
+
+function sameReservationLines(
+  reservationLines: readonly { variantId: string; quantity: number }[],
+  orderLines: readonly { variantId: string; quantity: number }[],
+): boolean {
+  return (
+    reservationLines.length === orderLines.length &&
+    orderLines.every(
+      (line, index) =>
+        reservationLines[index]?.variantId === line.variantId &&
+        reservationLines[index]?.quantity === line.quantity,
+    )
+  );
+}
+
+function dispatchCommandConflict(): ConflictException {
+  return new ConflictException(
+    "This dispatch command ID was already used for a different Order or payload.",
+    { errorCode: "IDEMPOTENCY_KEY_REUSED" },
+  );
+}
+
 function assertIdempotencyFingerprint(
   prior: IdempotencyRow,
   fingerprint: string,
@@ -1052,10 +1541,25 @@ function orderAccessUnavailable(): ConflictException {
 }
 
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23505"
-  );
+  return postgresError(error)?.code === "23505";
+}
+
+function isUniqueConstraintViolation(
+  error: unknown,
+  constraint: string,
+): boolean {
+  const cause = postgresError(error);
+  return cause?.code === "23505" && cause.constraint === constraint;
+}
+
+function postgresError(
+  error: unknown,
+): { code?: unknown; constraint?: unknown } | null {
+  let current = error;
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (typeof current !== "object" || current === null) return null;
+    if ("code" in current || "constraint" in current) return current;
+    current = "cause" in current ? current.cause : null;
+  }
+  return null;
 }

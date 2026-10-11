@@ -1,19 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import type { Order } from "@aaraj/contracts";
+import { OrderDispatchInputSchema, type Order } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCatalogPrice } from "@/features/catalog/price";
-import { OrderRequestError, updateOrderServiceability } from "./orders-client";
+import {
+  dispatchCodOrder,
+  OrderRequestError,
+  updateOrderServiceability,
+} from "./orders-client";
 import { humanize } from "./orders-manager";
+import {
+  PathaoBookingPanel,
+  type PathaoAssignmentState,
+} from "./pathao-booking-panel";
 
 export function OrderReview({ initialOrder }: { initialOrder: Order }) {
   const [order, setOrder] = useState(initialOrder);
   const [reason, setReason] = useState("");
+  const [deliveryOperator, setDeliveryOperator] = useState("");
+  const [handoffReference, setHandoffReference] = useState("");
+  const [dispatchAttempted, setDispatchAttempted] = useState(false);
+  const [pathaoAssignment, setPathaoAssignment] =
+    useState<PathaoAssignmentState>("loading");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dispatchCommand = useRef<{ fingerprint: string; id: string } | null>(
+    null,
+  );
 
   async function decide(outcome: "serviceable" | "unserviceable") {
     setPending(true);
@@ -26,6 +43,39 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
         reasonError instanceof OrderRequestError || reasonError instanceof Error
           ? reasonError.message
           : "The serviceability decision could not be saved.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function dispatch() {
+    const reference = handoffReference.trim();
+    const input = OrderDispatchInputSchema.parse({
+      deliveryProvider: pathaoAssignment === "booked" ? "pathao" : "manual",
+      deliveryOperator,
+      ...(reference ? { handoffReference: reference } : {}),
+    });
+    const fingerprint = JSON.stringify(input);
+    let command = dispatchCommand.current;
+    if (command?.fingerprint !== fingerprint) {
+      command = {
+        fingerprint,
+        id: crypto.randomUUID(),
+      };
+      dispatchCommand.current = command;
+      setDispatchAttempted(true);
+    }
+
+    setPending(true);
+    setError(null);
+    try {
+      setOrder(await dispatchCodOrder(order.id, input, command.id));
+    } catch (reasonError) {
+      setError(
+        reasonError instanceof OrderRequestError
+          ? reasonError.message
+          : "The dispatch could not be confirmed. Retry with the same details.",
       );
     } finally {
       setPending(false);
@@ -118,6 +168,10 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
             its deadline. The stock reservation was released.
           </p>
         )}
+        <PathaoBookingPanel
+          onAssignmentStateChange={setPathaoAssignment}
+          order={order}
+        />
         {order.status === "awaiting_confirmation" &&
           order.serviceability === "pending_manual_review" && (
             <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
@@ -164,7 +218,115 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
               </div>
             </section>
           )}
+        {order.status === "confirmed" &&
+          order.serviceability === "serviceable" &&
+          order.fulfillmentStatus === "awaiting_dispatch" && (
+            <section
+              aria-label="Dispatch Order"
+              className="mt-6 rounded-2xl border border-border p-5 sm:p-7"
+            >
+              <h2 className="text-xl font-semibold">Dispatch Order</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Record the delivery operator and the handoff reference if one
+                was supplied. Dispatch consumes the held stock and does not
+                confirm delivery or COD collection.
+              </p>
+              {error && (
+                <p className="mt-4 text-sm text-destructive" role="alert">
+                  {error}
+                </p>
+              )}
+              <label className="mt-4 grid gap-2 text-sm font-medium">
+                Delivery operator
+                <Input
+                  autoComplete="organization"
+                  maxLength={120}
+                  minLength={2}
+                  required
+                  value={deliveryOperator}
+                  onChange={(event) => setDeliveryOperator(event.target.value)}
+                />
+              </label>
+              <label className="mt-4 grid gap-2 text-sm font-medium">
+                Handoff reference (optional)
+                <Input
+                  maxLength={160}
+                  value={handoffReference}
+                  onChange={(event) => setHandoffReference(event.target.value)}
+                />
+              </label>
+              <Button
+                className="mt-5"
+                disabled={
+                  pending ||
+                  deliveryOperator.trim().length < 2 ||
+                  (pathaoAssignment !== "none" && pathaoAssignment !== "booked")
+                }
+                onClick={() => void dispatch()}
+              >
+                {pending
+                  ? "Recording dispatch…"
+                  : dispatchAttempted
+                    ? "Retry dispatch"
+                    : "Record dispatch"}
+              </Button>
+              {pathaoAssignment !== "none" && pathaoAssignment !== "booked" && (
+                <p className="mt-2 text-sm text-muted-foreground" role="status">
+                  {pathaoAssignment === "loading"
+                    ? "Checking Pathao assignment before dispatch…"
+                    : pathaoAssignment === "unavailable"
+                      ? "Pathao assignment could not be checked. Refresh before dispatching."
+                      : "Resolve the Pathao booking outcome before dispatching."}
+                </p>
+              )}
+            </section>
+          )}
+        {order.fulfillmentStatus === "dispatched" && order.dispatch && (
+          <section
+            aria-label="Dispatch record"
+            className="mt-6 rounded-2xl border border-border p-5 sm:p-7"
+          >
+            <h2 className="text-xl font-semibold">Dispatched</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Inventory was consumed once for this handoff. The Order remains
+              COD, uncollected, and not yet delivered.
+            </p>
+            <dl className="mt-4 grid gap-2 text-sm">
+              <DataRow
+                label="Delivery operator"
+                value={order.dispatch.deliveryOperator}
+              />
+              {order.dispatch.handoffReference && (
+                <DataRow
+                  label="Handoff reference"
+                  value={order.dispatch.handoffReference}
+                />
+              )}
+              <DataRow
+                label="Dispatched at"
+                value={formatDate(order.dispatch.dispatchedAt)}
+              />
+            </dl>
+          </section>
+        )}
       </article>
     </main>
   );
+}
+
+function DataRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-wrap justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat("en-BD", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Dhaka",
+  }).format(new Date(value));
 }

@@ -1,13 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { Test } from "@nestjs/testing";
-import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { ConflictException } from "@nestjs/common";
 import request from "supertest";
-import { eq, inArray, sql } from "drizzle-orm";
-import { beforeEach } from "vitest";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { afterEach, beforeEach, vi } from "vitest";
 import {
   API_V1_BASE_PATH,
   ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS,
@@ -40,8 +40,17 @@ import { auditEvent } from "../src/platform/audit/audit-schema.js";
 import {
   customerOrder,
   orderIdempotency,
+  orderPathaoBookingClaim,
 } from "../src/orders/orders-schema.js";
 import { OrdersService } from "../src/orders/orders.service.js";
+import {
+  pathaoApiToken,
+  pathaoBooking,
+  pathaoWebhookInbox,
+  pathaoWebhookResolution,
+} from "../src/delivery/pathao/pathao-schema.js";
+import { PathaoService } from "../src/delivery/pathao/pathao.service.js";
+import { PathaoTokenService } from "../src/delivery/pathao/pathao-token.service.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
 import { taxProfile } from "../src/tax/tax-schema.js";
 
@@ -60,13 +69,26 @@ type Destination = {
 };
 
 describe("COD Orders and checkout", () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let database: DatabaseService;
   let staff: Account;
+  let secondStaff: Account;
   let customer: Account;
   let geography: BangladeshGeography;
   let dhaka: BangladeshGeography["locations"][number];
   let dhakaDivision: BangladeshGeography["locations"][number];
+  const pathaoEnvironmentKeys = [
+    "PATHAO_MODE",
+    "PATHAO_TOKEN_ENCRYPTION_KEY",
+    "PATHAO_SANDBOX_CLIENT_ID",
+    "PATHAO_SANDBOX_CLIENT_SECRET",
+    "PATHAO_SANDBOX_USERNAME",
+    "PATHAO_SANDBOX_PASSWORD",
+    "PATHAO_SANDBOX_WEBHOOK_SECRET",
+    "PATHAO_SANDBOX_APPROVED_STORE_IDS",
+    "PATHAO_SANDBOX_DELIVERY_TYPES",
+  ];
+  const previousPathaoEnvironment = new Map<string, string | undefined>();
 
   async function account(name: string): Promise<Account> {
     const response = await auth.api.signUpEmail({
@@ -226,6 +248,37 @@ describe("COD Orders and checkout", () => {
       .send(input);
   }
 
+  function dispatchOrder(
+    orderId: string,
+    cookie: string,
+    commandId = randomUUID(),
+    input: {
+      deliveryProvider?: "manual" | "pathao";
+      deliveryOperator: string;
+      handoffReference?: string;
+    } = {
+      deliveryProvider: "manual",
+      deliveryOperator: "AARAJ Dispatch Desk",
+      handoffReference: "HANDOFF-TEST-01",
+    },
+  ) {
+    return request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${orderId}/dispatch`)
+      .set("Origin", origin)
+      .set("Cookie", cookie)
+      .set("Idempotency-Key", commandId)
+      .send(input);
+  }
+
+  async function confirmServiceable(orderId: string) {
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${orderId}/serviceability`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ outcome: "serviceable", reason: "Destination is serviceable" })
+      .expect(201);
+  }
+
   async function stockFor(variantId: string) {
     const [stock] = await database.db
       .select()
@@ -265,6 +318,146 @@ describe("COD Orders and checkout", () => {
       variantId,
       reservationId: stored.reservationId,
     };
+  }
+
+  function mockPathaoApi(
+    options: {
+      orderReference?: string;
+      consignmentId?: string;
+      createOrderFails?: boolean;
+      createOrderStarted?: () => void;
+      waitBeforeCreateOrderResponse?: Promise<void>;
+      rejectRefresh?: boolean;
+      rejectPassword?: boolean;
+      rejectPasswordAfterFirst?: boolean;
+    } = {},
+  ) {
+    const requests: Array<{
+      url: string;
+      method: string;
+      body: Record<string, unknown> | null;
+    }> = [];
+    const state = {
+      infoStatus: "pending",
+      infoUnavailable: false,
+      tokenGrants: [] as string[],
+    };
+    let tokenNumber = 0;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const requestUrl =
+          input instanceof Request ? input.url : input.toString();
+        const url = new URL(requestUrl);
+        const method = init?.method ?? "GET";
+        const body =
+          typeof init?.body === "string"
+            ? (JSON.parse(init.body) as Record<string, unknown>)
+            : null;
+        requests.push({ url: url.toString(), method, body });
+
+        if (url.pathname.endsWith("/issue-token")) {
+          const grant =
+            typeof body?.grant_type === "string" ? body.grant_type : "";
+          state.tokenGrants.push(grant);
+          if (
+            (grant === "refresh_token" && options.rejectRefresh) ||
+            (grant === "password" &&
+              (options.rejectPassword ||
+                (options.rejectPasswordAfterFirst &&
+                  state.tokenGrants.filter((item) => item === "password")
+                    .length > 1)))
+          ) {
+            return new Response(JSON.stringify({ message: "invalid_grant" }), {
+              status: 401,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          tokenNumber += 1;
+          return new Response(
+            JSON.stringify({
+              token_type: "Bearer",
+              expires_in: 432000,
+              access_token: `test-access-${tokenNumber}`,
+              refresh_token: `test-refresh-${tokenNumber}`,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (url.pathname.endsWith("/stores")) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                data: [
+                  {
+                    store_id: 101,
+                    store_name: "Approved Test Store",
+                    is_active: 1,
+                  },
+                  {
+                    store_id: 202,
+                    store_name: "Unapproved Test Store",
+                    is_active: 1,
+                  },
+                ],
+                last_page: 1,
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (url.pathname.endsWith("/orders") && method === "POST") {
+          if (options.createOrderFails) throw new TypeError("injected timeout");
+          options.createOrderStarted?.();
+          await options.waitBeforeCreateOrderResponse;
+          return new Response(
+            JSON.stringify({
+              data: {
+                consignment_id: options.consignmentId ?? "PATHAO-TEST-0001",
+                merchant_order_id: body?.merchant_order_id,
+                order_status: "Pending",
+                delivery_fee: 83.46,
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (
+          url.pathname.includes("/orders/") &&
+          url.pathname.endsWith("/info")
+        ) {
+          if (state.infoUnavailable) {
+            return new Response(
+              JSON.stringify({ message: "temporary failure" }),
+              {
+                status: 503,
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+          const consignmentId = decodeURIComponent(
+            url.pathname.split("/").at(-2) ?? "",
+          );
+          return new Response(
+            JSON.stringify({
+              data: {
+                consignment_id: consignmentId,
+                merchant_order_id: options.orderReference ?? null,
+                order_status_slug: state.infoStatus,
+                updated_at: "2026-10-10T00:00:00Z",
+                invoice_id: null,
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response("{}", {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return { requests, state, fetchMock };
   }
 
   async function setOrderAge(orderId: string, ageHours: number, seconds = 0) {
@@ -361,10 +554,24 @@ describe("COD Orders and checkout", () => {
   }
 
   beforeAll(async () => {
+    for (const key of pathaoEnvironmentKeys) {
+      previousPathaoEnvironment.set(key, process.env[key]);
+    }
+    Object.assign(process.env, {
+      PATHAO_MODE: "sandbox",
+      PATHAO_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
+      PATHAO_SANDBOX_CLIENT_ID: "pathao-test-client",
+      PATHAO_SANDBOX_CLIENT_SECRET: "pathao-test-secret",
+      PATHAO_SANDBOX_USERNAME: "pathao-test@example.invalid",
+      PATHAO_SANDBOX_PASSWORD: "test-only-password",
+      PATHAO_SANDBOX_WEBHOOK_SECRET: "pathao-test-webhook-secret",
+      PATHAO_SANDBOX_APPROVED_STORE_IDS: "101",
+      PATHAO_SANDBOX_DELIVERY_TYPES: "48",
+    });
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({
+    app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       logger: ["error"],
       cookies: { secret: deriveCartCookieSigningSecret() },
@@ -374,6 +581,7 @@ describe("COD Orders and checkout", () => {
     database = app.get(DatabaseService);
     const bootstrap = await account("order-superadmin");
     staff = await account("order-staff");
+    secondStaff = await account("order-staff-second");
     customer = await account("order-customer");
     const access = app.get(AccessService);
     await access.bootstrapSuperadmin(bootstrap.id, {
@@ -381,6 +589,9 @@ describe("COD Orders and checkout", () => {
     });
     await access.changeRole(bootstrap, staff.id, "staff", "grant", {
       reason: "COD serviceability review E2E operator",
+    });
+    await access.changeRole(bootstrap, secondStaff.id, "staff", "grant", {
+      reason: "COD dispatch concurrency E2E operator",
     });
     const geographyResponse = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/geography`)
@@ -398,6 +609,8 @@ describe("COD Orders and checkout", () => {
   });
 
   beforeEach(async () => {
+    vi.unstubAllGlobals();
+    await database.db.delete(pathaoApiToken);
     const date = bangladeshBusinessDate();
     await database.db
       .update(deliveryTariff)
@@ -423,6 +636,14 @@ describe("COD Orders and checkout", () => {
 
   afterAll(async () => {
     await app?.close();
+    for (const [key, value] of previousPathaoEnvironment) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("places guest COD orders with a private 30-day order-scoped cookie and atomic held stock", async () => {
@@ -631,12 +852,13 @@ describe("COD Orders and checkout", () => {
       .where(eq(quoteSnapshot.id, expiredQuote.id));
     if (!sourceQuote) throw new Error("Quote fixture is missing.");
     const { id: _sourceQuoteId, ...expiredSnapshot } = sourceQuote;
+    const expiredCreatedAt = new Date(Date.now() - 16 * 60 * 1000);
     const [pastQuote] = await database.db
       .insert(quoteSnapshot)
       .values({
         ...expiredSnapshot,
-        createdAt: new Date(Date.now() - 16 * 60 * 1000),
-        expiresAt: new Date(Date.now() - 60 * 1000),
+        createdAt: expiredCreatedAt,
+        expiresAt: new Date(expiredCreatedAt.getTime() + 15 * 60 * 1000),
       })
       .returning({ id: quoteSnapshot.id });
     if (!pastQuote)
@@ -840,6 +1062,1551 @@ describe("COD Orders and checkout", () => {
         expect(body.fulfillmentStatus).toBe("cancelled");
       });
     expect((await stockFor(variantId)).quantityReserved).toBe(0);
+  });
+
+  it("dispatches a confirmed COD Order and consumes its held reservation exactly once", async () => {
+    const fixture = await createGuestOrder(2);
+    const before = await stockFor(fixture.variantId);
+    expect(before.quantityOnHand - before.quantityReserved).toBe(1);
+    const original = await orderById(fixture.id);
+
+    await dispatchOrder(fixture.id, staff.cookie).expect(409);
+    await dispatchOrder(fixture.id, customer.cookie).expect(403);
+    await confirmServiceable(fixture.id);
+
+    const commandId = randomUUID();
+    const input = {
+      deliveryOperator: "AARAJ Dispatch Desk",
+      handoffReference: "HANDOFF-TEST-01",
+    };
+    const dispatched = await dispatchOrder(
+      fixture.id,
+      staff.cookie,
+      commandId,
+      input,
+    ).expect(201);
+    expect(dispatched.body).toMatchObject({
+      id: fixture.id,
+      status: "confirmed",
+      serviceability: "serviceable",
+      fulfillmentStatus: "dispatched",
+      paymentMethod: "cod",
+      collectionStatus: "uncollected",
+      codAmountDueBdt: original?.codAmountDueBdt,
+      dispatch: {
+        deliveryOperator: input.deliveryOperator,
+        handoffReference: input.handoffReference,
+        dispatchedAt: expect.any(String),
+      },
+    });
+    expect(
+      Date.parse(dispatched.body.dispatch.dispatchedAt),
+    ).toBeLessThanOrEqual(Date.now());
+
+    const after = await stockFor(fixture.variantId);
+    expect(after.quantityOnHand).toBe(before.quantityOnHand - 1);
+    expect(after.quantityReserved).toBe(before.quantityReserved - 1);
+    expect(after.quantityOnHand - after.quantityReserved).toBe(
+      before.quantityOnHand - before.quantityReserved,
+    );
+    const [reservation] = await database.db
+      .select()
+      .from(inventoryStockReservation)
+      .where(eq(inventoryStockReservation.id, fixture.reservationId));
+    expect(reservation?.status).toBe("consumed");
+    const commands = await database.db
+      .select()
+      .from(inventoryReservationCommand)
+      .where(
+        eq(inventoryReservationCommand.reservationId, fixture.reservationId),
+      );
+    expect(commands.filter(({ operation }) => operation === "consume")).toEqual(
+      [expect.objectContaining({ commandId, operation: "consume" })],
+    );
+
+    const visible = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}`)
+      .set("Cookie", fixture.cookie)
+      .expect(200);
+    expect(visible.body).toMatchObject({
+      fulfillmentStatus: "dispatched",
+      collectionStatus: "uncollected",
+      codAmountDueBdt: original?.codAmountDueBdt,
+      dispatch: {
+        deliveryOperator: input.deliveryOperator,
+        handoffReference: input.handoffReference,
+      },
+    });
+
+    await dispatchOrder(fixture.id, secondStaff.cookie, commandId, input)
+      .expect(201)
+      .expect(({ body }) =>
+        expect(body.dispatch).toEqual(dispatched.body.dispatch),
+      );
+    await dispatchOrder(fixture.id, staff.cookie, commandId, {
+      ...input,
+      handoffReference: "CHANGED-REFERENCE",
+    }).expect(409);
+    await dispatchOrder(fixture.id, staff.cookie, commandId, {
+      ...input,
+      deliveryProvider: "pathao",
+    }).expect(409);
+    await dispatchOrder(fixture.id, staff.cookie, randomUUID(), input).expect(
+      409,
+    );
+    expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(
+      before.quantityOnHand - 1,
+    );
+    expect(
+      await app.get(OrdersService).expirePendingServiceabilityReviews(),
+    ).toBe(0);
+
+    const afterOrder = await orderById(fixture.id);
+    expect(afterOrder).toMatchObject({
+      addressCiphertext: original?.addressCiphertext,
+      guestAccessTokenHash: original?.guestAccessTokenHash,
+      guestAccessExpiresAt: original?.guestAccessExpiresAt,
+      merchandiseGrossBdt: original?.merchandiseGrossBdt,
+      deliveryAmountBdt: original?.deliveryAmountBdt,
+      totalBdt: original?.totalBdt,
+      codAmountDueBdt: original?.codAmountDueBdt,
+      taxSnapshot: original?.taxSnapshot,
+      deliverySnapshot: original?.deliverySnapshot,
+    });
+    const transitions = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.subjectId, fixture.id));
+    const dispatchEvents = transitions.filter(
+      ({ eventType }) => eventType === "commerce.cod_order_dispatched",
+    );
+    expect(dispatchEvents).toHaveLength(1);
+    expect(dispatchEvents[0]).toMatchObject({
+      actorType: "user",
+      actorId: staff.id,
+      metadata: { commandId, reservationId: fixture.reservationId },
+    });
+  });
+
+  it("serializes two staff dispatches to one inventory consumption", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const input = {
+      deliveryOperator: "AARAJ Dispatch Desk",
+      handoffReference: "RACE-TEST-01",
+    };
+    const [first, second] = await Promise.all([
+      dispatchOrder(fixture.id, staff.cookie, randomUUID(), input),
+      dispatchOrder(fixture.id, secondStaff.cookie, randomUUID(), input),
+    ]);
+    expect([first.status, second.status].sort((a, b) => a - b)).toEqual([
+      201, 409,
+    ]);
+    expect(await stockFor(fixture.variantId)).toEqual({
+      variantId: fixture.variantId,
+      quantityOnHand: 1,
+      quantityReserved: 0,
+      updatedAt: expect.any(Date),
+    });
+    const [stored] = await database.db
+      .select()
+      .from(customerOrder)
+      .where(eq(customerOrder.id, fixture.id));
+    expect(stored?.fulfillmentStatus).toBe("dispatched");
+  });
+
+  it("rolls back Inventory consumption and Order state when the dispatch audit cannot be written", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const audit = app.get(AuditService);
+    const appendAudit = audit.append.bind(audit);
+    const append = vi
+      .spyOn(audit, "append")
+      .mockImplementation(async (transaction, event) => {
+        if (event.eventType === "commerce.cod_order_dispatched") {
+          throw new Error("Injected dispatch audit failure.");
+        }
+        return appendAudit(transaction, event);
+      });
+    const before = await stockFor(fixture.variantId);
+    try {
+      await dispatchOrder(fixture.id, staff.cookie).expect(500);
+    } finally {
+      append.mockRestore();
+    }
+    const order = await orderById(fixture.id);
+    expect(order?.fulfillmentStatus).toBe("awaiting_dispatch");
+    expect(order?.dispatchCommandId).toBeNull();
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: before.quantityOnHand,
+      quantityReserved: before.quantityReserved,
+    });
+    const [reservation] = await database.db
+      .select()
+      .from(inventoryStockReservation)
+      .where(eq(inventoryStockReservation.id, fixture.reservationId));
+    expect(reservation?.status).toBe("held");
+    const commands = await database.db
+      .select()
+      .from(inventoryReservationCommand)
+      .where(
+        eq(inventoryReservationCommand.reservationId, fixture.reservationId),
+      );
+    expect(
+      commands.filter(({ operation }) => operation === "consume"),
+    ).toHaveLength(0);
+  });
+
+  it("lets the database reject dispatch without the matching consumed reservation", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const before = await stockFor(fixture.variantId);
+    let transitionError: unknown;
+    try {
+      await database.db
+        .update(customerOrder)
+        .set({
+          fulfillmentStatus: "dispatched",
+          deliveryProvider: "manual",
+          dispatchCommandId: randomUUID(),
+          dispatchRequestFingerprint: "a".repeat(64),
+          deliveryOperator: "AARAJ Dispatch Desk",
+          dispatchedBy: staff.id,
+          dispatchedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(customerOrder.id, fixture.id));
+    } catch (error) {
+      transitionError = error;
+    }
+    expect(transitionError).toMatchObject({
+      cause: {
+        message: expect.stringContaining(
+          "The Order reservation must be consumed before dispatch",
+        ),
+      },
+    });
+    expect((await orderById(fixture.id))?.fulfillmentStatus).toBe(
+      "awaiting_dispatch",
+    );
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: before.quantityOnHand,
+      quantityReserved: before.quantityReserved,
+    });
+  });
+
+  it("authenticates Pathao webhook handshakes and bounds webhook bodies", async () => {
+    const webhookPath = `${API_V1_BASE_PATH}/delivery/pathao/webhook`;
+    const verifySignature = vi.spyOn(
+      app.get(PathaoService),
+      "verifyWebhookSignature",
+    );
+    const valid = await request(app.getHttpServer())
+      .post(webhookPath)
+      .set("Content-Type", "application/json")
+      .set("Origin", "https://courier.pathao.example")
+      .set("Sec-Fetch-Site", "cross-site")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({ event: "webhook_integration" });
+    expect(valid.status, JSON.stringify(valid.body)).toBe(202);
+    expect(verifySignature).toHaveBeenCalledWith("pathao-test-webhook-secret");
+    expect(valid.headers["x-pathao-merchant-webhook-integration-secret"]).toBe(
+      "f3992ecc-59da-4cbe-a049-a13da2018d51",
+    );
+    expect(valid.body).toEqual({ handshake: true, duplicate: false });
+
+    await request(app.getHttpServer())
+      .post(webhookPath)
+      .set("Content-Type", "application/json")
+      .set("Origin", "https://courier.pathao.example")
+      .set("Sec-Fetch-Site", "cross-site")
+      .set("X-PATHAO-Signature", "wrong-secret")
+      .send({ event: "webhook_integration" })
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post(webhookPath)
+      .set("Content-Type", "text/plain")
+      .set("Origin", "https://courier.pathao.example")
+      .set("Sec-Fetch-Site", "cross-site")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send('{"event":"webhook_integration"}')
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post(webhookPath)
+      .set("Content-Type", "application/json")
+      .set("Origin", "https://courier.pathao.example")
+      .set("Sec-Fetch-Site", "cross-site")
+      .send('{"event":')
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post(webhookPath)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({ event: "", store_id: "not-an-integer" })
+      .expect(422);
+
+    await request(app.getHttpServer())
+      .post(webhookPath)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({ event: "order.updated", filler: "x".repeat(34_000) })
+      .expect(413);
+
+    await request(app.getHttpServer())
+      .put(webhookPath)
+      .set("Origin", "https://courier.pathao.example")
+      .set("Sec-Fetch-Site", "cross-site")
+      .send({ event: "webhook_integration" })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${webhookPath}/unexpected`)
+      .set("Origin", "https://courier.pathao.example")
+      .set("Sec-Fetch-Site", "cross-site")
+      .send({ event: "webhook_integration" })
+      .expect(403);
+  });
+
+  it("blocks dispatch during Pathao booking, attaches an early webhook, and allows the confirmed Pathao handoff", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao race Order fixture is missing.");
+    let startCreate!: () => void;
+    let releaseCreate!: () => void;
+    const createStarted = new Promise<void>((resolve) => {
+      startCreate = resolve;
+    });
+    const createResponseGate = new Promise<void>((resolve) => {
+      releaseCreate = resolve;
+    });
+    const consignmentId = "PATHAO-EARLY-WEBHOOK-01";
+    const provider = mockPathaoApi({
+      orderReference: order.reference,
+      consignmentId,
+      createOrderStarted: startCreate,
+      waitBeforeCreateOrderResponse: createResponseGate,
+    });
+    const bookingRequest = request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        storeId: 101,
+        deliveryType: 48,
+        parcelQuantity: 1,
+        parcelWeightKg: 0.75,
+      })
+      .then((response) => response);
+
+    await createStarted;
+    const assignment = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(assignment.body.claimStatus).toBe("submitting");
+    await dispatchOrder(fixture.id, staff.cookie).expect(409);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.created",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T00:30:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    const [earlyEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    expect(earlyEvent).toMatchObject({
+      bookingId: null,
+      processingState: "unmatched",
+    });
+
+    releaseCreate();
+    const booked = await bookingRequest;
+    expect(booked.status).toBe(201);
+    expect(booked.body).toMatchObject({ status: "booked", consignmentId });
+    const [attachedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    expect(attachedEvent).toMatchObject({
+      bookingId: expect.any(String),
+      processingState: "pending",
+      lastErrorCode: null,
+    });
+    await app.get(PathaoService).processPendingWebhooks();
+    const [verifiedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    expect(verifiedEvent?.processingState).toBe("verified");
+
+    const dispatched = await dispatchOrder(
+      fixture.id,
+      staff.cookie,
+      randomUUID(),
+      {
+        deliveryProvider: "pathao",
+        deliveryOperator: "AARAJ Dispatch Desk",
+        handoffReference: "PATHAO-HANDOFF-01",
+      },
+    ).expect(201);
+    expect(dispatched.body.dispatch.deliveryProvider).toBe("pathao");
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: 1,
+      quantityReserved: 0,
+    });
+    expect(
+      provider.requests.filter(
+        ({ url, method }) =>
+          url.endsWith("/aladdin/api/v1/orders") && method === "POST",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("rejects Pathao booking after a manual dispatch has consumed the reservation", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const provider = mockPathaoApi();
+    await dispatchOrder(fixture.id, staff.cookie).expect(201);
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        storeId: 101,
+        deliveryType: 48,
+        parcelQuantity: 1,
+        parcelWeightKg: 0.75,
+      })
+      .expect(409);
+    expect(
+      provider.requests.filter(
+        ({ url, method }) =>
+          url.endsWith("/aladdin/api/v1/orders") && method === "POST",
+      ),
+    ).toHaveLength(0);
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: 1,
+      quantityReserved: 0,
+    });
+  });
+
+  it("books only approved Pathao stores and keeps booking separate from dispatch, delivery, and COD collection", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao booking Order fixture is missing.");
+    const provider = mockPathaoApi({ orderReference: order.reference });
+
+    const stores = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/stores`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(stores.body.stores).toEqual([
+      { storeId: 101, storeName: "Approved Test Store", active: true },
+    ]);
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/stores`)
+      .set("Cookie", customer.cookie)
+      .expect(403);
+
+    const bookingUrl = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`;
+    const bookingBody = {
+      storeId: 101,
+      deliveryType: 48,
+      parcelQuantity: 1,
+      parcelWeightKg: 0.75,
+    };
+    const [firstBooking, competingBooking] = await Promise.all([
+      request(app.getHttpServer())
+        .post(bookingUrl)
+        .set("Origin", origin)
+        .set("Cookie", staff.cookie)
+        .set("Idempotency-Key", randomUUID())
+        .send(bookingBody),
+      request(app.getHttpServer())
+        .post(bookingUrl)
+        .set("Origin", origin)
+        .set("Cookie", secondStaff.cookie)
+        .set("Idempotency-Key", randomUUID())
+        .send(bookingBody),
+    ]);
+    expect(
+      [firstBooking.status, competingBooking.status].sort(
+        (left, right) => left - right,
+      ),
+    ).toEqual([201, 409]);
+    const booking =
+      firstBooking.status === 201 ? firstBooking : competingBooking;
+    expect(booking.body).toMatchObject({
+      orderId: fixture.id,
+      source: "api",
+      status: "booked",
+      consignmentId: "PATHAO-TEST-0001",
+      deliveryFeeBdt: 83.46,
+    });
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityReserved: 1,
+      quantityOnHand: 2,
+    });
+    expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(2);
+
+    const createRequests = provider.requests.filter(
+      ({ url, method }) =>
+        url.endsWith("/aladdin/api/v1/orders") && method === "POST",
+    );
+    expect(createRequests).toHaveLength(1);
+    const createRequest = createRequests[0];
+    expect(createRequest?.body).toMatchObject({
+      store_id: 101,
+      merchant_order_id: order.reference,
+      recipient_name: "E2E Recipient",
+      recipient_phone: "01712345678",
+      delivery_type: 48,
+      item_type: 2,
+      item_quantity: 1,
+      item_weight: 0.75,
+      amount_to_collect: order.codAmountDueBdt,
+    });
+    expect(createRequest?.body).not.toHaveProperty("recipient_city");
+    expect(createRequest?.body).not.toHaveProperty("recipient_zone");
+    expect(createRequest?.body).not.toHaveProperty("recipient_area");
+    expect(createRequest?.body).not.toHaveProperty("item_description");
+
+    const ineligible = await request(app.getHttpServer())
+      .post(bookingUrl)
+      .set("Origin", origin)
+      .set("Cookie", secondStaff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        storeId: 202,
+        deliveryType: 48,
+        parcelQuantity: 1,
+        parcelWeightKg: 0.75,
+      });
+    expect(ineligible.status).toBe(422);
+    expect(
+      provider.requests.filter(
+        ({ url, method }) =>
+          url.endsWith("/aladdin/api/v1/orders") && method === "POST",
+      ),
+    ).toHaveLength(1);
+
+    const duplicateWebhook = {
+      event: "order.picked",
+      consignment_id: "PATHAO-TEST-0001",
+      merchant_order_id: order.reference,
+      timestamp: "2026-10-10T01:00:00Z",
+      updated_at: "2026-10-10 07:00:00",
+      store_id: 101,
+    };
+    const [firstAcceptance, secondAcceptance] = await Promise.all([
+      request(app.getHttpServer())
+        .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+        .set("Content-Type", "application/json")
+        .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+        .send(duplicateWebhook)
+        .expect(202),
+      request(app.getHttpServer())
+        .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+        .set("Content-Type", "application/json")
+        .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+        .send(duplicateWebhook)
+        .expect(202),
+    ]);
+    expect(
+      [firstAcceptance.body.duplicate, secondAcceptance.body.duplicate].sort(
+        (left, right) => Number(left) - Number(right),
+      ),
+    ).toEqual([false, true]);
+    const [persistedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, "PATHAO-TEST-0001"));
+    expect(persistedEvent?.processingState).toBe("pending");
+
+    provider.state.infoStatus = "picked";
+    await Promise.all([
+      app.get(PathaoService).processPendingWebhooks(),
+      app.get(PathaoService).processPendingWebhooks(),
+    ]);
+    const [preDispatchEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(
+        and(
+          eq(pathaoWebhookInbox.consignmentId, "PATHAO-TEST-0001"),
+          eq(pathaoWebhookInbox.eventName, "order.picked"),
+        ),
+      );
+    expect(preDispatchEvent).toMatchObject({
+      processingState: "reconciliation_required",
+      lastErrorCode: "PATHAO_ACTIVITY_BEFORE_AARAJ_DISPATCH",
+    });
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+    expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(2);
+
+    const dispatch = await dispatchOrder(
+      fixture.id,
+      staff.cookie,
+      randomUUID(),
+      {
+        deliveryProvider: "pathao",
+        deliveryOperator: "AARAJ Dispatch Desk",
+      },
+    ).expect(201);
+    expect(dispatch.body).toMatchObject({
+      fulfillmentStatus: "dispatched",
+      collectionStatus: "uncollected",
+      codAmountDueBdt: order.codAmountDueBdt,
+    });
+    expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(1);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
+
+    provider.state.infoStatus = "in-transit";
+    provider.state.infoUnavailable = true;
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.in-transit",
+        consignment_id: "PATHAO-TEST-0001",
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T02:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+    const [retryingEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(
+        and(
+          eq(pathaoWebhookInbox.consignmentId, "PATHAO-TEST-0001"),
+          eq(pathaoWebhookInbox.eventName, "order.in-transit"),
+        ),
+      );
+    expect(retryingEvent).toMatchObject({
+      processingState: "retry",
+      lastErrorCode: "PATHAO_HTTP_503",
+    });
+    provider.state.infoUnavailable = false;
+    await database.db
+      .update(pathaoWebhookInbox)
+      .set({ nextAttemptAt: sql`clock_timestamp() - interval '1 second'` })
+      .where(eq(pathaoWebhookInbox.id, retryingEvent!.id));
+    await app.get(PathaoService).processPendingWebhooks();
+
+    provider.state.infoStatus = "in-transit";
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.picked",
+        consignment_id: "PATHAO-TEST-0001",
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T02:30:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+    const [staleEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(
+        and(
+          eq(pathaoWebhookInbox.consignmentId, "PATHAO-TEST-0001"),
+          eq(pathaoWebhookInbox.eventName, "order.picked"),
+        ),
+      )
+      .orderBy(desc(pathaoWebhookInbox.receivedAt))
+      .limit(1);
+    expect(staleEvent).toMatchObject({
+      processingState: "reconciliation_required",
+      lastErrorCode: "PATHAO_STATUS_REQUIRES_REVIEW",
+    });
+
+    provider.state.infoStatus = "returned-to-merchant";
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.returned-to-merchant",
+        consignment_id: "PATHAO-TEST-0001",
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T03:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+
+    const customerTracking = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/orders/${fixture.id}/tracking`)
+      .set("Cookie", fixture.cookie)
+      .expect(200);
+    expect(customerTracking.headers["cache-control"]).toContain("no-store");
+    expect(customerTracking.body).toMatchObject({
+      booking: {
+        consignmentId: "PATHAO-TEST-0001",
+        trackingProgress: "returned",
+      },
+      observations: expect.arrayContaining([
+        expect.objectContaining({ event: "order.in-transit" }),
+        expect.objectContaining({ event: "order.returned-to-merchant" }),
+      ]),
+    });
+    expect(customerTracking.body).not.toHaveProperty("providerOrderStatus");
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/orders/${fixture.id}/tracking`)
+      .set("Cookie", customer.cookie)
+      .expect(404);
+    const customerOrderResponse = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}`)
+      .set("Cookie", fixture.cookie)
+      .expect(200);
+    expect(customerOrderResponse.body.collectionStatus).toBe("uncollected");
+    expect(customerOrderResponse.body.codAmountDueBdt).toBe(
+      order.codAmountDueBdt,
+    );
+    expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(1);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
+  });
+
+  it("keeps delivered and paid courier observations separate from COD collection and Inventory", async () => {
+    const fixture = await createGuestOrder(1);
+    await confirmServiceable(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao delivery Order fixture is missing.");
+    const consignmentId = `PATHAO-DELIVERED-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const provider = mockPathaoApi({
+      orderReference: order.reference,
+      consignmentId,
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        storeId: 101,
+        deliveryType: 48,
+        parcelQuantity: 1,
+        parcelWeightKg: 0.5,
+      })
+      .expect(201);
+    await dispatchOrder(fixture.id, staff.cookie, randomUUID(), {
+      deliveryProvider: "pathao",
+      deliveryOperator: "AARAJ Dispatch Desk",
+    }).expect(201);
+
+    provider.state.infoStatus = "delivered";
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.delivered",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T06:00:00Z",
+        store_id: 101,
+        collected_amount: order.codAmountDueBdt,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.paid",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T06:01:00Z",
+        store_id: 101,
+        collected_amount: order.codAmountDueBdt,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+
+    const customerOrderResponse = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}`)
+      .set("Cookie", fixture.cookie)
+      .expect(200);
+    expect(customerOrderResponse.body).toMatchObject({
+      status: "confirmed",
+      fulfillmentStatus: "dispatched",
+      collectionStatus: "uncollected",
+      codAmountDueBdt: order.codAmountDueBdt,
+      totalBdt: order.totalBdt,
+    });
+    expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(0);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
+    const providerObservations = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    expect(providerObservations).toHaveLength(2);
+    expect(
+      providerObservations.every(
+        (observation) => observation.processingState === "verified",
+      ),
+    ).toBe(true);
+    expect(
+      providerObservations.find(
+        (observation) => observation.eventName === "order.paid",
+      )?.providerCollectedAmountBdt,
+    ).toBe(order.codAmountDueBdt);
+  });
+
+  it("quarantines mismatched stores, consignment IDs, and unknown events without changing Order or stock", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao mismatch Order fixture is missing.");
+    const consignmentId = `PATHAO-MISMATCH-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const provider = mockPathaoApi({
+      orderReference: order.reference,
+      consignmentId,
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        storeId: 101,
+        deliveryType: 48,
+        parcelQuantity: 1,
+        parcelWeightKg: 0.5,
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.in-transit",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T07:00:00Z",
+        store_id: 202,
+      })
+      .expect(202);
+    provider.state.infoStatus = "in-transit";
+    await app.get(PathaoService).processPendingWebhooks();
+    const [mismatchedStore] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    expect(mismatchedStore).toMatchObject({
+      processingState: "reconciliation_required",
+      lastErrorCode: "PATHAO_ORDER_IDENTITY_MISMATCH",
+    });
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.in-transit",
+        consignment_id: `${consignmentId}-WRONG`,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T07:01:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.unknown-delivery-outcome",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T07:02:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+
+    const booking = await app
+      .get(PathaoService)
+      .getManagementBooking(fixture.id);
+    expect(booking).toMatchObject({
+      status: "booked",
+      trackingProgress: "booked",
+    });
+    expect((await orderById(fixture.id))?.collectionStatus).toBe("uncollected");
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: 2,
+      quantityReserved: 1,
+    });
+    const issues = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/issues`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(issues.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "webhook",
+          orderId: fixture.id,
+          orderReference: order.reference,
+          consignmentId,
+          merchantOrderId: order.reference,
+          storeId: 202,
+          providerStatus: "in-transit",
+          errorCode: "PATHAO_ORDER_IDENTITY_MISMATCH",
+        }),
+        expect.objectContaining({
+          kind: "webhook",
+          consignmentId: `${consignmentId}-WRONG`,
+          status: "unmatched",
+        }),
+        expect.objectContaining({
+          kind: "webhook",
+          event: "order.unknown-delivery-outcome",
+          status: "reconciliation_required",
+        }),
+      ]),
+    );
+
+    const [issue] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    if (!issue) throw new Error("Linked Pathao issue fixture is missing.");
+    const resolveUrl = `${API_V1_BASE_PATH}/delivery/pathao/manage/webhooks/${issue.id}/resolve`;
+    const recheckCommandId = randomUUID();
+    const recheckBody = {
+      action: "recheck",
+      reason: "Recheck the identity against Pathao after operator review",
+    };
+    await request(app.getHttpServer())
+      .post(resolveUrl)
+      .set("Origin", origin)
+      .set("Cookie", customer.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send(recheckBody)
+      .expect(403);
+    const rechecked = await request(app.getHttpServer())
+      .post(resolveUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", recheckCommandId)
+      .send(recheckBody)
+      .expect(201);
+    expect(rechecked.body).toEqual({
+      eventId: issue.id,
+      action: "recheck",
+      status: "pending",
+    });
+    await request(app.getHttpServer())
+      .post(resolveUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", recheckCommandId)
+      .send(recheckBody)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(resolveUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", recheckCommandId)
+      .send({ ...recheckBody, reason: "Different reason for same command" })
+      .expect(409);
+    expect(
+      await database.db
+        .select()
+        .from(pathaoWebhookResolution)
+        .where(eq(pathaoWebhookResolution.commandId, recheckCommandId)),
+    ).toHaveLength(1);
+
+    await app.get(PathaoService).processPendingWebhooks();
+    const [recheckedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.id, issue.id));
+    expect(recheckedEvent?.processingState).toBe("reconciliation_required");
+    const acknowledgeCommandId = randomUUID();
+    const acknowledgeBody = {
+      action: "acknowledge_no_change",
+      reason: "Merchant panel confirms no tracking change is appropriate",
+      verifiedInPathaoPanel: true,
+    };
+    const acknowledged = await request(app.getHttpServer())
+      .post(resolveUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", acknowledgeCommandId)
+      .send(acknowledgeBody)
+      .expect(201);
+    expect(acknowledged.body).toEqual({
+      eventId: issue.id,
+      action: "acknowledge_no_change",
+      status: "ignored",
+    });
+    const [terminalEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.id, issue.id));
+    expect(terminalEvent?.processingState).toBe("ignored");
+    const resolutionAudits = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.subjectId, fixture.id));
+    expect(
+      resolutionAudits.filter(
+        (event) => event.eventType === "commerce.pathao_webhook_issue_resolved",
+      ),
+    ).toHaveLength(2);
+    expect((await orderById(fixture.id))?.collectionStatus).toBe("uncollected");
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: 2,
+      quantityReserved: 1,
+    });
+  });
+
+  it("does not blindly retry an ambiguous create and supports guarded staff reconciliation", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order)
+      throw new Error("Pathao reconciliation Order fixture is missing.");
+    const provider = mockPathaoApi({
+      orderReference: order.reference,
+      createOrderFails: true,
+    });
+    const commandId = randomUUID();
+    const url = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`;
+    const body = {
+      storeId: 101,
+      deliveryType: 48,
+      parcelQuantity: 1,
+      parcelWeightKg: 0.5,
+    };
+    const uncertain = await request(app.getHttpServer())
+      .post(url)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", commandId)
+      .send(body)
+      .expect(201);
+    expect(uncertain.body).toMatchObject({
+      status: "outcome_unknown",
+      lastErrorCode: "PATHAO_NETWORK_UNAVAILABLE",
+    });
+    const claim = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(claim.body.claimStatus).toBe("outcome_unknown");
+    const replay = await request(app.getHttpServer())
+      .post(url)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", commandId)
+      .send(body)
+      .expect(201);
+    expect(replay.body.status).toBe("outcome_unknown");
+    expect(
+      provider.requests.filter(
+        ({ url: requestUrl, method }) =>
+          requestUrl.endsWith("/aladdin/api/v1/orders") && method === "POST",
+      ),
+    ).toHaveLength(1);
+    await dispatchOrder(fixture.id, staff.cookie).expect(409);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+
+    const reconciled = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/reconcile`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        consignmentId: "PATHAO-TEST-AMBIG-01",
+        storeId: 101,
+        deliveryType: 48,
+        parcelQuantity: 1,
+        parcelWeightKg: 0.5,
+        reason: "Verified the consignment against the Pathao Merchant Panel",
+        verifiedInPathaoPanel: true,
+      })
+      .expect(201);
+    expect(reconciled.body).toMatchObject({
+      status: "booked",
+      consignmentId: "PATHAO-TEST-AMBIG-01",
+      reconciliationReason:
+        "Verified the consignment against the Pathao Merchant Panel",
+      reconciledAt: expect.any(String),
+    });
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+    const dispatched = await dispatchOrder(
+      fixture.id,
+      staff.cookie,
+      randomUUID(),
+      {
+        deliveryProvider: "pathao",
+        deliveryOperator: "AARAJ Dispatch Desk",
+      },
+    ).expect(201);
+    expect(dispatched.body.dispatch.deliveryProvider).toBe("pathao");
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: 1,
+      quantityReserved: 0,
+    });
+    const auditEvents = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.subjectId, fixture.id));
+    expect(
+      auditEvents.filter(
+        (event) =>
+          event.eventType === "commerce.pathao_booking_manually_reconciled",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("reconciles a verified manually created consignment without matching webhook references automatically", async () => {
+    const fixture = await createGuestOrder(1);
+    await confirmServiceable(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Manual Pathao Order fixture is missing.");
+    const provider = mockPathaoApi({ orderReference: order.reference });
+    const webhook = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.created",
+        consignment_id: "PATHAO-TEST-MANUAL-01",
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T04:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    expect(webhook.body).toMatchObject({
+      handshake: false,
+      duplicate: false,
+    });
+    const issues = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/issues`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(issues.body.issues).toContainEqual(
+      expect.objectContaining({
+        kind: "webhook",
+        orderId: null,
+        consignmentId: "PATHAO-TEST-MANUAL-01",
+        status: "unmatched",
+      }),
+    );
+
+    provider.state.infoUnavailable = true;
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/reconcile`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        consignmentId: "PATHAO-TEST-MANUAL-01",
+        storeId: 101,
+        deliveryType: 48,
+        parcelQuantity: 1,
+        parcelWeightKg: 0.5,
+        reason: "Checking the manual consignment in the Pathao Merchant Panel",
+        verifiedInPathaoPanel: true,
+      })
+      .expect(503);
+    const unresolvedClaim = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(unresolvedClaim.body).toMatchObject({
+      booking: null,
+      claimStatus: "reconciliation_required",
+    });
+    await dispatchOrder(fixture.id, staff.cookie).expect(409);
+    provider.state.infoUnavailable = false;
+
+    const reconciliationCommandId = randomUUID();
+    const reconciliationBody = {
+      consignmentId: "PATHAO-TEST-MANUAL-01",
+      storeId: 101,
+      deliveryType: 48,
+      parcelQuantity: 1,
+      parcelWeightKg: 0.5,
+      reason: "Verified the manual consignment in the Pathao Merchant Panel",
+      verifiedInPathaoPanel: true,
+    };
+    const result = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/reconcile`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", reconciliationCommandId)
+      .send(reconciliationBody)
+      .expect(201);
+    expect(result.body).toMatchObject({ source: "manual", status: "booked" });
+    const [stored] = await database.db
+      .select()
+      .from(pathaoBooking)
+      .where(eq(pathaoBooking.orderId, fixture.id));
+    const [attachedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, "PATHAO-TEST-MANUAL-01"));
+    expect(stored?.id).toBe(attachedEvent?.bookingId);
+    expect(attachedEvent?.processingState).toBe("pending");
+    await app.get(PathaoService).processPendingWebhooks();
+    const [verifiedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, "PATHAO-TEST-MANUAL-01"));
+    expect(verifiedEvent?.processingState).toBe("verified");
+    await database.db
+      .update(pathaoWebhookInbox)
+      .set({
+        bookingId: null,
+        processingState: "unmatched",
+        processedAt: null,
+      })
+      .where(eq(pathaoWebhookInbox.id, verifiedEvent!.id));
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/reconcile`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", reconciliationCommandId)
+      .send(reconciliationBody)
+      .expect(201);
+    const [replayedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.id, verifiedEvent!.id));
+    expect(replayedEvent).toMatchObject({
+      bookingId: stored?.id,
+      processingState: "pending",
+    });
+    await app.get(PathaoService).processPendingWebhooks();
+    const [reverifiedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.id, verifiedEvent!.id));
+    expect(reverifiedEvent?.processingState).toBe("verified");
+    expect(
+      provider.requests.some(
+        ({ url, method }) =>
+          url.endsWith("/aladdin/api/v1/orders") && method === "POST",
+      ),
+    ).toBe(false);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+  });
+
+  it("recovers a crashed booking and expired webhook lease in a fresh API process", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao recovery Order fixture is missing.");
+
+    const interruptedFixture = await createGuestOrder(1);
+    const interruptedOrder = await orderById(interruptedFixture.id);
+    if (!interruptedOrder)
+      throw new Error("Interrupted Pathao booking Order fixture is missing.");
+    const interruptedId = randomUUID();
+    const interruptedCommandId = randomUUID();
+    await database.db.insert(pathaoBooking).values({
+      id: interruptedId,
+      orderId: interruptedFixture.id,
+      environment: "sandbox",
+      storeId: 101,
+      deliveryType: 48,
+      parcelQuantity: 1,
+      parcelWeightKg: 0.5,
+      merchantOrderId: interruptedOrder.reference,
+      commandId: interruptedCommandId,
+      requestFingerprint: "a".repeat(64),
+      status: "submitting",
+      submittedAt: sql`clock_timestamp() - interval '1 minute'`,
+      createdBy: staff.id,
+    });
+
+    const consignmentId = `PATHAO-RESTART-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const provider = mockPathaoApi({
+      orderReference: order.reference,
+      consignmentId,
+      createOrderFails: false,
+    });
+    const booked = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        storeId: 101,
+        deliveryType: 48,
+        parcelQuantity: 1,
+        parcelWeightKg: 0.5,
+      })
+      .expect(201);
+    expect(booked.body.consignmentId).toBe(consignmentId);
+    await dispatchOrder(fixture.id, staff.cookie, randomUUID(), {
+      deliveryProvider: "pathao",
+      deliveryOperator: "AARAJ Dispatch Desk",
+    }).expect(201);
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.in-transit",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T05:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    const [inboxEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    if (!inboxEvent) throw new Error("Pathao webhook fixture was not saved.");
+    await database.db
+      .update(pathaoWebhookInbox)
+      .set({
+        processingState: "processing",
+        processingLeaseOwner: randomUUID(),
+        processingLeaseExpiresAt: sql`clock_timestamp() - interval '1 second'`,
+      })
+      .where(eq(pathaoWebhookInbox.id, inboxEvent.id));
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        fileURLToPath(
+          new URL("./pathao-recovery-process.mjs", import.meta.url),
+        ),
+        order.reference,
+        "in-transit",
+      ],
+      { env: process.env, timeout: 20_000 },
+    );
+    expect(JSON.parse(stdout.trim())).toEqual({
+      expiredBookings: 1,
+      processedWebhooks: 1,
+    });
+
+    const [recoveredBooking] = await database.db
+      .select()
+      .from(pathaoBooking)
+      .where(eq(pathaoBooking.id, interruptedId));
+    expect(recoveredBooking).toMatchObject({
+      status: "outcome_unknown",
+      lastErrorCode: "PATHAO_BOOKING_PROCESS_INTERRUPTED",
+    });
+    await dispatchOrder(interruptedFixture.id, staff.cookie).expect(409);
+    const [recoveredEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.id, inboxEvent.id));
+    expect(recoveredEvent?.processingState).toBe("verified");
+    expect(recoveredEvent?.attemptCount).toBe(1);
+    expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(1);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
+    const auditRows = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.subjectId, interruptedFixture.id));
+    expect(
+      auditRows.some(
+        (event) => event.eventType === "commerce.pathao_booking_interrupted",
+      ),
+    ).toBe(true);
+    expect(
+      provider.requests.filter(
+        ({ url, method }) =>
+          url.endsWith("/aladdin/api/v1/orders") && method === "POST",
+      ),
+    ).toHaveLength(1);
+    expect((await stockFor(interruptedFixture.variantId)).quantityOnHand).toBe(
+      1,
+    );
+    expect(
+      (await stockFor(interruptedFixture.variantId)).quantityReserved,
+    ).toBe(1);
+  });
+
+  it("releases only a stale claim with no durable Pathao request row", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    await database.db.insert(orderPathaoBookingClaim).values({
+      orderId: fixture.id,
+      commandId: randomUUID(),
+      requestFingerprint: "b".repeat(64),
+      status: "submitting",
+      createdAt: sql`clock_timestamp() - interval '1 minute'`,
+      updatedAt: sql`clock_timestamp() - interval '1 minute'`,
+    });
+    expect(await app.get(PathaoService).expireInterruptedBookings()).toBe(0);
+    const claims = await database.db
+      .select()
+      .from(orderPathaoBookingClaim)
+      .where(eq(orderPathaoBookingClaim.orderId, fixture.id));
+    expect(claims).toHaveLength(0);
+    await dispatchOrder(fixture.id, staff.cookie).expect(201);
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: 1,
+      quantityReserved: 0,
+    });
+  });
+
+  it("reuses one access token across concurrent calls and recovers an expired refresh token once", async () => {
+    const provider = mockPathaoApi({ rejectRefresh: true });
+    const tokenService = app.get(PathaoTokenService);
+    const [first, second] = await Promise.all([
+      tokenService.getAccessToken(),
+      tokenService.getAccessToken(),
+    ]);
+    expect(first.accessToken).toBe(second.accessToken);
+    expect(provider.state.tokenGrants).toEqual(["password"]);
+    await database.db
+      .update(pathaoApiToken)
+      .set({ accessExpiresAt: sql`clock_timestamp() - interval '1 second'` });
+    await tokenService.getAccessToken();
+    expect(provider.state.tokenGrants).toEqual([
+      "password",
+      "refresh_token",
+      "password",
+    ]);
+  });
+
+  it("fails closed when both refresh and configured merchant credentials are rejected", async () => {
+    const provider = mockPathaoApi({
+      rejectRefresh: true,
+      rejectPasswordAfterFirst: true,
+    });
+    const tokenService = app.get(PathaoTokenService);
+    await tokenService.getAccessToken();
+    await database.db
+      .update(pathaoApiToken)
+      .set({ accessExpiresAt: sql`clock_timestamp() - interval '1 second'` });
+    let error: unknown;
+    try {
+      await tokenService.getAccessToken();
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toMatchObject({
+      response: { errorCode: "PATHAO_HTTP_401" },
+    });
+    expect(JSON.stringify(error)).not.toContain("test-only-password");
+    expect(provider.state.tokenGrants).toEqual([
+      "password",
+      "refresh_token",
+      "password",
+    ]);
+  });
+
+  it("replays a committed dispatch from a fresh API process after the caller loses its response", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmServiceable(fixture.id);
+    const commandId = randomUUID();
+    const input = {
+      deliveryOperator: "AARAJ Dispatch Desk",
+      handoffReference: "RESTART-TEST-01",
+    };
+    const committed = await dispatchOrder(
+      fixture.id,
+      staff.cookie,
+      commandId,
+      input,
+    ).expect(201);
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        fileURLToPath(new URL("./order-dispatch-process.mjs", import.meta.url)),
+        fixture.id,
+        staff.id,
+        commandId,
+        Buffer.from(JSON.stringify(input)).toString("base64url"),
+      ],
+      { env: process.env, timeout: 20_000 },
+    );
+    expect(JSON.parse(stdout.trim())).toMatchObject({
+      id: fixture.id,
+      fulfillmentStatus: "dispatched",
+      dispatch: committed.body.dispatch,
+    });
+    expect(await stockFor(fixture.variantId)).toMatchObject({
+      quantityOnHand: 1,
+      quantityReserved: 0,
+    });
+  });
+
+  it("does not dispatch rejected or expired Orders", async () => {
+    const rejectedFixture = await createGuestOrder(2);
+    const [rejection, concurrentDispatch] = await Promise.all([
+      request(app.getHttpServer())
+        .post(
+          `${API_V1_BASE_PATH}/orders/manage/${rejectedFixture.id}/serviceability`,
+        )
+        .set("Origin", origin)
+        .set("Cookie", staff.cookie)
+        .send({ outcome: "unserviceable", reason: "Destination not served" }),
+      dispatchOrder(rejectedFixture.id, staff.cookie),
+    ]);
+    expect(rejection.status).toBe(201);
+    expect(concurrentDispatch.status).toBe(409);
+    expect((await stockFor(rejectedFixture.variantId)).quantityOnHand).toBe(2);
+    expect((await stockFor(rejectedFixture.variantId)).quantityReserved).toBe(
+      0,
+    );
+
+    const expiredFixture = await createGuestOrder(2);
+    await setReviewDeadlineOffset(expiredFixture.id, 0);
+    const [expiredDispatch, expiredCount] = await Promise.all([
+      dispatchOrder(expiredFixture.id, staff.cookie),
+      app.get(OrdersService).expirePendingServiceabilityReviews(),
+    ]);
+    expect(expiredDispatch.status).toBe(409);
+    expect(expiredCount).toBe(1);
+    expect((await stockFor(expiredFixture.variantId)).quantityOnHand).toBe(2);
+    expect((await stockFor(expiredFixture.variantId)).quantityReserved).toBe(0);
   });
 
   it("uses separate guest Order cookies for multiple Orders and never extends access on reads", async () => {

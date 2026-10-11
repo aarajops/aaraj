@@ -43,6 +43,7 @@ export default defineConfig({
     "./src/cart/cart-schema.ts",
     "./src/geography/geography-schema.ts",
     "./src/delivery/delivery-schema.ts",
+    "./src/delivery/pathao/pathao-schema.ts",
     "./src/tax/tax-schema.ts",
     "./src/quote/quote-schema.ts",
     "./src/orders/orders-schema.ts",

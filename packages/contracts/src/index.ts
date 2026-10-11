@@ -6,6 +6,7 @@ export * from "./common/api-error.js";
 export * from "./common/pagination.js";
 export * from "./inventory/index.js";
 export * from "./geography/index.js";
+export * from "./delivery/index.js";
 export * from "./quote/index.js";
 export * from "./orders/index.js";
 export * from "./platform/api-version.js";

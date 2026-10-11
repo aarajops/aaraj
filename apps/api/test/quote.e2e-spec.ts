@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
-import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
 import { and, eq, sql } from "drizzle-orm";
 import { beforeEach } from "vitest";
@@ -35,7 +35,7 @@ const historicalGeographyVersion = "BANGLADESH_NATIONAL_PORTAL_2026_10_07_V1";
 type Account = { id: string; cookie: string };
 
 describe("authoritative Bangladesh quotes", () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let database: DatabaseService;
   let variantId: string;
   let variantPrice = 250;
@@ -132,7 +132,7 @@ describe("authoritative Bangladesh quotes", () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({
+    app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       logger: ["error"],
       cookies: { secret: deriveCartCookieSigningSecret() },
