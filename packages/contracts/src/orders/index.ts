@@ -44,6 +44,21 @@ export type OrderServiceabilityInput = z.infer<
   typeof OrderServiceabilityInputSchema
 >;
 
+export const OrderDispatchCommandIdSchema = z.uuid();
+export const OrderDispatchInputSchema = z.strictObject({
+  deliveryProvider: z.enum(["manual", "pathao"]).default("manual"),
+  deliveryOperator: z.string().trim().min(2).max(120),
+  handoffReference: z.string().trim().min(1).max(160).optional(),
+});
+export type OrderDispatchInput = z.infer<typeof OrderDispatchInputSchema>;
+
+const OrderDispatchDetailsSchema = z.strictObject({
+  deliveryProvider: z.enum(["manual", "pathao"]).nullable(),
+  deliveryOperator: z.string().min(2).max(120),
+  handoffReference: z.string().min(1).max(160).nullable(),
+  dispatchedAt: z.iso.datetime(),
+});
+
 const OrderLineSchema = z.strictObject({
   variantId: z.uuid(),
   productName: z.string().min(1).max(160),
@@ -99,7 +114,13 @@ export const OrderSchema = z.strictObject({
   ]),
   paymentMethod: z.literal("cod"),
   collectionStatus: z.literal("uncollected"),
-  fulfillmentStatus: z.enum(["not_started", "awaiting_dispatch", "cancelled"]),
+  fulfillmentStatus: z.enum([
+    "not_started",
+    "awaiting_dispatch",
+    "dispatched",
+    "cancelled",
+  ]),
+  dispatch: OrderDispatchDetailsSchema.nullable(),
   lines: z.array(OrderLineSchema).min(1).max(50),
   merchandiseGrossBdt: z
     .number()
@@ -152,7 +173,12 @@ export const OrderCreatedSchema = z.strictObject({
   ]),
   paymentMethod: z.literal("cod"),
   collectionStatus: z.literal("uncollected"),
-  fulfillmentStatus: z.enum(["not_started", "awaiting_dispatch", "cancelled"]),
+  fulfillmentStatus: z.enum([
+    "not_started",
+    "awaiting_dispatch",
+    "dispatched",
+    "cancelled",
+  ]),
   createdAt: z.iso.datetime(),
   guestAccessExpiresAt: z.iso.datetime().nullable(),
   replayed: z.boolean(),
@@ -168,6 +194,12 @@ export const OrderManagementListSchema = z.strictObject({
         "awaiting_confirmation",
         "confirmed",
         "rejected",
+        "cancelled",
+      ]),
+      fulfillmentStatus: z.enum([
+        "not_started",
+        "awaiting_dispatch",
+        "dispatched",
         "cancelled",
       ]),
       serviceability: z.enum([

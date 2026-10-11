@@ -1,5 +1,5 @@
 import { Test } from "@nestjs/testing";
-import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
 import { and, eq } from "drizzle-orm";
 import { AppModule } from "../src/app.module.js";
@@ -21,7 +21,7 @@ const password = "aaraj-e2e-password-123";
 const reason = { reason: "Test staff onboarding" };
 
 describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let access: AccessService;
   let database: DatabaseService;
   let owner: Account;
@@ -66,7 +66,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({
+    app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       logger: false,
       cookies: { secret: deriveCartCookieSigningSecret() },

@@ -6,10 +6,12 @@ import {
   ApiErrorResponseSchema,
   CreateOrderInputSchema,
   OrderCreatedSchema,
+  OrderDispatchInputSchema,
   OrderSchema,
   OrderServiceabilityInputSchema,
   type CreateOrderInput,
   type OrderCreated,
+  type OrderDispatchInput,
   type Order,
   type OrderServiceabilityInput,
 } from "@aaraj/contracts";
@@ -91,6 +93,28 @@ export async function updateOrderServiceability(
       cache: "no-store",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validatedInput),
+    },
+  );
+  return readResponse(response, OrderSchema);
+}
+
+export async function dispatchCodOrder(
+  orderId: string,
+  input: OrderDispatchInput,
+  commandId: string,
+): Promise<Order> {
+  const validatedInput = OrderDispatchInputSchema.parse(input);
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/dispatch`,
+    {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": commandId,
+      },
       body: JSON.stringify(validatedInput),
     },
   );

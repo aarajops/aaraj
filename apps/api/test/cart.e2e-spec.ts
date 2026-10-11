@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
-import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
 import { eq, sql } from "drizzle-orm";
 import { beforeEach, vi } from "vitest";
@@ -28,7 +28,7 @@ const password = "aaraj-cart-e2e-password-123";
 const cookieName = "aaraj_guest_cart";
 
 describe("storefront cart", () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let database: DatabaseService;
   let customer: Account;
   let otherCustomer: Account;
@@ -107,7 +107,7 @@ describe("storefront cart", () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({
+    app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       logger: ["error"],
       cookies: { secret: deriveCartCookieSigningSecret() },

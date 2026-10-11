@@ -1,19 +1,19 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
 import { AppModule } from "./../src/app.module.js";
 import { configureApp } from "./../src/configure-app.js";
 import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 
 describe("AppController (e2e)", () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication({
+    app = moduleFixture.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       cookies: { secret: deriveCartCookieSigningSecret() },
     });

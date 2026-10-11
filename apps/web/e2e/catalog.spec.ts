@@ -512,6 +512,7 @@ test("customer Order page explains serviceability timeout cancellation", async (
         paymentMethod: "cod",
         collectionStatus: "uncollected",
         fulfillmentStatus: "cancelled",
+        dispatch: null,
         lines: [
           {
             variantId: "0d8c92cf-d31c-4ca7-9c99-4aad8e103565",
@@ -580,7 +581,11 @@ test("customer Order page explains serviceability timeout cancellation", async (
   );
 
   await page.goto(`/orders/${orderId}`);
-  await expect(page.getByRole("status")).toContainText(
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "automatically cancelled because delivery serviceability",
+    }),
+  ).toContainText(
     "automatically cancelled because delivery serviceability was not reviewed by its deadline",
   );
   await expect(page.getByText("Not payable; Order closed")).toBeVisible();

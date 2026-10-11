@@ -141,6 +141,41 @@
       "when": 1791442163019,
       "tag": "0019_seven_day_cod_serviceability_review_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791443706438,
+      "tag": "0020_cod_order_dispatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791617060799,
+      "tag": "0021_pathao_courier_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791617547353,
+      "tag": "0022_pathao_booking_reconciliation_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791695070709,
+      "tag": "0023_pathao_dispatch_issue_resolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791697799096,
+      "tag": "0024_pathao_legacy_dispatch_provider_compat",
+      "breakpoints": true
     }
   ]
 }

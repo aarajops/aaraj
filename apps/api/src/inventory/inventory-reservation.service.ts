@@ -174,6 +174,18 @@ export class InventoryReservationService implements InventoryReservationPort {
     return this.transition("consume", command);
   }
 
+  consumeWithinTransaction(
+    transaction: AuditTransaction,
+    command: InventoryReservationTransitionCommand,
+  ): Promise<InventoryReservation> {
+    return this.transitionWithinTransaction(
+      transaction,
+      "consume",
+      command,
+      true,
+    );
+  }
+
   async getReservation(
     reservationId: string,
   ): Promise<InventoryReservation | null> {
@@ -206,6 +218,7 @@ export class InventoryReservationService implements InventoryReservationPort {
     transaction: AuditTransaction,
     operation: "release" | "consume",
     command: InventoryReservationTransitionCommand,
+    requireHeld = false,
   ): Promise<InventoryReservation> {
     const commandId = requireUuid(command.commandId, "commandId");
     const reservationId = requireUuid(command.reservationId, "reservationId");
@@ -213,6 +226,12 @@ export class InventoryReservationService implements InventoryReservationPort {
     await lockReservationCommand(transaction, commandId);
     const existing = await findCommand(transaction, commandId);
     if (existing) {
+      if (requireHeld) {
+        throw new ConflictException(
+          "A new dispatch requires a held reservation and a new consume command.",
+          { errorCode: "ORDER_RESERVATION_NOT_HELD" },
+        );
+      }
       return this.replayInTransaction(
         transaction,
         existing,
@@ -228,6 +247,13 @@ export class InventoryReservationService implements InventoryReservationPort {
       .for("update")
       .limit(1);
     if (!reservation) throw new NotFoundException("Reservation not found.");
+
+    if (requireHeld && reservation.status !== "held") {
+      throw new ConflictException(
+        "The Order reservation must still be held before dispatch.",
+        { errorCode: "ORDER_RESERVATION_NOT_HELD" },
+      );
+    }
 
     const requestedStatus: InventoryReservationStatus =
       operation === "release" ? "released" : "consumed";

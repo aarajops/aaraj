@@ -43,11 +43,16 @@ const runtimeTableGrants = [
   ["geography", "location", ["SELECT"]],
   ["delivery", "tariff", ["SELECT"]],
   ["delivery", "tariff_district", ["SELECT"]],
+  ["delivery", "pathao_api_token", ["SELECT", "INSERT", "UPDATE"]],
+  ["delivery", "pathao_booking", ["SELECT", "INSERT", "UPDATE"]],
+  ["delivery", "pathao_webhook_inbox", ["SELECT", "INSERT", "UPDATE"]],
+  ["delivery", "pathao_webhook_resolution", ["SELECT", "INSERT"]],
   ["tax", "profile", ["SELECT"]],
   ["quote", "snapshot", ["SELECT", "INSERT"]],
   ["orders", "order_header", ["SELECT", "INSERT", "UPDATE"]],
   ["orders", "order_line", ["SELECT", "INSERT"]],
   ["orders", "idempotency", ["SELECT", "INSERT"]],
+  ["orders", "pathao_booking_claim", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
 ] as const;
 const runtimeTablePrivilegeMap: ReadonlyMap<string, readonly string[]> =
   new Map(

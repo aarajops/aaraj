@@ -18,6 +18,7 @@ import { DeliveryModule } from "./delivery/delivery.module.js";
 import { TaxModule } from "./tax/tax.module.js";
 import { QuoteModule } from "./quote/quote.module.js";
 import { OrdersModule } from "./orders/orders.module.js";
+import { PathaoModule } from "./delivery/pathao/pathao.module.js";
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { OrdersModule } from "./orders/orders.module.js";
     TaxModule,
     QuoteModule,
     OrdersModule,
+    PathaoModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ApiThrottlerGuard }],

@@ -1,5 +1,5 @@
 import { Test } from "@nestjs/testing";
-import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { auth } from "../src/auth/auth.js";
@@ -11,13 +11,13 @@ const origin = "http://localhost:3000";
 const password = "aaraj-e2e-password-123";
 
 describe("distributed rate limits", () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-    app = module.createNestApplication({
+    app = module.createNestApplication<NestExpressApplication>({
       bodyParser: false,
       logger: false,
       cookies: { secret: deriveCartCookieSigningSecret() },

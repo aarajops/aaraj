@@ -5,10 +5,14 @@ import Link from "next/link";
 import type { Order } from "@aaraj/contracts";
 import { formatCatalogPrice } from "@/features/catalog/price";
 import { fetchOrder, OrderRequestError } from "./orders-client";
+import { getPathaoCustomerTracking } from "./pathao-client";
+import type { PathaoCustomerTracking } from "@aaraj/contracts";
 
 export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tracking, setTracking] = useState<PathaoCustomerTracking | null>(null);
+  const [trackingUnavailable, setTrackingUnavailable] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -26,6 +30,20 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                 : "Order details could not be loaded.",
           );
         }
+      });
+    return () => {
+      active = false;
+    };
+  }, [orderId]);
+
+  useEffect(() => {
+    let active = true;
+    void getPathaoCustomerTracking(orderId)
+      .then((result) => {
+        if (active) setTracking(result);
+      })
+      .catch(() => {
+        if (active) setTrackingUnavailable(true);
       });
     return () => {
       active = false;
@@ -64,11 +82,13 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
             <p className="mt-3" role="status">
               {order.status === "cancelled"
                 ? "Your Order was automatically cancelled because delivery serviceability was not reviewed by its deadline. Its stock reservation was released. Nothing is payable."
-                : order.serviceability === "pending_manual_review"
-                  ? "Your Order is received and awaiting manual delivery serviceability review. It is not yet confirmed for dispatch. If it is still awaiting review after 7 days, it will be cancelled and its stock reservation released."
-                  : order.serviceability === "serviceable"
-                    ? "Delivery serviceability has been confirmed. AARAJ will prepare the Order for dispatch."
-                    : "AARAJ cannot deliver to this destination. This Order was rejected and its stock hold was released."}
+                : order.fulfillmentStatus === "dispatched" && order.dispatch
+                  ? `Your Order was handed to ${order.dispatch.deliveryOperator} on ${formatDate(order.dispatch.dispatchedAt)}. It remains Cash on Delivery and has not been marked delivered or paid.`
+                  : order.serviceability === "pending_manual_review"
+                    ? "Your Order is received and awaiting manual delivery serviceability review. It is not yet confirmed for dispatch. If it is still awaiting review after 7 days, it will be cancelled and its stock reservation released."
+                    : order.serviceability === "serviceable"
+                      ? "Delivery serviceability has been confirmed. AARAJ will prepare the Order for dispatch."
+                      : "AARAJ cannot deliver to this destination. This Order was rejected and its stock hold was released."}
             </p>
             <dl className="mt-5 grid gap-2 border-t border-border pt-4 text-sm">
               <DataRow label="Payment method" value="Cash on Delivery" />
@@ -89,6 +109,79 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                 value={formatCatalogPrice({ amountBdt: order.totalBdt })}
               />
             </dl>
+            {order.fulfillmentStatus === "dispatched" && order.dispatch && (
+              <section
+                aria-label="Dispatch details"
+                className="mt-5 rounded-xl border border-border p-4"
+              >
+                <h2 className="font-semibold">Dispatch details</h2>
+                <dl className="mt-3 grid gap-2 text-sm">
+                  <DataRow
+                    label="Delivery operator"
+                    value={order.dispatch.deliveryOperator}
+                  />
+                  {order.dispatch.handoffReference && (
+                    <DataRow
+                      label="Handoff reference"
+                      value={order.dispatch.handoffReference}
+                    />
+                  )}
+                  <DataRow
+                    label="Handed over"
+                    value={formatDate(order.dispatch.dispatchedAt)}
+                  />
+                  <DataRow label="Delivery status" value="Dispatched" />
+                </dl>
+              </section>
+            )}
+            {tracking?.booking && (
+              <section
+                aria-label="Pathao delivery tracking"
+                className="mt-5 rounded-xl border border-border p-4"
+              >
+                <h2 className="font-semibold">Pathao delivery tracking</h2>
+                <dl className="mt-3 grid gap-2 text-sm">
+                  <DataRow
+                    label="Consignment"
+                    value={tracking.booking.consignmentId}
+                  />
+                  <DataRow
+                    label="Latest verified progress"
+                    value={humanizeTracking(tracking.booking.trackingProgress)}
+                  />
+                  <DataRow
+                    label="COD due"
+                    value={formatCatalogPrice({
+                      amountBdt: order.codAmountDueBdt,
+                    })}
+                  />
+                </dl>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Courier tracking does not confirm COD collection or
+                  remittance. Your Order remains unpaid until AARAJ records
+                  collection through its separate reconciliation process.
+                </p>
+                {tracking.observations.length > 0 && (
+                  <ol className="mt-4 divide-y divide-border text-sm">
+                    {tracking.observations.map((observation) => (
+                      <li
+                        className="py-2"
+                        key={`${observation.event}-${observation.receivedAt}`}
+                      >
+                        {humanizeTracking(observation.event)} · verified{" "}
+                        {formatDate(observation.receivedAt)}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+            )}
+            {trackingUnavailable && (
+              <p className="mt-4 text-sm text-muted-foreground" role="status">
+                Courier tracking is temporarily unavailable. Your Order and COD
+                amount are unchanged.
+              </p>
+            )}
             {order.cancellationReason === "serviceability_review_timeout" &&
               order.cancelledAt && (
                 <p className="mt-4 text-sm text-muted-foreground">
@@ -171,4 +264,12 @@ function formatDate(value: string): string {
     timeStyle: "short",
     timeZone: "Asia/Dhaka",
   }).format(new Date(value));
+}
+
+function humanizeTracking(value: string): string {
+  return value
+    .replace(/^order\./, "")
+    .split(/[_.-]/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
