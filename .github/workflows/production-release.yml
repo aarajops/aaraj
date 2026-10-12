@@ -1,0 +1,322 @@
+name: AARAJ Production Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aaraj-production
+  cancel-in-progress: false
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - name: Checkout release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a stable release of a protected main commit
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_DRAFT: ${{ github.event.release.draft }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_DRAFT" == false && "$RELEASE_PRERELEASE" == false ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$REF_PROTECTED" == true ]]
+          tag_commit="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          [[ "$tag_commit" == "$GITHUB_SHA" ]]
+          git merge-base --is-ancestor "$tag_commit" origin/main
+          printf 'tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Release gate passed'
+            echo
+            echo "- Stable tag: \`$RELEASE_TAG\`"
+            echo "- Commit: \`$tag_commit\`"
+            echo '- The release commit is an ancestor of protected main.'
+            echo '- Stable tags must be protected by the repository ruleset.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ci:
+    needs: release-gate
+    uses: ./.github/workflows/ci.yml
+
+  migration-policy:
+    needs: [release-gate, ci]
+    runs-on: ubuntu-24.04
+    outputs:
+      required: ${{ steps.policy.outputs.required }}
+    steps:
+      - name: Checkout release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-gate.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect Drizzle migration changes
+        id: policy
+        env:
+          RELEASE_TAG: ${{ needs.release-gate.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
+        run: |
+          set -euo pipefail
+          previous="$(git tag --merged "$RELEASE_COMMIT" --list 'v[0-9]*' --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | grep -Fxv "$RELEASE_TAG" \
+            | head -n 1 || true)"
+          if [[ -z "$previous" ]]; then
+            migration_base="$(git hash-object -t tree -w --stdin </dev/null)"
+            required=true
+            reason='No earlier stable release tag exists; initial schema state needs explicit review.'
+          else
+            migration_base="$previous"
+            if git diff --quiet "$previous" "$RELEASE_COMMIT" -- apps/api/drizzle; then
+              required=false
+              reason="No Drizzle migration files changed since $previous."
+            else
+              status=$?
+              if [[ $status -ne 1 ]]; then exit "$status"; fi
+              required=true
+              reason="Drizzle migration files changed since $previous."
+            fi
+          fi
+          printf 'required=%s\n' "$required" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Migration review policy'
+            echo
+            echo "- $reason"
+            echo '- Existing API CI runs fresh-schema and historical-upgrade migration compatibility tests.'
+            echo '- Any migration release requires a separate protected human approval before host-local execution.'
+            echo '- Production database credentials remain on the VPS.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo
+            echo '#### Migration file diff'
+            git diff --stat "$migration_base" "$RELEASE_COMMIT" -- apps/api/drizzle
+            git diff --name-status "$migration_base" "$RELEASE_COMMIT" -- apps/api/drizzle
+            git diff --no-ext-diff --unified=20 "$migration_base" "$RELEASE_COMMIT" -- apps/api/drizzle
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-and-verify:
+    needs: [release-gate, ci]
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: aaraj_smoke
+          POSTGRES_USER: aaraj_smoke
+          POSTGRES_PASSWORD: aaraj_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aaraj_smoke -d aaraj_smoke"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-gate.outputs.commit }}
+          persist-credentials: false
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Setup pnpm 12.5.1
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 12.5.1
+          run_install: false
+
+      - name: Verify toolchain and install frozen dependencies
+        run: |
+          test "$(node --version)" = "v$(cat .node-version)"
+          test "$(pnpm --version)" = "12.5.1"
+          pnpm install --frozen-lockfile
+
+      - name: Build and package one versioned release artifact
+        env:
+          RELEASE_TAG: ${{ needs.release-gate.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
+        run: >-
+          node infrastructure/production/package-release.mjs
+          --tag "$RELEASE_TAG"
+          --commit "$RELEASE_COMMIT"
+          --out-dir "$RUNNER_TEMP/aaraj-release"
+
+      - name: Extract and smoke-test the production artifact
+        env:
+          E2E_POSTGRES_HOST: 127.0.0.1
+          E2E_POSTGRES_PORT: 5432
+          E2E_POSTGRES_DATABASE: aaraj_smoke
+          E2E_POSTGRES_USER: aaraj_smoke
+          E2E_POSTGRES_PASSWORD: aaraj_smoke
+          E2E_REDIS_URL: redis://127.0.0.1:6379/14
+          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
+          RELEASE_TAG: ${{ needs.release-gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node infrastructure/production/verify-release.mjs \
+            --archive "$RUNNER_TEMP/aaraj-release/aaraj-release.tar.gz" \
+            --commit "$RELEASE_COMMIT" \
+            --tag "$RELEASE_TAG" \
+            --smoke
+
+      - name: Upload the verified release artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: aaraj-release-${{ needs.release-gate.outputs.commit }}
+          path: ${{ runner.temp }}/aaraj-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  approve-migration:
+    needs: [release-gate, migration-policy, build-and-verify]
+    if: needs.migration-policy.outputs.required == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: aaraj-production-migrations
+    steps:
+      - name: Record the migration approval gate
+        env:
+          RELEASE_TAG: ${{ needs.release-gate.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
+        run: |
+          {
+            echo "Migration approval requested for $RELEASE_TAG ($RELEASE_COMMIT)."
+            echo '- Review the migration diff and the PostgreSQL 16 fresh-schema and historical-upgrade CI results.'
+            echo '- Confirm a recent encrypted backup completed and its restore verification is current before approving.'
+            echo '- This approval does not execute SQL. After the release is staged, a separately authenticated VPS administrator must start the exact release migration unit and verify its journal result.'
+            echo '- The GitHub deployment identity has no permission to start or inspect migration credentials.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs:
+      [release-gate, ci, migration-policy, build-and-verify, approve-migration]
+    if: >-
+      always() &&
+      needs.release-gate.result == 'success' &&
+      needs.ci.result == 'success' &&
+      needs.migration-policy.result == 'success' &&
+      needs.build-and-verify.result == 'success' &&
+      (needs.approve-migration.result == 'success' || needs.approve-migration.result == 'skipped')
+    runs-on: ubuntu-24.04
+    environment:
+      name: aaraj-production
+    steps:
+      - name: Checkout deployment helper for the approved commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-gate.outputs.commit }}
+          persist-credentials: false
+
+      - name: Download the verified release artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: aaraj-release-${{ needs.release-gate.outputs.commit }}
+          path: ${{ runner.temp }}/aaraj-release
+
+      - name: Setup Node.js 24 for health response validation
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Stage, wait for approved migration if required, activate, and verify AARAJ
+        env:
+          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
+          MIGRATION_REQUIRED: ${{ needs.migration-policy.outputs.required }}
+          AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
+          AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
+          AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
+          AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
+          AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
+          AARAJ_PUBLIC_BASE_URL: ${{ vars.AARAJ_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          health_base="$AARAJ_PUBLIC_BASE_URL"
+          [[ "$health_base" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || {
+            echo 'AARAJ_PUBLIC_BASE_URL must be an HTTPS origin without a path.' >&2
+            exit 2
+          }
+
+          check_public_health() {
+            for _ in {1..30}; do
+              if curl --fail --silent --show-error --max-time 10 "$health_base/" >/dev/null && \
+                curl --fail --silent --show-error --max-time 10 "$health_base/api/health/ready" | \
+                  node --input-type=module -e '
+                    let body = "";
+                    for await (const chunk of process.stdin) body += chunk;
+                    const result = JSON.parse(body);
+                    if (result.status !== "ok" || result.database !== "ok" || result.redis !== "ok") process.exit(1);
+                  '; then
+                return 0
+              fi
+              sleep 2
+            done
+            echo 'Public storefront/API health checks did not pass after 30 attempts.' >&2
+            return 1
+          }
+
+          artifact="$RUNNER_TEMP/aaraj-release/aaraj-release.tar.gz"
+          bash infrastructure/production/deploy-release.sh stage "$RELEASE_COMMIT" "$artifact"
+
+          if [[ "$MIGRATION_REQUIRED" == true ]]; then
+            migration_unit="aaraj-migration@${RELEASE_COMMIT}.service"
+            {
+              echo "Migration-bearing release $RELEASE_COMMIT is staged and waiting for administrator execution."
+              echo
+              echo 'After checking the current encrypted backup and the approved migration review, use the separately authenticated VPS administrator session to run:'
+              echo
+              echo "\`sudo systemctl start $migration_unit\`"
+              echo
+              echo "Verify successful completion with sudo systemctl show $migration_unit -p Result -p ExecMainStatus, then inspect sudo journalctl -u $migration_unit --no-pager. The release activates only after the unit exits successfully."
+            } >> "$GITHUB_STEP_SUMMARY"
+            bash infrastructure/production/deploy-release.sh wait-migration "$RELEASE_COMMIT"
+          fi
+
+          activated=false
+          if bash infrastructure/production/deploy-release.sh activate "$RELEASE_COMMIT"; then
+            activated=true
+          fi
+          if [[ "$activated" == true ]] && check_public_health; then
+            echo "AARAJ release $RELEASE_COMMIT passed public HTTPS, API, PostgreSQL, and Redis health checks." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [[ "$MIGRATION_REQUIRED" == true ]]; then
+            echo 'Migration-bearing release did not pass activation or health checks. No automatic database or code rollback was attempted; follow the documented recovery procedure.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
+            exit 1
+          fi
+
+          echo 'Release health failed; attempting compatible previous-release rollback.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
+          bash infrastructure/production/deploy-release.sh rollback "$RELEASE_COMMIT"
+          check_public_health
+          exit 1

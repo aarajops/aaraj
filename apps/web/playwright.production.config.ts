@@ -30,11 +30,17 @@ export default defineConfig({
       env: { PORT: String(apiPort), HOST: host },
     },
     {
-      command: `pnpm exec next start --hostname ${host} --port ${webPort}`,
+      command:
+        "mkdir -p .next/standalone/apps/web/.next/static .next/standalone/apps/web/public && cp -a .next/static/. .next/standalone/apps/web/.next/static/ && if [ -d public ]; then cp -a public/. .next/standalone/apps/web/public/; fi && node .next/standalone/apps/web/server.js",
       url: `http://${host}:${webPort}`,
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { API_INTERNAL_URL: apiInternalUrl },
+      env: {
+        NODE_ENV: "production",
+        HOSTNAME: host,
+        PORT: String(webPort),
+        API_INTERNAL_URL: apiInternalUrl,
+      },
     },
   ],
 });

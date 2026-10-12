@@ -2,7 +2,7 @@
 
 Design baseline: 1 October 2026. Scope: Bangladesh launch, with later regional growth. This remains a target architecture, not a claim that every described domain or production control is implemented.
 
-Read this document with the [complete data model and ERDs](ecommerce-data-model.md), [PostgreSQL DDL](ecommerce-schema.sql), and [phased roadmap and Day 1 execution checklist](ecommerce-implementation-roadmap.md). Together they form the four requested sections. The SQL is a design artifact for review and disposable-database validation, not a production migration to apply wholesale.
+Read this document with the [complete data model and ERDs](ecommerce-data-model.md), [PostgreSQL DDL](ecommerce-schema.sql), [phased roadmap and Day 1 execution checklist](ecommerce-implementation-roadmap.md), and the approved [AARAJ production hosting and release architecture](aaraj-production-hosting.md). The SQL is a design artifact for review and disposable-database validation, not a production migration to apply wholesale.
 
 ## Baseline, decisions, and boundaries
 
@@ -20,7 +20,7 @@ Current implementation status (10 October 2026): the monorepo has a local Postgr
 | Events                     | Proposed module-owned PostgreSQL outbox/inbox when an asynchronous workflow is implemented                                | No outbox or event relay exists in the current application                                                                                                                  |
 | Jobs                       | Add a durable queue such as BullMQ when an implemented workflow needs background delivery or processing                   | Bound concurrency and make retryable business effects idempotent                                                                                                            |
 | Providers                  | Typed HTTP adapters using Node 24 native `fetch`; `@nestjs/axios` only where specifically justified                       | No unmaintained bKash, Nagad, SSLCommerz, Pathao, Steadfast, or RedX wrappers                                                                                               |
-| Initial production hosting | AWS reference option: ECS/Fargate, ALB, RDS PostgreSQL, managed Redis, object storage/CDN, Secrets Manager/KMS, Terraform | Select a provider and availability design from team operations, region, data, SLO, and cost requirements; equivalent services can fill these roles                          |
+| Initial production hosting | Existing Contabo VPS on Ubuntu 24.04 LTS; shared Nginx; per-site Linux users and PM2; PostgreSQL 16 with isolated databases and certificate-verified TLS; private Redis; Let's Encrypt; encrypted offsite backups; mandatory GitHub Actions CI/CD | AARAJ is the first site under `/srv/sites/aaraj`; GitHub-hosted runners build versioned releases, and protected GitHub environments gate site-scoped deployment and migrations. See the approved [hosting and release architecture](aaraj-production-hosting.md). |
 | Currency                   | BDT first; currency metadata and explicit rational FX quotes                                                              | Amounts never silently mix currencies; no floating-point financial arithmetic                                                                                               |
 | Launch scope               | Single merchant; fulfillment and stock policy are decided from launch operations                                          | Do not create inventory-location or warehouse models until a stock-managed workflow requires them; marketplace sellers, escrow, and cross-border settlement remain deferred |
 
@@ -91,8 +91,8 @@ flowchart TB
   Workers --> OTel
   OTel --> Alerts[Dashboards / on-call alerts / DLQ console]
   Primary --> Recovery[Encrypted backups / WAL archive / PITR]
-  Vault[Secrets Manager / KMS\nTerraform-managed permissions] --> Monolith
-  Vault --> Workers
+  Secrets[Host-managed per-site secrets / future managed secret service] --> Monolith
+  Secrets --> Workers
 ```
 
 The diagram's database arrows are ownership routes, not permission to query every schema. A checkout request can synchronously call `Inventory.reserve()` through a port, but the Inventory implementation alone touches stock tables. Each module commits locally. An Order-owned process manager records the cross-module workflow, retries, and compensations. Read pages compose port results or use event-fed projections owned by the reader.
@@ -192,9 +192,9 @@ Combine IP/subnet, actor/session, normalized identifier HMAC, device, and endpoi
 
 #### 06. Secrets and infrastructure as code
 
-Select AWS Secrets Manager/KMS for the reference deployment; use Vault if operational requirements justify its management burden. Fetch secrets through task identity, not committed `.env` files or baked images. Rotate database/provider credentials with overlap and test reconnect behavior. Never expose private API values through Next.js `NEXT_PUBLIC_*`, build logs, Terraform outputs, or remote-state readers. Store state encrypted with locking and narrowly scoped access.
+For AARAJ's approved Contabo deployment, keep per-site runtime and migration secrets in separate, permission-restricted VPS files; GitHub Actions receives only the dedicated deployment credential and verified host-key pin. Do not put production secrets in source, release artifacts, `NEXT_PUBLIC_*`, or build logs. A future managed host may use its native secret manager and workload identity. Rotate database/provider credentials with overlap and test reconnect behavior.
 
-Infrastructure-as-code should describe the selected host's network, application, database, secrets, telemetry, backups, and DNS resources. Add database replicas, a pooler, dedicated queue/cache capacity, or separate worker services only where the selected deployment and measured workload need them. Isolate production credentials/state from development; use reviewed deploy identities and immutable application artifacts. Run non-root containers with bounded resources, graceful shutdown, health probes, and restricted outbound provider access. Pin reviewed image/tool versions; scan dependencies and images and record an SBOM. Local Compose is a development convenience, not production HA.
+Version and review only the host configuration and site-scoped helper scripts required by the selected deployment; do not add a provider-wide IaC layer to the first Contabo phase without a separate decision. Add database replicas, a pooler, dedicated queue/cache capacity, or separate worker services only where the selected deployment and measured workload need them. Isolate production credentials from development and use reviewed deploy identities and immutable application artifacts. If a later hosting decision selects containers, run them as non-root with bounded resources, graceful shutdown, health probes, and restricted outbound provider access. Pin reviewed image/tool versions; scan dependencies and images and record an SBOM. Local Compose is a development convenience, not production HA.
 
 ### II. Catalog, search, media, and stock
 
