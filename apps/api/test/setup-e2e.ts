@@ -72,9 +72,7 @@ try {
   await seedSyntheticTaxProfile(migrationPool);
 } catch (error) {
   await migrationPool.end();
-  await admin.query(
-    `DROP DATABASE ${quoteIdentifier(testDatabase)} WITH (FORCE)`,
-  );
+  await admin.query(`DROP DATABASE ${quoteIdentifier(testDatabase)}`);
   await admin.end();
   throw error;
 }
@@ -107,9 +105,7 @@ afterAll(async () => {
   } finally {
     redis.disconnect();
     try {
-      await admin.query(
-        `DROP DATABASE ${quoteIdentifier(testDatabase)} WITH (FORCE)`,
-      );
+      await admin.query(`DROP DATABASE ${quoteIdentifier(testDatabase)}`);
     } finally {
       await admin.end();
     }

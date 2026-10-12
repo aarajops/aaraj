@@ -23,6 +23,8 @@ async function bootstrap() {
   configureApp(app);
   app.enableShutdownHooks();
   const port = Number(process.env.PORT ?? 3001);
-  await app.listen(port);
+  const host = process.env.HOST ?? (isProduction ? "127.0.0.1" : undefined);
+  if (host) await app.listen(port, host);
+  else await app.listen(port);
 }
 await bootstrap();

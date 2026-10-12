@@ -276,9 +276,7 @@ async function cleanup() {
       redis.disconnect();
     }
     try {
-      await admin.query(
-        `DROP DATABASE IF EXISTS ${quoteIdentifier(database)} WITH (FORCE)`,
-      );
+      await admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(database)}`);
     } finally {
       await admin.query(`DROP ROLE IF EXISTS ${quoteIdentifier(runtimeRole)}`);
       await admin.query(

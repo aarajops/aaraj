@@ -34,6 +34,7 @@ aaraj/
 The repository maintains an authoritative, durable documentation portal under `/docs`:
 
 - **[Engineering Documentation Portal](docs/README.md)**: Monorepo architecture, boundaries, and standards.
+- **[AARAJ Production Hosting & Release Architecture](docs/architecture/aaraj-production-hosting.md)**: Approved Contabo VPS topology and mandatory GitHub Actions CI/CD release gates.
 - **[Enterprise E-Commerce Blueprint & Roadmap](docs/architecture/ecommerce-blueprint.md)**: All 36 enterprise and Bangladesh localization pillars, relational schema, implementation phases, and exact Day 1 setup checklist.
 - **[NestJS Backend Standards & Reference](docs/backend/README.md)**: Deep architectural guide covering First Steps, Controllers, Providers, Modules, Middleware, Exception Filters, Pipes, Guards, Interceptors, Custom Decorators, and the Request Lifecycle.
 

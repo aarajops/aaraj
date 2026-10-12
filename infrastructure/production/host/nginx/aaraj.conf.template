@@ -1,0 +1,43 @@
+# Template only. Replace the domain and certificate paths after DNS and HTTPS
+# prerequisites pass. Keep this vhost scoped to AARAJ; do not replace shared
+# Nginx configuration or unrelated site files.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __AARAJ_DOMAIN__ www.__AARAJ_DOMAIN__;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type text/plain;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name __AARAJ_DOMAIN__ www.__AARAJ_DOMAIN__;
+
+    ssl_certificate /etc/letsencrypt/live/__AARAJ_DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__AARAJ_DOMAIN__/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 11m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+}

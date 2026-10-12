@@ -147,9 +147,7 @@ describe("migration 0023 historical upgrade", () => {
     for (const database of databases) await database.pool.end();
     if (admin) {
       for (const database of databases) {
-        await admin.query(
-          `DROP DATABASE IF EXISTS "${database.name}" WITH (FORCE)`,
-        );
+        await admin.query(`DROP DATABASE IF EXISTS "${database.name}"`);
       }
       await admin.end();
     }
