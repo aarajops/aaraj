@@ -10,6 +10,7 @@ import {
   UseGuards,
   UsePipes,
 } from "@nestjs/common";
+import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   AllowAnonymous,
   Session,
@@ -38,12 +39,14 @@ export class CategoryController {
   }
 
   @Get("manage")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   listForManagement(@Session() session: UserSession) {
     return this.categories.listForManagement(session.user);
   }
 
   @Post()
+  @ApiCookieAuth()
   create(
     @Session() session: UserSession,
     @Body({ schema: CatalogCategoryCreateSchema })
@@ -53,6 +56,7 @@ export class CategoryController {
   }
 
   @Patch(":id")
+  @ApiCookieAuth()
   update(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogCategoryIdSchema }) categoryId: string,

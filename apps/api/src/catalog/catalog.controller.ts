@@ -16,6 +16,7 @@ import {
   UsePipes,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   AllowAnonymous,
   Session,
@@ -57,6 +58,7 @@ export class CatalogController {
   ) {}
 
   @Get("manage")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   listForManagement(
     @Session() session: UserSession,
@@ -67,6 +69,7 @@ export class CatalogController {
   }
 
   @Get("manage/:id")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   findForManagement(
     @Session() session: UserSession,
@@ -76,6 +79,7 @@ export class CatalogController {
   }
 
   @Get("manage/:productId/media")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   listMediaForManagement(
     @Session() session: UserSession,
@@ -85,6 +89,7 @@ export class CatalogController {
   }
 
   @Post("manage/:productId/media")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   @UseGuards(CatalogMediaManageGuard)
   @UseInterceptors(
@@ -111,6 +116,7 @@ export class CatalogController {
   }
 
   @Delete("manage/:productId/media/:mediaId")
+  @ApiCookieAuth()
   @HttpCode(204)
   @Header("Cache-Control", "no-store")
   deleteMedia(
@@ -141,6 +147,7 @@ export class CatalogController {
   }
 
   @Post()
+  @ApiCookieAuth()
   create(
     @Session() session: UserSession,
     @Body({ schema: CatalogProductCreateSchema })
@@ -150,6 +157,7 @@ export class CatalogController {
   }
 
   @Patch(":id")
+  @ApiCookieAuth()
   update(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogProductIdSchema }) productId: string,

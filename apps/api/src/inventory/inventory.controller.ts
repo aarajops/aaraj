@@ -11,6 +11,7 @@ import {
   UsePipes,
 } from "@nestjs/common";
 import { Session, type UserSession } from "@thallesp/nestjs-better-auth";
+import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   InventoryAdjustmentInputSchema,
   InventoryListQuerySchema,
@@ -22,6 +23,7 @@ import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.g
 import { InventoryService } from "./inventory.service.js";
 
 @Controller("inventory")
+@ApiCookieAuth()
 @UsePipes(StandardSchemaValidationPipe)
 @UseGuards(CookieMutationGuard)
 export class InventoryController {

@@ -15,6 +15,7 @@ import {
   UsePipes,
 } from "@nestjs/common";
 import { Can } from "@nestjs/authorization";
+import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   OptionalAuth,
   Session,
@@ -38,6 +39,7 @@ const PATHAO_INTEGRATION_HEADER =
   "X-Pathao-Merchant-Webhook-Integration-Secret";
 
 @Controller("delivery/pathao/manage")
+@ApiCookieAuth()
 @Can(OrdersPolicy, "manage")
 @UsePipes(StandardSchemaValidationPipe)
 export class PathaoManagementController {

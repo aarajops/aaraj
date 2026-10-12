@@ -12,6 +12,7 @@ import {
   UsePipes,
 } from "@nestjs/common";
 import { Session, type UserSession } from "@thallesp/nestjs-better-auth";
+import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   CatalogSizeGuideCreateSchema,
   CatalogSizeGuideIdSchema,
@@ -25,6 +26,7 @@ import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.g
 import { SizeGuideService } from "./size-guide.service.js";
 
 @Controller("catalog/size-guides")
+@ApiCookieAuth()
 @UsePipes(StandardSchemaValidationPipe)
 @UseGuards(CookieMutationGuard)
 export class SizeGuideController {

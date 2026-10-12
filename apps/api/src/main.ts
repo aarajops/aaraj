@@ -2,6 +2,7 @@ import { ConsoleLogger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { configureApp } from "./configure-app.js";
+import { configureOpenApi } from "./openapi.js";
 import { loadLocalEnvironment } from "./platform/config/local-environment.js";
 import { deriveCartCookieSigningSecret } from "./cart/cart-cookie.js";
 
@@ -21,6 +22,9 @@ async function bootstrap() {
     }),
   });
   configureApp(app);
+  if (!isProduction) {
+    configureOpenApi(app);
+  }
   app.enableShutdownHooks();
   const port = Number(process.env.PORT ?? 3001);
   const host = process.env.HOST ?? (isProduction ? "127.0.0.1" : undefined);

@@ -15,6 +15,7 @@ import {
   UsePipes,
 } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
+import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   OptionalAuth,
   Session,
@@ -102,6 +103,7 @@ export class CartController {
   }
 
   @Post("merge")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   async mergeGuestCart(
     @Session() session: UserSession | undefined,

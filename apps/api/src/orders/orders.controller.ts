@@ -17,6 +17,7 @@ import {
 } from "@nestjs/common";
 import { Can } from "@nestjs/authorization";
 import { HttpAdapterHost } from "@nestjs/core";
+import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   OptionalAuth,
   Session,
@@ -153,6 +154,7 @@ export class OrdersController {
   }
 
   @Get("manage")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   @Can(OrdersPolicy, "manage")
   listForManagement(
@@ -162,6 +164,7 @@ export class OrdersController {
   }
 
   @Get("manage/:orderId")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   @Can(OrdersPolicy, "manage")
   getForManagement(
@@ -171,6 +174,7 @@ export class OrdersController {
   }
 
   @Post("manage/:orderId/serviceability")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   @Can(OrdersPolicy, "manage")
   @UseGuards(CookieMutationGuard)
@@ -184,6 +188,7 @@ export class OrdersController {
   }
 
   @Post("manage/:orderId/dispatch")
+  @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   @Can(OrdersPolicy, "manage")
   @UseGuards(CookieMutationGuard)

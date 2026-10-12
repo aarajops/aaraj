@@ -1,9 +1,10 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
-import { AppModule } from "./../src/app.module.js";
-import { configureApp } from "./../src/configure-app.js";
-import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
+import { AppModule } from "../dist/app.module.js";
+import { configureApp } from "../dist/configure-app.js";
+import { deriveCartCookieSigningSecret } from "../dist/cart/cart-cookie.js";
+import { configureOpenApi } from "../dist/openapi.js";
 
 describe("AppController (e2e)", () => {
   let app: NestExpressApplication;
@@ -18,6 +19,7 @@ describe("AppController (e2e)", () => {
       cookies: { secret: deriveCartCookieSigningSecret() },
     });
     configureApp(app);
+    configureOpenApi(app);
     await app.init();
   });
 
@@ -46,6 +48,44 @@ describe("AppController (e2e)", () => {
       .get("/api/auth/ok")
       .expect(200)
       .expect({ ok: true });
+  });
+
+  it("serves the Swagger UI and OpenAPI document under the API prefix", async () => {
+    await request(app.getHttpServer())
+      .get("/api/v1/docs")
+      .expect(200)
+      .expect("Content-Type", /text\/html/);
+
+    const response = await request(app.getHttpServer())
+      .get("/api/v1/docs-json")
+      .expect(200)
+      .expect("Content-Type", /application\/json/);
+
+    expect(response.body.info).toMatchObject({
+      title: "Aaraj API",
+      version: "1.0",
+    });
+    expect(response.body.paths["/api/v1/access/me"].get.security).toContainEqual(
+      { cookie: [] },
+    );
+    expect(response.body.paths["/api/health"].get.security).toBeUndefined();
+    expect(response.body.components.securitySchemes.cookie).toMatchObject({
+      type: "apiKey",
+      in: "cookie",
+      name: "better-auth.session_token",
+    });
+    expect(
+      response.body.paths["/api/v1/catalog/products"].post.requestBody.content[
+        "application/json"
+      ].schema,
+    ).toMatchObject({
+      type: "object",
+      required: expect.arrayContaining(["slug", "name"]),
+      properties: {
+        slug: { type: "string" },
+        name: { type: "string" },
+      },
+    });
   });
 
   afterAll(async () => {

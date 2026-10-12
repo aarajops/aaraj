@@ -11,6 +11,7 @@ import {
   UsePipes,
 } from "@nestjs/common";
 import { Can } from "@nestjs/authorization";
+import { ApiCookieAuth } from "@nestjs/swagger";
 import { Session, type UserSession } from "@thallesp/nestjs-better-auth";
 import {
   AccessUserIdSchema,
@@ -25,6 +26,7 @@ import { accessCatalog } from "./access.permissions.js";
 import { CookieMutationGuard } from "./cookie-mutation.guard.js";
 
 @Controller("access")
+@ApiCookieAuth()
 @UsePipes(StandardSchemaValidationPipe)
 @UseGuards(CookieMutationGuard)
 export class AccessController {
