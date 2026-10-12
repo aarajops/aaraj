@@ -1,10 +1,10 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
-import { AppModule } from "../dist/app.module.js";
-import { configureApp } from "../dist/configure-app.js";
-import { deriveCartCookieSigningSecret } from "../dist/cart/cart-cookie.js";
-import { configureOpenApi } from "../dist/openapi.js";
+import { AppModule } from "../src/app.module.js";
+import { configureApp } from "../src/configure-app.js";
+import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
+import { configureOpenApi } from "../src/openapi.js";
 
 describe("AppController (e2e)", () => {
   let app: NestExpressApplication;
