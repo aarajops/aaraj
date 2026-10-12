@@ -65,9 +65,9 @@ describe("AppController (e2e)", () => {
       title: "Aaraj API",
       version: "1.0",
     });
-    expect(response.body.paths["/api/v1/access/me"].get.security).toContainEqual(
-      { cookie: [] },
-    );
+    expect(
+      response.body.paths["/api/v1/access/me"].get.security,
+    ).toContainEqual({ cookie: [] });
     expect(response.body.paths["/api/health"].get.security).toBeUndefined();
     expect(response.body.components.securitySchemes.cookie).toMatchObject({
       type: "apiKey",

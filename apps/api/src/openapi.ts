@@ -9,7 +9,8 @@ export function configureOpenApi(app: NestExpressApplication): void {
     .setVersion("1.0")
     .addCookieAuth("better-auth.session_token")
     .build();
-  const documentFactory = () => SwaggerModule.createDocument(app, swaggerConfig);
+  const documentFactory = () =>
+    SwaggerModule.createDocument(app, swaggerConfig);
 
   SwaggerModule.setup(`v${API_V1_ROUTE_VERSION}/docs`, app, documentFactory, {
     useGlobalPrefix: true,
