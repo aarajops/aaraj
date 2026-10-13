@@ -56,14 +56,15 @@ test("admin sidebar follows permissions and closes after mobile navigation", asy
   ).toBeVisible();
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.keyboard.press("Control+b");
-  await expect(
-    page.locator('[data-slot="sidebar"][data-state="collapsed"]'),
-  ).toHaveCount(1);
+  const desktopSidebar = page.locator(
+    '[data-slot="sidebar"][data-state]',
+  );
+  await expect(desktopSidebar).toBeVisible();
+  await expect(desktopSidebar).toHaveAttribute("data-state", "expanded");
+  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await expect(desktopSidebar).toHaveAttribute("data-state", "collapsed");
   await page.reload();
-  await expect(
-    page.locator('[data-slot="sidebar"][data-state="collapsed"]'),
-  ).toHaveCount(1);
+  await expect(desktopSidebar).toHaveAttribute("data-state", "collapsed");
 });
 
 test("staff manages reusable size guides and apparel products safely", async ({
