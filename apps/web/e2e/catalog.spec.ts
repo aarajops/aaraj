@@ -56,9 +56,7 @@ test("admin sidebar follows permissions and closes after mobile navigation", asy
   ).toBeVisible();
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  const desktopSidebar = page.locator(
-    '[data-slot="sidebar"][data-state]',
-  );
+  const desktopSidebar = page.locator('[data-slot="sidebar"][data-state]');
   await expect(desktopSidebar).toBeVisible();
   await expect(desktopSidebar).toHaveAttribute("data-state", "expanded");
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
