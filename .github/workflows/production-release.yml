@@ -101,8 +101,8 @@ jobs:
             echo
             echo "- $reason"
             echo '- Existing API CI runs fresh-schema and historical-upgrade migration compatibility tests.'
-            echo '- Any migration release requires a separate protected human approval before host-local execution.'
-            echo '- Production database credentials remain on the VPS.'
+            echo '- If migrations are required, review the migration diff and confirm a recent verified backup at the protected production approval.'
+            echo '- Migration execution remains isolated on the VPS under the separate migration role; production database credentials stay on the VPS.'
           } >> "$GITHUB_STEP_SUMMARY"
           {
             echo
@@ -198,36 +198,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  approve-migration:
-    needs: [release-gate, migration-policy, build-and-verify]
-    if: needs.migration-policy.outputs.required == 'true'
-    runs-on: ubuntu-24.04
-    environment:
-      name: aaraj-production-migrations
-    steps:
-      - name: Record the migration approval gate
-        env:
-          RELEASE_TAG: ${{ needs.release-gate.outputs.tag }}
-          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
-        run: |
-          {
-            echo "Migration approval requested for $RELEASE_TAG ($RELEASE_COMMIT)."
-            echo '- Review the migration diff and the PostgreSQL 16 fresh-schema and historical-upgrade CI results.'
-            echo '- Confirm a recent encrypted backup completed and its restore verification is current before approving.'
-            echo '- This approval does not execute SQL. After the release is staged, a separately authenticated VPS administrator must start the exact release migration unit and verify its journal result.'
-            echo '- The GitHub deployment identity has no permission to start or inspect migration credentials.'
-          } >> "$GITHUB_STEP_SUMMARY"
-
   deploy:
-    needs:
-      [release-gate, ci, migration-policy, build-and-verify, approve-migration]
+    needs: [release-gate, ci, migration-policy, build-and-verify]
     if: >-
       always() &&
       needs.release-gate.result == 'success' &&
       needs.ci.result == 'success' &&
       needs.migration-policy.result == 'success' &&
-      needs.build-and-verify.result == 'success' &&
-      (needs.approve-migration.result == 'success' || needs.approve-migration.result == 'skipped')
+      needs.build-and-verify.result == 'success'
     runs-on: ubuntu-24.04
     environment:
       name: aaraj-production
@@ -293,7 +271,7 @@ jobs:
             {
               echo "Migration-bearing release $RELEASE_COMMIT is staged and waiting for administrator execution."
               echo
-              echo 'After checking the current encrypted backup and the approved migration review, use the separately authenticated VPS administrator session to run:'
+              echo 'After checking the reviewed migration diff and confirming a recent verified backup, use the separately authenticated VPS administrator session to run:'
               echo
               echo "\`sudo systemctl start $migration_unit\`"
               echo

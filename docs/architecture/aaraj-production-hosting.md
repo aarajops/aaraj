@@ -113,20 +113,19 @@ read-only except for permissions strictly needed to attest or upload the
 release artifact.
 
 Before enabling releases, confirm the repository plan and visibility support
-required reviewers on both protected environments. GitHub's environment
-reviewer availability differs by repository plan and visibility; do not
-replace an unavailable reviewer gate with an unreviewed secret-bearing job.
+required reviewers on the protected production environment. GitHub's reviewer
+availability differs by repository plan and visibility; do not replace an
+unavailable reviewer gate with an unreviewed secret-bearing job.
 
 The release event builds one artifact from the exact approved commit and
 verifies it before approval; build jobs have no production environment secrets.
-The migration review environment has no deployment secrets. The protected
-`aaraj-production` environment gates the job that receives the per-site SSH
-credential and stages the artifact. For migration-bearing releases, that job
-waits for a separately authenticated VPS administrator to run the exact
-release's migration service and verify successful completion before it
-activates code. The workflow uses an AARAJ concurrency group with cancellation
-disabled. A second deployment cannot overlap an active deployment to the same
-site.
+The protected `aaraj-production` environment gates the job that receives the
+per-site SSH credential and stages the artifact. Its approval covers the
+release and, when needed, the reviewed migration and backup check. A separately
+authenticated VPS administrator runs the exact release's migration service;
+the workflow verifies its successful completion before activating code. The
+workflow uses an AARAJ concurrency group with cancellation disabled. A second
+deployment cannot overlap an active deployment to the same site.
 
 Production secrets in GitHub are limited to the dedicated AARAJ deployment
 private key and the pinned VPS `known_hosts` entry. Use strict OpenSSH host-key
@@ -212,12 +211,10 @@ release. Use expand-and-contract changes so the schema remains compatible with
 the active and previous app release; review and test both app versions where a
 schema change requires it.
 
-A migration-bearing release requires approval in the protected
-`aaraj-production-migrations` environment, which has no deployment secrets.
-The reviewer confirms compatibility results and a recent verified encrypted
-backup. The protected production environment separately approves the job that
-receives the single AARAJ deployment credential and stages the artifact. A
-separately authenticated administrator then starts
+A migration-bearing release is reviewed at the protected `aaraj-production`
+environment approval. The reviewer confirms compatibility results and a
+recent verified backup. After the artifact is staged, a separately
+authenticated administrator starts
 `aaraj-migration@<commit>.service` for that exact staged release. The workflow
 waits for that unit's successful systemd result before activation; the deploy
 identity cannot start it. The service runs as
@@ -313,14 +310,14 @@ to remain compatible with the previous app version.
 | File or setting | Required change |
 | --- | --- |
 | `.github/workflows/ci.yml` | Preserve every current check. Add `workflow_call` so release builds reuse CI; pin setup to Node `24.20.0` and pnpm `12.5.1`, and assert the versions. Keep the existing PR and `main` triggers. |
-| `.github/workflows/production-release.yml` | Use one `release.published` workflow with stable-tag and main-ancestry checks, reusable CI, one packaged artifact and extracted smoke test, a conditional migration approval, protected production approval, strict pinned SSH, site-only transfer, health checks, compatible rollback, and concurrency group `aaraj-production`. |
+| `.github/workflows/production-release.yml` | Use one `release.published` workflow with stable-tag and main-ancestry checks, reusable CI, one packaged artifact and extracted smoke test, migration review at the protected production approval, strict pinned SSH, site-only transfer, health checks, compatible rollback, and concurrency group `aaraj-production`. |
 | `.node-version` | Add `24.20.0` as the repository's exact CI/release Node version. |
 | `apps/web/next.config.ts` | Enable standalone output, set `outputFileTracingRoot` to the monorepo root, and use the release SHA for a deterministic Next.js build ID while preserving the current same-origin API rewrite and security headers. |
 | `apps/api/scripts/migrate-production.mjs` | Add host-local production migration execution using the shipped Drizzle runtime and migration files, separate migration-role environment variables, the existing strict PostgreSQL TLS helper, and migration journal/checksum checks. Keep the existing local `db:migrate` path intact. |
 | `infrastructure/production/package-release.mjs` and `verify-release.mjs` | Build the isolated API deployment tree and Next standalone tree, add only runtime/migration assets and non-secret configuration, generate the manifest/checksum, and verify extracted artifacts start with no workspace paths or omitted runtime files. |
 | `infrastructure/production/host/` | Add the site-scoped unprivileged deployment script, exact PM2-restart-only sudo allowlist, per-release migration and PM2 systemd units, PM2 ecosystem, log rotation, Nginx template, and site-only environment examples. Install host configuration and group-scoped directory permissions during an approved infrastructure phase. |
 | `docs/architecture/ecommerce-blueprint.md`, `docs/README.md`, and `README.md` | Point the approved initial-hosting decision and engineering portal to this operational architecture. |
-| GitHub repository settings | Require CI and review before merging to protected `main`; protect stable release tags; confirm plan support and create protected `aaraj-production` and `aaraj-production-migrations` environments with reviewers, tag restrictions, and no self-approval; store only the dedicated deployment key and verified host-key pin in the production environment. |
+| GitHub repository settings | Require CI and review before merging to protected `main`; protect stable release tags; confirm plan support and create one protected `aaraj-production` environment with reviewers, tag restrictions, and no self-approval; store only the dedicated deployment key and verified host-key pin in that environment. |
 
 The release workflow must prove the API deploy output contains the
 built `@aaraj/contracts` runtime package and every API production dependency,
