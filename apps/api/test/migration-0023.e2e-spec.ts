@@ -189,7 +189,7 @@ describe("migration 0023 historical upgrade", () => {
       delivery_to_orders_fk: false,
       lifecycle_trigger: true,
       pathao_dispatch_trigger: true,
-      migrations: 25,
+      migrations: await currentMigrationCount(),
     });
   });
 
@@ -321,7 +321,7 @@ describe("migration 0023 historical upgrade", () => {
           )
         ).rows[0].count,
       ),
-    ).toBe(25);
+    ).toBe(await currentMigrationCount());
   });
 
   it("rolls back the migration when existing Pathao command evidence conflicts", async () => {
@@ -383,6 +383,14 @@ async function migrationPrefix(lastIndex: number): Promise<string> {
     );
   }
   return folder;
+}
+
+async function currentMigrationCount(): Promise<number> {
+  const journalPath = join(migrationsFolder, "meta/_journal.json");
+  const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+    entries: unknown[];
+  };
+  return journal.entries.length;
 }
 
 async function seedHistoricalFixture(pool: Pool): Promise<HistoricalFixtures> {
