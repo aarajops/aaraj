@@ -34,6 +34,7 @@ test("admin sidebar follows permissions and closes after mobile navigation", asy
     page.getByRole("link", { name: "Manage categories" }),
   ).toHaveCount(0);
 
+  await context.clearCookies({ name: "aaraj-e2e-role" });
   await context.addCookies([
     {
       name: "aaraj-e2e-role",
