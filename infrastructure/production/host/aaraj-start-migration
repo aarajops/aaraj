@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ "$(id -u)" == 0 ]] || { echo "Run this command through sudo." >&2; exit 1; }
+[[ $# == 1 && "$1" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "Usage: aaraj-start-migration <commit-sha>" >&2
+  exit 2
+}
+
+commit="$1"
+release="/srv/sites/aaraj/releases/$commit"
+manifest="$release/release-manifest.json"
+migration_script="$release/api/scripts/migrate-production.mjs"
+[[ -d "$release" && ! -L "$release" && \
+  -f "$manifest" && ! -L "$manifest" && \
+  -f "$release/.artifact-sha256" && ! -L "$release/.artifact-sha256" && \
+  -f "$migration_script" && ! -L "$migration_script" ]] || {
+  echo "The requested migration is not part of a staged AARAJ release." >&2
+  exit 1
+}
+
+/usr/bin/node - "$manifest" "$commit" <<'NODE'
+const fs = require("node:fs");
+
+let manifest;
+try {
+  manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+} catch {
+  process.exit(1);
+}
+
+if (
+  manifest.application !== "aaraj" ||
+  manifest.commit !== process.argv[3] ||
+  manifest.dirty !== false ||
+  !/^v\d+\.\d+\.\d+$/.test(manifest.releaseTag) ||
+  manifest.api?.migrationEntrypoint !== "api/scripts/migrate-production.mjs"
+) {
+  process.exit(1);
+}
+NODE
+
+unit="aaraj-migration@$commit.service"
+if /usr/bin/systemctl start "$unit"; then
+  /usr/bin/journalctl --unit "$unit" --no-pager --output=cat --lines 30
+  echo "Migration service $unit completed successfully."
+else
+  status=$?
+  /usr/bin/journalctl --unit "$unit" --no-pager --lines 60 >&2 || true
+  exit "$status"
+fi

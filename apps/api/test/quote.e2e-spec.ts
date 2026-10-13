@@ -24,7 +24,7 @@ import {
 } from "../src/catalog/catalog-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
-import { taxProfile } from "../src/tax/tax-schema.js";
+import { taxConfiguration, taxProfile } from "../src/tax/tax-schema.js";
 import { geographySnapshot } from "../src/geography/geography-schema.js";
 
 const origin = "http://localhost:3000";
@@ -444,6 +444,52 @@ describe("authoritative Bangladesh quotes", () => {
     expect(currentQuote.body.destination.geographyVersion).toBe(
       "BANGLADESH_GOVERNMENT_2026_10_08_V2",
     );
+  });
+
+  it("quotes without tax in production while the owner setting is disabled", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const guest = await newGuestCart();
+    await database.db
+      .update(taxConfiguration)
+      .set({ enabled: false })
+      .where(eq(taxConfiguration.id, "default"));
+    process.env.NODE_ENV = "production";
+
+    try {
+      const response = await createQuote(guest.cookie);
+
+      expect(response.body).toMatchObject({
+        tax: {
+          mode: "disabled",
+          profileVersion: null,
+          pricePresentation: "not_configured",
+          totalTaxAmountBdt: 0,
+          merchandise: {
+            treatment: "not_calculated",
+            grossAmountBdt: 250,
+            taxableBaseBdt: 250,
+            taxAmountBdt: 0,
+          },
+        },
+        delivery: {
+          grossAmountBdt: 80,
+          tax: {
+            treatment: "not_calculated",
+            grossAmountBdt: 80,
+            taxableBaseBdt: 80,
+            taxAmountBdt: 0,
+          },
+        },
+        totalBdt: 330,
+      });
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+      await database.db
+        .update(taxConfiguration)
+        .set({ enabled: true })
+        .where(eq(taxConfiguration.id, "default"));
+    }
   });
 
   it("does not accept the synthetic tax profile in production mode", async () => {

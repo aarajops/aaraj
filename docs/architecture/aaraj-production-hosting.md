@@ -85,9 +85,9 @@ flowchart LR
   MApproval --> Gate
   Gate --> Transfer[Pinned SSH identity and site-scoped transfer]
   Transfer --> Stage["/srv/sites/aaraj/releases/{sha}"]
-  Stage -->|migration required| Migrate[Human administrator starts exact release migration unit]
-  Stage -->|no schema change| Activate[Atomic activation]
+  Stage --> Migrate[CI/CD runs the exact release migration service on the VPS]
   Migrate --> Activate
+  Activate[Atomic activation]
   Activate --> Health[API, storefront, and HTTPS health checks]
   Health -->|pass| Success[Release successful]
   Health -->|fail| Rollback[Restore previous symlink and PM2 processes]
@@ -213,11 +213,13 @@ schema change requires it.
 
 A migration-bearing release is reviewed at the protected `aaraj-production`
 environment approval. The reviewer confirms compatibility results and a
-recent verified backup. After the artifact is staged, a separately
-authenticated administrator starts
-`aaraj-migration@<commit>.service` for that exact staged release. The workflow
-waits for that unit's successful systemd result before activation; the deploy
-identity cannot start it. The service runs as
+recent verified backup. After the artifact is staged, the deployment identity
+uses a root-owned wrapper to start `aaraj-migration@<commit>.service` for that
+exact staged release on every deployment. Drizzle does nothing when the schema
+is current; the runner still reconciles runtime grants. `systemctl start` waits
+for the oneshot service to finish, and a nonzero result stops activation. The
+wrapper accepts only a commit SHA and the fixed migration unit.
+The service runs as
 `aaraj-migrate`, loads credentials from `/etc/sites/aaraj/migration.env`,
 verifies PostgreSQL TLS with the existing `rejectUnauthorized: true` helper,
 and uses the role separate from the runtime account. GitHub never receives
@@ -238,13 +240,13 @@ migrations as safe; compatibility remains the responsibility of CI tests and
 human review. The systemd oneshot keeps migration credentials isolated from the
 API, applies a service sandbox, and records execution in the host journal.
 
-CI migration compatibility tests, the protected migration review, and a
-separately authenticated administrator's explicit service start precede
-production activation. Reviewers must reject destructive or rollback-incompatible changes
-from a routine release and require a separately planned maintenance procedure,
-a verified backup, and explicit operator execution. No production database
-rollback is automatic. Code rollback is allowed only while the schema is known
-to remain compatible with the previous app version.
+CI migration compatibility tests and the protected migration review precede
+automatic migration and production activation. Reviewers must reject
+destructive or rollback-incompatible changes from a routine release and
+require a separately planned maintenance procedure, a verified backup, and
+explicit operator execution. No production database rollback is automatic.
+Code rollback is allowed only while the schema is known to remain compatible
+with the previous app version.
 
 ### Initial schema bootstrap
 
@@ -258,15 +260,16 @@ to remain compatible with the previous app version.
 3. Confirm the database is new and empty, verify the encrypted offsite backup
    destination and restore procedure, and review the initial Drizzle journal
    and SQL in a pull request.
-4. Publish the approved stable release. Complete the migration reviewer gate
-   and production environment gate. After the artifact is staged, an
-   administrator starts `aaraj-migration@<commit>.service`; the workflow
+4. From a reviewed repository checkout on the VPS, install the one-time
+   permission with `bash infrastructure/production/host/install-migration-autostart.sh`.
+   Publish the approved stable release and complete the production environment
+   gate. CI/CD starts `aaraj-migration@<commit>.service` after staging and
    continues only after successful completion. The runner applies the initial
    journal to the empty AARAJ database and refuses to treat existing AARAJ
    schemas without Drizzle history as a clean database.
-5. Run the existing runtime-grant procedure with the migration role, then
-   verify API readiness and the runtime role's restricted permissions before
-   accepting traffic.
+5. Verify API readiness and the runtime role's restricted permissions before
+   accepting traffic. The migration runner applies the checked-in runtime
+   grant policy before activation.
 
 ## Manual recovery
 
@@ -316,7 +319,7 @@ to remain compatible with the previous app version.
 | `apps/web/next.config.ts` | Enable standalone output, set `outputFileTracingRoot` to the monorepo root, and use the release SHA for a deterministic Next.js build ID while preserving the current same-origin API rewrite and security headers. |
 | `apps/api/scripts/migrate-production.mjs` | Add host-local production migration execution using the shipped Drizzle runtime and migration files, separate migration-role environment variables, the existing strict PostgreSQL TLS helper, and migration journal/checksum checks. Keep the existing local `db:migrate` path intact. |
 | `infrastructure/production/package-release.mjs` and `verify-release.mjs` | Build the isolated API deployment tree and Next standalone tree, add only runtime/migration assets and non-secret configuration, generate the manifest/checksum, and verify extracted artifacts start with no workspace paths or omitted runtime files. |
-| `infrastructure/production/host/` | Add the site-scoped unprivileged deployment script, exact PM2-restart-only sudo allowlist, per-release migration and PM2 systemd units, PM2 ecosystem, log rotation, Nginx template, and site-only environment examples. Install host configuration and group-scoped directory permissions during an approved infrastructure phase. |
+| `infrastructure/production/host/` | Keep the site-scoped deployment script, SHA-validating migration wrapper and one-time installer, narrow sudo allowlist, per-release migration and PM2 systemd units, PM2 ecosystem, log rotation, Nginx template, and site-only environment examples. Install host configuration and group-scoped directory permissions during an approved infrastructure phase. |
 | `docs/architecture/ecommerce-blueprint.md`, `docs/README.md`, and `README.md` | Point the approved initial-hosting decision and engineering portal to this operational architecture. |
 | GitHub repository settings | Require CI and review before merging to protected `main`; protect stable release tags; confirm plan support and create one protected `aaraj-production` environment with reviewers, tag restrictions, and no self-approval; store only the dedicated deployment key and verified host-key pin in that environment. |
 

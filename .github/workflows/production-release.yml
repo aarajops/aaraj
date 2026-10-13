@@ -231,7 +231,7 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Stage, wait for approved migration if required, activate, and verify AARAJ
+      - name: Stage, migrate, activate, and verify AARAJ
         env:
           RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
           MIGRATION_REQUIRED: ${{ needs.migration-policy.outputs.required }}
@@ -250,45 +250,44 @@ jobs:
           }
 
           check_public_health() {
+            local storefront_status readiness_status
             for _ in {1..30}; do
-              if curl --fail --silent --max-time 10 "$health_base/" >/dev/null && \
-                ready_body="$(curl --fail --silent --max-time 10 "$health_base/api/health/ready")" && \
-                printf '%s' "$ready_body" | \
-                  node --input-type=module -e '
-                    let body = "";
-                    for await (const chunk of process.stdin) body += chunk;
-                    let result;
-                    try {
-                      result = JSON.parse(body);
-                    } catch {
-                      process.exit(1);
-                    }
+              storefront_status="$(curl --silent --max-time 10 --output /dev/null --write-out '%{http_code}' "$health_base/" || true)"
+              readiness_status="$(curl --silent --max-time 10 --output "$health_body_file" --write-out '%{http_code}' "$health_base/api/health/ready" || true)"
+              if [[ "$storefront_status" == 200 && "$readiness_status" == 200 ]] && \
+                node --input-type=module -e '
+                  let body = "";
+                  for await (const chunk of process.stdin) body += chunk;
+                  try {
+                    const result = JSON.parse(body);
                     if (result.status !== "ok" || result.database !== "ok" || result.redis !== "ok") process.exit(1);
-                  '; then
+                  } catch {
+                    process.exit(1);
+                  }
+                ' < "$health_body_file"; then
                 return 0
               fi
               sleep 2
             done
-            echo 'Public storefront/API health checks did not pass after 30 attempts.' >&2
+            echo "Public health checks failed after 30 attempts (storefront HTTP ${storefront_status:-unknown}, readiness HTTP ${readiness_status:-unknown})." >&2
             return 1
           }
 
+          health_body_file="$(mktemp)"
+          trap 'rm -f -- "$health_body_file"' EXIT
           artifact="$RUNNER_TEMP/aaraj-release/aaraj-release.tar.gz"
           bash infrastructure/production/deploy-release.sh stage "$RELEASE_COMMIT" "$artifact"
 
           if [[ "$MIGRATION_REQUIRED" == true ]]; then
-            migration_unit="aaraj-migration@${RELEASE_COMMIT}.service"
             {
-              echo "Migration-bearing release $RELEASE_COMMIT is staged and waiting for administrator execution."
+              echo "Migration-bearing release $RELEASE_COMMIT is staged. The protected production job is running its migration automatically on the VPS."
               echo
-              echo 'After checking the reviewed migration diff and confirming a recent verified backup, use the separately authenticated VPS administrator session to run:'
-              echo
-              echo "\`sudo systemctl start $migration_unit\`"
-              echo
-              echo "Verify successful completion with sudo systemctl show $migration_unit -p Result -p ExecMainStatus, then inspect sudo journalctl -u $migration_unit --no-pager. The release activates only after the unit exits successfully."
+              echo 'The release activates only after the migration service reports successful completion.'
             } >> "$GITHUB_STEP_SUMMARY"
-            bash infrastructure/production/deploy-release.sh wait-migration "$RELEASE_COMMIT"
+          else
+            echo 'No migration files changed; the VPS migration runner will verify schema history and reconcile runtime grants before activation.' >> "$GITHUB_STEP_SUMMARY"
           fi
+          bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT"
 
           activated=false
           if bash infrastructure/production/deploy-release.sh activate "$RELEASE_COMMIT"; then

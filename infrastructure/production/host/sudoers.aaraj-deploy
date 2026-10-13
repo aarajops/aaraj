@@ -1,4 +1,6 @@
 # Install this file as /etc/sudoers.d/aaraj-deploy with owner root:root and
-# mode 0440; validate it with visudo -cf. The deployment identity may only
-# restart AARAJ's PM2 unit; migration starts remain administrator-only.
-aaraj-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart aaraj-pm2.service
+# mode 0440; validate it with visudo -cf. The wrapper validates its single
+# commit SHA and can start only the matching staged AARAJ migration unit.
+aaraj-deploy ALL=(root) NOPASSWD: \
+  /usr/bin/systemctl restart aaraj-pm2.service, \
+  /usr/local/sbin/aaraj-start-migration *

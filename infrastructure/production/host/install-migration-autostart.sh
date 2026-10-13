@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+[[ "$(id -u)" == 0 ]] || { echo "Run this one-time setup as root." >&2; exit 1; }
+
+host_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+wrapper_source="$host_dir/aaraj-start-migration"
+sudoers_source="$host_dir/sudoers.aaraj-deploy"
+wrapper_target=/usr/local/sbin/aaraj-start-migration
+sudoers_target=/etc/sudoers.d/aaraj-deploy
+
+[[ -f "$wrapper_source" && ! -L "$wrapper_source" && \
+  -f "$sudoers_source" && ! -L "$sudoers_source" ]] || {
+  echo "Migration autostart host files are missing or unsafe." >&2
+  exit 1
+}
+getent passwd aaraj-deploy >/dev/null
+[[ -d /usr/local/sbin && ! -L /usr/local/sbin && \
+  -d /etc/sudoers.d && ! -L /etc/sudoers.d ]] || {
+  echo "Expected host command or sudoers directory is missing or unsafe." >&2
+  exit 1
+}
+[[ -f /etc/systemd/system/aaraj-migration@.service && \
+  ! -L /etc/systemd/system/aaraj-migration@.service ]] || {
+  echo "The AARAJ migration service template is missing or unsafe." >&2
+  exit 1
+}
+[[ ! -L "$wrapper_target" && ! -d "$wrapper_target" && \
+  ! -L "$sudoers_target" && ! -d "$sudoers_target" ]] || {
+  echo "Refusing to replace a symlink or directory at a managed target." >&2
+  exit 1
+}
+
+wrapper_stage="$(mktemp /usr/local/sbin/.aaraj-start-migration.XXXXXXXX)"
+sudoers_stage="$(mktemp /etc/sudoers.d/.aaraj-deploy.XXXXXXXX)"
+trap 'rm -f -- "$wrapper_stage" "$sudoers_stage"' EXIT
+
+install -o root -g root -m 0755 "$wrapper_source" "$wrapper_stage"
+install -o root -g root -m 0440 "$sudoers_source" "$sudoers_stage"
+bash -n "$wrapper_stage"
+visudo -cf "$sudoers_stage"
+
+mv -f -- "$wrapper_stage" "$wrapper_target"
+mv -f -- "$sudoers_stage" "$sudoers_target"
+trap - EXIT
+
+visudo -cf "$sudoers_target"
+sudo -l -U aaraj-deploy
+echo "PASS: CI/CD can start only the validated AARAJ migration unit."

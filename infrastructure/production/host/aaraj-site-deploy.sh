@@ -9,7 +9,7 @@ INCOMING="$SITE/incoming"
 MAX_ARCHIVE_BYTES=536870912
 
 usage() {
-  echo "Usage: aaraj-site-deploy.sh <stage|activate|rollback|wait-migration> <commit-sha> [sha256]" >&2
+  echo "Usage: aaraj-site-deploy.sh <stage|migrate|activate|rollback> <commit-sha> [sha256]" >&2
   exit 2
 }
 
@@ -21,7 +21,7 @@ digest="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
   stage) [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || usage ;;
-  activate|rollback|wait-migration) [[ -z "$digest" ]] || usage ;;
+  migrate|activate|rollback) [[ -z "$digest" ]] || usage ;;
   *) usage ;;
 esac
 
@@ -241,30 +241,8 @@ rollback_release() {
   echo "Restored AARAJ release ${previous##*/}."
 }
 
-wait_for_migration() {
-  local service="aaraj-migration@$commit.service" deadline=$((SECONDS + 3900))
-  local properties load active result status
-  while (( SECONDS < deadline )); do
-    properties="$(/usr/bin/systemctl show --property=LoadState --property=ActiveState --property=Result --property=ExecMainStatus "$service")"
-    load="$(awk -F= '$1 == "LoadState" { print $2 }' <<< "$properties")"
-    active="$(awk -F= '$1 == "ActiveState" { print $2 }' <<< "$properties")"
-    result="$(awk -F= '$1 == "Result" { print $2 }' <<< "$properties")"
-    status="$(awk -F= '$1 == "ExecMainStatus" { print $2 }' <<< "$properties")"
-    if [[ "$load" == not-found || "$active" == inactive ]]; then
-      echo "Waiting for the separately authenticated administrator to start $service."
-    elif [[ "$active" == active && "$result" == success && "$status" == 0 ]]; then
-      echo "Verified successful completion of $service."
-      return 0
-    elif [[ "$active" == failed ]]; then
-      echo "$service failed; do not activate this release. Inspect its system journal." >&2
-      return 1
-    else
-      echo "$service is still running."
-    fi
-    sleep 10
-  done
-  echo "Timed out waiting for successful completion of $service; release was not activated." >&2
-  return 1
+run_migration() {
+  /usr/bin/sudo -n /usr/local/sbin/aaraj-start-migration "$commit"
 }
 
 case "$operation" in
@@ -277,7 +255,7 @@ case "$operation" in
   rollback)
     rollback_release
     ;;
-  wait-migration)
-    wait_for_migration
+  migrate)
+    run_migration
     ;;
 esac

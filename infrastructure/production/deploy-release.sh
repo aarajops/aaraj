@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: deploy-release.sh <stage|activate|rollback|wait-migration> <commit-sha> [archive]" >&2
+  echo "Usage: deploy-release.sh <stage|migrate|activate|rollback> <commit-sha> [archive]" >&2
   exit 2
 }
 
@@ -13,7 +13,7 @@ archive="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
   stage) [[ $# == 3 && -f "$archive" ]] || usage ;;
-  activate|rollback|wait-migration) [[ $# == 2 ]] || usage ;;
+  migrate|activate|rollback) [[ $# == 2 ]] || usage ;;
   *) usage ;;
 esac
 
