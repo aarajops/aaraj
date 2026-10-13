@@ -1,8 +1,8 @@
-name: AARAJ Production Release
+name: AARAJ Production Deploy
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,72 +12,69 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-gate:
+  deployment-gate:
     runs-on: ubuntu-24.04
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
-      commit: ${{ steps.release.outputs.commit }}
+      commit: ${{ steps.deployment.outputs.commit }}
+      tag: ${{ steps.deployment.outputs.tag }}
     steps:
-      - name: Checkout release history
+      - name: Checkout deployment history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Require a stable release of a protected main commit
-        id: release
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_DRAFT: ${{ github.event.release.draft }}
-          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
-          REF_PROTECTED: ${{ github.ref_protected }}
+      - name: Validate main deployment commit
+        id: deployment
         run: |
           set -euo pipefail
-          [[ "$RELEASE_DRAFT" == false && "$RELEASE_PRERELEASE" == false ]]
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "$REF_PROTECTED" == true ]]
-          tag_commit="$(git rev-parse "${RELEASE_TAG}^{commit}")"
-          [[ "$tag_commit" == "$GITHUB_SHA" ]]
-          git merge-base --is-ancestor "$tag_commit" origin/main
-          printf 'tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
+          [[ "$GITHUB_EVENT_NAME" == push ]]
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          baseline_tag="$(git tag --merged "$GITHUB_SHA" --list 'v[0-9]*' --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | head -n 1 || true)"
+          [[ -n "$baseline_tag" ]] || {
+            echo 'A stable release baseline tag is required by the installed VPS migration validator.' >&2
+            exit 1
+          }
+          printf 'commit=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$baseline_tag" >> "$GITHUB_OUTPUT"
           {
-            echo '### Release gate passed'
+            echo '### Production deployment gate passed'
             echo
-            echo "- Stable tag: \`$RELEASE_TAG\`"
-            echo "- Commit: \`$tag_commit\`"
-            echo '- The release commit is an ancestor of protected main.'
-            echo '- Stable tags must be protected by the repository ruleset.'
+            echo '- Source: `main` push'
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Release baseline: \`$baseline_tag\` (no new version tag is needed for this deployment)"
           } >> "$GITHUB_STEP_SUMMARY"
 
   ci:
-    needs: release-gate
+    needs: deployment-gate
     uses: ./.github/workflows/ci.yml
 
   migration-policy:
-    needs: [release-gate, ci]
+    needs: [deployment-gate, ci]
     runs-on: ubuntu-24.04
     outputs:
       required: ${{ steps.policy.outputs.required }}
     steps:
-      - name: Checkout release history
+      - name: Checkout deployment history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-gate.outputs.commit }}
+          ref: ${{ needs.deployment-gate.outputs.commit }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Detect Drizzle migration changes
         id: policy
         env:
-          RELEASE_TAG: ${{ needs.release-gate.outputs.tag }}
-          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
+          DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
         run: |
           set -euo pipefail
-          previous="$(git tag --merged "$RELEASE_COMMIT" --list 'v[0-9]*' --sort=-version:refname \
+          previous="$(git tag --merged "$DEPLOYMENT_COMMIT" --list 'v[0-9]*' --sort=-version:refname \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | grep -Fxv "$RELEASE_TAG" \
             | head -n 1 || true)"
           if [[ -z "$previous" ]]; then
             migration_base="$(git hash-object -t tree -w --stdin </dev/null)"
@@ -85,14 +82,14 @@ jobs:
             reason='No earlier stable release tag exists; initial schema state needs explicit review.'
           else
             migration_base="$previous"
-            if git diff --quiet "$previous" "$RELEASE_COMMIT" -- apps/api/drizzle; then
+            if git diff --quiet "$previous" "$DEPLOYMENT_COMMIT" -- apps/api/drizzle; then
               required=false
-              reason="No Drizzle migration files changed since $previous."
+              reason="No Drizzle migration files changed since the latest stable release tag $previous."
             else
               status=$?
               if [[ $status -ne 1 ]]; then exit "$status"; fi
               required=true
-              reason="Drizzle migration files changed since $previous."
+              reason="Drizzle migration files changed since the latest stable release tag $previous."
             fi
           fi
           printf 'required=%s\n' "$required" >> "$GITHUB_OUTPUT"
@@ -106,18 +103,13 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           {
             echo
-            echo '#### Migration files to review'
-            git diff --stat "$migration_base" "$RELEASE_COMMIT" -- apps/api/drizzle
-            git diff --name-status "$migration_base" "$RELEASE_COMMIT" -- apps/api/drizzle
-            echo
-            echo '#### SQL and migration journal diff'
-            git diff --no-ext-diff --unified=20 "$migration_base" "$RELEASE_COMMIT" -- \
-              ':(glob)apps/api/drizzle/*.sql' \
-              ':(glob)apps/api/drizzle/meta/_journal.json'
+            echo '#### Migration file summary'
+            git diff --stat "$migration_base" "$DEPLOYMENT_COMMIT" -- apps/api/drizzle
+            git diff --name-status "$migration_base" "$DEPLOYMENT_COMMIT" -- apps/api/drizzle
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-and-verify:
-    needs: [release-gate, ci]
+    needs: [deployment-gate, ci]
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -143,10 +135,10 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - name: Checkout exact release commit
+      - name: Checkout exact deployment commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-gate.outputs.commit }}
+          ref: ${{ needs.deployment-gate.outputs.commit }}
           persist-credentials: false
 
       - name: Setup Node.js 24
@@ -166,14 +158,14 @@ jobs:
           test "$(pnpm --version)" = "12.5.1"
           pnpm install --frozen-lockfile
 
-      - name: Build and package one versioned release artifact
+      - name: Build and package one immutable commit artifact
         env:
-          RELEASE_TAG: ${{ needs.release-gate.outputs.tag }}
-          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
+          DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          RELEASE_TAG: ${{ needs.deployment-gate.outputs.tag }}
         run: >-
           node infrastructure/production/package-release.mjs
           --tag "$RELEASE_TAG"
-          --commit "$RELEASE_COMMIT"
+          --commit "$DEPLOYMENT_COMMIT"
           --out-dir "$RUNNER_TEMP/aaraj-release"
 
       - name: Extract and smoke-test the production artifact
@@ -184,29 +176,29 @@ jobs:
           E2E_POSTGRES_USER: aaraj_smoke
           E2E_POSTGRES_PASSWORD: aaraj_smoke
           E2E_REDIS_URL: redis://127.0.0.1:6379/14
-          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
-          RELEASE_TAG: ${{ needs.release-gate.outputs.tag }}
+          DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          RELEASE_TAG: ${{ needs.deployment-gate.outputs.tag }}
         run: |
           set -euo pipefail
           node infrastructure/production/verify-release.mjs \
             --archive "$RUNNER_TEMP/aaraj-release/aaraj-release.tar.gz" \
-            --commit "$RELEASE_COMMIT" \
+            --commit "$DEPLOYMENT_COMMIT" \
             --tag "$RELEASE_TAG" \
             --smoke
 
       - name: Upload the verified release artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: aaraj-release-${{ needs.release-gate.outputs.commit }}
+          name: aaraj-release-${{ needs.deployment-gate.outputs.commit }}
           path: ${{ runner.temp }}/aaraj-release/*
           if-no-files-found: error
           retention-days: 14
 
   deploy:
-    needs: [release-gate, ci, migration-policy, build-and-verify]
+    needs: [deployment-gate, ci, migration-policy, build-and-verify]
     if: >-
       always() &&
-      needs.release-gate.result == 'success' &&
+      needs.deployment-gate.result == 'success' &&
       needs.ci.result == 'success' &&
       needs.migration-policy.result == 'success' &&
       needs.build-and-verify.result == 'success'
@@ -214,16 +206,16 @@ jobs:
     environment:
       name: aaraj-production
     steps:
-      - name: Checkout deployment helper for the approved commit
+      - name: Checkout deployment helper for the verified commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-gate.outputs.commit }}
+          ref: ${{ needs.deployment-gate.outputs.commit }}
           persist-credentials: false
 
       - name: Download the verified release artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: aaraj-release-${{ needs.release-gate.outputs.commit }}
+          name: aaraj-release-${{ needs.deployment-gate.outputs.commit }}
           path: ${{ runner.temp }}/aaraj-release
 
       - name: Setup Node.js 24 for health response validation
@@ -233,7 +225,7 @@ jobs:
 
       - name: Stage, migrate, activate, and verify AARAJ
         env:
-          RELEASE_COMMIT: ${{ needs.release-gate.outputs.commit }}
+          RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
           MIGRATION_REQUIRED: ${{ needs.migration-policy.outputs.required }}
           AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
           AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
