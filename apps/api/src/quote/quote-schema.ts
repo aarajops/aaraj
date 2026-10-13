@@ -50,12 +50,13 @@ export const quoteSnapshot = quoteSchema.table(
     deliveryAmountBdt: bigint("delivery_amount_bdt", {
       mode: "number",
     }).notNull(),
-    taxProfileVersion: text("tax_profile_version")
-      .notNull()
-      .references(() => taxProfile.version, { onDelete: "restrict" }),
-    taxSourceReference: text("tax_source_reference").notNull(),
-    taxSourceVersion: text("tax_source_version").notNull(),
-    taxRoundingRule: text("tax_rounding_rule").notNull(),
+    taxProfileVersion: text("tax_profile_version").references(
+      () => taxProfile.version,
+      { onDelete: "restrict" },
+    ),
+    taxSourceReference: text("tax_source_reference"),
+    taxSourceVersion: text("tax_source_version"),
+    taxRoundingRule: text("tax_rounding_rule"),
     taxProfileSnapshot: jsonb("tax_profile_snapshot").notNull(),
     merchandiseTaxSnapshot: jsonb("merchandise_tax_snapshot").notNull(),
     deliveryTaxSnapshot: jsonb("delivery_tax_snapshot").notNull(),

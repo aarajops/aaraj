@@ -141,4 +141,7 @@ async function seedSyntheticTaxProfile(pool: Pool): Promise<void> {
        'TEST_ONLY_AUTOMATED_FIXTURE', true, true
      ) ON CONFLICT ("version") DO NOTHING`,
   );
+  await pool.query(
+    `UPDATE "tax"."configuration" SET "enabled" = true WHERE "id" = 'default'`,
+  );
 }

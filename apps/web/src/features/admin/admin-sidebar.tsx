@@ -8,6 +8,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   Package,
+  ReceiptText,
   Ruler,
   Store,
   Tags,
@@ -69,6 +70,15 @@ const operationsLinks = [
   },
 ] as const;
 
+const settingsLinks = [
+  {
+    href: "/admin/tax",
+    label: "Tax",
+    icon: ReceiptText,
+    permission: "tax.manage",
+  },
+] as const;
+
 type AdminSidebarProps = {
   user: { name: string; email: string } | null;
   permissions: Permission[];
@@ -83,18 +93,20 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
   const availableOperationsLinks = operationsLinks.filter(({ permission }) =>
     permissions.includes(permission),
   );
+  const availableSettingsLinks = settingsLinks.filter(({ permission }) =>
+    permissions.includes(permission),
+  );
   const activeHref = pathname
-    ? [...adminLinks, ...operationsLinks].reduce<string | undefined>(
-        (active, { href }) => {
-          const matchesRoute =
-            pathname === href || pathname.startsWith(`${href}/`);
+    ? [...adminLinks, ...operationsLinks, ...settingsLinks].reduce<
+        string | undefined
+      >((active, { href }) => {
+        const matchesRoute =
+          pathname === href || pathname.startsWith(`${href}/`);
 
-          return matchesRoute && (!active || href.length > active.length)
-            ? href
-            : active;
-        },
-        undefined,
-      )
+        return matchesRoute && (!active || href.length > active.length)
+          ? href
+          : active;
+      }, undefined)
     : undefined;
   const closeMobileSidebar = () => setOpenMobile(false);
 
@@ -185,6 +197,37 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
                       );
                     },
                   )}
+                </SidebarMenu>
+              </nav>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {availableSettingsLinks.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Settings</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <nav aria-label="Settings">
+                <SidebarMenu>
+                  {availableSettingsLinks.map(({ href, label, icon: Icon }) => {
+                    const isActive = activeHref === href;
+                    return (
+                      <SidebarMenuItem key={href}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          aria-current={pathname === href ? "page" : undefined}
+                          render={
+                            <Link href={href} onClick={closeMobileSidebar} />
+                          }
+                          tooltip={label}
+                        >
+                          <Icon aria-hidden="true" />
+                          <span className="group-data-[collapsible=icon]:hidden">
+                            {label}
+                          </span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
                 </SidebarMenu>
               </nav>
             </SidebarGroupContent>

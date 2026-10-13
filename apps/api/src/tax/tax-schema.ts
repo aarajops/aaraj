@@ -8,8 +8,28 @@ import {
   timestamp,
   boolean,
 } from "drizzle-orm/pg-core";
+import { user } from "../auth/auth-schema.js";
 
 export const taxSchema = pgSchema("tax");
+
+export const taxConfiguration = taxSchema.table(
+  "configuration",
+  {
+    id: text("id").primaryKey().default("default"),
+    enabled: boolean("enabled").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+    updatedBy: text("updated_by").references(() => user.id, {
+      onDelete: "restrict",
+    }),
+  },
+  (table) => [
+    check("configuration_singleton_check", sql`${table.id} = 'default'`),
+    check(
+      "configuration_update_actor_check",
+      sql`(${table.updatedAt} is null and ${table.updatedBy} is null) or (${table.updatedAt} is not null and ${table.updatedBy} is not null)`,
+    ),
+  ],
+);
 
 export const taxProfile = taxSchema.table(
   "profile",

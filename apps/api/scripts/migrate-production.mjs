@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { getPostgresSslOptions } from "../dist/platform/database/postgres-ssl.js";
+import { grantRuntimePrivileges } from "../dist/platform/database/grant-runtime-privileges.js";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const apiDirectory = path.resolve(scriptDirectory, "..");
@@ -70,8 +71,9 @@ try {
       "Drizzle migration journal did not reach the staged release state.",
     );
   }
+  await grantRuntimePrivileges(pool, database, runtimeUser);
   process.stdout.write(
-    `Drizzle migrations are current for ${releaseSha}; ${after.length - applied.length} migration(s) applied.\n`,
+    `Drizzle migrations are current for ${releaseSha}; ${after.length - applied.length} migration(s) applied and runtime grants reconciled.\n`,
   );
 } finally {
   try {

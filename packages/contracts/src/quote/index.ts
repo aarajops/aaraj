@@ -33,7 +33,7 @@ const QuoteLineSchema = z.strictObject({
 });
 
 const QuoteTaxComponentSchema = z.strictObject({
-  treatment: z.enum(["taxable", "exempt"]),
+  treatment: z.enum(["taxable", "exempt", "not_calculated"]),
   grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   taxableBaseBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   taxAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
@@ -65,11 +65,12 @@ export const AuthoritativeQuoteSchema = z.strictObject({
     tax: QuoteTaxComponentSchema,
   }),
   tax: z.strictObject({
-    profileVersion: z.string().min(1).max(80),
-    sourceReference: z.string().min(1).max(500),
-    sourceVersion: z.string().min(1).max(120),
-    pricePresentation: z.literal("vat_inclusive"),
-    roundingRule: z.literal("half_up_bdt_v1"),
+    mode: z.enum(["disabled", "inclusive"]).optional(),
+    profileVersion: z.string().min(1).max(80).nullable(),
+    sourceReference: z.string().min(1).max(500).nullable(),
+    sourceVersion: z.string().min(1).max(120).nullable(),
+    pricePresentation: z.enum(["vat_inclusive", "not_configured"]),
+    roundingRule: z.literal("half_up_bdt_v1").nullable(),
     merchandise: QuoteTaxComponentSchema,
     totalTaxAmountBdt: z
       .number()

@@ -28,7 +28,7 @@ import { DatabaseService } from "../platform/database/database.service.js";
 import { DeliveryService } from "../delivery/delivery.service.js";
 import { GeographyService } from "../geography/geography.service.js";
 import { quoteSnapshot } from "./quote-schema.js";
-import { TaxService, type ResolvedTaxProfile } from "../tax/tax.service.js";
+import { TaxService, type QuoteTaxState } from "../tax/tax.service.js";
 import { calculateInclusiveTaxBdt } from "../tax/inclusive-tax.js";
 
 type TaxComponent = AuthoritativeQuote["tax"]["merchandise"];
@@ -72,7 +72,7 @@ export class QuoteService {
       input.geographyVersion,
       destination.district.id,
     );
-    const profile = await this.tax.getCurrentProfile();
+    const taxState = await this.tax.getCurrentQuoteState();
     const variants = await this.catalog.findPurchasableVariants(
       context.cart.lines.map(({ variantId }) => variantId),
     );
@@ -107,18 +107,16 @@ export class QuoteService {
     );
     const merchandiseTax = taxComponent(
       merchandiseGrossBdt,
-      profile,
+      taxState,
       "product",
     );
-    const deliveryTax = taxComponent(tariff.feeBdt, profile, "delivery");
+    const deliveryTax = taxComponent(tariff.feeBdt, taxState, "delivery");
     const totalTaxAmountBdt = safeAmount(
       BigInt(merchandiseTax.taxAmountBdt) + BigInt(deliveryTax.taxAmountBdt),
     );
     const totalBdt = safeAmount(
       BigInt(merchandiseGrossBdt) + BigInt(tariff.feeBdt),
     );
-    const profileSnapshot = toTaxProfileSnapshot(profile);
-
     const [saved] = await this.database.db
       .insert(quoteSnapshot)
       .values({
@@ -138,11 +136,11 @@ export class QuoteService {
         deliveryTariffVersion: tariff.version,
         deliveryTariffEffectiveFrom: tariff.effectiveFrom,
         deliveryAmountBdt: tariff.feeBdt,
-        taxProfileVersion: profile.version,
-        taxSourceReference: profile.sourceReference,
-        taxSourceVersion: profile.sourceVersion,
-        taxRoundingRule: profile.roundingRule,
-        taxProfileSnapshot: profileSnapshot,
+        taxProfileVersion: taxState.profile?.version ?? null,
+        taxSourceReference: taxState.profile?.sourceReference ?? null,
+        taxSourceVersion: taxState.profile?.sourceVersion ?? null,
+        taxRoundingRule: taxState.profile?.roundingRule ?? null,
+        taxProfileSnapshot: taxState.profileSnapshot,
         merchandiseTaxSnapshot: merchandiseTax,
         deliveryTaxSnapshot: deliveryTax,
         lines,
@@ -206,9 +204,9 @@ export class QuoteService {
     if (!sameCatalogLines(row.lines, variants))
       return stale(row.id, "catalog_changed");
 
-    const [currentTariff, currentProfile] = await Promise.all([
+    const [currentTariff, currentTaxState] = await Promise.all([
       this.delivery.resolveDistrictFee(row.geographyVersion, row.districtId),
-      this.tax.getCurrentProfile(),
+      this.tax.getCurrentQuoteState(),
     ]);
     if (
       currentTariff.version !== row.deliveryTariffVersion ||
@@ -218,8 +216,8 @@ export class QuoteService {
       return stale(row.id, "delivery_tariff_changed");
     }
     if (
-      currentProfile.version !== row.taxProfileVersion ||
-      stableJson(toTaxProfileSnapshot(currentProfile)) !==
+      (currentTaxState.profile?.version ?? null) !== row.taxProfileVersion ||
+      stableJson(currentTaxState.profileSnapshot) !==
         stableJson(row.taxProfileSnapshot)
     ) {
       return stale(row.id, "tax_rule_changed");
@@ -313,10 +311,13 @@ export class QuoteService {
         tax: row.deliveryTaxSnapshot,
       },
       tax: {
+        mode: row.taxProfileVersion ? "inclusive" : "disabled",
         profileVersion: row.taxProfileVersion,
         sourceReference: row.taxSourceReference,
         sourceVersion: row.taxSourceVersion,
-        pricePresentation: "vat_inclusive",
+        pricePresentation: row.taxProfileVersion
+          ? "vat_inclusive"
+          : "not_configured",
         roundingRule: row.taxRoundingRule,
         merchandise: row.merchandiseTaxSnapshot,
         totalTaxAmountBdt: row.totalTaxAmountBdt,
@@ -331,9 +332,20 @@ export class QuoteService {
 
 function taxComponent(
   grossAmountBdt: number,
-  profile: ResolvedTaxProfile,
+  state: QuoteTaxState,
   target: "product" | "delivery",
 ): TaxComponent {
+  if (state.mode === "disabled") {
+    return {
+      treatment: "not_calculated",
+      grossAmountBdt,
+      taxableBaseBdt: grossAmountBdt,
+      taxAmountBdt: 0,
+      rateNumerator: null,
+      rateDenominator: null,
+    };
+  }
+  const profile = state.profile;
   const isDelivery = target === "delivery";
   const treatment = isDelivery
     ? profile.deliveryTreatment
@@ -356,30 +368,6 @@ function taxComponent(
     ...result,
     rateNumerator: numerator,
     rateDenominator: denominator,
-  };
-}
-
-function toTaxProfileSnapshot(profile: ResolvedTaxProfile) {
-  return {
-    version: profile.version,
-    effectiveFrom: profile.effectiveFrom,
-    effectiveTo: profile.effectiveTo,
-    legalMerchantReference: profile.legalMerchantReference,
-    registrationStatus: profile.registrationStatus,
-    registrationReference: profile.registrationReference,
-    operatingModel: profile.operatingModel,
-    pricePresentation: profile.pricePresentation,
-    productTreatment: profile.productTreatment,
-    productRateNumerator: profile.productRateNumerator,
-    productRateDenominator: profile.productRateDenominator,
-    deliveryTreatment: profile.deliveryTreatment,
-    deliveryRateNumerator: profile.deliveryRateNumerator,
-    deliveryRateDenominator: profile.deliveryRateDenominator,
-    roundingRule: profile.roundingRule,
-    sourceReference: profile.sourceReference,
-    sourceVersion: profile.sourceVersion,
-    approvalReference: profile.approvalReference,
-    approved: profile.approved,
   };
 }
 

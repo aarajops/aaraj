@@ -70,7 +70,7 @@ const OrderLineSchema = z.strictObject({
 });
 
 const OrderTaxComponentSchema = z.strictObject({
-  treatment: z.enum(["taxable", "exempt"]),
+  treatment: z.enum(["taxable", "exempt", "not_calculated"]),
   grossAmountBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   taxableBaseBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   taxAmountBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
@@ -128,10 +128,11 @@ export const OrderSchema = z.strictObject({
     .nonnegative()
     .max(Number.MAX_SAFE_INTEGER),
   tax: z.strictObject({
-    profileVersion: z.string().min(1).max(80),
-    sourceReference: z.string().min(1).max(500),
-    sourceVersion: z.string().min(1).max(120),
-    roundingRule: z.literal("half_up_bdt_v1"),
+    mode: z.enum(["disabled", "inclusive"]).optional(),
+    profileVersion: z.string().min(1).max(80).nullable(),
+    sourceReference: z.string().min(1).max(500).nullable(),
+    sourceVersion: z.string().min(1).max(120).nullable(),
+    roundingRule: z.literal("half_up_bdt_v1").nullable(),
     merchandise: OrderTaxComponentSchema,
     delivery: OrderTaxComponentSchema,
     totalTaxAmountBdt: z

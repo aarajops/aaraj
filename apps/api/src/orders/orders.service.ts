@@ -228,6 +228,7 @@ export class OrdersService implements OrdersPathaoPort {
             totalBdt: quote.totalBdt,
             codAmountDueBdt: quote.totalBdt,
             taxSnapshot: {
+              ...(quote.tax.mode ? { mode: quote.tax.mode } : {}),
               profileVersion: quote.tax.profileVersion,
               sourceReference: quote.tax.sourceReference,
               sourceVersion: quote.tax.sourceVersion,

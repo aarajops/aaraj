@@ -319,24 +319,28 @@ export function CartQuote({ cart }: { cart: Cart }) {
                   label={`Delivery · ${quote.delivery.tariffVersion}`}
                   amount={quote.delivery.grossAmountBdt}
                 />
-                <QuoteRow
-                  label="Tax included in merchandise price"
-                  amount={quote.tax.merchandise.taxAmountBdt}
-                />
-                {quote.delivery.tax.treatment === "taxable" && (
+                {quote.tax.mode !== "disabled" && (
                   <QuoteRow
-                    label="Tax included in delivery"
-                    amount={quote.delivery.tax.taxAmountBdt}
+                    label="Tax included in merchandise price"
+                    amount={quote.tax.merchandise.taxAmountBdt}
                   />
                 )}
+                {quote.tax.mode !== "disabled" &&
+                  quote.delivery.tax.treatment === "taxable" && (
+                    <QuoteRow
+                      label="Tax included in delivery"
+                      amount={quote.delivery.tax.taxAmountBdt}
+                    />
+                  )}
               </dl>
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-base font-semibold">
                 <span>Total</span>
                 <span>{formatCatalogPrice({ amountBdt: quote.totalBdt })}</span>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                Tax amounts are accounted within the displayed tax-inclusive
-                prices. This quote is not an order and does not reserve stock.
+                {quote.tax.mode === "disabled"
+                  ? "Tax calculation is off. No tax amount is added to this quote; delivery is shown separately. This quote is not an order and does not reserve stock."
+                  : "Tax amounts are accounted within the displayed tax-inclusive prices. This quote is not an order and does not reserve stock."}
               </p>
               <Link
                 className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"

@@ -240,16 +240,19 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
                   label="Merchandise subtotal"
                   amount={quote.merchandiseGrossBdt}
                 />
-                <MoneyRow
-                  label="Tax included in merchandise"
-                  amount={quote.tax.merchandise.taxAmountBdt}
-                />
-                {quote.delivery.tax.taxAmountBdt > 0 && (
+                {quote.tax.mode !== "disabled" && (
                   <MoneyRow
-                    label="Tax included in delivery"
-                    amount={quote.delivery.tax.taxAmountBdt}
+                    label="Tax included in merchandise"
+                    amount={quote.tax.merchandise.taxAmountBdt}
                   />
                 )}
+                {quote.tax.mode !== "disabled" &&
+                  quote.delivery.tax.taxAmountBdt > 0 && (
+                    <MoneyRow
+                      label="Tax included in delivery"
+                      amount={quote.delivery.tax.taxAmountBdt}
+                    />
+                  )}
                 <MoneyRow
                   label="Delivery charge"
                   amount={quote.delivery.grossAmountBdt}

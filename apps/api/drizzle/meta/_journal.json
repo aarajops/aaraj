@@ -176,6 +176,13 @@
       "when": 1791697799096,
       "tag": "0024_pathao_legacy_dispatch_provider_compat",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791876497719,
+      "tag": "0025_tax_calculation_toggle",
+      "breakpoints": true
     }
   ]
 }

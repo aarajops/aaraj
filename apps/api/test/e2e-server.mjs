@@ -98,6 +98,9 @@ try {
        'TEST_ONLY_AUTOMATED_FIXTURE', true, true
      )`,
   );
+  await migrationPool.query(
+    `UPDATE "tax"."configuration" SET "enabled" = true WHERE "id" = 'default'`,
+  );
   const { grantRuntimePrivileges } =
     await import("../dist/platform/database/grant-runtime-privileges.js");
   await grantRuntimePrivileges(migrationPool, database, runtimeRole);

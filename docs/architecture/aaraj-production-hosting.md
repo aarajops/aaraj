@@ -223,8 +223,9 @@ verifies PostgreSQL TLS with the existing `rejectUnauthorized: true` helper,
 and uses the role separate from the runtime account. GitHub never receives
 production database credentials. Before execution, the runner checks the
 staged clean release SHA, Drizzle journal order, migration hashes and applied
-timestamps, and takes an advisory lock. Review and run the existing
-`db:grant-runtime` policy when schema changes require new runtime grants.
+timestamps, and takes an advisory lock. After applying migrations, the service
+reconciles runtime table grants from the checked-in `db:grant-runtime` policy
+before the release can activate.
 
 Keep this small host-local wrapper for a specific Drizzle ORM limitation: the
 pinned PostgreSQL migrator compares each journal timestamp only with the latest
