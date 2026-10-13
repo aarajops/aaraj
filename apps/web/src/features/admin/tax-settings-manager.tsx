@@ -9,6 +9,8 @@ import {
   type TaxSettings,
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldLabel } from "@/components/ui/field";
 
 export function TaxSettingsManager() {
   const [settings, setSettings] = useState<TaxSettings | null>(null);
@@ -97,6 +99,9 @@ export function TaxSettingsManager() {
   }
 
   const canEnable = Boolean(settings?.approvedProfileAvailable);
+  const settingUnavailable = Boolean(
+    settings && !settings.enabled && !canEnable,
+  );
   const changed = Boolean(settings && enabled !== settings.enabled);
 
   return (
@@ -134,15 +139,25 @@ export function TaxSettingsManager() {
           className="mt-6 grid gap-5"
           onSubmit={(event) => void save(event)}
         >
-          <label className="flex items-start gap-3 rounded-xl border border-border p-4">
-            <input
+          <Field
+            className={`flex items-start gap-3 rounded-xl border border-border p-4 ${
+              settingUnavailable ? "cursor-not-allowed opacity-60" : ""
+            }`}
+          >
+            <Checkbox
+              id="tax-calculation-enabled"
               checked={enabled}
-              className="mt-1 size-4 accent-primary"
-              disabled={saving || (!canEnable && !settings.enabled)}
-              onChange={(event) => setEnabled(event.currentTarget.checked)}
-              type="checkbox"
+              className="mt-1"
+              disabled={saving || settingUnavailable}
+              aria-describedby={
+                settingUnavailable ? "tax-profile-required" : undefined
+              }
+              onCheckedChange={(checked) => setEnabled(checked)}
             />
-            <span>
+            <FieldLabel
+              className={`flex-1 ${settingUnavailable ? "cursor-not-allowed" : "cursor-pointer"}`}
+              htmlFor="tax-calculation-enabled"
+            >
               <span className="block font-medium">
                 {settings.enabled
                   ? "Tax calculation is on"
@@ -153,14 +168,17 @@ export function TaxSettingsManager() {
                   ? "New quotes calculate tax from the active approved profile."
                   : "New quotes do not calculate or add tax."}
               </span>
-            </span>
-          </label>
+            </FieldLabel>
+          </Field>
 
-          {!canEnable && !settings.enabled && (
-            <p className="text-sm text-muted-foreground">
-              Tax cannot be turned on until an approved current tax profile is
-              configured. It is off for now, so checkout can use the listed
-              prices and delivery charge.
+          {settingUnavailable && (
+            <p
+              id="tax-profile-required"
+              className="text-sm text-muted-foreground"
+            >
+              Tax calculation is unavailable until an approved current tax
+              profile is configured. It remains off, so checkout uses listed
+              prices and the delivery charge.
             </p>
           )}
 
