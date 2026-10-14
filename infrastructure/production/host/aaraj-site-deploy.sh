@@ -9,7 +9,7 @@ INCOMING="$SITE/incoming"
 MAX_ARCHIVE_BYTES=536870912
 
 usage() {
-  echo "Usage: aaraj-site-deploy.sh <stage|migrate|activate|rollback> <commit-sha> [sha256]" >&2
+  echo "Usage: aaraj-site-deploy.sh <stage|migrate|activate|rollback|restart> <commit-sha> [sha256]" >&2
   exit 2
 }
 
@@ -21,7 +21,7 @@ digest="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
   stage) [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || usage ;;
-  migrate|activate|rollback) [[ -z "$digest" ]] || usage ;;
+  migrate|activate|rollback|restart) [[ -z "$digest" ]] || usage ;;
   *) usage ;;
 esac
 
@@ -241,6 +241,18 @@ rollback_release() {
   echo "Restored AARAJ release ${previous##*/}."
 }
 
+restart_current_release() {
+  local active
+  active="$(current_release_at "$RELEASES/current")"
+  if [[ -z "$active" || "${active##*/}" != "$commit" ]]; then
+    echo "Release $commit is not active; no service restart was needed."
+    return 0
+  fi
+  verify_release "$commit" >/dev/null
+  sudo -n /usr/bin/systemctl restart aaraj-pm2.service
+  echo "Restarted AARAJ release $commit."
+}
+
 run_migration() {
   /usr/bin/sudo -n /usr/local/sbin/aaraj-start-migration "$commit"
 }
@@ -257,5 +269,8 @@ case "$operation" in
     ;;
   migrate)
     run_migration
+    ;;
+  restart)
+    restart_current_release
     ;;
 esac

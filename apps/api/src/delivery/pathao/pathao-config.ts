@@ -116,9 +116,19 @@ function decodeKey(value: string | undefined): Buffer {
 }
 
 function readIntegerSet(value: string | undefined, name: string): Set<number> {
-  if (!value?.trim()) return new Set();
-  const values = value.split(",").map((item) => {
-    const parsed = Number(item.trim());
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new Error(
+      `${name} must contain comma-separated positive integer IDs.`,
+    );
+  }
+  const values = normalized.split(",").map((item) => {
+    if (!/^[1-9][0-9]*$/.test(item)) {
+      throw new Error(
+        `${name} must contain comma-separated positive integer IDs.`,
+      );
+    }
+    const parsed = Number(item);
     if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 2_147_483_647) {
       throw new Error(
         `${name} must contain comma-separated positive integer IDs.`,
@@ -126,6 +136,9 @@ function readIntegerSet(value: string | undefined, name: string): Set<number> {
     }
     return parsed;
   });
+  if (new Set(values).size !== values.length) {
+    throw new Error(`${name} must not contain duplicate IDs.`);
+  }
   return new Set(values);
 }
 
@@ -133,12 +146,18 @@ function readDeliveryTypes(
   value: string | undefined,
   name: string,
 ): Set<12 | 48> {
-  if (!value?.trim()) return new Set();
-  const values = value.split(",").map((item) => Number(item.trim()));
-  if (values.some((item) => item !== 12 && item !== 48)) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new Error(`${name} must contain at least one delivery type.`);
+  }
+  const items = normalized.split(",");
+  if (items.some((item) => item !== "12" && item !== "48")) {
     throw new Error(
       `${name} may contain only Pathao delivery types 12 and 48.`,
     );
   }
-  return new Set(values as Array<12 | 48>);
+  if (new Set(items).size !== items.length) {
+    throw new Error(`${name} must not contain duplicate delivery types.`);
+  }
+  return new Set(items.map(Number) as Array<12 | 48>);
 }
