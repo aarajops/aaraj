@@ -504,6 +504,38 @@ test("keeps the sudoers and installation contract narrowly scoped", (t) => {
   assert.match(helper, /process\.argv\.length !== 2/);
 });
 
+test("syntax-checks the staged Pathao helper from stdin despite its temporary suffix", (t) => {
+  const stageDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "aaraj-pathao-installer-syntax-"),
+  );
+  t.after(() => fs.rmSync(stageDir, { recursive: true, force: true }));
+
+  const stagedHelper = path.join(stageDir, ".aaraj-configure-pathao.ABCDEFGH");
+  fs.writeFileSync(stagedHelper, "module.exports = {};\n");
+
+  const filenameCheck = spawnSync(process.execPath, ["--check", stagedHelper], {
+    encoding: "utf8",
+  });
+  assert.notEqual(filenameCheck.status, 0);
+  assert.match(filenameCheck.stderr, /ERR_UNKNOWN_FILE_EXTENSION/);
+
+  const stdinCheck = spawnSync(
+    process.execPath,
+    ["--input-type=commonjs", "--check"],
+    { input: fs.readFileSync(stagedHelper), encoding: "utf8" },
+  );
+  assert.equal(stdinCheck.status, 0, stdinCheck.stderr);
+
+  const installer = fs.readFileSync(
+    path.join(__dirname, "install-migration-autostart.sh"),
+    "utf8",
+  );
+  assert.match(
+    installer,
+    /\/usr\/bin\/node --input-type=commonjs --check < "\$pathao_helper_stage"/,
+  );
+});
+
 test("validates Pathao before VPS access, pins the first rollout disabled, and restores interrupted changes", () => {
   const workflow = fs.readFileSync(
     path.join(__dirname, "../../../.github/workflows/production-release.yml"),
