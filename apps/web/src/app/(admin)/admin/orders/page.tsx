@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { OrdersManager } from "@/features/orders/orders-manager";
-import { getManagedOrders } from "@/features/orders/orders-queries";
+import {
+  getManagedOrders,
+  parseOrdersPageQuery,
+  type OrdersPageSearchParams,
+} from "@/features/orders/orders-queries";
 
 export const metadata: Metadata = {
   title: "Order management",
@@ -8,8 +13,13 @@ export const metadata: Metadata = {
     "Review COD Orders and verify Bangladesh delivery serviceability.",
 };
 
-export default async function AdminOrdersPage() {
-  const result = await getManagedOrders();
+export default async function AdminOrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<OrdersPageSearchParams>;
+}) {
+  const query = parseOrdersPageQuery(await searchParams);
+  const result = await getManagedOrders(query);
   if ("kind" in result) {
     const title =
       result.kind === "unauthenticated"
@@ -24,7 +34,10 @@ export default async function AdminOrdersPage() {
             AARAJ STAFF
           </p>
           <h1 className="mt-3 text-3xl font-semibold">Order management</h1>
-          <section className="mt-8 rounded-2xl border border-border p-7">
+          <section
+            className="mt-8 rounded-2xl border border-border p-7"
+            role="alert"
+          >
             <h2 className="text-xl font-semibold">{title}</h2>
             <p className="mt-2 text-muted-foreground">
               {result.kind === "unauthenticated"
@@ -33,10 +46,31 @@ export default async function AdminOrdersPage() {
                   ? "Your account cannot access customer Orders."
                   : "Order management could not be loaded. Try again shortly."}
             </p>
+            {result.kind !== "unauthenticated" && (
+              <Link
+                className="mt-4 inline-flex text-primary underline"
+                href={ordersPageHref(query)}
+              >
+                Try again
+              </Link>
+            )}
           </section>
         </div>
       </main>
     );
   }
-  return <OrdersManager initialPage={result.value} />;
+  return <OrdersManager initialPage={result.value} query={query} />;
+}
+
+function ordersPageHref(query: {
+  limit: number;
+  offset: number;
+  search?: string;
+}): string {
+  const params = new URLSearchParams();
+  if (query.limit !== 50) params.set("limit", String(query.limit));
+  if (query.offset > 0) params.set("offset", String(query.offset));
+  if (query.search) params.set("search", query.search);
+  const search = params.toString();
+  return search ? `/admin/orders?${search}` : "/admin/orders";
 }

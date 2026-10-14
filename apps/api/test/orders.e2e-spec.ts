@@ -1038,6 +1038,9 @@ describe("COD Orders and checkout", () => {
     ).expect(201);
     await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/orders/manage`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage`)
       .set("Cookie", customer.cookie)
       .expect(403);
     await request(app.getHttpServer())
@@ -1062,6 +1065,133 @@ describe("COD Orders and checkout", () => {
         expect(body.fulfillmentStatus).toBe("cancelled");
       });
     expect((await stockFor(variantId)).quantityReserved).toBe(0);
+  });
+
+  it("paginates managed Orders with reference search and stable ordering", async () => {
+    const fixture = await createGuestOrder();
+    const sourceOrder = await orderById(fixture.id);
+    if (!sourceOrder) throw new Error("Order pagination fixture is missing.");
+    const [sourceQuote] = await database.db
+      .select()
+      .from(quoteSnapshot)
+      .where(eq(quoteSnapshot.id, sourceOrder.quoteId));
+    if (!sourceQuote) throw new Error("Order quote fixture is missing.");
+
+    const idPrefix = randomUUID().slice(0, 23);
+    const referencePrefix = randomBytes(4).toString("hex").toUpperCase();
+    const synthetic = Array.from({ length: 56 }, (_, index) => ({
+      id: `${idPrefix}-${(index + 1).toString(16).padStart(12, "0")}`,
+      quoteId: randomUUID(),
+      reservationId: randomUUID(),
+      reference: `AA-${referencePrefix}${(index + 1)
+        .toString(16)
+        .toUpperCase()
+        .padStart(4, "0")}`,
+    }));
+
+    try {
+      await database.db
+        .insert(quoteSnapshot)
+        .values(
+          synthetic.map(({ quoteId }) => ({ ...sourceQuote, id: quoteId })),
+        );
+      await database.db.insert(inventoryStockReservation).values(
+        synthetic.map(({ reservationId }) => ({
+          id: reservationId,
+          status: "held" as const,
+        })),
+      );
+      await database.db.insert(customerOrder).values(
+        synthetic.map(({ id, quoteId, reservationId, reference }) => ({
+          ...sourceOrder,
+          id,
+          quoteId,
+          reservationId,
+          reference,
+        })),
+      );
+
+      const search = `AA-${referencePrefix}`;
+      const expectedIds = synthetic
+        .map(({ id }) => id)
+        .sort()
+        .reverse();
+      const firstPage = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ limit: 50, offset: 0, search })
+        .expect(200);
+      expect(firstPage.body).toMatchObject({
+        limit: 50,
+        offset: 0,
+        hasMore: true,
+        nextOffset: 50,
+      });
+      expect(firstPage.body.rows.map((row: { id: string }) => row.id)).toEqual(
+        expectedIds.slice(0, 50),
+      );
+
+      const secondPage = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ limit: 50, offset: 50, search })
+        .expect(200);
+      expect(secondPage.body).toMatchObject({
+        limit: 50,
+        offset: 50,
+        hasMore: false,
+        nextOffset: null,
+      });
+      expect(secondPage.body.rows.map((row: { id: string }) => row.id)).toEqual(
+        expectedIds.slice(50),
+      );
+
+      const repeatedFirstPage = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ limit: 50, offset: 0, search })
+        .expect(200);
+      expect(
+        repeatedFirstPage.body.rows.map((row: { id: string }) => row.id),
+      ).toEqual(expectedIds.slice(0, 50));
+
+      await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ search: "AA-DEADBEEF" })
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ hasMore: false, nextOffset: null });
+          expect(body.rows).toHaveLength(0);
+        });
+    } finally {
+      await database.db.delete(customerOrder).where(
+        inArray(
+          customerOrder.id,
+          synthetic.map(({ id }) => id),
+        ),
+      );
+      await database.db.delete(inventoryStockReservation).where(
+        inArray(
+          inventoryStockReservation.id,
+          synthetic.map(({ reservationId }) => reservationId),
+        ),
+      );
+    }
+  });
+
+  it("rejects invalid managed Order list query parameters", async () => {
+    for (const query of [
+      { limit: 0 },
+      { offset: 100_001 },
+      { search: "not a reference" },
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query(query)
+        .expect(400);
+    }
   });
 
   it("dispatches a confirmed COD Order and consumes its held reservation exactly once", async () => {

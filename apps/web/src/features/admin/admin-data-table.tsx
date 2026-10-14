@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { RowData } from "@tanstack/react-table";
 import { RefreshCw, Search } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   InputGroup,
   InputGroupAddon,
@@ -145,8 +146,8 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   );
 
   return (
-    <div className={className}>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+    <div className={cn("rounded-xl border border-border bg-card", className)}>
+      <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-4">
         <form
           aria-label={`Search ${itemName}`}
           className="flex min-w-60 flex-1 gap-2 sm:max-w-xl"
@@ -191,7 +192,10 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
               }
             }}
           >
-            <SelectTrigger aria-label={filter.label} className="w-full sm:w-44">
+            <SelectTrigger
+              aria-label={filter.label}
+              className="h-9 w-full sm:w-44"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="start">
@@ -210,6 +214,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
         {hasActiveFilters && (
           <Button
             className="shrink-0"
+            size="lg"
             type="button"
             variant="ghost"
             onClick={() => {
@@ -222,7 +227,8 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
 
         <Button
           aria-label={`Refresh ${itemName}`}
-          className="ml-auto shrink-0"
+          aria-busy={isRefreshing}
+          className="ml-auto h-9 shrink-0"
           disabled={isRefreshing || isPending}
           type="button"
           variant="outline"
@@ -245,7 +251,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
 
       <nav
         aria-label={`${ariaLabel} pagination`}
-        className="mt-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border pt-4"
+        className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border px-4 py-4"
       >
         <p aria-live="polite" className="text-sm text-muted-foreground">
           {data.length === 0
@@ -270,7 +276,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
             }}
           >
             <SelectTrigger
-              className="w-20"
+              className="h-9 w-20"
               id={`${ariaLabel.toLowerCase().replaceAll(" ", "-")}-page-size`}
             >
               <SelectValue />
@@ -287,7 +293,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
           {hasPrevious ? (
             <Link
               aria-label={`Previous ${itemName} page`}
-              className={buttonVariants({ variant: "outline" })}
+              className={buttonVariants({ size: "lg", variant: "outline" })}
               href={pageHref(previousOffset)}
               rel="prev"
               scroll={false}
@@ -298,6 +304,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
             <Button
               aria-label={`Previous ${itemName} page`}
               disabled
+              size="lg"
               variant="outline"
             >
               Previous
@@ -306,7 +313,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
           {nextOffset !== null ? (
             <Link
               aria-label={`Next ${itemName} page`}
-              className={buttonVariants({ variant: "outline" })}
+              className={buttonVariants({ size: "lg", variant: "outline" })}
               href={pageHref(nextOffset)}
               rel="next"
               scroll={false}
@@ -317,6 +324,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
             <Button
               aria-label={`Next ${itemName} page`}
               disabled
+              size="lg"
               variant="outline"
             >
               Next

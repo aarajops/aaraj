@@ -2,6 +2,11 @@ import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
 import { and, eq } from "drizzle-orm";
+import {
+  CatalogCategoryListSchema,
+  CatalogCategoryOptionsSchema,
+  CatalogProductFilterOptionsSchema,
+} from "@aaraj/contracts";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
@@ -12,6 +17,7 @@ import { DatabaseService } from "../src/platform/database/database.service.js";
 import { AccessService } from "../src/platform/authorization/access.service.js";
 import { getRedisClient } from "../src/platform/redis/redis-client.js";
 import {
+  catalogCategory,
   catalogProduct,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
@@ -1081,4 +1087,211 @@ describe("catalog and security audit", () => {
       .send({ isPublished: false, reason: "Unpublish legacy catalog row" })
       .expect(200);
   });
+
+  it("enforces the category limit atomically and keeps legacy overflow readable", async () => {
+    const existingRows = await database.db
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory);
+    expect(existingRows.length).toBeLessThan(497);
+
+    await request(app.getHttpServer())
+      .post("/api/v1/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Below limit category",
+        slug: "category-below-limit-control",
+        reason: "Verify category creation below limit",
+      })
+      .expect(201);
+
+    const rowsBeforeFilling = await database.db
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory);
+    const fillerCount = 499 - rowsBeforeFilling.length;
+    expect(fillerCount).toBeGreaterThan(1);
+    const fillers = await database.db
+      .insert(catalogCategory)
+      .values(
+        Array.from({ length: fillerCount }, (_, index) => ({
+          name: `Category limit fixture ${index}`,
+          slug: `category-limit-fixture-${String(index).padStart(3, "0")}`,
+          parentId: null,
+          sortOrder: 0,
+          isActive: index !== 0,
+        })),
+      )
+      .returning({
+        id: catalogCategory.id,
+        slug: catalogCategory.slug,
+        isActive: catalogCategory.isActive,
+      });
+    const inactiveFiller = fillers.find(({ isActive }) => !isActive);
+    const removableFiller = fillers.find(({ isActive }) => isActive);
+    if (!inactiveFiller || !removableFiller) {
+      throw new Error("Category limit fixtures were not inserted.");
+    }
+    const at499 = await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories/manage")
+      .set("Cookie", admin.cookie)
+      .expect(200);
+    expect(at499.body.categories).toHaveLength(499);
+    expect(
+      at499.body.categories.some(
+        ({ slug, isActive }: { slug: string; isActive: boolean }) =>
+          slug === inactiveFiller.slug && !isActive,
+      ),
+    ).toBe(true);
+
+    const parentRows = await database.db
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory)
+      .where(eq(catalogCategory.slug, "clothing"))
+      .limit(1);
+    const parent = parentRows[0];
+    if (!parent) throw new Error("Expected category hierarchy fixture.");
+
+    const atBoundary = await request(app.getHttpServer())
+      .post("/api/v1/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Category limit boundary child",
+        slug: "category-limit-boundary-child",
+        parentId: parent.id,
+        reason: "Verify category limit boundary",
+      })
+      .expect(201);
+    expect(atBoundary.body).toMatchObject({
+      parentId: parent.id,
+      path: "Clothing / Category limit boundary child",
+      isLeaf: true,
+    });
+
+    const limitError = await request(app.getHttpServer())
+      .post("/api/v1/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Over limit category",
+        slug: "over-limit-category",
+        reason: "Verify category cap rejection",
+      })
+      .expect(400);
+    expect(limitError.body).toMatchObject({
+      statusCode: 400,
+      message: "The catalog category limit is 500.",
+    });
+
+    await request(app.getHttpServer())
+      .post("/api/v1/catalog/categories")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Unauthorized category",
+        slug: "unauthorized-category-at-limit",
+        reason: "Authorization precedes limit checks",
+      })
+      .expect(403);
+
+    await database.db
+      .delete(catalogCategory)
+      .where(eq(catalogCategory.id, removableFiller.id));
+    const countBeforeConcurrent = await database.db
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory);
+    expect(countBeforeConcurrent).toHaveLength(499);
+
+    const concurrentResults = await Promise.all(
+      ["first", "second"].map((suffix) =>
+        request(app.getHttpServer())
+          .post("/api/v1/catalog/categories")
+          .set("Cookie", owner.cookie)
+          .set("Origin", origin)
+          .send({
+            name: `Concurrent category ${suffix}`,
+            slug: `concurrent-category-${suffix}`,
+            reason: "Verify concurrent category limit",
+          }),
+      ),
+    );
+    expect(
+      concurrentResults.map(({ status }) => status).sort((a, b) => a - b),
+    ).toEqual([201, 400]);
+    const concurrentRejection = concurrentResults.find(
+      ({ status }) => status === 400,
+    );
+    expect(concurrentRejection?.body).toMatchObject({
+      statusCode: 400,
+      message: "The catalog category limit is 500.",
+    });
+    const countAfterConcurrent = await database.db
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory);
+    expect(countAfterConcurrent).toHaveLength(500);
+
+    const activeRows = await database.db
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory)
+      .where(eq(catalogCategory.isActive, true));
+    const legacyFixtureCount = Math.max(1, 501 - activeRows.length);
+    await database.db.insert(catalogCategory).values(
+      Array.from({ length: legacyFixtureCount }, (_, index) => ({
+        name:
+          index === 0
+            ? "Legacy overflow category"
+            : `Legacy overflow fixture ${index}`,
+        slug:
+          index === 0
+            ? "legacy-overflow-category"
+            : `legacy-overflow-fixture-${index}`,
+        parentId: null,
+        sortOrder: 0,
+        isActive: true,
+      })),
+    );
+
+    const managed = await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories/manage")
+      .set("Cookie", admin.cookie)
+      .expect(200);
+    expect(managed.body.categories.length).toBeGreaterThan(500);
+    expect(CatalogCategoryListSchema.safeParse(managed.body).success).toBe(
+      true,
+    );
+    expect(
+      managed.body.categories.some(
+        ({ slug }: { slug: string }) => slug === "legacy-overflow-category",
+      ),
+    ).toBe(true);
+    expect(
+      managed.body.categories.some(
+        ({ slug, isActive }: { slug: string; isActive: boolean }) =>
+          slug === inactiveFiller.slug && !isActive,
+      ),
+    ).toBe(true);
+
+    const publicCategories = await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories")
+      .expect(200);
+    expect(publicCategories.body.categories.length).toBeGreaterThan(500);
+    expect(
+      CatalogCategoryOptionsSchema.safeParse(publicCategories.body).success,
+    ).toBe(true);
+    expect(
+      CatalogProductFilterOptionsSchema.safeParse({
+        categories: publicCategories.body.categories,
+        colors: [],
+        sizes: [],
+      }).success,
+    ).toBe(true);
+
+    await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories/manage")
+      .expect(401);
+    await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories/manage")
+      .set("Cookie", staff.cookie)
+      .expect(403);
+  }, 30_000);
 });

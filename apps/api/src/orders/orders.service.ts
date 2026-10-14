@@ -12,6 +12,7 @@ import {
   OrderCreatedSchema,
   OrderManagementListSchema,
   OrderSchema,
+  MAX_LIST_OFFSET,
   ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS,
   type CheckoutAddressInput,
   type CreateOrderInput,
@@ -31,7 +32,16 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import { AuditService } from "../platform/audit/audit.service.js";
@@ -490,6 +500,9 @@ export class OrdersService implements OrdersPathaoPort {
   async listForManagement(
     query: OrderListQuery,
   ): Promise<ReturnType<typeof OrderManagementListSchema.parse>> {
+    const searchPattern = query.search
+      ? `%${escapeLikeWildcards(query.search)}%`
+      : undefined;
     const rows = await this.database.db
       .select({
         id: customerOrder.id,
@@ -501,17 +514,29 @@ export class OrdersService implements OrdersPathaoPort {
         createdAt: customerOrder.createdAt,
       })
       .from(customerOrder)
+      .where(
+        searchPattern
+          ? ilike(customerOrder.reference, searchPattern)
+          : undefined,
+      )
       .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
       .limit(query.limit + 1)
       .offset(query.offset);
+    const pageRows = rows.slice(0, query.limit);
+    const hasMore = rows.length > query.limit;
+    const candidateNextOffset = query.offset + query.limit;
     return OrderManagementListSchema.parse({
-      rows: rows.slice(0, query.limit).map((row) => ({
+      rows: pageRows.map((row) => ({
         ...row,
         createdAt: row.createdAt.toISOString(),
       })),
       limit: query.limit,
       offset: query.offset,
-      hasMore: rows.length > query.limit,
+      hasMore,
+      nextOffset:
+        hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+          ? candidateNextOffset
+          : null,
     });
   }
 
@@ -1539,6 +1564,10 @@ function orderAccessUnavailable(): ConflictException {
     "Online guest Order access is unavailable and cannot be restored automatically.",
     { errorCode: "ORDER_ACCESS_UNAVAILABLE" },
   );
+}
+
+function escapeLikeWildcards(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
 }
 
 function isUniqueViolation(error: unknown): boolean {

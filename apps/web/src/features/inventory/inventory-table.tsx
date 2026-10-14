@@ -9,6 +9,7 @@ import {
   AdminDataTable,
   createDataTableColumnHelper,
 } from "@/features/admin/admin-data-table";
+import { formatAdminDateTime } from "@/features/admin/admin-date-time";
 
 const columnHelper = createDataTableColumnHelper<InventoryVariant>();
 
@@ -19,6 +20,7 @@ export function InventoryTable({
   nextOffset,
   onRefresh,
   isRefreshing = false,
+  className,
 }: {
   variants: InventoryVariant[];
   query: InventoryListQuery;
@@ -26,6 +28,7 @@ export function InventoryTable({
   nextOffset: number | null;
   onRefresh: () => void;
   isRefreshing?: boolean;
+  className?: string;
 }) {
   const columns = useMemo(
     () =>
@@ -33,7 +36,7 @@ export function InventoryTable({
         columnHelper.accessor("productName", {
           header: "Product and variant",
           cell: ({ row }) => (
-            <div className="min-w-44">
+            <div className="whitespace-normal">
               <p className="font-medium text-foreground">
                 {row.original.productName}
               </p>
@@ -52,6 +55,10 @@ export function InventoryTable({
         columnHelper.display({
           id: "quantityOnHand",
           header: "On hand",
+          meta: {
+            align: "right",
+            numeric: true,
+          },
           cell: ({ row }) => (
             <Badge
               variant={
@@ -69,10 +76,18 @@ export function InventoryTable({
         }),
         columnHelper.accessor("quantityReserved", {
           header: "Reserved",
+          meta: {
+            align: "right",
+            numeric: true,
+          },
           cell: ({ getValue }) => getValue(),
         }),
         columnHelper.accessor("quantityAvailable", {
           header: "Available",
+          meta: {
+            align: "right",
+            numeric: true,
+          },
           cell: ({ getValue }) => getValue(),
         }),
         columnHelper.display({
@@ -80,15 +95,16 @@ export function InventoryTable({
           header: "Last stock change",
           cell: ({ row }) =>
             row.original.stockUpdatedAt
-              ? row.original.stockUpdatedAt.slice(0, 10)
+              ? formatAdminDateTime(row.original.stockUpdatedAt)
               : "No stock recorded",
         }),
         columnHelper.display({
           id: "actions",
           header: "Actions",
+          meta: { align: "right" },
           cell: ({ row }) => (
             <Link
-              className={buttonVariants({ variant: "outline" })}
+              className={buttonVariants({ size: "lg", variant: "outline" })}
               href={`/admin/inventory/${encodeURIComponent(row.original.id)}`}
               aria-label={`Adjust stock for ${row.original.productName}, ${row.original.color}, ${row.original.sizeLabel}`}
               prefetch={false}
@@ -103,6 +119,7 @@ export function InventoryTable({
 
   return (
     <AdminDataTable
+      className={className}
       ariaLabel="Inventory by product variant"
       columns={columns}
       data={variants}

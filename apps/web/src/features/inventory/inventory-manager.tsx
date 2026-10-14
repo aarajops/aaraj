@@ -6,7 +6,6 @@ import type {
   InventoryListQuery,
   InventoryVariantPage,
 } from "@aaraj/contracts";
-import { Card } from "@/components/ui/card";
 import { InventoryTable } from "./inventory-table";
 
 export function InventoryManager({
@@ -34,16 +33,15 @@ export function InventoryManager({
           flow is defined.
         </p>
 
-        <Card className="mt-8 gap-0 rounded-2xl border border-border bg-card/70 p-4 sm:p-6">
-          <InventoryTable
-            variants={page.variants}
-            query={query}
-            hasMore={page.hasMore}
-            nextOffset={page.nextOffset}
-            onRefresh={() => startTransition(() => router.refresh())}
-            isRefreshing={isRefreshing}
-          />
-        </Card>
+        <InventoryTable
+          className="mt-8"
+          variants={page.variants}
+          query={query}
+          hasMore={page.hasMore}
+          nextOffset={page.nextOffset}
+          onRefresh={() => startTransition(() => router.refresh())}
+          isRefreshing={isRefreshing}
+        />
       </div>
     </main>
   );

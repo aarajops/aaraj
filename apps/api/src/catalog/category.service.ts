@@ -13,7 +13,7 @@ import type {
   CatalogCategoryUpdateInput,
   CatalogCategoryOption,
 } from "@aaraj/contracts";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DatabaseService } from "../platform/database/database.service.js";
@@ -69,6 +69,9 @@ export class CategoryService {
         "manageCategories",
         actor,
         transaction,
+      );
+      await transaction.execute(
+        sql`LOCK TABLE "catalog"."category" IN SHARE ROW EXCLUSIVE MODE`,
       );
       const categories = await transaction.select().from(catalogCategory);
       if (categories.length >= 500) {

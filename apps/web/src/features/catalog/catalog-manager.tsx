@@ -30,7 +30,7 @@ import {
 } from "@/lib/api-error-response";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import {
   Field,
@@ -143,38 +143,54 @@ export function CatalogManager({
     name: ["id", "categoryId", "fit", "sizeGuideId", "isPublished"],
   });
   const slugError = errors.slug?.message;
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [productRefreshError, setProductRefreshError] = useState<string | null>(
+    null,
+  );
+  const productLoadRequestId = useRef(0);
   const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
   const [sizeGuideLoadError, setSizeGuideLoadError] = useState<string | null>(
     null,
   );
 
   const loadProducts = useCallback(async () => {
+    const requestId = ++productLoadRequestId.current;
     setIsRefreshing(true);
     try {
       const response = await fetchManagedProducts(query);
+      if (requestId !== productLoadRequestId.current) return;
+
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
-        setErrorMessage(
+        if (requestId !== productLoadRequestId.current) return;
+        setProductRefreshError(
           getApiErrorMessage(problem) ??
             "The API returned an unreadable error response.",
         );
         return;
       }
 
-      const result = CatalogProductPageSchema.safeParse(await response.json());
+      const payload: unknown = await response.json();
+      if (requestId !== productLoadRequestId.current) return;
+      const result = CatalogProductPageSchema.safeParse(payload);
       if (!result.success) throw new Error("Catalog response was invalid.");
 
       setProducts(result.data.products);
       setHasMore(result.data.hasMore);
       setNextOffset(result.data.nextOffset);
-      setErrorMessage(null);
+      setProductRefreshError(null);
     } catch {
-      setErrorMessage("Catalog management is temporarily unavailable.");
+      if (requestId === productLoadRequestId.current) {
+        setProductRefreshError(
+          "Catalog management is temporarily unavailable.",
+        );
+      }
     } finally {
-      setIsRefreshing(false);
+      if (requestId === productLoadRequestId.current) {
+        setIsRefreshing(false);
+      }
     }
   }, [query]);
 
@@ -219,11 +235,11 @@ export function CatalogManager({
   }
 
   async function saveProduct(form: ProductForm) {
-    setErrorMessage(null);
+    setFormErrorMessage(null);
     setErrorCode(null);
     clearErrors("slug");
     if (!form.audience && (!form.id || form.isPublished)) {
-      setErrorMessage("Choose an audience before saving.");
+      setFormErrorMessage("Choose an audience before saving.");
       return;
     }
 
@@ -242,7 +258,7 @@ export function CatalogManager({
           priceBdt.trim().length > 0 && parseBdtPrice(priceBdt) === null,
       )
     ) {
-      setErrorMessage(
+      setFormErrorMessage(
         "Enter each price as a whole BDT amount, for example 1999.",
       );
       return;
@@ -266,7 +282,7 @@ export function CatalogManager({
         !form.categoryId ||
         variants.some((variant) => variant.price === null))
     ) {
-      setErrorMessage(
+      setFormErrorMessage(
         "Before publishing, choose an audience and category, assign a matching size guide, and set a BDT price for every complete color and size variant.",
       );
       return;
@@ -298,7 +314,7 @@ export function CatalogManager({
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
         setErrorCode(problem?.errorCode ?? null);
-        setErrorMessage(
+        setFormErrorMessage(
           getApiErrorMessage(problem) ??
             "The API returned an unreadable error response.",
         );
@@ -307,13 +323,13 @@ export function CatalogManager({
 
       const result = CatalogProductSchema.safeParse(await response.json());
       if (!result.success) {
-        setErrorMessage("The server returned an invalid product response.");
+        setFormErrorMessage("The server returned an invalid product response.");
         return;
       }
 
       router.replace("/admin/catalog");
     } catch {
-      setErrorMessage("Could not reach the server. Please try again.");
+      setFormErrorMessage("Could not reach the server. Please try again.");
     }
   }
 
@@ -393,6 +409,28 @@ export function CatalogManager({
               >
                 Products
               </h2>
+              {productRefreshError && (
+                <div
+                  className="mt-4 rounded-lg border border-destructive bg-background p-4 text-sm text-destructive"
+                  role="alert"
+                >
+                  <p>{productRefreshError}</p>
+                  {products.length > 0 && (
+                    <p className="mt-1">
+                      The product rows shown below may be outdated.
+                    </p>
+                  )}
+                  <Button
+                    className="mt-3"
+                    disabled={isRefreshing}
+                    onClick={() => void loadProducts()}
+                    type="button"
+                    variant="outline"
+                  >
+                    {isRefreshing ? "Retrying…" : "Retry product refresh"}
+                  </Button>
+                </div>
+              )}
               <div className="mt-4">
                 <ProductTable
                   products={products}
@@ -831,12 +869,12 @@ export function CatalogManager({
                   />
                 </Field>
 
-                {errorMessage && (
+                {formErrorMessage && (
                   <p
                     className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
                     role="alert"
                   >
-                    {errorMessage}
+                    {formErrorMessage}
                     {errorCode === "RECENT_SIGN_IN_REQUIRED" && (
                       <Link className="ml-1 underline" href="/account">
                         Go to your account

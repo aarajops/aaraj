@@ -33,12 +33,12 @@ export const CatalogCategorySchema = CatalogCategoryOptionSchema.extend({
 export type CatalogCategory = z.infer<typeof CatalogCategorySchema>;
 
 export const CatalogCategoryListSchema = z.strictObject({
-  categories: CatalogCategorySchema.array().max(500),
+  categories: CatalogCategorySchema.array(),
 });
 export type CatalogCategoryList = z.infer<typeof CatalogCategoryListSchema>;
 
 export const CatalogCategoryOptionsSchema = z.strictObject({
-  categories: CatalogCategoryOptionSchema.array().max(500),
+  categories: CatalogCategoryOptionSchema.array(),
 });
 export type CatalogCategoryOptions = z.infer<
   typeof CatalogCategoryOptionsSchema

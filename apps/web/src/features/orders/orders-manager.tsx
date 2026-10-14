@@ -1,21 +1,84 @@
 "use client";
 
+import { useMemo, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
-import type { OrderManagementList } from "@aaraj/contracts";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import type { OrderListQuery, OrderManagementList } from "@aaraj/contracts";
+import { buttonVariants } from "@/components/ui/button";
+import { formatAdminDateTime } from "@/features/admin/admin-date-time";
+import {
+  AdminDataTable,
+  createDataTableColumnHelper,
+} from "@/features/admin/admin-data-table";
 import { formatCatalogPrice } from "@/features/catalog/price";
 import { PathaoIssuesPanel } from "./pathao-issues-panel";
 
+const columnHelper =
+  createDataTableColumnHelper<OrderManagementList["rows"][number]>();
+
 export function OrdersManager({
   initialPage,
+  query,
 }: {
   initialPage: OrderManagementList;
+  query: OrderListQuery;
 }) {
   const router = useRouter();
   const [refreshing, startTransition] = useTransition();
+  const columns = useMemo(
+    () =>
+      columnHelper.columns([
+        columnHelper.accessor("reference", {
+          header: "Reference",
+          cell: ({ getValue }) => (
+            <span className="font-medium">{getValue()}</span>
+          ),
+        }),
+        columnHelper.display({
+          id: "status",
+          header: "Status",
+          cell: ({ row }) =>
+            `${humanize(row.original.status)} · ${humanize(row.original.fulfillmentStatus)}`,
+        }),
+        columnHelper.accessor("serviceability", {
+          header: "Delivery review",
+          cell: ({ getValue }) => humanize(getValue()),
+        }),
+        columnHelper.display({
+          id: "codDue",
+          header: "COD due",
+          meta: {
+            align: "right",
+            numeric: true,
+          },
+          cell: ({ row }) =>
+            row.original.status === "cancelled" ||
+            row.original.status === "rejected"
+              ? "Not payable"
+              : formatCatalogPrice({ amountBdt: row.original.totalBdt }),
+        }),
+        columnHelper.accessor("createdAt", {
+          header: "Created",
+          cell: ({ getValue }) => formatAdminDateTime(getValue()),
+        }),
+        columnHelper.display({
+          id: "review",
+          header: "Actions",
+          meta: { align: "right" },
+          cell: ({ row }) => (
+            <Link
+              className={buttonVariants({ size: "lg", variant: "link" })}
+              href={`/admin/orders/${row.original.id}`}
+              prefetch={false}
+            >
+              Review
+            </Link>
+          ),
+        }),
+      ]),
+    [],
+  );
+
   return (
     <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-10 text-foreground sm:px-8 sm:py-12">
       <div className="mx-auto max-w-6xl">
@@ -29,73 +92,25 @@ export function OrdersManager({
           detail page.
         </p>
         <PathaoIssuesPanel />
-        <Card className="mt-8 gap-0 rounded-2xl border border-border bg-card/70 p-4 sm:p-6">
-          <div className="mb-4 flex justify-end">
-            <Button
-              disabled={refreshing}
-              variant="outline"
-              onClick={() => startTransition(() => router.refresh())}
-            >
-              {refreshing ? "Refreshing…" : "Refresh"}
-            </Button>
-          </div>
-          {initialPage.rows.length === 0 ? (
-            <p className="py-8 text-center text-muted-foreground">
-              No Orders yet.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[650px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-3 py-3">Reference</th>
-                    <th className="px-3 py-3">Status</th>
-                    <th className="px-3 py-3">Delivery review</th>
-                    <th className="px-3 py-3">COD due</th>
-                    <th className="px-3 py-3">Created</th>
-                    <th className="px-3 py-3"> </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {initialPage.rows.map((order) => (
-                    <tr className="border-b border-border/70" key={order.id}>
-                      <td className="px-3 py-3 font-medium">
-                        {order.reference}
-                      </td>
-                      <td className="px-3 py-3">
-                        {humanize(order.status)} ·{" "}
-                        {humanize(order.fulfillmentStatus)}
-                      </td>
-                      <td className="px-3 py-3">
-                        {humanize(order.serviceability)}
-                      </td>
-                      <td className="px-3 py-3">
-                        {order.status === "cancelled" ||
-                        order.status === "rejected"
-                          ? "Not payable"
-                          : formatCatalogPrice({ amountBdt: order.totalBdt })}
-                      </td>
-                      <td className="px-3 py-3">
-                        {formatDate(order.createdAt)}
-                      </td>
-                      <td className="px-3 py-3">
-                        <Link
-                          className="text-primary underline"
-                          href={`/admin/orders/${order.id}`}
-                        >
-                          Review
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="mt-4 text-xs text-muted-foreground">
-            Showing the newest {initialPage.rows.length} Orders.
-          </p>
-        </Card>
+        <AdminDataTable
+          className="mt-8"
+          ariaLabel="Orders"
+          columns={columns}
+          data={initialPage.rows}
+          emptyMessage={
+            query.search
+              ? "No orders match this reference search."
+              : "No orders yet."
+          }
+          pathname="/admin/orders"
+          query={query}
+          itemName="orders"
+          searchPlaceholder="Order reference"
+          onRefresh={() => startTransition(() => router.refresh())}
+          isRefreshing={refreshing}
+          hasMore={initialPage.hasMore}
+          nextOffset={initialPage.nextOffset}
+        />
       </div>
     </main>
   );
@@ -106,12 +121,4 @@ export function humanize(value: string): string {
     .split("_")
     .map((part) => part[0]?.toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("en-BD", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Dhaka",
-  }).format(new Date(value));
 }

@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { QuoteIdSchema, type AuthoritativeQuote } from "../quote/index.js";
+import {
+  OffsetPaginationMetadataSchema,
+  OffsetPaginationQuerySchema,
+} from "../common/pagination.js";
 
 export const ORDER_PHONE_POLICY = "BD_MOBILE_E164_V1" as const;
 export const ORDER_GUEST_ACCESS_DAYS = 30;
@@ -30,9 +34,20 @@ export type CreateOrderInput = z.infer<typeof CreateOrderInputSchema>;
 
 export const OrderIdSchema = z.uuid();
 export const OrderIdempotencyKeySchema = z.uuid();
-export const OrderListQuerySchema = z.strictObject({
-  limit: z.coerce.number().int().min(1).max(100).default(25),
-  offset: z.coerce.number().int().min(0).max(10_000).default(0),
+const OptionalOrderReferenceSearchSchema = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(15)
+    .regex(/^[A-Za-z0-9-]+$/)
+    .optional(),
+);
+
+export const OrderListQuerySchema = OffsetPaginationQuerySchema.extend({
+  search: OptionalOrderReferenceSearchSchema,
 });
 export type OrderListQuery = z.infer<typeof OrderListQuerySchema>;
 
@@ -212,9 +227,9 @@ export const OrderManagementListSchema = z.strictObject({
       createdAt: z.iso.datetime(),
     }),
   ),
-  limit: z.number().int().min(1).max(100),
-  offset: z.number().int().min(0).max(10_000),
-  hasMore: z.boolean(),
+  limit: OffsetPaginationQuerySchema.shape.limit,
+  offset: OffsetPaginationQuerySchema.shape.offset,
+  ...OffsetPaginationMetadataSchema.shape,
 });
 export type OrderManagementList = z.infer<typeof OrderManagementListSchema>;
 

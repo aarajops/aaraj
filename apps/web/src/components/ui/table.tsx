@@ -3,11 +3,18 @@
 import * as React from "react";
 import { cn } from "cn";
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+type TableProps = React.ComponentProps<"table"> & {
+  scrollRegionLabel?: string;
+};
+
+function Table({ className, scrollRegionLabel, ...props }: TableProps) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      aria-label={scrollRegionLabel}
+      className="relative w-full overflow-x-auto focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      role={scrollRegionLabel ? "region" : undefined}
+      tabIndex={scrollRegionLabel ? 0 : undefined}
     >
       <table
         data-slot="table"
@@ -69,7 +76,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-12 px-4 text-sm text-left align-middle font-semibold whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
@@ -82,7 +89,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        "px-4 py-3.5 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}

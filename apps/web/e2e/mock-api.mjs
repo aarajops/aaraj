@@ -7,6 +7,8 @@ import {
   CatalogSizeGuideCreateSchema,
   CatalogCategoryCreateSchema,
   CatalogCategoryUpdateSchema,
+  InventoryListQuerySchema,
+  OrderListQuerySchema,
   DEFAULT_LIST_PAGE_SIZE,
   MAX_LIST_OFFSET,
   MAX_LIST_PAGE_SIZE,
@@ -43,6 +45,66 @@ const sizeGuides = Array.from({ length: 100 }, (_, index) =>
     new Date(Date.UTC(2020, 0, index + 1)).toISOString(),
   ),
 );
+const managedOrders = Array.from({ length: 73 }, (_, index) => {
+  const sequence = index + 1;
+  const status = ["awaiting_confirmation", "confirmed", "rejected"][index % 3];
+  return {
+    id: `00000000-0000-4000-8000-${sequence.toString(16).padStart(12, "0")}`,
+    reference: `AA-${sequence.toString(16).toUpperCase().padStart(12, "0")}`,
+    status,
+    fulfillmentStatus:
+      status === "confirmed"
+        ? "awaiting_dispatch"
+        : status === "rejected"
+          ? "cancelled"
+          : "not_started",
+    serviceability:
+      status === "confirmed"
+        ? "serviceable"
+        : status === "rejected"
+          ? "unserviceable"
+          : "pending_manual_review",
+    totalBdt: 1000 + sequence,
+    createdAt: new Date(
+      Date.UTC(2026, 9, 1, 12, 0, 0) - index * 60_000,
+    ).toISOString(),
+  };
+});
+const managedInventory = [
+  {
+    id: "6bc2deaf-5b52-4c6d-8a15-000000000001",
+    sku: "AA-TEE-BLK-S",
+    productName: "Aaraj Classic Tee",
+    color: "Black",
+    sizeLabel: "S",
+    quantityOnHand: 24,
+    quantityReserved: 3,
+    quantityAvailable: 21,
+    stockUpdatedAt: "2026-10-01T12:00:00.000Z",
+  },
+  {
+    id: "6bc2deaf-5b52-4c6d-8a15-000000000002",
+    sku: "AA-TEE-BLK-M",
+    productName: "Aaraj Classic Tee",
+    color: "Black",
+    sizeLabel: "M",
+    quantityOnHand: 18,
+    quantityReserved: 2,
+    quantityAvailable: 16,
+    stockUpdatedAt: "2026-10-02T12:00:00.000Z",
+  },
+  {
+    id: "6bc2deaf-5b52-4c6d-8a15-000000000003",
+    sku: "AA-HOODIE-GRY-M",
+    productName: "Aaraj Essential Hoodie",
+    color: "Grey",
+    sizeLabel: "M",
+    quantityOnHand: 0,
+    quantityReserved: 0,
+    quantityAvailable: 0,
+    stockUpdatedAt: null,
+  },
+];
 const mediaFixtureId = "a2c3f2f8-1a15-4c64-a1cb-902b30443dc2";
 const mediaFixtureBytes = Buffer.from(
   "UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAdQjyIXpf+BiOh/AAA=",
@@ -160,6 +222,7 @@ const server = createServer(async (request, response) => {
     const permissions = ["access.read_self"];
     if (["staff", "admin", "superadmin"].includes(role)) {
       permissions.push("catalog.manage");
+      permissions.push("orders.manage", "inventory.manage", "tax.manage");
     }
     if (["admin", "superadmin"].includes(role)) {
       permissions.push("catalog.categories.manage");
@@ -169,6 +232,103 @@ const server = createServer(async (request, response) => {
       roles: [role],
       permissions,
     });
+    return;
+  }
+
+  if (url.pathname === "/api/v1/inventory/manage" && method === "GET") {
+    if (!requireStaff(request, response)) return;
+    const searches = url.searchParams.getAll("search");
+    const parsed = InventoryListQuerySchema.safeParse({
+      limit: url.searchParams.get("limit") ?? undefined,
+      offset: url.searchParams.get("offset") ?? undefined,
+      search: searches.length > 1 ? searches : searches[0],
+    });
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid Inventory list query",
+      });
+      return;
+    }
+    const matching = parsed.data.search
+      ? managedInventory.filter((variant) =>
+          [variant.productName, variant.sku, variant.color, variant.sizeLabel]
+            .join(" ")
+            .toLowerCase()
+            .includes(parsed.data.search.toLowerCase()),
+        )
+      : managedInventory;
+    const rows = matching.slice(
+      parsed.data.offset,
+      parsed.data.offset + parsed.data.limit + 1,
+    );
+    const hasMore = rows.length > parsed.data.limit;
+    const pageRows = rows.slice(0, parsed.data.limit);
+    const candidateNextOffset = parsed.data.offset + pageRows.length;
+    send(response, 200, {
+      variants: pageRows,
+      hasMore,
+      nextOffset:
+        hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+          ? candidateNextOffset
+          : null,
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/v1/orders/manage" && method === "GET") {
+    if (!requireStaff(request, response)) return;
+    const searches = url.searchParams.getAll("search");
+    const parsed = OrderListQuerySchema.safeParse({
+      limit: url.searchParams.get("limit") ?? undefined,
+      offset: url.searchParams.get("offset") ?? undefined,
+      search: searches.length > 1 ? searches : searches[0],
+    });
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid Order list query",
+      });
+      return;
+    }
+    if (parsed.data.search === "AA-FFFFFFFFFFFF") {
+      send(response, 503, {
+        statusCode: 503,
+        message: "Synthetic Order list outage",
+      });
+      return;
+    }
+    const matching = parsed.data.search
+      ? managedOrders.filter(({ reference }) =>
+          reference.toLowerCase().includes(parsed.data.search.toLowerCase()),
+        )
+      : managedOrders;
+    const rows = matching.slice(
+      parsed.data.offset,
+      parsed.data.offset + parsed.data.limit + 1,
+    );
+    const hasMore = rows.length > parsed.data.limit;
+    const pageRows = rows.slice(0, parsed.data.limit);
+    const candidateNextOffset = parsed.data.offset + pageRows.length;
+    send(response, 200, {
+      rows: pageRows,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      hasMore,
+      nextOffset:
+        hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+          ? candidateNextOffset
+          : null,
+    });
+    return;
+  }
+
+  if (
+    url.pathname === "/api/v1/delivery/pathao/manage/issues" &&
+    method === "GET"
+  ) {
+    if (!requireStaff(request, response)) return;
+    send(response, 200, { issues: [], truncated: false });
     return;
   }
 

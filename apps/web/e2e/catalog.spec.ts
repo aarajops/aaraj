@@ -172,6 +172,106 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
 
+  const managedProducts = page.locator(
+    'section[aria-labelledby="managed-products-heading"]',
+  );
+  await expect(
+    managedProducts.getByRole("row", { name: /Aaraj E2E Tee/ }),
+  ).toBeVisible();
+
+  const productListPattern = "**/api/v1/catalog/products/manage?*";
+  let refreshAttempts = 0;
+  await page.route(productListPattern, async (route) => {
+    refreshAttempts += 1;
+    if (refreshAttempts === 1) {
+      await route.fulfill({
+        status: 503,
+        json: {
+          statusCode: 503,
+          message: "Product refresh is temporarily unavailable.",
+        },
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.getByRole("button", { name: "Refresh products" }).click();
+  const refreshAlert = managedProducts.getByRole("alert");
+  await expect(refreshAlert).toContainText(
+    "Product refresh is temporarily unavailable.",
+  );
+  await expect(refreshAlert).toContainText(
+    "The product rows shown below may be outdated.",
+  );
+  await expect(
+    managedProducts.getByRole("row", { name: /Aaraj E2E Tee/ }),
+  ).toBeVisible();
+
+  await refreshAlert
+    .getByRole("button", { name: "Retry product refresh" })
+    .click();
+  await expect(refreshAlert).toHaveCount(0);
+  await expect(
+    managedProducts.getByRole("row", { name: /Aaraj E2E Tee/ }),
+  ).toBeVisible();
+  expect(refreshAttempts).toBe(2);
+
+  await page.unroute(productListPattern);
+  let overlappingRequests = 0;
+  let releaseOlderRequest!: () => void;
+  const olderRequestGate = new Promise<void>((resolve) => {
+    releaseOlderRequest = resolve;
+  });
+  await page.route(productListPattern, async (route) => {
+    overlappingRequests += 1;
+    if (overlappingRequests === 1) {
+      await olderRequestGate;
+      await route.fulfill({
+        status: 200,
+        headers: { "x-e2e-response": "older" },
+        json: { products: [], hasMore: false, nextOffset: null },
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  const newerResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/v1/catalog/products/manage?") &&
+      response.status() === 200,
+  );
+  await page.evaluate(() => {
+    const refreshButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Refresh products"]',
+    );
+    if (!refreshButton) throw new Error("Product refresh button was missing.");
+    refreshButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    refreshButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await expect.poll(() => overlappingRequests).toBe(2);
+  await newerResponse;
+  await expect(
+    page.getByRole("button", { name: "Refresh products" }),
+  ).toBeEnabled();
+  await expect(
+    managedProducts.getByRole("row", { name: /Aaraj E2E Tee/ }),
+  ).toBeVisible();
+
+  const olderResponse = page.waitForResponse(
+    async (response) =>
+      response.url().includes("/api/v1/catalog/products/manage?") &&
+      (await response.headerValue("x-e2e-response")) === "older",
+  );
+  releaseOlderRequest();
+  await olderResponse;
+  await expect(
+    managedProducts.getByRole("row", { name: /Aaraj E2E Tee/ }),
+  ).toBeVisible();
+  await expect(refreshAlert).toHaveCount(0);
+  await page.unroute(productListPattern);
+
   await page.goto("/");
   await chooseSelectOption(page, "Audience", "Unisex");
   await chooseSelectOption(page, "Category", "Clothing / T-shirts");

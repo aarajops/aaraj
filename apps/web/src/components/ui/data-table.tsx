@@ -18,8 +18,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const features = tableFeatures({});
+type DataTableColumnMeta = {
+  align?: "left" | "center" | "right";
+  numeric?: boolean;
+};
+
+const features = tableFeatures({ columnMeta: {} as DataTableColumnMeta });
 type DataTableFeatures = typeof features;
+
+const alignmentClasses = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+} as const;
 
 export function createDataTableColumnHelper<TData extends RowData>() {
   return createColumnHelper<DataTableFeatures, TData>();
@@ -54,13 +65,25 @@ export function DataTable<TData extends RowData & { id: string }>({
   const rows = instance.getRowModel().rows;
 
   return (
-    <div className={cn("overflow-x-auto rounded-md border", className)}>
-      <Table aria-label={ariaLabel} className="min-w-max">
+    <div className={className}>
+      <Table
+        aria-label={ariaLabel}
+        scrollRegionLabel={`Scrollable ${ariaLabel.toLowerCase()} table`}
+      >
         <TableHeader>
           {instance.getHeaderGroups().map((group) => (
             <TableRow key={group.id}>
               {group.headers.map((header) => (
-                <TableHead key={header.id}>
+                <TableHead
+                  key={header.id}
+                  className={cn(
+                    alignmentClasses[
+                      header.column.columnDef.meta?.align ?? "left"
+                    ],
+                    header.column.columnDef.meta?.numeric && "tabular-nums",
+                  )}
+                  scope="col"
+                >
                   {header.isPlaceholder ? null : (
                     <instance.FlexRender header={header} />
                   )}
@@ -74,7 +97,15 @@ export function DataTable<TData extends RowData & { id: string }>({
             rows.map((row) => (
               <TableRow key={row.id}>
                 {row.getAllCells().map((cell) => (
-                  <TableCell key={cell.id}>
+                  <TableCell
+                    key={cell.id}
+                    className={cn(
+                      alignmentClasses[
+                        cell.column.columnDef.meta?.align ?? "left"
+                      ],
+                      cell.column.columnDef.meta?.numeric && "tabular-nums",
+                    )}
+                  >
                     <instance.FlexRender cell={cell} />
                   </TableCell>
                 ))}

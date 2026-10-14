@@ -11,13 +11,10 @@ import {
   AdminDataTable,
   createDataTableColumnHelper,
 } from "@/features/admin/admin-data-table";
+import { formatAdminDateTime } from "@/features/admin/admin-date-time";
 import Link from "next/link";
 
 const columnHelper = createDataTableColumnHelper<CatalogSizeGuideSummary>();
-const updatedDateFormat = new Intl.DateTimeFormat("en", {
-  dateStyle: "medium",
-  timeZone: "UTC",
-});
 
 export function SizeGuideTable({
   guides,
@@ -42,7 +39,9 @@ export function SizeGuideTable({
         columnHelper.accessor("name", {
           header: "Guide",
           cell: ({ row }) => (
-            <span className="min-w-36 font-medium">{row.original.name}</span>
+            <span className="whitespace-normal font-medium">
+              {row.original.name}
+            </span>
           ),
         }),
         columnHelper.display({
@@ -66,15 +65,15 @@ export function SizeGuideTable({
         }),
         columnHelper.accessor("updatedAt", {
           header: "Updated",
-          cell: ({ getValue }) =>
-            updatedDateFormat.format(new Date(getValue())),
+          cell: ({ getValue }) => formatAdminDateTime(getValue()),
         }),
         columnHelper.display({
           id: "actions",
           header: "Actions",
+          meta: { align: "right" },
           cell: ({ row }) => (
             <Link
-              className={buttonVariants({ variant: "outline" })}
+              className={buttonVariants({ size: "lg", variant: "outline" })}
               aria-label={`Edit ${row.original.name}`}
               href={`/admin/catalog/size-guides/${encodeURIComponent(row.original.id)}/edit`}
               prefetch={false}

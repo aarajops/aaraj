@@ -35,7 +35,9 @@ export function CategoryTable({
         columnHelper.accessor("path", {
           header: "Category",
           cell: ({ row }) => (
-            <span className="min-w-40 font-medium">{row.original.path}</span>
+            <span className="whitespace-normal font-medium">
+              {row.original.path}
+            </span>
           ),
         }),
         columnHelper.accessor("slug", {
@@ -71,13 +73,18 @@ export function CategoryTable({
         }),
         columnHelper.accessor("sortOrder", {
           header: "Order",
+          meta: {
+            align: "right",
+            numeric: true,
+          },
         }),
         columnHelper.display({
           id: "actions",
           header: "Actions",
+          meta: { align: "right" },
           cell: ({ row }) => (
             <Link
-              className={buttonVariants({ variant: "outline" })}
+              className={buttonVariants({ size: "lg", variant: "outline" })}
               aria-label={`Edit ${row.original.name}`}
               href={`/admin/catalog/categories/${encodeURIComponent(row.original.id)}/edit`}
               prefetch={false}

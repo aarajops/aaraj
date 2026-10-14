@@ -42,11 +42,9 @@ export function ProductTable({
         columnHelper.accessor("name", {
           header: "Product",
           cell: ({ row }) => (
-            <div className="min-w-40">
-              <p className="truncate font-medium text-foreground">
-                {row.original.name}
-              </p>
-              <p className="truncate text-sm text-muted-foreground">
+            <div className="whitespace-normal">
+              <p className="font-medium text-foreground">{row.original.name}</p>
+              <p className="break-all text-sm text-muted-foreground">
                 /{row.original.slug}
               </p>
             </div>
@@ -60,6 +58,10 @@ export function ProductTable({
         columnHelper.display({
           id: "price",
           header: "Price",
+          meta: {
+            align: "right",
+            numeric: true,
+          },
           cell: ({ row }) =>
             row.original.price
               ? formatCatalogPrice(row.original.price)
@@ -84,9 +86,10 @@ export function ProductTable({
         columnHelper.display({
           id: "actions",
           header: "Actions",
+          meta: { align: "right" },
           cell: ({ row }) => (
             <Link
-              className={buttonVariants({ variant: "outline" })}
+              className={buttonVariants({ size: "lg", variant: "outline" })}
               aria-label={`Edit ${row.original.name}`}
               href={`/admin/catalog/${encodeURIComponent(row.original.id)}/edit`}
               prefetch={false}

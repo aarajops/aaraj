@@ -6,9 +6,10 @@ const apiPort = 3181;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "catalog.spec.ts",
+  testMatch: ["admin-datatables.spec.ts", "catalog.spec.ts", "orders.spec.ts"],
   fullyParallel: false,
   workers: 1,
+  preserveOutput: "always",
   reporter: "list",
   use: {
     baseURL: `http://${host}:${webPort}`,

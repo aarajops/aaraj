@@ -4,11 +4,36 @@ import { headers } from "next/headers";
 import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
 import {
   API_V1_BASE_PATH,
+  OrderListQuerySchema,
   OrderManagementListSchema,
   OrderSchema,
   type Order,
+  type OrderListQuery,
   type OrderManagementList,
 } from "@aaraj/contracts";
+
+export type OrdersPageSearchParams = {
+  limit?: string | string[];
+  offset?: string | string[];
+  search?: string | string[];
+};
+
+const defaultOrderListQuery = OrderListQuerySchema.parse({});
+
+export function parseOrdersPageQuery(
+  searchParams: OrdersPageSearchParams,
+): OrderListQuery {
+  if (
+    Array.isArray(searchParams.limit) ||
+    Array.isArray(searchParams.offset) ||
+    Array.isArray(searchParams.search)
+  ) {
+    return defaultOrderListQuery;
+  }
+
+  const result = OrderListQuerySchema.safeParse(searchParams);
+  return result.success ? result.data : defaultOrderListQuery;
+}
 
 type StaffOrderResult<T> =
   | { value: T }
@@ -19,12 +44,17 @@ async function requestHeaders(): Promise<HeadersInit> {
   return cookie ? { cookie } : {};
 }
 
-export async function getManagedOrders(): Promise<
-  StaffOrderResult<OrderManagementList>
-> {
+export async function getManagedOrders(
+  query: OrderListQuery,
+): Promise<StaffOrderResult<OrderManagementList>> {
   try {
+    const search = new URLSearchParams({
+      limit: String(query.limit),
+      offset: String(query.offset),
+    });
+    if (query.search) search.set("search", query.search);
     const response = await fetch(
-      `${getApiInternalUrl()}${API_V1_BASE_PATH}/orders/manage?limit=50&offset=0`,
+      `${getApiInternalUrl()}${API_V1_BASE_PATH}/orders/manage?${search}`,
       { headers: await requestHeaders(), cache: "no-store" },
     );
     if (response.status === 401) return { kind: "unauthenticated" };
