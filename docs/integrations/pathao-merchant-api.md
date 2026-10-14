@@ -189,7 +189,7 @@ Example payloads in the supplied material include `consignment_id`, `merchant_or
 
 The relevant implementation is in `apps/api/src/delivery/pathao/`. Its sandbox/live hosts match the supplied material; it implements token issuance/refresh, store listing, order creation, order-info lookup, and the webhook callback. It currently accepts only the documented delivery-type numbers `12` and `48`. The webhook route is `/api/v1/delivery/pathao/webhook` and returns HTTP `202` with the integration handshake header.
 
-Those code facts do not establish that a real Pathao request has succeeded. CI uses deterministic mocks. Keep Pathao disabled until sandbox authentication, store listing, an isolated sandbox order, and webhook delivery have been exercised and the merchant-specific settings have been verified. Live use has additional AARAJ approval and credential-rotation gates; the supplied docs alone do not satisfy them.
+Those code facts do not establish that a real Pathao request has succeeded. CI uses deterministic mocks. Sandbox mode can be provisioned from the protected GitHub Environment once its credentials and approved store ID are configured. Verify sandbox authentication, store listing, an isolated sandbox order, and webhook delivery before relying on fulfillment. Live use has additional AARAJ approval and credential-rotation gates; the supplied docs alone do not satisfy them.
 
 ## Environment configuration interpretation
 
@@ -198,7 +198,7 @@ For GitHub Environment `aaraj-production`:
 - Use Environment **Secrets** for client secrets, login passwords, the merchant-configured webhook secret, and AARAJ's token-encryption key.
 - Use Environment **Variables** for `PATHAO_MODE` and AARAJ's approved sandbox store IDs.
 - Pathao documents `48` as Normal Delivery and `12` as On Demand Delivery for the required order field. Those general API definitions do not establish which service this merchant account supports. AARAJ does not offer a delivery-type choice or submit bookings until the merchant account's supported type is confirmed.
-- Keep `PATHAO_MODE=disabled` unless a reviewed release explicitly permits sandbox activation. GitHub configuration storage by itself does not make API calls.
+- The deployment workflow accepts `PATHAO_MODE=sandbox` when the required GitHub settings pass validation. Its privileged VPS helper rejects `live`. GitHub configuration storage by itself does not make API calls; a successful deployment and service restart apply the settings.
 
 These names and rules describe AARAJ's deployment boundary, not Pathao's own configuration interface.
 

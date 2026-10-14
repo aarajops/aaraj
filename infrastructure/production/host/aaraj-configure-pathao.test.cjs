@@ -516,7 +516,7 @@ test("syntax-checks the staged Pathao helper from stdin despite its temporary su
   );
 });
 
-test("validates Pathao before VPS access, pins the first rollout disabled, and restores interrupted changes", () => {
+test("validates Pathao before VPS access and restores interrupted changes", () => {
   const workflow = fs.readFileSync(
     path.join(__dirname, "../../../.github/workflows/production-release.yml"),
     "utf8",
@@ -533,7 +533,11 @@ test("validates Pathao before VPS access, pins the first rollout disabled, and r
   assert.ok(cleanup > activation);
   assert.match(
     workflow.slice(provision, stage),
-    /PATHAO_MODE" != disabled[\s\S]*?buildPayload\(process\.env/,
+    /buildPayload\(process\.env[\s\S]*?deploy-release\.sh pathao-apply/,
+  );
+  assert.doesNotMatch(
+    workflow.slice(provision, stage),
+    /PATHAO_MODE" != disabled/,
   );
   assert.match(
     workflow.slice(cleanup),
