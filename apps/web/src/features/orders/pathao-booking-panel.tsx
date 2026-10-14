@@ -91,14 +91,11 @@ export function PathaoBookingPanel({
       setParcelWeightKg(
         (value) => value || String(booking.booking!.parcelWeightKg),
       );
+    } else {
+      setDeliveryType("");
     }
     if (bookingOptions?.stores[0]) {
       setStoreId((value) => value || String(bookingOptions.stores[0]!.storeId));
-    }
-    if (bookingOptions?.deliveryTypes[0]) {
-      setDeliveryType(
-        (value) => value || String(bookingOptions.deliveryTypes[0]),
-      );
     }
   }
 
@@ -356,9 +353,7 @@ export function PathaoBookingPanel({
       ) : null}
 
       {eligible && !booking && !details?.claimStatus ? (
-        options &&
-        options.stores.length > 0 &&
-        options.deliveryTypes.length > 0 ? (
+        options && options.stores.length > 0 && deliveryType ? (
           <div className="mt-5 grid gap-4">
             <label className="grid gap-2 text-sm font-medium">
               Approved Pathao store
@@ -370,20 +365,6 @@ export function PathaoBookingPanel({
                 {options.stores.map((store) => (
                   <option key={store.storeId} value={store.storeId}>
                     {store.storeName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Enabled delivery service
-              <select
-                className="h-10 rounded-md border border-input bg-background px-3"
-                value={deliveryType}
-                onChange={(event) => setDeliveryType(event.target.value)}
-              >
-                {options.deliveryTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type === 48 ? "Normal delivery" : "On-demand delivery"}
                   </option>
                 ))}
               </select>
@@ -434,8 +415,10 @@ export function PathaoBookingPanel({
           </div>
         ) : (
           <p className="mt-5 text-sm text-muted-foreground">
-            Pathao booking is disabled until Operations configures an approved
-            merchant store and enabled delivery service for this environment.
+            Pathao booking is paused until Operations has an approved active
+            store and confirms this merchant account&apos;s supported delivery
+            type. Pathao requires that value for order creation; AARAJ will not
+            guess it from the general API code list.
           </p>
         )
       ) : null}
@@ -443,8 +426,7 @@ export function PathaoBookingPanel({
       {eligible &&
         options &&
         booking?.status !== "booked" &&
-        options.stores.length > 0 &&
-        options.deliveryTypes.length > 0 && (
+        options.stores.length > 0 && (
           <details className="mt-6 rounded-xl border border-border p-4">
             <summary className="cursor-pointer font-medium">
               Reconcile an existing Pathao consignment

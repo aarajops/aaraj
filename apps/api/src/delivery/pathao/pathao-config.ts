@@ -13,7 +13,6 @@ export type PathaoConfiguration = {
   webhookSecret: string;
   tokenEncryptionKey: Buffer;
   approvedStoreIds: ReadonlySet<number>;
-  allowedDeliveryTypes: ReadonlySet<12 | 48>;
   passwordGrantProductionApproved: boolean;
 };
 
@@ -88,10 +87,6 @@ export function readPathaoConfiguration(
       environment[`${prefix}_APPROVED_STORE_IDS`],
       `${prefix}_APPROVED_STORE_IDS`,
     ),
-    allowedDeliveryTypes: readDeliveryTypes(
-      environment[`${prefix}_DELIVERY_TYPES`],
-      `${prefix}_DELIVERY_TYPES`,
-    ),
     passwordGrantProductionApproved,
   };
 }
@@ -140,24 +135,4 @@ function readIntegerSet(value: string | undefined, name: string): Set<number> {
     throw new Error(`${name} must not contain duplicate IDs.`);
   }
   return new Set(values);
-}
-
-function readDeliveryTypes(
-  value: string | undefined,
-  name: string,
-): Set<12 | 48> {
-  const normalized = value?.trim();
-  if (!normalized) {
-    throw new Error(`${name} must contain at least one delivery type.`);
-  }
-  const items = normalized.split(",");
-  if (items.some((item) => item !== "12" && item !== "48")) {
-    throw new Error(
-      `${name} may contain only Pathao delivery types 12 and 48.`,
-    );
-  }
-  if (new Set(items).size !== items.length) {
-    throw new Error(`${name} must not contain duplicate delivery types.`);
-  }
-  return new Set(items.map(Number) as Array<12 | 48>);
 }
