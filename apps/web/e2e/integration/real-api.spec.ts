@@ -581,41 +581,12 @@ test("catalog operator configures a product through to storefront visibility", a
     name: "Pathao courier booking",
   });
   await expect(pathaoPanel).toBeVisible();
-  await expect(pathaoPanel.getByLabel("Approved Pathao store")).toHaveValue(
-    "101",
-  );
-  await pathaoPanel.getByLabel("Actual parcel count").first().fill("1");
-  await pathaoPanel
-    .getByLabel("Actual parcel weight (kg)")
-    .first()
-    .fill("0.75");
-  const pathaoBookingRequest = page.waitForRequest(
-    (request) =>
-      request.method() === "POST" &&
-      request
-        .url()
-        .endsWith(
-          `/api/v1/delivery/pathao/manage/orders/${customerOrderId}/book`,
-        ),
-  );
-  await pathaoPanel
-    .getByRole("button", { name: "Create Pathao booking" })
-    .click();
-  const pathaoRequest = await pathaoBookingRequest;
-  expect(pathaoRequest.headers()["idempotency-key"]).toMatch(
-    /^[0-9a-f-]{36}$/i,
-  );
-  expect(pathaoRequest.postDataJSON()).toMatchObject({
-    storeId: 101,
-    deliveryType: 48,
-    parcelQuantity: 1,
-    parcelWeightKg: 0.75,
-  });
-  await expect(pathaoPanel.getByText("Booked", { exact: true })).toBeVisible();
-  await expect(pathaoPanel.getByText("PATHAO-BROWSER-E2E-01")).toBeVisible();
   await expect(pathaoPanel).toContainText(
-    "This is a merchant cost observation; it does not change the customer's COD amount.",
+    "Pathao booking is paused until Operations has an approved active store and confirms this merchant account's supported delivery type.",
   );
+  await expect(
+    pathaoPanel.getByRole("button", { name: "Create Pathao booking" }),
+  ).toHaveCount(0);
 
   await page.getByLabel("Delivery operator").fill("Integration Dispatch Desk");
   await page
@@ -672,13 +643,7 @@ test("catalog operator configures a product through to storefront visibility", a
   const pathaoTracking = page.getByRole("region", {
     name: "Pathao delivery tracking",
   });
-  await expect(pathaoTracking).toBeVisible();
-  await expect(pathaoTracking).toContainText("PATHAO-BROWSER-E2E-01");
-  await expect(pathaoTracking).toContainText("Booked");
-  await expect(pathaoTracking).toContainText(
-    "Courier tracking does not confirm COD collection or remittance.",
-  );
-  await expect(pathaoTracking).not.toContainText("83.46");
+  await expect(pathaoTracking).toHaveCount(0);
   await expect(
     page.getByRole("status").filter({
       hasText: "has not been marked delivered or paid",
