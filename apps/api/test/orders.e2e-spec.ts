@@ -86,7 +86,6 @@ describe("COD Orders and checkout", () => {
     "PATHAO_SANDBOX_PASSWORD",
     "PATHAO_SANDBOX_WEBHOOK_SECRET",
     "PATHAO_SANDBOX_APPROVED_STORE_IDS",
-    "PATHAO_SANDBOX_DELIVERY_TYPES",
   ];
   const previousPathaoEnvironment = new Map<string, string | undefined>();
 
@@ -566,7 +565,6 @@ describe("COD Orders and checkout", () => {
       PATHAO_SANDBOX_PASSWORD: "test-only-password",
       PATHAO_SANDBOX_WEBHOOK_SECRET: "pathao-test-webhook-secret",
       PATHAO_SANDBOX_APPROVED_STORE_IDS: "101",
-      PATHAO_SANDBOX_DELIVERY_TYPES: "48",
     });
     const module = await Test.createTestingModule({
       imports: [AppModule],

@@ -134,7 +134,6 @@ try {
     PATHAO_SANDBOX_PASSWORD: "pathao-browser-e2e-only-password",
     PATHAO_SANDBOX_WEBHOOK_SECRET: "pathao-browser-e2e-webhook-secret",
     PATHAO_SANDBOX_APPROVED_STORE_IDS: "101",
-    PATHAO_SANDBOX_DELIVERY_TYPES: "48",
   });
 
   const networkFetch = globalThis.fetch.bind(globalThis);

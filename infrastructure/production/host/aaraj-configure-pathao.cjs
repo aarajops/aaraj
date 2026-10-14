@@ -20,17 +20,16 @@ const PATHAO_KEYS = [
   "PATHAO_SANDBOX_PASSWORD",
   "PATHAO_SANDBOX_WEBHOOK_SECRET",
   "PATHAO_SANDBOX_APPROVED_STORE_IDS",
-  "PATHAO_SANDBOX_DELIVERY_TYPES",
   "PATHAO_LIVE_CLIENT_ID",
   "PATHAO_LIVE_CLIENT_SECRET",
   "PATHAO_LIVE_USERNAME",
   "PATHAO_LIVE_PASSWORD",
   "PATHAO_LIVE_WEBHOOK_SECRET",
   "PATHAO_LIVE_APPROVED_STORE_IDS",
-  "PATHAO_LIVE_DELIVERY_TYPES",
   "PATHAO_LIVE_CREDENTIALS_ROTATED",
   "PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED",
 ];
+const MANAGED_PATHAO_KEYS = PATHAO_KEYS;
 const SANDBOX_CREDENTIAL_KEYS = [
   "PATHAO_SANDBOX_CLIENT_ID",
   "PATHAO_SANDBOX_CLIENT_SECRET",
@@ -38,10 +37,7 @@ const SANDBOX_CREDENTIAL_KEYS = [
   "PATHAO_SANDBOX_PASSWORD",
   "PATHAO_SANDBOX_WEBHOOK_SECRET",
 ];
-const SANDBOX_ALLOWLIST_KEYS = [
-  "PATHAO_SANDBOX_APPROVED_STORE_IDS",
-  "PATHAO_SANDBOX_DELIVERY_TYPES",
-];
+const SANDBOX_ALLOWLIST_KEYS = ["PATHAO_SANDBOX_APPROVED_STORE_IDS"];
 const LIVE_KEYS = PATHAO_KEYS.filter(
   (key) =>
     key.startsWith("PATHAO_LIVE_") ||
@@ -126,7 +122,10 @@ function parseRuntimeEnv(contents) {
     const [, key] = match;
     if (values.has(key))
       fail(`Runtime environment file contains duplicate key ${key}.`);
-    if (key.startsWith("PATHAO_") && !PATHAO_KEYS.includes(key)) {
+    if (
+      key.startsWith("PATHAO_") &&
+      !MANAGED_PATHAO_KEYS.includes(key)
+    ) {
       fail(`Runtime environment file contains unauthorized key ${key}.`);
     }
     let parsed;
@@ -196,15 +195,6 @@ function validateStoreIds(value) {
   }
 }
 
-function validateDeliveryTypes(value) {
-  if (!value || !/^(12|48)(,(12|48))*$/.test(value)) {
-    fail("PATHAO_SANDBOX_DELIVERY_TYPES must contain 12 and/or 48.");
-  }
-  const types = value.split(",");
-  if (new Set(types).size !== types.length)
-    fail("PATHAO_SANDBOX_DELIVERY_TYPES contains duplicates.");
-}
-
 function validateConfiguration(inputValues, existingValues) {
   const mode = inputValues.get("PATHAO_MODE");
   if (mode === "live")
@@ -261,7 +251,6 @@ function validateConfiguration(inputValues, existingValues) {
     result.set(key, value);
   }
   validateStoreIds(inputValues.get("PATHAO_SANDBOX_APPROVED_STORE_IDS"));
-  validateDeliveryTypes(inputValues.get("PATHAO_SANDBOX_DELIVERY_TYPES"));
   for (const key of SANDBOX_ALLOWLIST_KEYS)
     result.set(key, inputValues.get(key));
   return result;
@@ -326,7 +315,7 @@ function rewriteRuntimeEnv(contents, desiredValues) {
     output.push(`${record.key}=${encodeEnvValue(desired)}`);
     written.add(record.key);
   }
-  for (const key of PATHAO_KEYS) {
+  for (const key of MANAGED_PATHAO_KEYS) {
     if (
       desiredValues.has(key) &&
       desiredValues.get(key) !== null &&
@@ -410,7 +399,10 @@ function atomicWrite(
 
 function pathaoSnapshot(values) {
   return Object.fromEntries(
-    PATHAO_KEYS.map((key) => [key, values.has(key) ? values.get(key) : null]),
+    MANAGED_PATHAO_KEYS.map((key) => [
+      key,
+      values.has(key) ? values.get(key) : null,
+    ]),
   );
 }
 
@@ -438,8 +430,8 @@ function parseBackup(filePath, release) {
   }
   const keys = Object.keys(snapshot.values);
   if (
-    keys.length !== PATHAO_KEYS.length ||
-    keys.some((key) => !PATHAO_KEYS.includes(key))
+    keys.length !== MANAGED_PATHAO_KEYS.length ||
+    keys.some((key) => !MANAGED_PATHAO_KEYS.includes(key))
   ) {
     fail("Pathao rollback snapshot contains unauthorized keys.");
   }
@@ -455,7 +447,7 @@ function parseBackup(filePath, release) {
 }
 
 function samePathaoValues(currentValues, desiredValues) {
-  return PATHAO_KEYS.every(
+  return MANAGED_PATHAO_KEYS.every(
     (key) => (currentValues.get(key) ?? "") === (desiredValues.get(key) ?? ""),
   );
 }

@@ -123,7 +123,6 @@ export class PathaoService {
           active: store.active,
         })),
       ),
-      deliveryTypes: [...config.allowedDeliveryTypes],
     });
   }
 
@@ -150,13 +149,6 @@ export class PathaoService {
         { errorCode: "PATHAO_STORE_NOT_APPROVED" },
       );
     }
-    if (!config.allowedDeliveryTypes.has(input.deliveryType)) {
-      throw new UnprocessableEntityException(
-        "This Pathao delivery type is not enabled for the merchant account.",
-        { errorCode: "PATHAO_DELIVERY_TYPE_NOT_ENABLED" },
-      );
-    }
-
     const fingerprint = sha256(
       JSON.stringify({
         orderId,
@@ -583,13 +575,6 @@ export class PathaoService {
         { errorCode: "PATHAO_STORE_NOT_APPROVED" },
       );
     }
-    if (!config.allowedDeliveryTypes.has(input.deliveryType)) {
-      throw new UnprocessableEntityException(
-        "This Pathao delivery type is not enabled for the merchant account.",
-        { errorCode: "PATHAO_DELIVERY_TYPE_NOT_ENABLED" },
-      );
-    }
-
     const fingerprint = sha256(JSON.stringify({ orderId, input }));
     await this.expireInterruptedBookings();
     const current = await this.findBooking(orderId);

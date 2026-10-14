@@ -16,10 +16,10 @@ Recheck the Merchant Panel documentation and AARAJ merchant agreement before cha
 
 ## Environments and credentials
 
-| Environment | Base URL | Credential source stated by Pathao |
-| --- | --- | --- |
-| Sandbox/test | `https://courier-api-sandbox.pathao.com` | The Developer API page provides test values for client ID, client secret, username, password, and the `password` grant type. The literal test values are deliberately not reproduced here. |
-| Production/live | `https://api-hermes.pathao.com` | Client ID and client secret come from the Merchant API Credentials section. |
+| Environment     | Base URL                                 | Credential source stated by Pathao                                                                                                                                                         |
+| --------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Sandbox/test    | `https://courier-api-sandbox.pathao.com` | The Developer API page provides test values for client ID, client secret, username, password, and the `password` grant type. The literal test values are deliberately not reproduced here. |
+| Production/live | `https://api-hermes.pathao.com`          | Client ID and client secret come from the Merchant API Credentials section.                                                                                                                |
 
 The token request parameter table describes `username` as the test login email or production login email and `password` as the test password or production login password. The Production/Live Environment table itself lists only base URL, client ID, and client secret. **Confirm the production login values and any account-specific credential requirements with Pathao before live use.**
 
@@ -27,7 +27,7 @@ The API page describes OAuth 2.0 access tokens. It says to persist the token for
 
 - `PATHAO_MODE` selects disabled, sandbox, or live behavior in AARAJ.
 - `PATHAO_TOKEN_ENCRYPTION_KEY` encrypts tokens in AARAJ storage.
-- `PATHAO_SANDBOX_APPROVED_STORE_IDS` and `PATHAO_SANDBOX_DELIVERY_TYPES` restrict what AARAJ staff can submit.
+- `PATHAO_SANDBOX_APPROVED_STORE_IDS` restricts which merchant stores AARAJ staff can select. AARAJ does not infer the merchant account's enabled delivery type from the general API code list.
 - `PATHAO_SANDBOX_WEBHOOK_SECRET` stores the value AARAJ supplies when configuring the Pathao webhook.
 
 Do not infer that Pathao requires these AARAJ names or that every store/service is enabled for a merchant merely because it appears in the API documentation.
@@ -60,19 +60,19 @@ The supplied documentation does not state refresh-token rotation/reuse rules, re
 
 Every path below is relative to the selected environment base URL. Authenticated requests use `Authorization: Bearer <access_token>` as shown in the supplied examples.
 
-| Operation | Method and path | Documented behavior |
-| --- | --- | --- |
-| Issue access token | `POST /aladdin/api/v1/issue-token` | Password grant; see Authentication. |
-| Refresh access token | `POST /aladdin/api/v1/issue-token` | Refresh-token grant; see Authentication. |
-| Create store | `POST /aladdin/api/v1/stores` | Creates a store from merchant contact and address/location fields. The sample success response says store approval may take one hour. |
-| Create order | `POST /aladdin/api/v1/orders` | Creates one courier order; see Create Order fields below. |
-| Create bulk orders | `POST /aladdin/api/v1/orders/bulk` | Accepts an `orders` array. The documented sample response is HTTP `202` and says creation is accepted for later completion. |
-| Get order short info | `GET /aladdin/api/v1/orders/{consignment_id}/info` | Returns consignment/order status and timestamp information. |
-| List cities | `GET /aladdin/api/v1/city-list` | Returns Pathao city identifiers and names. |
-| List zones for a city | `GET /aladdin/api/v1/cities/{city_id}/zone-list` | Returns zone identifiers and names for the supplied city. |
-| List areas for a zone | `GET /aladdin/api/v1/zones/{zone_id}/area-list` | Returns area identifiers/names and `home_delivery_available` / `pickup_available` flags. |
-| Calculate price | `POST /aladdin/api/v1/merchant/price-plan` | Calculates a price for store, item, delivery type, weight, city, and zone. |
-| List merchant stores | `GET /aladdin/api/v1/stores` | Returns store IDs, names, addresses, active state, location IDs, hub ID, and default-store flags. |
+| Operation             | Method and path                                    | Documented behavior                                                                                                                   |
+| --------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Issue access token    | `POST /aladdin/api/v1/issue-token`                 | Password grant; see Authentication.                                                                                                   |
+| Refresh access token  | `POST /aladdin/api/v1/issue-token`                 | Refresh-token grant; see Authentication.                                                                                              |
+| Create store          | `POST /aladdin/api/v1/stores`                      | Creates a store from merchant contact and address/location fields. The sample success response says store approval may take one hour. |
+| Create order          | `POST /aladdin/api/v1/orders`                      | Creates one courier order; see Create Order fields below.                                                                             |
+| Create bulk orders    | `POST /aladdin/api/v1/orders/bulk`                 | Accepts an `orders` array. The documented sample response is HTTP `202` and says creation is accepted for later completion.           |
+| Get order short info  | `GET /aladdin/api/v1/orders/{consignment_id}/info` | Returns consignment/order status and timestamp information.                                                                           |
+| List cities           | `GET /aladdin/api/v1/city-list`                    | Returns Pathao city identifiers and names.                                                                                            |
+| List zones for a city | `GET /aladdin/api/v1/cities/{city_id}/zone-list`   | Returns zone identifiers and names for the supplied city.                                                                             |
+| List areas for a zone | `GET /aladdin/api/v1/zones/{zone_id}/area-list`    | Returns area identifiers/names and `home_delivery_available` / `pickup_available` flags.                                              |
+| Calculate price       | `POST /aladdin/api/v1/merchant/price-plan`         | Calculates a price for store, item, delivery type, weight, city, and zone.                                                            |
+| List merchant stores  | `GET /aladdin/api/v1/stores`                       | Returns store IDs, names, addresses, active state, location IDs, hub ID, and default-store flags.                                     |
 
 The supplied API capture does not document API rate limits, retry rules, or guarantees that create-order requests are idempotent. Do not infer those guarantees from AARAJ's own idempotency controls.
 
@@ -95,24 +95,24 @@ The Get Merchant Store Info operation returns paginated `data.data` entries. Doc
 
 The single-order endpoint is `POST /aladdin/api/v1/orders`. The supplied parameter table states:
 
-| Field | Required | Documented rule |
-| --- | --- | --- |
-| `store_id` | Yes | Merchant-provided store ID; determines pickup location; integer. |
-| `merchant_order_id` | No | Merchant's order/tracking reference. |
-| `recipient_name` | Yes | 3–100 characters. |
-| `recipient_phone` | Yes | 11 characters. |
-| `recipient_secondary_phone` | No | If supplied, 11 characters. |
-| `recipient_address` | Yes | Full address, 10–220 characters. |
-| `recipient_city` | No | Omit if not supplied; Pathao says it can be populated from the full address. Do not send `null`. |
-| `recipient_zone` | No | Same omission/address-mapping rule as city. |
-| `recipient_area` | No | Optional; Pathao says it can be populated from the full address. Do not send `null`. |
-| `delivery_type` | Yes | `48` = Normal Delivery; `12` = On Demand Delivery. |
-| `item_type` | Yes | `1` = Document; `2` = Parcel. |
-| `special_instruction` | No | Optional instruction. |
-| `item_quantity` | Yes | Parcel quantity. |
-| `item_weight` | Yes | Float, 0.5–10 kg. |
-| `item_description` | No | Optional parcel description. |
-| `amount_to_collect` | Yes | Recipient-payable/collectible amount; documentation says use `0` for non-COD. |
+| Field                       | Required | Documented rule                                                                                  |
+| --------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `store_id`                  | Yes      | Merchant-provided store ID; determines pickup location; integer.                                 |
+| `merchant_order_id`         | No       | Merchant's order/tracking reference.                                                             |
+| `recipient_name`            | Yes      | 3–100 characters.                                                                                |
+| `recipient_phone`           | Yes      | 11 characters.                                                                                   |
+| `recipient_secondary_phone` | No       | If supplied, 11 characters.                                                                      |
+| `recipient_address`         | Yes      | Full address, 10–220 characters.                                                                 |
+| `recipient_city`            | No       | Omit if not supplied; Pathao says it can be populated from the full address. Do not send `null`. |
+| `recipient_zone`            | No       | Same omission/address-mapping rule as city.                                                      |
+| `recipient_area`            | No       | Optional; Pathao says it can be populated from the full address. Do not send `null`.             |
+| `delivery_type`             | Yes      | `48` = Normal Delivery; `12` = On Demand Delivery.                                               |
+| `item_type`                 | Yes      | `1` = Document; `2` = Parcel.                                                                    |
+| `special_instruction`       | No       | Optional instruction.                                                                            |
+| `item_quantity`             | Yes      | Parcel quantity.                                                                                 |
+| `item_weight`               | Yes      | Float, 0.5–10 kg.                                                                                |
+| `item_description`          | No       | Optional parcel description.                                                                     |
+| `amount_to_collect`         | Yes      | Recipient-payable/collectible amount; documentation says use `0` for non-COD.                    |
 
 The sample success response is HTTP `200` with `consignment_id`, optional `merchant_order_id`, `order_status`, and `delivery_fee`.
 
@@ -154,32 +154,32 @@ The documentation says Pathao sends `X-PATHAO-Signature` with the secret supplie
 
 The supplied page lists these event labels and example event names:
 
-| Merchant Panel event | Example `event` value |
-| --- | --- |
-| Order Created | `order.created` |
-| Order Updated | `order.updated` |
-| Pickup Requested | `order.pickup-requested` |
-| Assigned For Pickup | `order.assigned-for-pickup` |
-| Pickup | `order.picked` |
-| Pickup Failed | `order.pickup-failed` |
-| Pickup Cancelled | `order.pickup-cancelled` |
-| At the Sorting Hub | `order.at-the-sorting-hub` |
-| In Transit | `order.in-transit` |
+| Merchant Panel event      | Example `event` value             |
+| ------------------------- | --------------------------------- |
+| Order Created             | `order.created`                   |
+| Order Updated             | `order.updated`                   |
+| Pickup Requested          | `order.pickup-requested`          |
+| Assigned For Pickup       | `order.assigned-for-pickup`       |
+| Pickup                    | `order.picked`                    |
+| Pickup Failed             | `order.pickup-failed`             |
+| Pickup Cancelled          | `order.pickup-cancelled`          |
+| At the Sorting Hub        | `order.at-the-sorting-hub`        |
+| In Transit                | `order.in-transit`                |
 | Received at Last Mile Hub | `order.received-at-last-mile-hub` |
-| Assigned for Delivery | `order.assigned-for-delivery` |
-| Delivered | `order.delivered` |
-| Partial Delivery | `order.partial-delivery` |
-| Return | `order.returned` |
-| Delivery Failed | `order.delivery-failed` |
-| On Hold | `order.on-hold` |
-| Payment Invoice | `order.paid` |
-| Paid Return | `order.paid-return` |
-| Exchange | `order.exchanged` |
-| Store Created | `store.created` |
-| Store Updated | `store.updated` |
-| Return Id Created | `order.return-id-created` |
-| Return In Transit | `order.return-in-transit` |
-| Returned To Merchant | `order.returned-to-merchant` |
+| Assigned for Delivery     | `order.assigned-for-delivery`     |
+| Delivered                 | `order.delivered`                 |
+| Partial Delivery          | `order.partial-delivery`          |
+| Return                    | `order.returned`                  |
+| Delivery Failed           | `order.delivery-failed`           |
+| On Hold                   | `order.on-hold`                   |
+| Payment Invoice           | `order.paid`                      |
+| Paid Return               | `order.paid-return`               |
+| Exchange                  | `order.exchanged`                 |
+| Store Created             | `store.created`                   |
+| Store Updated             | `store.updated`                   |
+| Return Id Created         | `order.return-id-created`         |
+| Return In Transit         | `order.return-in-transit`         |
+| Returned To Merchant      | `order.returned-to-merchant`      |
 
 Example payloads in the supplied material include `consignment_id`, `merchant_order_id`, `store_id`, `event`, `updated_at`, and `timestamp`. Depending on event, examples also include `delivery_fee`, `collected_amount`, `invoice_id`, `return_consignment_id`, `return_type`, and `reason`. The page explicitly says `reason` may be absent in some cases. These are examples, not a complete required-field schema for every event.
 
@@ -196,8 +196,8 @@ Those code facts do not establish that a real Pathao request has succeeded. CI u
 For GitHub Environment `aaraj-production`:
 
 - Use Environment **Secrets** for client secrets, login passwords, the merchant-configured webhook secret, and AARAJ's token-encryption key.
-- Use Environment **Variables** for `PATHAO_MODE` and AARAJ's approved store/delivery-type allowlists.
-- `PATHAO_SANDBOX_DELIVERY_TYPES` accepts only codes that Pathao documents and that AARAJ has verified for the specific sandbox account. The supplied Pathao capture documents `48` and `12`; it does not establish that both services are enabled for every account.
+- Use Environment **Variables** for `PATHAO_MODE` and AARAJ's approved sandbox store IDs.
+- Pathao documents `48` as Normal Delivery and `12` as On Demand Delivery for the required order field. Those general API definitions do not establish which service this merchant account supports. AARAJ does not offer a delivery-type choice or submit bookings until the merchant account's supported type is confirmed.
 - Keep `PATHAO_MODE=disabled` unless a reviewed release explicitly permits sandbox activation. GitHub configuration storage by itself does not make API calls.
 
 These names and rules describe AARAJ's deployment boundary, not Pathao's own configuration interface.

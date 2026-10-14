@@ -28,7 +28,6 @@ const DUMMY_CREDENTIALS = {
   PATHAO_SANDBOX_PASSWORD: "dummy-password-456",
   PATHAO_SANDBOX_WEBHOOK_SECRET: "dummy-webhook-secret-789",
   PATHAO_SANDBOX_APPROVED_STORE_IDS: "101,202",
-  PATHAO_SANDBOX_DELIVERY_TYPES: "12,48",
 };
 
 function configuration(mode = "sandbox", overrides = {}) {
@@ -97,7 +96,6 @@ test("applies complete sandbox settings atomically and preserves unrelated entri
   assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, CLIENT_SECRET);
   assert.equal(env.PATHAO_TOKEN_ENCRYPTION_KEY, TOKEN_KEY);
   assert.equal(env.PATHAO_SANDBOX_APPROVED_STORE_IDS, "101,202");
-  assert.equal(env.PATHAO_SANDBOX_DELIVERY_TYPES, "12,48");
   assert.equal(env.PATHAO_LIVE_CLIENT_SECRET, "");
   assert.equal(env.PATHAO_LIVE_CREDENTIALS_ROTATED, "false");
   assert.match(contents, /^# Keep this comment$/m);
@@ -142,31 +140,16 @@ test("keeps shell-looking credential text literal in the Node env file", (t) => 
   assert.equal(fs.existsSync("/tmp/aaraj-pathao-injection-marker"), false);
 });
 
-test("disabled mode clears stale Pathao credentials and preserves the existing encryption key", (t) => {
+test("rejects unrecognized Pathao runtime keys without changing the file", (t) => {
   const initial = [
     "APP_NAME=aaraj",
-    `PATHAO_MODE='sandbox'`,
-    `PATHAO_TOKEN_ENCRYPTION_KEY='${TOKEN_KEY}'`,
-    "PATHAO_SANDBOX_CLIENT_SECRET='stale-secret'",
-    "PATHAO_SANDBOX_APPROVED_STORE_IDS='101'",
-    "PATHAO_SANDBOX_DELIVERY_TYPES='48'",
-    "PATHAO_LIVE_CREDENTIALS_ROTATED=true",
-    "PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED=true",
+    "PATHAO_UNRECOGNIZED_SETTING=anything",
     "",
   ].join("\n");
   const fx = fixture(t, initial);
-  const disabled = configuration("disabled");
-  disabled.set("PATHAO_TOKEN_ENCRYPTION_KEY", "");
-  assert.equal(apply(fx, disabled), "applied");
-  const env = runtimeValues(fx);
-  assert.equal(env.PATHAO_MODE, "disabled");
-  assert.equal(env.PATHAO_TOKEN_ENCRYPTION_KEY, TOKEN_KEY);
-  assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, "");
-  assert.equal(env.PATHAO_SANDBOX_APPROVED_STORE_IDS, "");
-  assert.equal(env.PATHAO_SANDBOX_DELIVERY_TYPES, "");
-  assert.equal(env.PATHAO_LIVE_CREDENTIALS_ROTATED, "false");
-  assert.equal(env.PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED, "false");
-  assert.equal(env.APP_NAME, "aaraj");
+  assert.throws(() => apply(fx, configuration("disabled")), /unauthorized key/);
+  assert.equal(fs.readFileSync(fx.runtimeEnvPath, "utf8"), initial);
+  assert.equal(fs.existsSync(fx.backupPath), false);
 });
 
 test("provisions disabled mode against the documented runtime environment example", (t) => {
@@ -205,8 +188,6 @@ test("rejects a missing mode and incomplete or malformed sandbox configuration",
     ],
     ["PATHAO_SANDBOX_APPROVED_STORE_IDS", "", /APPROVED_STORE_IDS/],
     ["PATHAO_SANDBOX_APPROVED_STORE_IDS", "101,01", /APPROVED_STORE_IDS/],
-    ["PATHAO_SANDBOX_DELIVERY_TYPES", "48,24", /DELIVERY_TYPES/],
-    ["PATHAO_SANDBOX_DELIVERY_TYPES", "48,48", /duplicates/],
     ["PATHAO_SANDBOX_PASSWORD", "bad'password", /unsupported characters/],
   ]) {
     const invalid = configuration("sandbox", { [key]: value });
@@ -283,7 +264,6 @@ test("rejects live mode even when live credentials and approval flags are suppli
     PATHAO_LIVE_PASSWORD: "dummy-live-password",
     PATHAO_LIVE_WEBHOOK_SECRET: "dummy-live-webhook",
     PATHAO_LIVE_APPROVED_STORE_IDS: "901",
-    PATHAO_LIVE_DELIVERY_TYPES: "48",
     PATHAO_LIVE_CREDENTIALS_ROTATED: "true",
     PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED: "true",
   });

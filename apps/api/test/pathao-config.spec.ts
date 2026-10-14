@@ -12,7 +12,6 @@ const sandboxEnvironment: NodeJS.ProcessEnv = {
   PATHAO_SANDBOX_PASSWORD: "test-password",
   PATHAO_SANDBOX_WEBHOOK_SECRET: "test-webhook-secret",
   PATHAO_SANDBOX_APPROVED_STORE_IDS: "101,102",
-  PATHAO_SANDBOX_DELIVERY_TYPES: "12,48",
 };
 
 describe("Pathao configuration", () => {
@@ -20,7 +19,7 @@ describe("Pathao configuration", () => {
     expect(readPathaoConfiguration({})).toBeNull();
   });
 
-  it("selects only the fixed sandbox host and validated account allowlists", () => {
+  it("selects the fixed sandbox host and validates approved store IDs", () => {
     const configuration = readPathaoConfiguration({
       ...sandboxEnvironment,
       PATHAO_BASE_URL: "https://attacker.example",
@@ -29,11 +28,10 @@ describe("Pathao configuration", () => {
       mode: "sandbox",
       baseUrl: "https://courier-api-sandbox.pathao.com",
       approvedStoreIds: new Set([101, 102]),
-      allowedDeliveryTypes: new Set([12, 48]),
     });
   });
 
-  it("requires nonempty, valid sandbox store and delivery allowlists", () => {
+  it("requires nonempty, valid sandbox store IDs", () => {
     expect(() =>
       readPathaoConfiguration({
         ...sandboxEnvironment,
@@ -46,18 +44,6 @@ describe("Pathao configuration", () => {
         PATHAO_SANDBOX_APPROVED_STORE_IDS: "101,101",
       }),
     ).toThrow("duplicate IDs");
-    expect(() =>
-      readPathaoConfiguration({
-        ...sandboxEnvironment,
-        PATHAO_SANDBOX_DELIVERY_TYPES: "",
-      }),
-    ).toThrow("PATHAO_SANDBOX_DELIVERY_TYPES");
-    expect(() =>
-      readPathaoConfiguration({
-        ...sandboxEnvironment,
-        PATHAO_SANDBOX_DELIVERY_TYPES: "12,24",
-      }),
-    ).toThrow("12 and 48");
   });
 
   it("blocks live use until credentials are rotated and the password-grant exception is approved", () => {
@@ -70,7 +56,6 @@ describe("Pathao configuration", () => {
       PATHAO_LIVE_PASSWORD: "test-live-password",
       PATHAO_LIVE_WEBHOOK_SECRET: "test-live-webhook-secret",
       PATHAO_LIVE_APPROVED_STORE_IDS: "201",
-      PATHAO_LIVE_DELIVERY_TYPES: "48",
     };
     expect(() => readPathaoConfiguration(liveEnvironment)).toThrow(
       "Pathao live credentials must be rotated before activation.",
