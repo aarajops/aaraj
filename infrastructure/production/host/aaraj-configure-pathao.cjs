@@ -122,10 +122,7 @@ function parseRuntimeEnv(contents) {
     const [, key] = match;
     if (values.has(key))
       fail(`Runtime environment file contains duplicate key ${key}.`);
-    if (
-      key.startsWith("PATHAO_") &&
-      !MANAGED_PATHAO_KEYS.includes(key)
-    ) {
+    if (key.startsWith("PATHAO_") && !MANAGED_PATHAO_KEYS.includes(key)) {
       fail(`Runtime environment file contains unauthorized key ${key}.`);
     }
     let parsed;
