@@ -223,7 +223,70 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Stage, migrate, activate, and verify AARAJ
+      - name: Validate and provision Pathao runtime configuration
+        env:
+          RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
+          AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
+          AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
+          AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
+          AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
+          PATHAO_MODE: ${{ vars.PATHAO_MODE }}
+          PATHAO_SANDBOX_APPROVED_STORE_IDS: ${{ vars.PATHAO_SANDBOX_APPROVED_STORE_IDS }}
+          PATHAO_SANDBOX_DELIVERY_TYPES: ${{ vars.PATHAO_SANDBOX_DELIVERY_TYPES }}
+          PATHAO_TOKEN_ENCRYPTION_KEY: ${{ secrets.PATHAO_TOKEN_ENCRYPTION_KEY }}
+          PATHAO_SANDBOX_CLIENT_ID: ${{ secrets.PATHAO_SANDBOX_CLIENT_ID }}
+          PATHAO_SANDBOX_CLIENT_SECRET: ${{ secrets.PATHAO_SANDBOX_CLIENT_SECRET }}
+          PATHAO_SANDBOX_USERNAME: ${{ secrets.PATHAO_SANDBOX_USERNAME }}
+          PATHAO_SANDBOX_PASSWORD: ${{ secrets.PATHAO_SANDBOX_PASSWORD }}
+          PATHAO_SANDBOX_WEBHOOK_SECRET: ${{ secrets.PATHAO_SANDBOX_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ "$PATHAO_MODE" != disabled ]]; then
+            echo 'The initial production rollout requires PATHAO_MODE=disabled; sandbox activation needs a separate reviewed change.' >&2
+            exit 1
+          fi
+          node -e 'const { buildPayload } = require("./infrastructure/production/host/aaraj-configure-pathao.cjs"); buildPayload(process.env, process.env.RELEASE_COMMIT);' >/dev/null
+          if node <<'NODE' | bash infrastructure/production/deploy-release.sh pathao-apply "$RELEASE_COMMIT"
+          const { buildPayload } = require("./infrastructure/production/host/aaraj-configure-pathao.cjs");
+          process.stdout.write(buildPayload(process.env, process.env.RELEASE_COMMIT));
+          NODE
+          then
+            exit 0
+          fi
+          echo 'Pathao configuration provisioning failed; attempting to restore this release transaction.' >&2
+          bash infrastructure/production/deploy-release.sh pathao-restore "$RELEASE_COMMIT" || {
+            echo 'Pathao configuration restore failed. Stop rollout and recover the pending transaction before another deploy.' >&2
+            exit 1
+          }
+          exit 1
+
+      - name: Stage and migrate AARAJ
+        env:
+          RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          MIGRATION_REQUIRED: ${{ needs.migration-policy.outputs.required }}
+          AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
+          AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
+          AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
+          AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
+          AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/aaraj-release/aaraj-release.tar.gz"
+          bash infrastructure/production/deploy-release.sh stage "$RELEASE_COMMIT" "$artifact"
+
+          if [[ "$MIGRATION_REQUIRED" == true ]]; then
+            {
+              echo "Migration-bearing release $RELEASE_COMMIT is staged. The protected production job is running its migration automatically on the VPS."
+              echo
+              echo 'The release activates only after the migration service reports successful completion.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No migration files changed; the VPS migration runner will verify schema history and reconcile runtime grants before activation.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT"
+
+      - name: Activate and verify AARAJ
         env:
           RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
           MIGRATION_REQUIRED: ${{ needs.migration-policy.outputs.required }}
@@ -267,19 +330,6 @@ jobs:
 
           health_body_file="$(mktemp)"
           trap 'rm -f -- "$health_body_file"' EXIT
-          artifact="$RUNNER_TEMP/aaraj-release/aaraj-release.tar.gz"
-          bash infrastructure/production/deploy-release.sh stage "$RELEASE_COMMIT" "$artifact"
-
-          if [[ "$MIGRATION_REQUIRED" == true ]]; then
-            {
-              echo "Migration-bearing release $RELEASE_COMMIT is staged. The protected production job is running its migration automatically on the VPS."
-              echo
-              echo 'The release activates only after the migration service reports successful completion.'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'No migration files changed; the VPS migration runner will verify schema history and reconcile runtime grants before activation.' >> "$GITHUB_STEP_SUMMARY"
-          fi
-          bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT"
 
           activated=false
           if bash infrastructure/production/deploy-release.sh activate "$RELEASE_COMMIT"; then
@@ -287,10 +337,14 @@ jobs:
           fi
           if [[ "$activated" == true ]] && check_public_health; then
             echo "AARAJ release $RELEASE_COMMIT passed public HTTPS, API, PostgreSQL, and Redis health checks." >> "$GITHUB_STEP_SUMMARY"
+            bash infrastructure/production/deploy-release.sh pathao-commit "$RELEASE_COMMIT"
             exit 0
           fi
 
+          bash infrastructure/production/deploy-release.sh pathao-restore "$RELEASE_COMMIT"
+
           if [[ "$MIGRATION_REQUIRED" == true ]]; then
+            bash infrastructure/production/deploy-release.sh restart "$RELEASE_COMMIT"
             echo 'Migration-bearing release did not pass activation or health checks. No automatic database or code rollback was attempted; follow the documented recovery procedure.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
             exit 1
           fi
@@ -299,3 +353,20 @@ jobs:
           bash infrastructure/production/deploy-release.sh rollback "$RELEASE_COMMIT"
           check_public_health
           exit 1
+
+      - name: Restore pending Pathao configuration after interruption
+        if: ${{ always() && (failure() || cancelled()) }}
+        env:
+          RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
+          AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
+          AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
+          AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
+          AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          result="$(bash infrastructure/production/deploy-release.sh pathao-restore "$RELEASE_COMMIT")"
+          printf '%s\n' "$result"
+          if [[ "$result" == 'Pathao runtime configuration restored.' ]]; then
+            bash infrastructure/production/deploy-release.sh restart "$RELEASE_COMMIT"
+          fi

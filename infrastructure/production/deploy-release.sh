@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: deploy-release.sh <stage|migrate|activate|rollback> <commit-sha> [archive]" >&2
+  echo "Usage: deploy-release.sh <stage|migrate|activate|rollback|restart|pathao-apply|pathao-restore|pathao-commit> <commit-sha> [archive]" >&2
   exit 2
 }
 
@@ -13,7 +13,7 @@ archive="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
   stage) [[ $# == 3 && -f "$archive" ]] || usage ;;
-  migrate|activate|rollback) [[ $# == 2 ]] || usage ;;
+  migrate|activate|rollback|restart|pathao-apply|pathao-restore|pathao-commit) [[ $# == 2 ]] || usage ;;
   *) usage ;;
 esac
 
@@ -74,6 +74,26 @@ run_remote() {
     "bash -s -- $remote_arguments" < "$remote_script"
 }
 
+run_pathao_helper() {
+  local action="$1" remote_command
+  case "$action" in
+    apply|commit)
+      remote_command='sudo -n /usr/local/sbin/aaraj-configure-pathao.cjs'
+      ;;
+    restore)
+      remote_command='sudo -n /usr/local/sbin/aaraj-configure-pathao.cjs'
+      ;;
+    *) echo "Invalid Pathao helper action." >&2; return 2 ;;
+  esac
+
+  if [[ "$action" == apply ]]; then
+    ssh -T -p "$port" "${ssh_options[@]}" "$destination" "$remote_command"
+  else
+    printf 'operation=%s\nrelease=%s\n' "$action" "$commit" |
+      ssh -T -p "$port" "${ssh_options[@]}" "$destination" "$remote_command"
+  fi
+}
+
 if [[ "$operation" == "stage" ]]; then
   sidecar="$archive.sha256"
   [[ -f "$sidecar" ]] || { echo "Artifact checksum sidecar is missing." >&2; exit 1; }
@@ -84,6 +104,12 @@ if [[ "$operation" == "stage" ]]; then
   scp -P "$port" "${ssh_options[@]}" -- "$archive" \
     "$destination:/srv/sites/aaraj/incoming/$commit.tar.gz"
   run_remote stage "$commit" "$digest"
+elif [[ "$operation" == pathao-apply ]]; then
+  run_pathao_helper apply
+elif [[ "$operation" == pathao-restore ]]; then
+  run_pathao_helper restore
+elif [[ "$operation" == pathao-commit ]]; then
+  run_pathao_helper commit
 else
   run_remote "$operation" "$commit"
 fi

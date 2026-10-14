@@ -33,6 +33,33 @@ describe("Pathao configuration", () => {
     });
   });
 
+  it("requires nonempty, valid sandbox store and delivery allowlists", () => {
+    expect(() =>
+      readPathaoConfiguration({
+        ...sandboxEnvironment,
+        PATHAO_SANDBOX_APPROVED_STORE_IDS: "",
+      }),
+    ).toThrow("PATHAO_SANDBOX_APPROVED_STORE_IDS");
+    expect(() =>
+      readPathaoConfiguration({
+        ...sandboxEnvironment,
+        PATHAO_SANDBOX_APPROVED_STORE_IDS: "101,101",
+      }),
+    ).toThrow("duplicate IDs");
+    expect(() =>
+      readPathaoConfiguration({
+        ...sandboxEnvironment,
+        PATHAO_SANDBOX_DELIVERY_TYPES: "",
+      }),
+    ).toThrow("PATHAO_SANDBOX_DELIVERY_TYPES");
+    expect(() =>
+      readPathaoConfiguration({
+        ...sandboxEnvironment,
+        PATHAO_SANDBOX_DELIVERY_TYPES: "12,24",
+      }),
+    ).toThrow("12 and 48");
+  });
+
   it("blocks live use until credentials are rotated and the password-grant exception is approved", () => {
     const liveEnvironment: NodeJS.ProcessEnv = {
       PATHAO_MODE: "live",

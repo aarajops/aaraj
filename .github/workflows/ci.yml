@@ -51,6 +51,9 @@ jobs:
           version: 12.5.1
           run_install: false
 
+      - name: Test Pathao runtime configuration helper
+        run: node --test infrastructure/production/host/aaraj-configure-pathao.test.cjs
+
       - name: Verify pinned Node.js and pnpm versions
         run: |
           test "$(node --version)" = "v$(cat .node-version)"
