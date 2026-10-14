@@ -45,7 +45,7 @@ install -o root -g root -m 0755 "$wrapper_source" "$wrapper_stage"
 install -o root -g root -m 0755 "$pathao_helper_source" "$pathao_helper_stage"
 install -o root -g root -m 0440 "$sudoers_source" "$sudoers_stage"
 bash -n "$wrapper_stage"
-/usr/bin/node --check "$pathao_helper_stage"
+/usr/bin/node --input-type=commonjs --check < "$pathao_helper_stage"
 visudo -cf "$sudoers_stage"
 
 mv -f -- "$wrapper_stage" "$wrapper_target"
