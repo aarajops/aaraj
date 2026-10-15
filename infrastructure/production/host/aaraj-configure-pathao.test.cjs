@@ -29,18 +29,30 @@ const DUMMY_CREDENTIALS = {
   PATHAO_SANDBOX_WEBHOOK_SECRET: "dummy-webhook-secret-789",
   PATHAO_SANDBOX_APPROVED_STORE_IDS: "101,202",
 };
+const DUMMY_LIVE_CREDENTIALS = {
+  PATHAO_LIVE_CLIENT_ID: "dummy-live-client-id",
+  PATHAO_LIVE_CLIENT_SECRET: "dummy-live-client-secret",
+  PATHAO_LIVE_USERNAME: "live-ops@example.invalid",
+  PATHAO_LIVE_PASSWORD: "dummy-live-password",
+  PATHAO_LIVE_WEBHOOK_SECRET: "dummy-live-webhook-secret",
+  PATHAO_LIVE_APPROVED_STORE_IDS: "901",
+};
 
 function configuration(mode = "sandbox", overrides = {}) {
   const values = new Map(PATHAO_KEYS.map((key) => [key, ""]));
   values.set("PATHAO_MODE", mode);
   values.set(
     "PATHAO_TOKEN_ENCRYPTION_KEY",
-    mode === "sandbox" ? TOKEN_KEY : "",
+    mode === "disabled" ? "" : TOKEN_KEY,
   );
+  values.set("PATHAO_DELIVERY_TYPE", mode === "disabled" ? "" : "48");
   values.set("PATHAO_LIVE_CREDENTIALS_ROTATED", "false");
   values.set("PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED", "false");
   if (mode === "sandbox") {
     for (const [key, value] of Object.entries(DUMMY_CREDENTIALS))
+      values.set(key, value);
+  } else if (mode === "live") {
+    for (const [key, value] of Object.entries(DUMMY_LIVE_CREDENTIALS))
       values.set(key, value);
   }
   for (const [key, value] of Object.entries(overrides)) values.set(key, value);
@@ -93,6 +105,7 @@ test("applies complete sandbox settings atomically and preserves unrelated entri
   const contents = fs.readFileSync(fx.runtimeEnvPath, "utf8");
   const env = runtimeValues(fx);
   assert.equal(env.PATHAO_MODE, "sandbox");
+  assert.equal(env.PATHAO_DELIVERY_TYPE, "48");
   assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, CLIENT_SECRET);
   assert.equal(env.PATHAO_TOKEN_ENCRYPTION_KEY, TOKEN_KEY);
   assert.equal(env.PATHAO_SANDBOX_APPROVED_STORE_IDS, "101,202");
@@ -188,6 +201,8 @@ test("rejects a missing mode and incomplete or malformed sandbox configuration",
     ],
     ["PATHAO_SANDBOX_APPROVED_STORE_IDS", "", /APPROVED_STORE_IDS/],
     ["PATHAO_SANDBOX_APPROVED_STORE_IDS", "101,01", /APPROVED_STORE_IDS/],
+    ["PATHAO_DELIVERY_TYPE", "48,12", /PATHAO_DELIVERY_TYPE/],
+    ["PATHAO_DELIVERY_TYPE", "", /PATHAO_DELIVERY_TYPE/],
     ["PATHAO_SANDBOX_PASSWORD", "bad'password", /unsupported characters/],
   ]) {
     const invalid = configuration("sandbox", { [key]: value });
@@ -218,6 +233,7 @@ test("builds the GitHub payload fail-closed and omits credentials while disabled
   const sandboxPayload = buildPayload(
     {
       PATHAO_MODE: "sandbox",
+      PATHAO_DELIVERY_TYPE: "48",
       ...DUMMY_CREDENTIALS,
       PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
     },
@@ -228,14 +244,47 @@ test("builds the GitHub payload fail-closed and omits credentials while disabled
     CLIENT_SECRET,
   );
   assert.throws(() => buildPayload({}, RELEASE), /PATHAO_MODE/);
+  const livePayload = buildPayload(
+    {
+      PATHAO_MODE: "live",
+      PATHAO_DELIVERY_TYPE: "12",
+      ...DUMMY_LIVE_CREDENTIALS,
+      PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
+      PATHAO_LIVE_CREDENTIALS_ROTATED: "true",
+      PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED: "true",
+    },
+    RELEASE,
+  );
+  const live = parsePayload(livePayload);
+  assert.equal(live.values.get("PATHAO_MODE"), "live");
+  assert.equal(live.values.get("PATHAO_DELIVERY_TYPE"), "12");
+  assert.equal(
+    live.values.get("PATHAO_LIVE_CLIENT_SECRET"),
+    DUMMY_LIVE_CREDENTIALS.PATHAO_LIVE_CLIENT_SECRET,
+  );
+  assert.equal(live.values.get("PATHAO_SANDBOX_CLIENT_ID"), "");
   assert.throws(
-    () => buildPayload({ PATHAO_MODE: "live" }, RELEASE),
-    /PATHAO_MODE/,
+    () =>
+      buildPayload(
+        {
+          PATHAO_MODE: "live",
+          PATHAO_DELIVERY_TYPE: "48",
+          ...DUMMY_LIVE_CREDENTIALS,
+          PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
+          PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED: "true",
+        },
+        RELEASE,
+      ),
+    /PATHAO_LIVE_CREDENTIALS_ROTATED/,
   );
   assert.throws(
     () =>
       buildPayload(
-        { PATHAO_MODE: "sandbox", PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY },
+        {
+          PATHAO_MODE: "sandbox",
+          PATHAO_DELIVERY_TYPE: "48",
+          PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
+        },
         RELEASE,
       ),
     /PATHAO_SANDBOX_CLIENT_ID/,
@@ -245,6 +294,7 @@ test("builds the GitHub payload fail-closed and omits credentials while disabled
       buildPayload(
         {
           PATHAO_MODE: "sandbox",
+          PATHAO_DELIVERY_TYPE: "48",
           ...DUMMY_CREDENTIALS,
           PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
           PATHAO_SANDBOX_PASSWORD: "line1\nPATHAO_MODE=live",
@@ -255,20 +305,28 @@ test("builds the GitHub payload fail-closed and omits credentials while disabled
   );
 });
 
-test("rejects live mode even when live credentials and approval flags are supplied", (t) => {
+test("applies live settings only when credentials and both existing approvals are supplied", (t) => {
   const fx = fixture(t);
   const live = configuration("live", {
-    PATHAO_LIVE_CLIENT_ID: "dummy-live-id",
-    PATHAO_LIVE_CLIENT_SECRET: "dummy-live-secret",
-    PATHAO_LIVE_USERNAME: "dummy-live-user",
-    PATHAO_LIVE_PASSWORD: "dummy-live-password",
-    PATHAO_LIVE_WEBHOOK_SECRET: "dummy-live-webhook",
-    PATHAO_LIVE_APPROVED_STORE_IDS: "901",
     PATHAO_LIVE_CREDENTIALS_ROTATED: "true",
     PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED: "true",
   });
-  assert.throws(() => apply(fx, live), /live mode is blocked/);
-  assert.equal(fs.existsSync(fx.backupPath), false);
+  assert.equal(apply(fx, live), "applied");
+  const env = runtimeValues(fx);
+  assert.equal(env.PATHAO_MODE, "live");
+  assert.equal(env.PATHAO_LIVE_CLIENT_SECRET, "dummy-live-client-secret");
+  assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, "");
+  assert.equal(env.PATHAO_LIVE_CREDENTIALS_ROTATED, "true");
+  assert.equal(env.PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED, "true");
+  assert.doesNotMatch(apply(fx, live), /dummy-live/);
+
+  const missingApproval = configuration("live", {
+    PATHAO_LIVE_CREDENTIALS_ROTATED: "true",
+  });
+  assert.throws(
+    () => apply(fixture(t), missingApproval),
+    /PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED/,
+  );
 });
 
 test("rejects duplicate, unauthorized, and injection-shaped payload entries without leaking values", (t) => {
@@ -550,11 +608,30 @@ test("validates Pathao before VPS access and restores interrupted changes", () =
     "PATHAO_SANDBOX_USERNAME",
     "PATHAO_SANDBOX_PASSWORD",
     "PATHAO_SANDBOX_WEBHOOK_SECRET",
+    "PATHAO_LIVE_CLIENT_ID",
+    "PATHAO_LIVE_CLIENT_SECRET",
+    "PATHAO_LIVE_USERNAME",
+    "PATHAO_LIVE_PASSWORD",
+    "PATHAO_LIVE_WEBHOOK_SECRET",
   ]) {
     assert.equal(
       workflow.split(`secrets.${secret}`).length - 1,
       1,
       `${secret} must be scoped only to Pathao provisioning`,
+    );
+  }
+  for (const variable of [
+    "PATHAO_MODE",
+    "PATHAO_DELIVERY_TYPE",
+    "PATHAO_SANDBOX_APPROVED_STORE_IDS",
+    "PATHAO_LIVE_APPROVED_STORE_IDS",
+    "PATHAO_LIVE_CREDENTIALS_ROTATED",
+    "PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED",
+  ]) {
+    assert.equal(
+      workflow.split(`vars.${variable}`).length - 1,
+      1,
+      `${variable} must be read from GitHub Environment Variables`,
     );
   }
 });

@@ -183,6 +183,13 @@
       "when": 1791876497719,
       "tag": "0025_tax_calculation_toggle",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792036081511,
+      "tag": "0026_pathao_manual_delivery_type_nullable",
+      "breakpoints": true
     }
   ]
 }

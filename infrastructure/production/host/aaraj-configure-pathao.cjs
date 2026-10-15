@@ -13,6 +13,7 @@ const MAX_INPUT_BYTES = 32 * 1024;
 const RELEASE_SHA = /^[0-9a-f]{40}$/;
 const PATHAO_KEYS = [
   "PATHAO_MODE",
+  "PATHAO_DELIVERY_TYPE",
   "PATHAO_TOKEN_ENCRYPTION_KEY",
   "PATHAO_SANDBOX_CLIENT_ID",
   "PATHAO_SANDBOX_CLIENT_SECRET",
@@ -38,12 +39,14 @@ const SANDBOX_CREDENTIAL_KEYS = [
   "PATHAO_SANDBOX_WEBHOOK_SECRET",
 ];
 const SANDBOX_ALLOWLIST_KEYS = ["PATHAO_SANDBOX_APPROVED_STORE_IDS"];
-const LIVE_KEYS = PATHAO_KEYS.filter(
-  (key) =>
-    key.startsWith("PATHAO_LIVE_") ||
-    key === "PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED",
-);
-
+const LIVE_CREDENTIAL_KEYS = [
+  "PATHAO_LIVE_CLIENT_ID",
+  "PATHAO_LIVE_CLIENT_SECRET",
+  "PATHAO_LIVE_USERNAME",
+  "PATHAO_LIVE_PASSWORD",
+  "PATHAO_LIVE_WEBHOOK_SECRET",
+];
+const LIVE_ALLOWLIST_KEYS = ["PATHAO_LIVE_APPROVED_STORE_IDS"];
 function fail(message) {
   throw new Error(message);
 }
@@ -175,35 +178,35 @@ function validateEncryptionKey(value, required) {
   }
 }
 
-function validateStoreIds(value) {
+function validateStoreIds(value, name) {
   if (!value || !/^[1-9][0-9]*(,[1-9][0-9]*)*$/.test(value)) {
-    fail(
-      "PATHAO_SANDBOX_APPROVED_STORE_IDS must be a nonempty comma-separated list of positive IDs.",
-    );
+    fail(`${name} must be a nonempty comma-separated list of positive IDs.`);
   }
   const ids = value.split(",");
   if (
     ids.some((id) => Number(id) > 2_147_483_647) ||
     new Set(ids).size !== ids.length
   ) {
-    fail(
-      "PATHAO_SANDBOX_APPROVED_STORE_IDS contains an invalid or duplicate ID.",
-    );
+    fail(`${name} contains an invalid or duplicate ID.`);
+  }
+}
+
+function validateDeliveryType(value) {
+  if (value !== "48" && value !== "12") {
+    fail("PATHAO_DELIVERY_TYPE must be the single documented value 48 or 12.");
   }
 }
 
 function validateConfiguration(inputValues, existingValues) {
   const mode = inputValues.get("PATHAO_MODE");
-  if (mode === "live")
-    fail("Pathao live mode is blocked by the provisioning helper.");
-  if (mode !== "disabled" && mode !== "sandbox") {
-    fail("PATHAO_MODE must be explicitly disabled or sandbox.");
+  if (mode !== "disabled" && mode !== "sandbox" && mode !== "live") {
+    fail("PATHAO_MODE must be explicitly disabled, sandbox, or live.");
   }
 
   const providedKey = inputValues.get("PATHAO_TOKEN_ENCRYPTION_KEY");
   const existingKey = existingValues.get("PATHAO_TOKEN_ENCRYPTION_KEY") || "";
-  if (mode === "sandbox") validateEncryptionKey(existingKey, false);
-  validateEncryptionKey(providedKey, mode === "sandbox");
+  if (mode !== "disabled") validateEncryptionKey(existingKey, false);
+  validateEncryptionKey(providedKey, mode !== "disabled");
   if (existingKey && providedKey && existingKey !== providedKey) {
     fail(
       "PATHAO_TOKEN_ENCRYPTION_KEY replacement is blocked; use an approved rotation procedure.",
@@ -213,43 +216,71 @@ function validateConfiguration(inputValues, existingValues) {
     fail("PATHAO_TOKEN_ENCRYPTION_KEY must match the existing runtime key.");
   }
 
-  for (const key of LIVE_KEYS) {
-    const isApprovalFlag =
-      key === "PATHAO_LIVE_CREDENTIALS_ROTATED" ||
-      key === "PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED";
-    if (inputValues.get(key) !== (isApprovalFlag ? "false" : "")) {
-      fail(`${key} must remain empty or false while live mode is blocked.`);
-    }
-  }
-  if (
-    inputValues.get("PATHAO_LIVE_CREDENTIALS_ROTATED") !== "false" ||
-    inputValues.get("PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED") !== "false"
-  ) {
-    fail("Pathao live approval flags must remain false.");
-  }
-
   const result = new Map(PATHAO_KEYS.map((key) => [key, ""]));
   result.set("PATHAO_MODE", mode);
+  if (mode === "disabled") {
+    if (inputValues.get("PATHAO_DELIVERY_TYPE") !== "") {
+      fail("PATHAO_DELIVERY_TYPE must be empty while PATHAO_MODE is disabled.");
+    }
+  } else {
+    validateDeliveryType(inputValues.get("PATHAO_DELIVERY_TYPE"));
+    result.set("PATHAO_DELIVERY_TYPE", inputValues.get("PATHAO_DELIVERY_TYPE"));
+  }
   result.set("PATHAO_TOKEN_ENCRYPTION_KEY", existingKey || providedKey || "");
-  result.set("PATHAO_LIVE_CREDENTIALS_ROTATED", "false");
-  result.set("PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED", "false");
 
   if (mode === "disabled") {
-    for (const key of [...SANDBOX_CREDENTIAL_KEYS, ...SANDBOX_ALLOWLIST_KEYS]) {
+    for (const key of [
+      ...SANDBOX_CREDENTIAL_KEYS,
+      ...SANDBOX_ALLOWLIST_KEYS,
+      ...LIVE_CREDENTIAL_KEYS,
+      ...LIVE_ALLOWLIST_KEYS,
+    ]) {
       if (inputValues.get(key) !== "")
         fail(`${key} must be empty while PATHAO_MODE is disabled.`);
+    }
+    for (const key of [
+      "PATHAO_LIVE_CREDENTIALS_ROTATED",
+      "PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED",
+    ]) {
+      if (inputValues.get(key) !== "false")
+        fail(`${key} must be false while PATHAO_MODE is disabled.`);
+      result.set(key, "false");
     }
     return result;
   }
 
-  for (const key of SANDBOX_CREDENTIAL_KEYS) {
+  const selectedCredentialKeys =
+    mode === "sandbox" ? SANDBOX_CREDENTIAL_KEYS : LIVE_CREDENTIAL_KEYS;
+  const selectedAllowlistKeys =
+    mode === "sandbox" ? SANDBOX_ALLOWLIST_KEYS : LIVE_ALLOWLIST_KEYS;
+  const inactiveCredentialKeys =
+    mode === "sandbox"
+      ? [...LIVE_CREDENTIAL_KEYS, ...LIVE_ALLOWLIST_KEYS]
+      : [...SANDBOX_CREDENTIAL_KEYS, ...SANDBOX_ALLOWLIST_KEYS];
+  for (const key of inactiveCredentialKeys) {
+    if (inputValues.get(key) !== "")
+      fail(`${key} must be empty while PATHAO_MODE is ${mode}.`);
+  }
+  for (const key of selectedCredentialKeys) {
     const value = inputValues.get(key);
     validateCredential(value, key);
     result.set(key, value);
   }
-  validateStoreIds(inputValues.get("PATHAO_SANDBOX_APPROVED_STORE_IDS"));
-  for (const key of SANDBOX_ALLOWLIST_KEYS)
+  const storeIdsKey = selectedAllowlistKeys[0];
+  validateStoreIds(inputValues.get(storeIdsKey), storeIdsKey);
+  for (const key of selectedAllowlistKeys)
     result.set(key, inputValues.get(key));
+
+  for (const key of [
+    "PATHAO_LIVE_CREDENTIALS_ROTATED",
+    "PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED",
+  ]) {
+    const requiredValue = mode === "live" ? "true" : "false";
+    if (inputValues.get(key) !== requiredValue) {
+      fail(`${key} must be ${requiredValue} while PATHAO_MODE is ${mode}.`);
+    }
+    result.set(key, requiredValue);
+  }
   return result;
 }
 
@@ -257,8 +288,8 @@ function buildPayload(environment, release) {
   if (!RELEASE_SHA.test(release || ""))
     fail("Configuration release identifier is invalid.");
   const mode = environment.PATHAO_MODE ?? "";
-  if (mode !== "disabled" && mode !== "sandbox") {
-    fail("PATHAO_MODE must be explicitly disabled or sandbox.");
+  if (mode !== "disabled" && mode !== "sandbox" && mode !== "live") {
+    fail("PATHAO_MODE must be explicitly disabled, sandbox, or live.");
   }
 
   const values = new Map(PATHAO_KEYS.map((key) => [key, ""]));
@@ -267,13 +298,31 @@ function buildPayload(environment, release) {
     "PATHAO_TOKEN_ENCRYPTION_KEY",
     environment.PATHAO_TOKEN_ENCRYPTION_KEY ?? "",
   );
+  values.set(
+    "PATHAO_DELIVERY_TYPE",
+    mode === "disabled" ? "" : (environment.PATHAO_DELIVERY_TYPE ?? ""),
+  );
   if (mode === "sandbox") {
     for (const key of [...SANDBOX_CREDENTIAL_KEYS, ...SANDBOX_ALLOWLIST_KEYS]) {
       values.set(key, environment[key] ?? "");
     }
+  } else if (mode === "live") {
+    for (const key of [...LIVE_CREDENTIAL_KEYS, ...LIVE_ALLOWLIST_KEYS]) {
+      values.set(key, environment[key] ?? "");
+    }
   }
-  values.set("PATHAO_LIVE_CREDENTIALS_ROTATED", "false");
-  values.set("PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED", "false");
+  values.set(
+    "PATHAO_LIVE_CREDENTIALS_ROTATED",
+    mode === "live"
+      ? (environment.PATHAO_LIVE_CREDENTIALS_ROTATED ?? "")
+      : "false",
+  );
+  values.set(
+    "PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED",
+    mode === "live"
+      ? (environment.PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED ?? "")
+      : "false",
+  );
   for (const [key, value] of values) {
     if (typeof value !== "string" || /[\r\n\0]/.test(value)) {
       fail(`Configuration value ${key} contains unsafe content.`);

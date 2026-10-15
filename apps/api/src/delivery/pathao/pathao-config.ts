@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import type { PathaoDeliveryType } from "@aaraj/contracts";
 
 export type PathaoEnvironment = "sandbox" | "live";
 export type PathaoMode = "disabled" | PathaoEnvironment;
@@ -11,6 +12,7 @@ export type PathaoConfiguration = {
   username: string;
   password: string;
   webhookSecret: string;
+  deliveryType: PathaoDeliveryType;
   tokenEncryptionKey: Buffer;
   approvedStoreIds: ReadonlySet<number>;
   passwordGrantProductionApproved: boolean;
@@ -53,6 +55,7 @@ export function readPathaoConfiguration(
     environment[`${prefix}_WEBHOOK_SECRET`],
     `${prefix}_WEBHOOK_SECRET`,
   );
+  const deliveryType = readDeliveryType(environment.PATHAO_DELIVERY_TYPE);
   const tokenEncryptionKey = decodeKey(environment.PATHAO_TOKEN_ENCRYPTION_KEY);
 
   if (
@@ -82,6 +85,7 @@ export function readPathaoConfiguration(
     username,
     password,
     webhookSecret,
+    deliveryType,
     tokenEncryptionKey,
     approvedStoreIds: readIntegerSet(
       environment[`${prefix}_APPROVED_STORE_IDS`],
@@ -89,6 +93,14 @@ export function readPathaoConfiguration(
     ),
     passwordGrantProductionApproved,
   };
+}
+
+function readDeliveryType(value: string | undefined): PathaoDeliveryType {
+  if (value === "48") return 48;
+  if (value === "12") return 12;
+  throw new Error(
+    "PATHAO_DELIVERY_TYPE must be one documented integer value: 48 or 12.",
+  );
 }
 
 function required(value: string | undefined, name: string): string {

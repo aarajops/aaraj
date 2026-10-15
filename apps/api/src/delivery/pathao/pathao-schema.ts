@@ -53,7 +53,7 @@ export const pathaoBooking = deliverySchema.table(
     source: text("source").notNull().default("api"),
     environment: text("environment").notNull(),
     storeId: integer("store_id").notNull(),
-    deliveryType: integer("delivery_type").notNull(),
+    deliveryType: integer("delivery_type"),
     parcelQuantity: integer("parcel_quantity").notNull(),
     parcelWeightKg: numeric("parcel_weight_kg", { mode: "number" }).notNull(),
     merchantOrderId: text("merchant_order_id").notNull(),

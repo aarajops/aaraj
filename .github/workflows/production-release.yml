@@ -232,13 +232,22 @@ jobs:
           AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
           AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
           PATHAO_MODE: ${{ vars.PATHAO_MODE }}
+          PATHAO_DELIVERY_TYPE: ${{ vars.PATHAO_DELIVERY_TYPE }}
           PATHAO_SANDBOX_APPROVED_STORE_IDS: ${{ vars.PATHAO_SANDBOX_APPROVED_STORE_IDS }}
+          PATHAO_LIVE_APPROVED_STORE_IDS: ${{ vars.PATHAO_LIVE_APPROVED_STORE_IDS }}
+          PATHAO_LIVE_CREDENTIALS_ROTATED: ${{ vars.PATHAO_LIVE_CREDENTIALS_ROTATED }}
+          PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED: ${{ vars.PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED }}
           PATHAO_TOKEN_ENCRYPTION_KEY: ${{ secrets.PATHAO_TOKEN_ENCRYPTION_KEY }}
           PATHAO_SANDBOX_CLIENT_ID: ${{ secrets.PATHAO_SANDBOX_CLIENT_ID }}
           PATHAO_SANDBOX_CLIENT_SECRET: ${{ secrets.PATHAO_SANDBOX_CLIENT_SECRET }}
           PATHAO_SANDBOX_USERNAME: ${{ secrets.PATHAO_SANDBOX_USERNAME }}
           PATHAO_SANDBOX_PASSWORD: ${{ secrets.PATHAO_SANDBOX_PASSWORD }}
           PATHAO_SANDBOX_WEBHOOK_SECRET: ${{ secrets.PATHAO_SANDBOX_WEBHOOK_SECRET }}
+          PATHAO_LIVE_CLIENT_ID: ${{ secrets.PATHAO_LIVE_CLIENT_ID }}
+          PATHAO_LIVE_CLIENT_SECRET: ${{ secrets.PATHAO_LIVE_CLIENT_SECRET }}
+          PATHAO_LIVE_USERNAME: ${{ secrets.PATHAO_LIVE_USERNAME }}
+          PATHAO_LIVE_PASSWORD: ${{ secrets.PATHAO_LIVE_PASSWORD }}
+          PATHAO_LIVE_WEBHOOK_SECRET: ${{ secrets.PATHAO_LIVE_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
           node -e 'const { buildPayload } = require("./infrastructure/production/host/aaraj-configure-pathao.cjs"); buildPayload(process.env, process.env.RELEASE_COMMIT);' >/dev/null

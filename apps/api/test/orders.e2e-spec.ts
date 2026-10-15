@@ -79,6 +79,7 @@ describe("COD Orders and checkout", () => {
   let dhakaDivision: BangladeshGeography["locations"][number];
   const pathaoEnvironmentKeys = [
     "PATHAO_MODE",
+    "PATHAO_DELIVERY_TYPE",
     "PATHAO_TOKEN_ENCRYPTION_KEY",
     "PATHAO_SANDBOX_CLIENT_ID",
     "PATHAO_SANDBOX_CLIENT_SECRET",
@@ -558,6 +559,7 @@ describe("COD Orders and checkout", () => {
     }
     Object.assign(process.env, {
       PATHAO_MODE: "sandbox",
+      PATHAO_DELIVERY_TYPE: "48",
       PATHAO_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
       PATHAO_SANDBOX_CLIENT_ID: "pathao-test-client",
       PATHAO_SANDBOX_CLIENT_SECRET: "pathao-test-secret",
@@ -1526,7 +1528,6 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", randomUUID())
       .send({
         storeId: 101,
-        deliveryType: 48,
         parcelQuantity: 1,
         parcelWeightKg: 0.75,
       })
@@ -1617,7 +1618,6 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", randomUUID())
       .send({
         storeId: 101,
-        deliveryType: 48,
         parcelQuantity: 1,
         parcelWeightKg: 0.75,
       })
@@ -1648,6 +1648,7 @@ describe("COD Orders and checkout", () => {
     expect(stores.body.stores).toEqual([
       { storeId: 101, storeName: "Approved Test Store", active: true },
     ]);
+    expect(stores.body.deliveryType).toBe(48);
     await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/stores`)
       .set("Cookie", customer.cookie)
@@ -1656,7 +1657,6 @@ describe("COD Orders and checkout", () => {
     const bookingUrl = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`;
     const bookingBody = {
       storeId: 101,
-      deliveryType: 48,
       parcelQuantity: 1,
       parcelWeightKg: 0.75,
     };
@@ -1723,7 +1723,6 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", randomUUID())
       .send({
         storeId: 202,
-        deliveryType: 48,
         parcelQuantity: 1,
         parcelWeightKg: 0.75,
       });
@@ -1938,7 +1937,6 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", randomUUID())
       .send({
         storeId: 101,
-        deliveryType: 48,
         parcelQuantity: 1,
         parcelWeightKg: 0.5,
       })
@@ -2029,7 +2027,6 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", randomUUID())
       .send({
         storeId: 101,
-        deliveryType: 48,
         parcelQuantity: 1,
         parcelWeightKg: 0.5,
       })
@@ -2234,7 +2231,6 @@ describe("COD Orders and checkout", () => {
     const url = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`;
     const body = {
       storeId: 101,
-      deliveryType: 48,
       parcelQuantity: 1,
       parcelWeightKg: 0.5,
     };
@@ -2281,7 +2277,6 @@ describe("COD Orders and checkout", () => {
       .send({
         consignmentId: "PATHAO-TEST-AMBIG-01",
         storeId: 101,
-        deliveryType: 48,
         parcelQuantity: 1,
         parcelWeightKg: 0.5,
         reason: "Verified the consignment against the Pathao Merchant Panel",
@@ -2290,6 +2285,7 @@ describe("COD Orders and checkout", () => {
       .expect(201);
     expect(reconciled.body).toMatchObject({
       status: "booked",
+      deliveryType: 48,
       consignmentId: "PATHAO-TEST-AMBIG-01",
       reconciliationReason:
         "Verified the consignment against the Pathao Merchant Panel",
@@ -2368,7 +2364,6 @@ describe("COD Orders and checkout", () => {
       .send({
         consignmentId: "PATHAO-TEST-MANUAL-01",
         storeId: 101,
-        deliveryType: 48,
         parcelQuantity: 1,
         parcelWeightKg: 0.5,
         reason: "Checking the manual consignment in the Pathao Merchant Panel",
@@ -2390,7 +2385,6 @@ describe("COD Orders and checkout", () => {
     const reconciliationBody = {
       consignmentId: "PATHAO-TEST-MANUAL-01",
       storeId: 101,
-      deliveryType: 48,
       parcelQuantity: 1,
       parcelWeightKg: 0.5,
       reason: "Verified the manual consignment in the Pathao Merchant Panel",
@@ -2405,7 +2399,11 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", reconciliationCommandId)
       .send(reconciliationBody)
       .expect(201);
-    expect(result.body).toMatchObject({ source: "manual", status: "booked" });
+    expect(result.body).toMatchObject({
+      source: "manual",
+      status: "booked",
+      deliveryType: null,
+    });
     const [stored] = await database.db
       .select()
       .from(pathaoBooking)
@@ -2505,7 +2503,6 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", randomUUID())
       .send({
         storeId: 101,
-        deliveryType: 48,
         parcelQuantity: 1,
         parcelWeightKg: 0.5,
       })

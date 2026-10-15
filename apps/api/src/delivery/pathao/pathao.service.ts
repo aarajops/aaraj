@@ -21,6 +21,7 @@ import {
   type PathaoBookingManagement,
   type PathaoBookingOptions,
   type PathaoCustomerTracking,
+  type PathaoDeliveryType,
   type PathaoManagementIssues,
   type PathaoManualReconciliationInput,
   type PathaoWebhookResolutionInput,
@@ -116,6 +117,7 @@ export class PathaoService {
       (store) => store.active && config.approvedStoreIds.has(store.storeId),
     );
     return PathaoBookingOptionsSchema.parse({
+      deliveryType: config.deliveryType,
       stores: PathaoStoreListSchema.parse(
         approved.map((store) => ({
           storeId: store.storeId,
@@ -152,7 +154,12 @@ export class PathaoService {
     const fingerprint = sha256(
       JSON.stringify({
         orderId,
-        input: { ...input, parcelWeightKg: Number(input.parcelWeightKg) },
+        input: {
+          storeId: input.storeId,
+          deliveryType: config.deliveryType,
+          parcelQuantity: input.parcelQuantity,
+          parcelWeightKg: Number(input.parcelWeightKg),
+        },
       }),
     );
     const existing = await this.findBooking(orderId);
@@ -168,7 +175,11 @@ export class PathaoService {
       fingerprint,
       "submitting",
     );
-    const providerRequest = toProviderRequest(order, input);
+    const providerRequest = toProviderRequest(
+      order,
+      input,
+      config.deliveryType,
+    );
     const bookingId = randomUUID();
     let created: typeof pathaoBooking.$inferSelect | null = null;
     try {
@@ -180,7 +191,7 @@ export class PathaoService {
             orderId,
             environment: config.mode,
             storeId: input.storeId,
-            deliveryType: input.deliveryType,
+            deliveryType: config.deliveryType,
             parcelQuantity: input.parcelQuantity,
             parcelWeightKg: input.parcelWeightKg,
             merchantOrderId: order.reference,
@@ -202,7 +213,7 @@ export class PathaoService {
             commandId,
             environment: config.mode,
             storeId: input.storeId,
-            deliveryType: input.deliveryType,
+            deliveryType: config.deliveryType,
             parcelQuantity: input.parcelQuantity,
             parcelWeightKg: input.parcelWeightKg,
           },
@@ -759,7 +770,7 @@ export class PathaoService {
               source: "manual",
               environment: config.mode,
               storeId: input.storeId,
-              deliveryType: input.deliveryType,
+              deliveryType: null,
               parcelQuantity: input.parcelQuantity,
               parcelWeightKg: input.parcelWeightKg,
               merchantOrderId: order.reference,
@@ -1536,6 +1547,7 @@ function requiredPathaoConfiguration(): PathaoConfiguration {
 function toProviderRequest(
   order: Awaited<ReturnType<OrdersPathaoPort["getPathaoBookingSnapshot"]>>,
   input: PathaoBookingInput,
+  deliveryType: PathaoDeliveryType,
 ): PathaoBookingRequest {
   const recipientPhone = pathaoPhone(order.recipientPhone);
   if (
@@ -1555,7 +1567,7 @@ function toProviderRequest(
     recipient_name: order.recipientName.trim(),
     recipient_phone: recipientPhone,
     recipient_address: order.recipientAddress.trim(),
-    delivery_type: input.deliveryType,
+    delivery_type: deliveryType,
     item_type: 2,
     item_quantity: input.parcelQuantity,
     item_weight: Number(input.parcelWeightKg),
