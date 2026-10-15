@@ -22,10 +22,11 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm --filter @aaraj/api run e2e:server",
+      command: "exec node ../api/test/e2e-server.mjs",
       url: `http://${host}:${apiPort}/api/health/ready`,
       reuseExistingServer: false,
       timeout: 120_000,
+      gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
       env: { PORT: String(apiPort), HOST: host },
     },
     {

@@ -84,6 +84,10 @@ class ServiceabilityExpiryTransitionError extends Error {
 type OrderRow = typeof customerOrder.$inferSelect;
 type IdempotencyRow = typeof orderIdempotency.$inferSelect;
 type NormalizedAddress = OrderAddress;
+type OrderPiiKeyring = {
+  activeKeyId: string;
+  keys: ReadonlyMap<string, Buffer>;
+};
 
 @Injectable()
 export class OrdersService implements OrdersPathaoPort {
@@ -110,10 +114,11 @@ export class OrdersService implements OrdersPathaoPort {
     if (!context.owner) throw orderNotFound();
     const owner = context.owner;
     const normalizedInput = normalizeCheckoutInput(input.address);
+    const piiKeyring = getOrderPiiKeyring();
     const requestFingerprint = fingerprintCheckout(
       input.quoteId,
       normalizedInput,
-      getOrderPiiKey(),
+      piiKeyring.keys.get("legacy")!,
     );
     const ownerHash = hashOwner(owner);
     const keyHash = sha256(idempotencyKey);
@@ -175,8 +180,7 @@ export class OrdersService implements OrdersPathaoPort {
         { errorCode: "GUEST_ORDER_ACCESS_REQUIRED" },
       );
     }
-    const piiKey = getOrderPiiKey();
-    const encryptedAddress = encryptAddress(address, orderId, piiKey);
+    const encryptedAddress = encryptAddress(address, orderId, piiKeyring);
 
     let saved: OrderRow;
     let replayed = false;
@@ -1226,7 +1230,7 @@ export class OrdersService implements OrdersPathaoPort {
     const address = decryptAddress(
       row.addressCiphertext,
       row.id,
-      getOrderPiiKey(),
+      getOrderPiiKeyring(),
     );
     return OrderSchema.parse({
       id: row.id,
@@ -1488,43 +1492,66 @@ function toCreated(row: OrderRow, replayed: boolean): OrderCreated {
 function encryptAddress(
   address: NormalizedAddress,
   orderId: string,
-  key: Buffer,
+  keyring: OrderPiiKeyring,
 ): string {
+  const key = keyring.keys.get(keyring.activeKeyId);
+  if (!key) throw new Error("The active Order PII encryption key is missing.");
   const nonce = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
-  cipher.setAAD(Buffer.from(`aaraj/order-address/v1:${orderId}`));
+  cipher.setAAD(
+    Buffer.from(`aaraj/order-address/v2:${keyring.activeKeyId}:${orderId}`),
+  );
   const ciphertext = Buffer.concat([
     cipher.update(JSON.stringify(address), "utf8"),
     cipher.final(),
   ]);
   return [
-    "v1",
+    "v2",
+    keyring.activeKeyId,
     nonce.toString("base64url"),
     ciphertext.toString("base64url"),
     cipher.getAuthTag().toString("base64url"),
   ].join(".");
 }
 
-function decryptAddress(value: string, orderId: string, key: Buffer) {
+function decryptAddress(
+  value: string,
+  orderId: string,
+  keyring: OrderPiiKeyring,
+) {
   try {
-    const [version, nonceValue, ciphertextValue, tagValue, extra] =
-      value.split(".");
-    if (
-      version !== "v1" ||
-      !nonceValue ||
-      !ciphertextValue ||
-      !tagValue ||
-      extra
-    ) {
+    const [version, ...fields] = value.split(".");
+    const isV1 = version === "v1" && fields.length === 3;
+    const isV2 =
+      version === "v2" &&
+      fields.length === 4 &&
+      /^[A-Za-z0-9_-]+$/.test(fields[0] ?? "");
+    if (!isV1 && !isV2) {
       throw new Error("invalid ciphertext envelope");
     }
+
+    const [keyId, nonceValue, ciphertextValue, tagValue] = isV1
+      ? ["legacy", ...fields]
+      : fields;
+    if (!keyId || !nonceValue || !ciphertextValue || !tagValue) {
+      throw new Error("ciphertext key or field is unavailable");
+    }
+    const key = keyring.keys.get(keyId);
+    if (!key) throw new Error("ciphertext key is unavailable");
+
     const nonce = Buffer.from(nonceValue, "base64url");
     const ciphertext = Buffer.from(ciphertextValue, "base64url");
     const tag = Buffer.from(tagValue, "base64url");
     if (nonce.length !== 12 || tag.length !== 16)
       throw new Error("invalid envelope");
     const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-    decipher.setAAD(Buffer.from(`aaraj/order-address/v1:${orderId}`));
+    decipher.setAAD(
+      Buffer.from(
+        isV1
+          ? `aaraj/order-address/v1:${orderId}`
+          : `aaraj/order-address/v2:${keyId}:${orderId}`,
+      ),
+    );
     decipher.setAuthTag(tag);
     const plaintext = Buffer.concat([
       decipher.update(ciphertext),
@@ -1539,15 +1566,85 @@ function decryptAddress(value: string, orderId: string, key: Buffer) {
   }
 }
 
-function getOrderPiiKey(): Buffer {
-  const encoded = process.env.ORDER_PII_ENCRYPTION_KEY?.trim();
-  if (!encoded) {
-    throw new Error("ORDER_PII_ENCRYPTION_KEY must be configured.");
+function getOrderPiiKeyring(): OrderPiiKeyring {
+  const encodedKeyring = process.env.ORDER_PII_KEYRING?.trim();
+  if (!encodedKeyring) {
+    const legacyKey = parseOrderPiiKey(
+      process.env.ORDER_PII_ENCRYPTION_KEY?.trim(),
+      "ORDER_PII_ENCRYPTION_KEY",
+    );
+    return { activeKeyId: "legacy", keys: new Map([["legacy", legacyKey]]) };
   }
+
+  if (process.env.ORDER_PII_ENCRYPTION_KEY?.trim()) {
+    throw new Error(
+      "Remove ORDER_PII_ENCRYPTION_KEY after configuring ORDER_PII_KEYRING.",
+    );
+  }
+  let configuration: unknown;
+  try {
+    configuration = JSON.parse(encodedKeyring);
+  } catch {
+    throw new Error("ORDER_PII_KEYRING must be a JSON object.");
+  }
+  if (
+    !configuration ||
+    typeof configuration !== "object" ||
+    Array.isArray(configuration)
+  ) {
+    throw new Error("ORDER_PII_KEYRING must be a JSON object.");
+  }
+  const { activeKeyId, keys: entries } = configuration as {
+    activeKeyId?: unknown;
+    keys?: unknown;
+  };
+  if (
+    typeof activeKeyId !== "string" ||
+    !/^[A-Za-z0-9_-]+$/.test(activeKeyId)
+  ) {
+    throw new Error("ORDER_PII_KEYRING must include a valid activeKeyId.");
+  }
+  if (
+    !entries ||
+    typeof entries !== "object" ||
+    Array.isArray(entries) ||
+    Object.keys(entries).length === 0
+  ) {
+    throw new Error("ORDER_PII_KEYRING.keys must contain at least one key.");
+  }
+
+  const keys = new Map<string, Buffer>();
+  for (const [keyId, encodedKey] of Object.entries(entries)) {
+    if (!/^[A-Za-z0-9_-]+$/.test(keyId)) {
+      throw new Error(
+        "Order PII encryption key IDs must use letters, digits, underscores, or hyphens.",
+      );
+    }
+    if (typeof encodedKey !== "string") {
+      throw new Error("Every Order PII encryption key must be a string.");
+    }
+    keys.set(keyId, parseOrderPiiKey(encodedKey, `key ${keyId}`));
+  }
+
+  if (!keys.has("legacy")) {
+    throw new Error(
+      'ORDER_PII_KEYRING.keys must retain the "legacy" key for existing addresses and checkout retries.',
+    );
+  }
+  if (!keys.has(activeKeyId)) {
+    throw new Error(
+      "ORDER_PII_KEYRING.activeKeyId must name one of ORDER_PII_KEYRING.keys.",
+    );
+  }
+  return { activeKeyId, keys };
+}
+
+function parseOrderPiiKey(encoded: string | undefined, label: string): Buffer {
+  if (!encoded) throw new Error(`${label} must be configured.`);
   const key = Buffer.from(encoded, "base64url");
   if (key.length !== 32 || key.toString("base64url") !== encoded) {
     throw new Error(
-      "ORDER_PII_ENCRYPTION_KEY must be a canonical base64url encoding of 32 random bytes.",
+      `${label} must be a canonical base64url encoding of 32 random bytes.`,
     );
   }
   return key;

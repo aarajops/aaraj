@@ -153,6 +153,8 @@ The integration handshake header value is distinct from the webhook secret enter
 
 The documentation says Pathao sends `X-PATHAO-Signature` with the secret supplied during webhook integration and `Content-Type: application/json`. It does not describe a signature/HMAC algorithm, canonical payload format, timestamp tolerance, replay window, retry schedule, or event ordering guarantee. AARAJ currently verifies the supplied header value against its configured shared secret; this is an implementation behavior, not a documented Pathao cryptographic-signature guarantee.
 
+The Pathao-maintained [`pathao-eng/courier-woocommerce-plugin`](https://github.com/pathao-eng/courier-woocommerce-plugin/blob/main/plugin-api.php) compares the incoming `X-PATHAO-SIGNATURE` value directly with its configured webhook secret. That public implementation is consistent with AARAJ's shared-secret check, but it does not replace an end-to-end sandbox callback verification for this merchant account.
+
 The supplied page lists these event labels and example event names:
 
 | Merchant Panel event      | Example `event` value             |

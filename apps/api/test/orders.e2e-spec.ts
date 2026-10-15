@@ -88,6 +88,13 @@ describe("COD Orders and checkout", () => {
     "PATHAO_SANDBOX_WEBHOOK_SECRET",
   ];
   const previousPathaoEnvironment = new Map<string, string | undefined>();
+  const orderPiiEnvironmentKeys = [
+    "ORDER_PII_ENCRYPTION_KEY",
+    "ORDER_PII_KEYRING",
+  ];
+  const previousOrderPiiEnvironment = new Map(
+    orderPiiEnvironmentKeys.map((key) => [key, process.env[key]]),
+  );
 
   async function account(name: string): Promise<Account> {
     const response = await auth.api.signUpEmail({
@@ -642,9 +649,32 @@ describe("COD Orders and checkout", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    for (const [key, value] of previousOrderPiiEnvironment) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   });
 
   it("places guest COD orders with a private 30-day order-scoped cookie and atomic held stock", async () => {
+    const legacyKey =
+      process.env.ORDER_PII_ENCRYPTION_KEY ??
+      (
+        JSON.parse(process.env.ORDER_PII_KEYRING ?? "{}") as {
+          keys?: Record<string, string>;
+        }
+      ).keys?.legacy;
+    expect(legacyKey).toBeTruthy();
+    delete process.env.ORDER_PII_ENCRYPTION_KEY;
+    const orderPiiKeys = {
+      legacy: legacyKey!,
+      rotation_a: randomBytes(32).toString("base64url"),
+      rotation_b: randomBytes(32).toString("base64url"),
+    };
+    process.env.ORDER_PII_KEYRING = JSON.stringify({
+      activeKeyId: "rotation_a",
+      keys: orderPiiKeys,
+    });
+
     const variantId = await createVariant(2);
     const cart = await newGuestCart([variantId]);
     const quote = await createQuote(cart.cookie);
@@ -681,7 +711,7 @@ describe("COD Orders and checkout", () => {
     const stored = await orderById(response.body.id);
     expect(stored?.guestAccessTokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(stored?.addressCiphertext).not.toContain("E2E Recipient");
-    expect(stored?.addressCiphertext).toMatch(/^v1\./);
+    expect(stored?.addressCiphertext).toMatch(/^v2\.rotation_a\./);
     const [expiry] = await database.db
       .select({
         days: sql<number>`extract(epoch from (${customerOrder.guestAccessExpiresAt} - ${customerOrder.createdAt})) / 86400`,
@@ -708,6 +738,46 @@ describe("COD Orders and checkout", () => {
       recipientName: "E2E Recipient",
       phone: "+8801712345678",
     });
+
+    process.env.ORDER_PII_KEYRING = JSON.stringify({
+      activeKeyId: "rotation_b",
+      keys: orderPiiKeys,
+    });
+    const rotatedPrivateOrder = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/${response.body.id}`)
+      .set("Cookie", guestCookie)
+      .expect(200);
+    expect(rotatedPrivateOrder.body.address).toMatchObject({
+      recipientName: "E2E Recipient",
+      phone: "+8801712345678",
+    });
+    const rotatedReplay = await placeOrder(
+      checkoutCookie,
+      checkoutBody(quote.id),
+      key,
+    ).expect(201);
+    expect(rotatedReplay.body).toMatchObject({
+      id: response.body.id,
+      replayed: true,
+    });
+
+    const rotatedVariantId = await createVariant(1);
+    const rotatedCart = await newGuestCart([rotatedVariantId]);
+    const rotatedQuote = await createQuote(rotatedCart.cookie);
+    const rotatedKey = randomUUID();
+    const rotatedCheckoutCookie = await prepareGuestCheckout(
+      rotatedCart.cookie,
+      rotatedKey,
+    );
+    const rotatedOrder = await placeOrder(
+      rotatedCheckoutCookie,
+      checkoutBody(rotatedQuote.id),
+      rotatedKey,
+    ).expect(201);
+    expect((await orderById(rotatedOrder.body.id))?.addressCiphertext).toMatch(
+      /^v2\.rotation_b\./,
+    );
+
     expect(
       setCookieHeaders(response.headers).find((value) =>
         value.startsWith(`aaraj_order_attempt_${key}=`),

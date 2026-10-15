@@ -1,0 +1,2 @@
+ALTER TABLE "orders"."order_header" DROP CONSTRAINT "order_address_ciphertext_check";--> statement-breakpoint
+ALTER TABLE "orders"."order_header" ADD CONSTRAINT "order_address_ciphertext_check" CHECK (("orders"."order_header"."address_ciphertext" like 'v1.%' or "orders"."order_header"."address_ciphertext" like 'v2.%'));

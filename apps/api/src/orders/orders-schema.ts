@@ -143,7 +143,7 @@ export const customerOrder = ordersSchema.table(
     ),
     check(
       "order_address_ciphertext_check",
-      sql`${table.addressCiphertext} like 'v1.%'`,
+      sql`(${table.addressCiphertext} like 'v1.%' or ${table.addressCiphertext} like 'v2.%')`,
     ),
   ],
 );

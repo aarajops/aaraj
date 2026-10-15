@@ -245,46 +245,89 @@ try {
     process.env.HOST ?? "127.0.0.1",
   );
 } catch (error) {
-  await cleanup();
+  try {
+    await cleanup();
+  } catch (cleanupError) {
+    console.error("E2E setup cleanup was incomplete.", cleanupError);
+  }
   throw error;
 }
 
-process.once("SIGTERM", () => void cleanup().then(() => process.exit(0)));
-process.once("SIGINT", () => void cleanup().then(() => process.exit(0)));
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.once(signal, () => {
+    void cleanup().then(
+      () => process.exit(0),
+      (error) => {
+        console.error("E2E server cleanup was incomplete.", error);
+        process.exit(1);
+      },
+    );
+  });
+}
 
 async function cleanup() {
   cleanupPromise ??= (async () => {
-    await app?.close();
-    await migrationPool?.end();
-    const redis = new Redis(redisUrl.toString(), { maxRetriesPerRequest: 1 });
-    try {
-      for (const prefix of [redisPrefix, throttlerPrefix, catalogCachePrefix]) {
-        let cursor = "0";
-        do {
-          const [next, keys] = await redis.scan(
-            cursor,
-            "MATCH",
-            `${prefix}*`,
-            "COUNT",
-            100,
-          );
-          cursor = next;
-          if (keys.length) await redis.del(...keys);
-        } while (cursor !== "0");
+    const errors = [];
+    const attempt = async (label, operation) => {
+      try {
+        await operation();
+      } catch (error) {
+        errors.push(
+          new Error(
+            `${label}: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
       }
-    } catch {
-      // Continue tearing down the isolated database and roles if Redis is offline.
-    } finally {
-      redis.disconnect();
-    }
-    try {
-      await admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(database)}`);
-    } finally {
-      await admin.query(`DROP ROLE IF EXISTS ${quoteIdentifier(runtimeRole)}`);
-      await admin.query(
-        `DROP ROLE IF EXISTS ${quoteIdentifier(migrationRole)}`,
-      );
-      await admin.end();
+    };
+
+    await attempt("close Nest application", async () => app?.close());
+    await attempt("close migration pool", async () => migrationPool?.end());
+    await attempt("clean Redis test keys", async () => {
+      const redis = new Redis(redisUrl.toString(), {
+        lazyConnect: true,
+        connectTimeout: 5_000,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null,
+      });
+      try {
+        await redis.connect();
+        for (const pattern of [
+          `${redisPrefix}*`,
+          `{${throttlerPrefix}*`,
+          `${catalogCachePrefix}*`,
+          `${cartPrefix}*`,
+        ]) {
+          let cursor = "0";
+          do {
+            const [next, keys] = await redis.scan(
+              cursor,
+              "MATCH",
+              pattern,
+              "COUNT",
+              100,
+            );
+            cursor = next;
+            if (keys.length) await redis.del(...keys);
+          } while (cursor !== "0");
+        }
+      } finally {
+        redis.disconnect();
+      }
+    });
+    await attempt("drop isolated database", () =>
+      admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(database)}`),
+    );
+    await attempt("drop runtime role", () =>
+      admin.query(`DROP ROLE IF EXISTS ${quoteIdentifier(runtimeRole)}`),
+    );
+    await attempt("drop migration role", () =>
+      admin.query(`DROP ROLE IF EXISTS ${quoteIdentifier(migrationRole)}`),
+    );
+    await attempt("close PostgreSQL admin pool", () => admin.end());
+
+    if (errors.length) {
+      throw new AggregateError(errors, "E2E server cleanup was incomplete.");
     }
   })();
   return cleanupPromise;

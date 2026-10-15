@@ -16,7 +16,10 @@ process.env.NODE_ENV = "test";
 process.env.BETTER_AUTH_SECRET =
   "test-only-better-auth-secret-with-32-bytes-minimum";
 process.env.BETTER_AUTH_URL = "http://localhost:3001";
-process.env.ORDER_PII_ENCRYPTION_KEY ??= randomBytes(32).toString("base64url");
+if (!process.env.ORDER_PII_KEYRING) {
+  process.env.ORDER_PII_ENCRYPTION_KEY ??=
+    randomBytes(32).toString("base64url");
+}
 process.env.CLIENT_URL = "http://localhost:3000";
 process.env.POSTGRES_DB ??= "aaraj_test";
 process.env.POSTGRES_USER ??= "aaraj_test";
@@ -71,46 +74,113 @@ try {
   await migrate(drizzle(migrationPool), { migrationsFolder: "./drizzle" });
   await seedSyntheticTaxProfile(migrationPool);
 } catch (error) {
-  await migrationPool.end();
-  await admin.query(`DROP DATABASE ${quoteIdentifier(testDatabase)}`);
-  await admin.end();
+  const cleanupErrors: Error[] = [];
+  await cleanupAttempt(
+    "close migration pool",
+    () => migrationPool.end(),
+    cleanupErrors,
+  );
+  await cleanupAttempt(
+    "drop isolated database",
+    () =>
+      admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(testDatabase)}`),
+    cleanupErrors,
+  );
+  await cleanupAttempt(
+    "close PostgreSQL admin pool",
+    () => admin.end(),
+    cleanupErrors,
+  );
+  if (cleanupErrors.length) {
+    console.error(
+      "API E2E setup cleanup was incomplete.",
+      new AggregateError(cleanupErrors),
+    );
+  }
   throw error;
 }
 await migrationPool.end();
 
 afterAll(async () => {
-  await closePostgresPool();
-  await closeRedisClient();
-  const redis = new Redis(process.env.REDIS_URL!, { maxRetriesPerRequest: 1 });
+  const cleanupErrors: Error[] = [];
+  await cleanupAttempt(
+    "close API PostgreSQL pool",
+    closePostgresPool,
+    cleanupErrors,
+  );
+  await cleanupAttempt(
+    "close API Redis client",
+    closeRedisClient,
+    cleanupErrors,
+  );
+  const redis = new Redis(process.env.REDIS_URL!, {
+    lazyConnect: true,
+    connectTimeout: 5_000,
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 1,
+    retryStrategy: () => null,
+  });
   try {
-    for (const pattern of [
-      `${prefix}*`,
-      `{${throttlerPrefix}*`,
-      `${catalogCachePrefix}*`,
-      `${cartPrefix}*`,
-    ]) {
-      let cursor = "0";
-      do {
-        const [next, keys] = await redis.scan(
-          cursor,
-          "MATCH",
-          pattern,
-          "COUNT",
-          100,
-        );
-        cursor = next;
-        if (keys.length) await redis.del(...keys);
-      } while (cursor !== "0");
-    }
+    await cleanupAttempt(
+      "clean isolated Redis keys",
+      async () => {
+        await redis.connect();
+        for (const pattern of [
+          `${prefix}*`,
+          `{${throttlerPrefix}*`,
+          `${catalogCachePrefix}*`,
+          `${cartPrefix}*`,
+        ]) {
+          let cursor = "0";
+          do {
+            const [next, keys] = await redis.scan(
+              cursor,
+              "MATCH",
+              pattern,
+              "COUNT",
+              100,
+            );
+            cursor = next;
+            if (keys.length) await redis.del(...keys);
+          } while (cursor !== "0");
+        }
+      },
+      cleanupErrors,
+    );
   } finally {
     redis.disconnect();
-    try {
-      await admin.query(`DROP DATABASE ${quoteIdentifier(testDatabase)}`);
-    } finally {
-      await admin.end();
-    }
+  }
+  await cleanupAttempt(
+    "drop isolated database",
+    () =>
+      admin.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(testDatabase)}`),
+    cleanupErrors,
+  );
+  await cleanupAttempt(
+    "close PostgreSQL admin pool",
+    () => admin.end(),
+    cleanupErrors,
+  );
+  if (cleanupErrors.length) {
+    throw new AggregateError(cleanupErrors, "API E2E cleanup was incomplete.");
   }
 });
+
+async function cleanupAttempt(
+  label: string,
+  operation: () => Promise<unknown>,
+  errors: Error[],
+): Promise<void> {
+  try {
+    await operation();
+  } catch (cause) {
+    errors.push(
+      new Error(
+        `${label}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      ),
+    );
+  }
+}
 
 function isLoopbackHost(host: string): boolean {
   const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");

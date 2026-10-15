@@ -18,6 +18,8 @@ test("admin sidebar follows permissions and closes after mobile navigation", asy
   ]);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/catalog");
+  const sidebarWrapper = page.locator('[data-slot="sidebar-wrapper"]');
+  await expect(sidebarWrapper).toHaveAttribute("data-mobile", "true");
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
 
   await expect(
@@ -48,6 +50,7 @@ test("admin sidebar follows permissions and closes after mobile navigation", asy
     },
   ]);
   await page.reload();
+  await expect(sidebarWrapper).toHaveAttribute("data-mobile", "true");
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
   await expect(
     navigation.getByRole("link", { name: "Categories" }),
@@ -60,6 +63,7 @@ test("admin sidebar follows permissions and closes after mobile navigation", asy
   ).toBeVisible();
 
   await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(sidebarWrapper).toHaveAttribute("data-mobile", "false");
   const desktopSidebar = page.locator('[data-slot="sidebar"][data-state]');
   await expect(desktopSidebar).toBeVisible();
   await expect(desktopSidebar).toHaveAttribute("data-state", "expanded");
