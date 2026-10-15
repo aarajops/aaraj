@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 import type { PathaoDeliveryType } from "@aaraj/contracts";
 
 export type PathaoEnvironment = "sandbox" | "live";
-export type PathaoMode = "disabled" | PathaoEnvironment;
 
 export type PathaoConfiguration = {
   mode: PathaoEnvironment;
@@ -14,84 +13,59 @@ export type PathaoConfiguration = {
   webhookSecret: string;
   deliveryType: PathaoDeliveryType;
   tokenEncryptionKey: Buffer;
-  approvedStoreIds: ReadonlySet<number>;
-  passwordGrantProductionApproved: boolean;
 };
 
-export function readPathaoMode(
-  environment: NodeJS.ProcessEnv = process.env,
-): PathaoMode {
-  const mode = environment.PATHAO_MODE?.trim() || "disabled";
-  if (mode !== "disabled" && mode !== "sandbox" && mode !== "live") {
-    throw new Error("PATHAO_MODE must be disabled, sandbox, or live.");
-  }
-  return mode;
-}
+const PATHAO_BASE_URLS = {
+  "https://courier-api-sandbox.pathao.com": "sandbox",
+  "https://api-hermes.pathao.com": "live",
+} as const satisfies Record<string, PathaoEnvironment>;
 
 export function readPathaoConfiguration(
   environment: NodeJS.ProcessEnv = process.env,
 ): PathaoConfiguration | null {
-  const mode = readPathaoMode(environment);
-  if (mode === "disabled") return null;
+  const baseUrl = environment.PATHAO_BASE_URL?.trim() ?? "";
+  if (!baseUrl) {
+    const hasCredentials = Object.entries(environment).some(
+      ([key, value]) =>
+        key.startsWith("PATHAO_") &&
+        key !== "PATHAO_TOKEN_ENCRYPTION_KEY" &&
+        Boolean(value?.trim()),
+    );
+    if (hasCredentials) {
+      throw new Error(
+        "PATHAO_BASE_URL must be configured when Pathao credentials are present.",
+      );
+    }
+    return null;
+  }
+
+  const mode = PATHAO_BASE_URLS[baseUrl as keyof typeof PATHAO_BASE_URLS];
+  if (!mode) {
+    throw new Error(
+      "PATHAO_BASE_URL must match Pathao's documented sandbox or live URL.",
+    );
+  }
 
   const prefix = mode === "sandbox" ? "PATHAO_SANDBOX" : "PATHAO_LIVE";
-  const clientId = required(
-    environment[`${prefix}_CLIENT_ID`],
-    `${prefix}_CLIENT_ID`,
-  );
-  const clientSecret = required(
-    environment[`${prefix}_CLIENT_SECRET`],
-    `${prefix}_CLIENT_SECRET`,
-  );
-  const username = required(
-    environment[`${prefix}_USERNAME`],
-    `${prefix}_USERNAME`,
-  );
-  const password = required(
-    environment[`${prefix}_PASSWORD`],
-    `${prefix}_PASSWORD`,
-  );
-  const webhookSecret = required(
-    environment[`${prefix}_WEBHOOK_SECRET`],
-    `${prefix}_WEBHOOK_SECRET`,
-  );
-  const deliveryType = readDeliveryType(environment.PATHAO_DELIVERY_TYPE);
-  const tokenEncryptionKey = decodeKey(environment.PATHAO_TOKEN_ENCRYPTION_KEY);
-
-  if (
-    mode === "live" &&
-    environment.PATHAO_LIVE_CREDENTIALS_ROTATED?.trim() !== "true"
-  ) {
-    throw new Error(
-      "Pathao live credentials must be rotated before activation.",
-    );
-  }
-  const passwordGrantProductionApproved =
-    environment.PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED?.trim() === "true";
-  if (mode === "live" && !passwordGrantProductionApproved) {
-    throw new Error(
-      "Pathao's documented password grant requires explicit production approval.",
-    );
-  }
-
   return {
     mode,
-    baseUrl:
-      mode === "sandbox"
-        ? "https://courier-api-sandbox.pathao.com"
-        : "https://api-hermes.pathao.com",
-    clientId,
-    clientSecret,
-    username,
-    password,
-    webhookSecret,
-    deliveryType,
-    tokenEncryptionKey,
-    approvedStoreIds: readIntegerSet(
-      environment[`${prefix}_APPROVED_STORE_IDS`],
-      `${prefix}_APPROVED_STORE_IDS`,
+    baseUrl,
+    clientId: required(
+      environment[`${prefix}_CLIENT_ID`],
+      `${prefix}_CLIENT_ID`,
     ),
-    passwordGrantProductionApproved,
+    clientSecret: required(
+      environment[`${prefix}_CLIENT_SECRET`],
+      `${prefix}_CLIENT_SECRET`,
+    ),
+    username: required(environment[`${prefix}_USERNAME`], `${prefix}_USERNAME`),
+    password: required(environment[`${prefix}_PASSWORD`], `${prefix}_PASSWORD`),
+    webhookSecret: required(
+      environment[`${prefix}_WEBHOOK_SECRET`],
+      `${prefix}_WEBHOOK_SECRET`,
+    ),
+    deliveryType: readDeliveryType(environment.PATHAO_DELIVERY_TYPE),
+    tokenEncryptionKey: decodeKey(environment.PATHAO_TOKEN_ENCRYPTION_KEY),
   };
 }
 
@@ -120,31 +94,4 @@ function decodeKey(value: string | undefined): Buffer {
     );
   }
   return key;
-}
-
-function readIntegerSet(value: string | undefined, name: string): Set<number> {
-  const normalized = value?.trim();
-  if (!normalized) {
-    throw new Error(
-      `${name} must contain comma-separated positive integer IDs.`,
-    );
-  }
-  const values = normalized.split(",").map((item) => {
-    if (!/^[1-9][0-9]*$/.test(item)) {
-      throw new Error(
-        `${name} must contain comma-separated positive integer IDs.`,
-      );
-    }
-    const parsed = Number(item);
-    if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 2_147_483_647) {
-      throw new Error(
-        `${name} must contain comma-separated positive integer IDs.`,
-      );
-    }
-    return parsed;
-  });
-  if (new Set(values).size !== values.length) {
-    throw new Error(`${name} must not contain duplicate IDs.`);
-  }
-  return new Set(values);
 }

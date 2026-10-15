@@ -47,7 +47,7 @@ export class PathaoManagementController {
 
   @Get("stores")
   listStores() {
-    return this.pathao.listApprovedStores();
+    return this.pathao.listActiveStores();
   }
 
   @Get("orders/:orderId")
