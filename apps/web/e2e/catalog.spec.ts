@@ -20,6 +20,9 @@ test("admin sidebar follows permissions and closes after mobile navigation", asy
   await page.goto("/admin/catalog");
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
 
+  await expect(
+    page.locator('[data-slot="sidebar"][data-mobile="true"]'),
+  ).toBeVisible();
   const navigation = page.getByRole("navigation", { name: "Administration" });
   await expect(
     navigation.getByRole("link", { name: "Categories" }),

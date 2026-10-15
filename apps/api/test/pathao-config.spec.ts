@@ -5,6 +5,7 @@ import { readPathaoConfiguration } from "../src/delivery/pathao/pathao-config.js
 const tokenEncryptionKey = randomBytes(32).toString("base64url");
 const sandboxEnvironment: NodeJS.ProcessEnv = {
   PATHAO_MODE: "sandbox",
+  PATHAO_DELIVERY_TYPE: "48",
   PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
   PATHAO_SANDBOX_CLIENT_ID: "test-client-id",
   PATHAO_SANDBOX_CLIENT_SECRET: "test-client-secret",
@@ -27,8 +28,26 @@ describe("Pathao configuration", () => {
     expect(configuration).toMatchObject({
       mode: "sandbox",
       baseUrl: "https://courier-api-sandbox.pathao.com",
+      deliveryType: 48,
       approvedStoreIds: new Set([101, 102]),
     });
+  });
+
+  it("accepts only one documented delivery_type code from configuration", () => {
+    expect(
+      readPathaoConfiguration({
+        ...sandboxEnvironment,
+        PATHAO_DELIVERY_TYPE: "12",
+      })?.deliveryType,
+    ).toBe(12);
+    for (const value of [undefined, "", "48,12", " 48", "13"]) {
+      expect(() =>
+        readPathaoConfiguration({
+          ...sandboxEnvironment,
+          PATHAO_DELIVERY_TYPE: value,
+        }),
+      ).toThrow("PATHAO_DELIVERY_TYPE");
+    }
   });
 
   it("requires nonempty, valid sandbox store IDs", () => {
@@ -49,6 +68,7 @@ describe("Pathao configuration", () => {
   it("blocks live use until credentials are rotated and the password-grant exception is approved", () => {
     const liveEnvironment: NodeJS.ProcessEnv = {
       PATHAO_MODE: "live",
+      PATHAO_DELIVERY_TYPE: "48",
       PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
       PATHAO_LIVE_CLIENT_ID: "test-live-client-id",
       PATHAO_LIVE_CLIENT_SECRET: "test-live-client-secret",

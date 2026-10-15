@@ -77,6 +77,15 @@ test("catalog operator configures a product through to storefront visibility", a
     .getByRole("button", { name: "Sign in", exact: true })
     .click();
   await expect(page).toHaveURL(/\/admin$/);
+  const administrationNav = page.getByRole("navigation", {
+    name: "Administration",
+  });
+  await expect(
+    administrationNav.getByRole("link", { name: "Size guides" }),
+  ).toBeVisible();
+  await expect(
+    administrationNav.getByRole("link", { name: "Categories" }),
+  ).toBeVisible();
 
   const accessResponse = await page.request.get("/api/v1/access/me");
   expect(accessResponse.status()).toBe(200);
@@ -582,11 +591,12 @@ test("catalog operator configures a product through to storefront visibility", a
   });
   await expect(pathaoPanel).toBeVisible();
   await expect(pathaoPanel).toContainText(
-    "Pathao booking is paused until Operations has an approved active store and confirms this merchant account's supported delivery type.",
+    "Configured Pathao service: Normal Delivery (48).",
   );
+  await expect(pathaoPanel.getByLabel("Pathao delivery type")).toHaveCount(0);
   await expect(
     pathaoPanel.getByRole("button", { name: "Create Pathao booking" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 
   await page.getByLabel("Delivery operator").fill("Integration Dispatch Desk");
   await page

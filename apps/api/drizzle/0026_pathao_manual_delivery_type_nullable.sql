@@ -1,0 +1,1 @@
+ALTER TABLE "delivery"."pathao_booking" ALTER COLUMN "delivery_type" DROP NOT NULL;

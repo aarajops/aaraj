@@ -26,11 +26,13 @@ The token request parameter table describes `username` as the test login email o
 The API page describes OAuth 2.0 access tokens. It says to persist the token for subsequent API calls. The AARAJ configuration names below are AARAJ deployment controls, not Pathao-defined environment-variable names:
 
 - `PATHAO_MODE` selects disabled, sandbox, or live behavior in AARAJ.
+- `PATHAO_DELIVERY_TYPE` supplies the single required Create Order `delivery_type` value. Pathao's request table documents `48` (Normal Delivery) and `12` (On Demand Delivery); AARAJ accepts one exact value and sends it in the provider request. It has no default and is not selected in the booking form.
 - `PATHAO_TOKEN_ENCRYPTION_KEY` encrypts tokens in AARAJ storage.
-- `PATHAO_SANDBOX_APPROVED_STORE_IDS` restricts which merchant stores AARAJ staff can select. AARAJ does not infer the merchant account's enabled delivery type from the general API code list.
+- `PATHAO_SANDBOX_APPROVED_STORE_IDS` and `PATHAO_LIVE_APPROVED_STORE_IDS` restrict which merchant stores AARAJ staff can select in each environment.
 - `PATHAO_SANDBOX_WEBHOOK_SECRET` stores the value AARAJ supplies when configuring the Pathao webhook.
+- The corresponding `PATHAO_LIVE_*` values supply live credentials and the live webhook secret. Live provisioning also requires AARAJ's credential-rotation and password-grant approval variables.
 
-Do not infer that Pathao requires these AARAJ names or that every store/service is enabled for a merchant merely because it appears in the API documentation.
+These are AARAJ configuration names, not Pathao-defined environment variables. The supplied Pathao request table defines the accepted `delivery_type` values; it does not describe an account-capability lookup.
 
 ## Authentication
 
@@ -124,7 +126,7 @@ The sample success response is HTTP `200` with `consignment_id`, optional `merch
 - The documentation says address mapping can infer city/zone/area, but does not guarantee that all addresses or services are resolvable.
 - It does not specify the result of a timeout after Pathao has accepted an order. AARAJ must retain an unknown outcome and verify through order info/reconciliation before any retry.
 
-The AARAJ integration currently uses `store_id`, recipient details, delivery type, parcel quantity/weight, and COD amount. It fixes `item_type` to Parcel (`2`). It does not currently use Pathao's Create Store, bulk-order, city/zone/area lookup, or price-plan operations as part of booking.
+The AARAJ integration uses `store_id`, recipient details, the configured required `delivery_type`, parcel quantity/weight, and COD amount. It fixes `item_type` to Parcel (`2`). It does not currently use Pathao's Create Store, bulk-order, city/zone/area lookup, or price-plan operations as part of booking.
 
 ## Price calculation
 
@@ -187,30 +189,21 @@ Example payloads in the supplied material include `consignment_id`, `merchant_or
 
 ## Current AARAJ implementation and release status
 
-The relevant implementation is in `apps/api/src/delivery/pathao/`. Its sandbox/live hosts match the supplied material; it implements token issuance/refresh, store listing, order creation, order-info lookup, and the webhook callback. It currently accepts only the documented delivery-type numbers `12` and `48`. The webhook route is `/api/v1/delivery/pathao/webhook` and returns HTTP `202` with the integration handshake header.
+The relevant implementation is in `apps/api/src/delivery/pathao/`. Its sandbox/live hosts match the supplied material; it implements token issuance/refresh, store listing, order creation, order-info lookup, and the webhook callback. AARAJ validates one configured delivery-type number (`12` or `48`) and sends it as the required Pathao `delivery_type` field. The webhook route is `/api/v1/delivery/pathao/webhook` and returns HTTP `202` with the integration handshake header.
 
-Those code facts do not establish that a real Pathao request has succeeded. CI uses deterministic mocks. Sandbox mode can be provisioned from the protected GitHub Environment once its credentials and approved store ID are configured. Verify sandbox authentication, store listing, an isolated sandbox order, and webhook delivery before relying on fulfillment. Live use has additional AARAJ approval and credential-rotation gates; the supplied docs alone do not satisfy them.
+Those code facts do not establish that a real Pathao request has succeeded. CI uses deterministic mocks. Sandbox and live values are provisioned from the protected GitHub Environment. A real sandbox authentication attempt from the production host timed out at the network layer; no real order or webhook delivery has been verified. Live use also has AARAJ credential-rotation and password-grant approval checks, which are AARAJ security controls rather than Pathao API parameters.
 
 ## Environment configuration interpretation
 
 For GitHub Environment `aaraj-production`:
 
 - Use Environment **Secrets** for client secrets, login passwords, the merchant-configured webhook secret, and AARAJ's token-encryption key.
-- Use Environment **Variables** for `PATHAO_MODE` and AARAJ's approved sandbox store IDs.
-- Pathao documents `48` as Normal Delivery and `12` as On Demand Delivery for the required order field. Those general API definitions do not establish which service this merchant account supports. AARAJ does not offer a delivery-type choice or submit bookings until the merchant account's supported type is confirmed.
-- The deployment workflow accepts `PATHAO_MODE=sandbox` when the required GitHub settings pass validation. Its privileged VPS helper rejects `live`. GitHub configuration storage by itself does not make API calls; a successful deployment and service restart apply the settings.
+- Use Environment **Variables** for `PATHAO_MODE`, `PATHAO_DELIVERY_TYPE`, and the approved store IDs. `PATHAO_DELIVERY_TYPE` must contain exactly `48` or `12`; it must not contain a list.
+- For live provisioning, set `PATHAO_LIVE_CREDENTIALS_ROTATED=true` and `PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED=true` only after the documented AARAJ security checks are complete. The workflow and privileged helper both fail closed when either approval or any selected live setting is missing.
+- The deployment validates the selected mode and its settings, provisions them through the root-owned helper, then restarts and health-checks AARAJ under the existing release workflow. Changing GitHub Environment values alone does not apply them.
 
 These names and rules describe AARAJ's deployment boundary, not Pathao's own configuration interface.
 
-## Open provider-confirmation items
+## Details not specified by the supplied capture
 
-Before production booking, obtain written or account-visible confirmation from Pathao for:
-
-1. Production username/password requirements, given the environment table omission.
-2. The accepted `item_weight` JSON type and `amount_to_collect` currency/unit/limits.
-3. Store approval timing and how to determine that a store/service is enabled in each environment.
-4. Delivery-type availability for AARAJ's sandbox and production merchant accounts.
-5. Webhook handshake status/header comparison, signature construction, retry behavior, event ordering, replay behavior, and payload field requirements.
-6. Create-order timeout recovery and whether any provider-side idempotency guarantee exists.
-
-Record the Pathao response or updated official docs with the date and account/environment scope. Do not resolve these questions using third-party SDKs or blog posts as authority.
+The supplied page does not define production login credential provisioning, the `item_weight` wire type beyond its table saying float, `amount_to_collect` currency units/limits, account-specific service availability, webhook retry/order/replay behavior, a webhook signature algorithm, or create-order idempotency. These are unknowns in this capture, not extra requirements stated by Pathao. AARAJ records them as unverified and does not invent API rules for them.

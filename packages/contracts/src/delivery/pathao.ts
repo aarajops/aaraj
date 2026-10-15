@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const PathaoDeliveryTypeSchema = z.union([z.literal(48), z.literal(12)]);
+export type PathaoDeliveryType = z.infer<typeof PathaoDeliveryTypeSchema>;
 
 export const PathaoStoreSchema = z.strictObject({
   storeId: z.number().int().positive().max(2_147_483_647),
@@ -13,12 +14,12 @@ export type PathaoStore = z.infer<typeof PathaoStoreSchema>;
 
 export const PathaoBookingOptionsSchema = z.strictObject({
   stores: PathaoStoreListSchema,
+  deliveryType: PathaoDeliveryTypeSchema,
 });
 export type PathaoBookingOptions = z.infer<typeof PathaoBookingOptionsSchema>;
 
 export const PathaoBookingInputSchema = z.strictObject({
   storeId: z.number().int().positive().max(2_147_483_647),
-  deliveryType: PathaoDeliveryTypeSchema,
   parcelQuantity: z.number().int().positive().max(2_147_483_647),
   parcelWeightKg: z.number().min(0.5).max(10),
 });
@@ -36,7 +37,7 @@ export const PathaoBookingSchema = z.strictObject({
   environment: z.enum(["sandbox", "live"]),
   source: z.enum(["api", "manual"]),
   storeId: z.number().int().positive().max(2_147_483_647),
-  deliveryType: PathaoDeliveryTypeSchema,
+  deliveryType: PathaoDeliveryTypeSchema.nullable(),
   parcelQuantity: z.number().int().positive().max(2_147_483_647),
   parcelWeightKg: z.number().min(0.5).max(10),
   merchantOrderId: z.string().min(1).max(100),
@@ -143,7 +144,6 @@ export const PathaoManualReconciliationInputSchema = z.strictObject({
     .max(120)
     .regex(/^[A-Za-z0-9_-]+$/),
   storeId: z.number().int().positive().max(2_147_483_647),
-  deliveryType: PathaoDeliveryTypeSchema,
   parcelQuantity: z.number().int().positive().max(2_147_483_647),
   parcelWeightKg: z.number().min(0.5).max(10),
   reason: z.string().trim().min(3).max(500),

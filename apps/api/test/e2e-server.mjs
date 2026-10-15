@@ -127,6 +127,7 @@ try {
 
   Object.assign(process.env, {
     PATHAO_MODE: "sandbox",
+    PATHAO_DELIVERY_TYPE: "48",
     PATHAO_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
     PATHAO_SANDBOX_CLIENT_ID: "pathao-browser-e2e-client",
     PATHAO_SANDBOX_CLIENT_SECRET: "pathao-browser-e2e-client-secret",

@@ -128,7 +128,6 @@ export function AuthPanel({
         }
 
         router.replace(cartDestination ?? destination);
-        router.refresh();
       }
     } catch {
       setErrorMessage(

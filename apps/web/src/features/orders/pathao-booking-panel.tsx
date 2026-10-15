@@ -37,7 +37,6 @@ export function PathaoBookingPanel({
   const [details, setDetails] = useState<PathaoBookingManagement | null>(null);
   const [options, setOptions] = useState<PathaoBookingOptions | null>(null);
   const [storeId, setStoreId] = useState("");
-  const [deliveryType, setDeliveryType] = useState("");
   const [parcelQuantity, setParcelQuantity] = useState("");
   const [parcelWeightKg, setParcelWeightKg] = useState("");
   const [consignmentId, setConsignmentId] = useState("");
@@ -82,17 +81,12 @@ export function PathaoBookingPanel({
     setError(optionsError);
     if (booking.booking) {
       setStoreId((value) => value || String(booking.booking!.storeId));
-      setDeliveryType(
-        (value) => value || String(booking.booking!.deliveryType),
-      );
       setParcelQuantity(
         (value) => value || String(booking.booking!.parcelQuantity),
       );
       setParcelWeightKg(
         (value) => value || String(booking.booking!.parcelWeightKg),
       );
-    } else {
-      setDeliveryType("");
     }
     if (bookingOptions?.stores[0]) {
       setStoreId((value) => value || String(bookingOptions.stores[0]!.storeId));
@@ -144,10 +138,9 @@ export function PathaoBookingPanel({
   }, [order.id, eligible]);
 
   async function book() {
-    if (!options || !storeId || !deliveryType) return;
+    if (!options || !storeId) return;
     const input: PathaoBookingInput = {
       storeId: Number(storeId),
-      deliveryType: Number(deliveryType) as 12 | 48,
       parcelQuantity: Number(parcelQuantity),
       parcelWeightKg: Number(parcelWeightKg),
     };
@@ -184,11 +177,10 @@ export function PathaoBookingPanel({
   }
 
   async function reconcile() {
-    if (!options || !storeId || !deliveryType || !verifiedInPanel) return;
+    if (!options || !storeId || !verifiedInPanel) return;
     const input: PathaoManualReconciliationInput = {
       consignmentId,
       storeId: Number(storeId),
-      deliveryType: Number(deliveryType) as 12 | 48,
       parcelQuantity: Number(parcelQuantity),
       parcelWeightKg: Number(parcelWeightKg),
       reason: reconciliationReason,
@@ -353,8 +345,12 @@ export function PathaoBookingPanel({
       ) : null}
 
       {eligible && !booking && !details?.claimStatus ? (
-        options && options.stores.length > 0 && deliveryType ? (
+        options && options.stores.length > 0 ? (
           <div className="mt-5 grid gap-4">
+            <p className="text-sm text-muted-foreground">
+              Configured Pathao service:{" "}
+              {deliveryTypeName(options.deliveryType)}.
+            </p>
             <label className="grid gap-2 text-sm font-medium">
               Approved Pathao store
               <select
@@ -402,11 +398,7 @@ export function PathaoBookingPanel({
             </p>
             <Button
               disabled={
-                pending ||
-                !parcelQuantity ||
-                !parcelWeightKg ||
-                !storeId ||
-                !deliveryType
+                pending || !parcelQuantity || !parcelWeightKg || !storeId
               }
               onClick={() => void book()}
             >
@@ -415,10 +407,9 @@ export function PathaoBookingPanel({
           </div>
         ) : (
           <p className="mt-5 text-sm text-muted-foreground">
-            Pathao booking is paused until Operations has an approved active
-            store and confirms this merchant account&apos;s supported delivery
-            type. Pathao requires that value for order creation; AARAJ will not
-            guess it from the general API code list.
+            No approved active Pathao store is available for this environment.
+            Check the active store and its ID in the Pathao Merchant Panel and
+            GitHub Environment settings.
           </p>
         )
       ) : null}
@@ -533,4 +524,8 @@ function formatProviderFee(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function deliveryTypeName(value: 48 | 12): string {
+  return value === 48 ? "Normal Delivery (48)" : "On Demand Delivery (12)";
 }
