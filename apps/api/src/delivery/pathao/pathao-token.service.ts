@@ -37,9 +37,12 @@ export class PathaoTokenService {
   }> {
     const config = readPathaoConfiguration();
     if (!config) {
-      throw new ServiceUnavailableException("Pathao integration is disabled.", {
-        errorCode: "PATHAO_DISABLED",
-      });
+      throw new ServiceUnavailableException(
+        "Pathao integration is not configured.",
+        {
+          errorCode: "PATHAO_NOT_CONFIGURED",
+        },
+      );
     }
 
     const waitUntil = Date.now() + REFRESH_WAIT_MS;

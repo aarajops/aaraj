@@ -4,7 +4,7 @@ import { readPathaoConfiguration } from "../src/delivery/pathao/pathao-config.js
 
 const tokenEncryptionKey = randomBytes(32).toString("base64url");
 const sandboxEnvironment: NodeJS.ProcessEnv = {
-  PATHAO_MODE: "sandbox",
+  PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
   PATHAO_DELIVERY_TYPE: "48",
   PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
   PATHAO_SANDBOX_CLIENT_ID: "test-client-id",
@@ -12,25 +12,67 @@ const sandboxEnvironment: NodeJS.ProcessEnv = {
   PATHAO_SANDBOX_USERNAME: "test@example.invalid",
   PATHAO_SANDBOX_PASSWORD: "test-password",
   PATHAO_SANDBOX_WEBHOOK_SECRET: "test-webhook-secret",
-  PATHAO_SANDBOX_APPROVED_STORE_IDS: "101,102",
 };
 
 describe("Pathao configuration", () => {
-  it("is disabled by default without requiring credentials", () => {
+  it("is unconfigured when the Pathao base URL and credentials are absent", () => {
     expect(readPathaoConfiguration({})).toBeNull();
   });
 
-  it("selects the fixed sandbox host and validates approved store IDs", () => {
-    const configuration = readPathaoConfiguration({
-      ...sandboxEnvironment,
-      PATHAO_BASE_URL: "https://attacker.example",
-    });
-    expect(configuration).toMatchObject({
+  it("rejects credentials without a base URL instead of silently ignoring them", () => {
+    expect(() =>
+      readPathaoConfiguration({
+        PATHAO_SANDBOX_CLIENT_SECRET: "stale-secret",
+      }),
+    ).toThrow("PATHAO_BASE_URL");
+  });
+
+  it("uses the documented sandbox base URL and its credentials", () => {
+    expect(readPathaoConfiguration(sandboxEnvironment)).toMatchObject({
       mode: "sandbox",
       baseUrl: "https://courier-api-sandbox.pathao.com",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      username: "test@example.invalid",
+      password: "test-password",
+      webhookSecret: "test-webhook-secret",
       deliveryType: 48,
-      approvedStoreIds: new Set([101, 102]),
     });
+  });
+
+  it("uses the documented live base URL and does not require AARAJ-only approval flags", () => {
+    expect(
+      readPathaoConfiguration({
+        PATHAO_BASE_URL: "https://api-hermes.pathao.com",
+        PATHAO_DELIVERY_TYPE: "48",
+        PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
+        PATHAO_LIVE_CLIENT_ID: "test-live-client-id",
+        PATHAO_LIVE_CLIENT_SECRET: "test-live-client-secret",
+        PATHAO_LIVE_USERNAME: "test-live@example.invalid",
+        PATHAO_LIVE_PASSWORD: "test-live-password",
+        PATHAO_LIVE_WEBHOOK_SECRET: "test-live-webhook-secret",
+      }),
+    ).toMatchObject({
+      mode: "live",
+      baseUrl: "https://api-hermes.pathao.com",
+      clientId: "test-live-client-id",
+      deliveryType: 48,
+    });
+  });
+
+  it("accepts only the two Pathao-documented base URLs", () => {
+    expect(() =>
+      readPathaoConfiguration({
+        ...sandboxEnvironment,
+        PATHAO_BASE_URL: "https://attacker.example",
+      }),
+    ).toThrow("PATHAO_BASE_URL");
+    expect(() =>
+      readPathaoConfiguration({
+        ...sandboxEnvironment,
+        PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com/extra",
+      }),
+    ).toThrow("PATHAO_BASE_URL");
   });
 
   it("accepts only one documented delivery_type code from configuration", () => {
@@ -50,53 +92,18 @@ describe("Pathao configuration", () => {
     }
   });
 
-  it("requires nonempty, valid sandbox store IDs", () => {
+  it("requires the credentials and persistent token encryption key while configured", () => {
     expect(() =>
       readPathaoConfiguration({
         ...sandboxEnvironment,
-        PATHAO_SANDBOX_APPROVED_STORE_IDS: "",
+        PATHAO_SANDBOX_PASSWORD: "",
       }),
-    ).toThrow("PATHAO_SANDBOX_APPROVED_STORE_IDS");
+    ).toThrow("PATHAO_SANDBOX_PASSWORD");
     expect(() =>
       readPathaoConfiguration({
         ...sandboxEnvironment,
-        PATHAO_SANDBOX_APPROVED_STORE_IDS: "101,101",
+        PATHAO_TOKEN_ENCRYPTION_KEY: "",
       }),
-    ).toThrow("duplicate IDs");
-  });
-
-  it("blocks live use until credentials are rotated and the password-grant exception is approved", () => {
-    const liveEnvironment: NodeJS.ProcessEnv = {
-      PATHAO_MODE: "live",
-      PATHAO_DELIVERY_TYPE: "48",
-      PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
-      PATHAO_LIVE_CLIENT_ID: "test-live-client-id",
-      PATHAO_LIVE_CLIENT_SECRET: "test-live-client-secret",
-      PATHAO_LIVE_USERNAME: "test-live@example.invalid",
-      PATHAO_LIVE_PASSWORD: "test-live-password",
-      PATHAO_LIVE_WEBHOOK_SECRET: "test-live-webhook-secret",
-      PATHAO_LIVE_APPROVED_STORE_IDS: "201",
-    };
-    expect(() => readPathaoConfiguration(liveEnvironment)).toThrow(
-      "Pathao live credentials must be rotated before activation.",
-    );
-    expect(() =>
-      readPathaoConfiguration({
-        ...liveEnvironment,
-        PATHAO_LIVE_CREDENTIALS_ROTATED: "true",
-      }),
-    ).toThrow(
-      "Pathao's documented password grant requires explicit production approval.",
-    );
-    expect(
-      readPathaoConfiguration({
-        ...liveEnvironment,
-        PATHAO_LIVE_CREDENTIALS_ROTATED: "true",
-        PATHAO_PASSWORD_GRANT_PRODUCTION_APPROVED: "true",
-      }),
-    ).toMatchObject({
-      mode: "live",
-      baseUrl: "https://api-hermes.pathao.com",
-    });
+    ).toThrow("PATHAO_TOKEN_ENCRYPTION_KEY");
   });
 });

@@ -78,7 +78,7 @@ describe("COD Orders and checkout", () => {
   let dhaka: BangladeshGeography["locations"][number];
   let dhakaDivision: BangladeshGeography["locations"][number];
   const pathaoEnvironmentKeys = [
-    "PATHAO_MODE",
+    "PATHAO_BASE_URL",
     "PATHAO_DELIVERY_TYPE",
     "PATHAO_TOKEN_ENCRYPTION_KEY",
     "PATHAO_SANDBOX_CLIENT_ID",
@@ -86,7 +86,6 @@ describe("COD Orders and checkout", () => {
     "PATHAO_SANDBOX_USERNAME",
     "PATHAO_SANDBOX_PASSWORD",
     "PATHAO_SANDBOX_WEBHOOK_SECRET",
-    "PATHAO_SANDBOX_APPROVED_STORE_IDS",
   ];
   const previousPathaoEnvironment = new Map<string, string | undefined>();
 
@@ -390,13 +389,13 @@ describe("COD Orders and checkout", () => {
                 data: [
                   {
                     store_id: 101,
-                    store_name: "Approved Test Store",
+                    store_name: "Active Test Store",
                     is_active: 1,
                   },
                   {
                     store_id: 202,
-                    store_name: "Unapproved Test Store",
-                    is_active: 1,
+                    store_name: "Inactive Test Store",
+                    is_active: 0,
                   },
                 ],
                 last_page: 1,
@@ -558,7 +557,7 @@ describe("COD Orders and checkout", () => {
       previousPathaoEnvironment.set(key, process.env[key]);
     }
     Object.assign(process.env, {
-      PATHAO_MODE: "sandbox",
+      PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
       PATHAO_DELIVERY_TYPE: "48",
       PATHAO_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
       PATHAO_SANDBOX_CLIENT_ID: "pathao-test-client",
@@ -566,7 +565,6 @@ describe("COD Orders and checkout", () => {
       PATHAO_SANDBOX_USERNAME: "pathao-test@example.invalid",
       PATHAO_SANDBOX_PASSWORD: "test-only-password",
       PATHAO_SANDBOX_WEBHOOK_SECRET: "pathao-test-webhook-secret",
-      PATHAO_SANDBOX_APPROVED_STORE_IDS: "101",
     });
     const module = await Test.createTestingModule({
       imports: [AppModule],
@@ -1634,7 +1632,7 @@ describe("COD Orders and checkout", () => {
     });
   });
 
-  it("books only approved Pathao stores and keeps booking separate from dispatch, delivery, and COD collection", async () => {
+  it("books only active stores returned by Pathao and keeps booking separate from dispatch, delivery, and COD collection", async () => {
     const fixture = await createGuestOrder(2);
     await confirmServiceable(fixture.id);
     const order = await orderById(fixture.id);
@@ -1646,7 +1644,7 @@ describe("COD Orders and checkout", () => {
       .set("Cookie", staff.cookie)
       .expect(200);
     expect(stores.body.stores).toEqual([
-      { storeId: 101, storeName: "Approved Test Store", active: true },
+      { storeId: 101, storeName: "Active Test Store", active: true },
     ]);
     expect(stores.body.deliveryType).toBe(48);
     await request(app.getHttpServer())
@@ -1716,8 +1714,12 @@ describe("COD Orders and checkout", () => {
     expect(createRequest?.body).not.toHaveProperty("recipient_area");
     expect(createRequest?.body).not.toHaveProperty("item_description");
 
-    const ineligible = await request(app.getHttpServer())
-      .post(bookingUrl)
+    const inactiveFixture = await createGuestOrder(2);
+    await confirmServiceable(inactiveFixture.id);
+    const inactiveStore = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${inactiveFixture.id}/book`,
+      )
       .set("Origin", origin)
       .set("Cookie", secondStaff.cookie)
       .set("Idempotency-Key", randomUUID())
@@ -1726,7 +1728,8 @@ describe("COD Orders and checkout", () => {
         parcelQuantity: 1,
         parcelWeightKg: 0.75,
       });
-    expect(ineligible.status).toBe(422);
+    expect(inactiveStore.status).toBe(422);
+    expect(inactiveStore.body.errorCode).toBe("PATHAO_STORE_NOT_ACTIVE");
     expect(
       provider.requests.filter(
         ({ url, method }) =>

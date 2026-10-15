@@ -110,16 +110,14 @@ export class PathaoService {
     @Inject(ORDERS_PATHAO_PORT) private readonly orders: OrdersPathaoPort,
   ) {}
 
-  async listApprovedStores(): Promise<PathaoBookingOptions> {
+  async listActiveStores(): Promise<PathaoBookingOptions> {
     const { config, accessToken } = await this.tokens.getAccessToken();
     const records = await this.api.listStores(config, accessToken);
-    const approved = records.filter(
-      (store) => store.active && config.approvedStoreIds.has(store.storeId),
-    );
+    const activeStores = records.filter((store) => store.active);
     return PathaoBookingOptionsSchema.parse({
       deliveryType: config.deliveryType,
       stores: PathaoStoreListSchema.parse(
-        approved.map((store) => ({
+        activeStores.map((store) => ({
           storeId: store.storeId,
           storeName: store.storeName,
           active: store.active,
@@ -145,12 +143,6 @@ export class PathaoService {
     }
     const input = PathaoBookingInputSchema.parse(rawInput);
     const config = requiredPathaoConfiguration();
-    if (!config.approvedStoreIds.has(input.storeId)) {
-      throw new UnprocessableEntityException(
-        "Choose a Pathao store approved for this environment.",
-        { errorCode: "PATHAO_STORE_NOT_APPROVED" },
-      );
-    }
     const fingerprint = sha256(
       JSON.stringify({
         orderId,
@@ -168,7 +160,13 @@ export class PathaoService {
       await this.ensureBookingClaim(existing);
       return replay;
     }
-    const { accessToken } = await this.tokens.getAccessToken();
+    const { config: authenticatedConfig, accessToken } =
+      await this.tokens.getAccessToken();
+    await this.assertActiveStore(
+      authenticatedConfig,
+      accessToken,
+      input.storeId,
+    );
     const order = await this.orders.beginPathaoBookingClaim(
       orderId,
       commandId,
@@ -580,12 +578,6 @@ export class PathaoService {
     }
     const input = PathaoManualReconciliationInputSchema.parse(rawInput);
     const config = requiredPathaoConfiguration();
-    if (!config.approvedStoreIds.has(input.storeId)) {
-      throw new UnprocessableEntityException(
-        "Choose a Pathao store approved for this environment.",
-        { errorCode: "PATHAO_STORE_NOT_APPROVED" },
-      );
-    }
     const fingerprint = sha256(JSON.stringify({ orderId, input }));
     await this.expireInterruptedBookings();
     const current = await this.findBooking(orderId);
@@ -1528,6 +1520,20 @@ export class PathaoService {
       status: existing.resultingState,
     });
   }
+
+  private async assertActiveStore(
+    config: PathaoConfiguration,
+    accessToken: string,
+    storeId: number,
+  ): Promise<void> {
+    const stores = await this.api.listStores(config, accessToken);
+    if (!stores.some((store) => store.storeId === storeId && store.active)) {
+      throw new UnprocessableEntityException(
+        "Choose an active Pathao store returned for this merchant account.",
+        { errorCode: "PATHAO_STORE_NOT_ACTIVE" },
+      );
+    }
+  }
 }
 
 export function isPathaoWebhookPayload(value: unknown): boolean {
@@ -1537,9 +1543,12 @@ export function isPathaoWebhookPayload(value: unknown): boolean {
 function requiredPathaoConfiguration(): PathaoConfiguration {
   const config = readPathaoConfiguration();
   if (!config) {
-    throw new ServiceUnavailableException("Pathao integration is disabled.", {
-      errorCode: "PATHAO_DISABLED",
-    });
+    throw new ServiceUnavailableException(
+      "Pathao integration is not configured.",
+      {
+        errorCode: "PATHAO_NOT_CONFIGURED",
+      },
+    );
   }
   return config;
 }

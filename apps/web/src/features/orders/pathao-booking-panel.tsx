@@ -352,7 +352,7 @@ export function PathaoBookingPanel({
               {deliveryTypeName(options.deliveryType)}.
             </p>
             <label className="grid gap-2 text-sm font-medium">
-              Approved Pathao store
+              Active Pathao store
               <select
                 className="h-10 rounded-md border border-input bg-background px-3"
                 value={storeId}
@@ -407,98 +407,93 @@ export function PathaoBookingPanel({
           </div>
         ) : (
           <p className="mt-5 text-sm text-muted-foreground">
-            No approved active Pathao store is available for this environment.
-            Check the active store and its ID in the Pathao Merchant Panel and
-            GitHub Environment settings.
+            No active Pathao store was returned for this merchant account. Check
+            the Pathao Merchant Panel store list.
           </p>
         )
       ) : null}
 
-      {eligible &&
-        options &&
-        booking?.status !== "booked" &&
-        options.stores.length > 0 && (
-          <details className="mt-6 rounded-xl border border-border p-4">
-            <summary className="cursor-pointer font-medium">
-              Reconcile an existing Pathao consignment
-            </summary>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Use this only after checking the consignment in the Pathao
-              Merchant Panel. AARAJ verifies the consignment with Pathao and
-              records your reason. A webhook reference alone never links an
-              Order.
-            </p>
-            <div className="mt-4 grid gap-4">
-              <label className="grid gap-2 text-sm font-medium">
-                Pathao consignment ID
-                <Input
-                  autoComplete="off"
-                  maxLength={120}
-                  value={consignmentId}
-                  onChange={(event) => setConsignmentId(event.target.value)}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Actual parcel count
-                <Input
-                  min={1}
-                  step={1}
-                  type="number"
-                  value={parcelQuantity}
-                  onChange={(event) => setParcelQuantity(event.target.value)}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Actual parcel weight (kg)
-                <Input
-                  min={0.5}
-                  max={10}
-                  step="any"
-                  type="number"
-                  value={parcelWeightKg}
-                  onChange={(event) => setParcelWeightKg(event.target.value)}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Reconciliation reason
-                <textarea
-                  className="min-h-24 rounded-md border border-input bg-background px-3 py-2"
-                  maxLength={500}
-                  value={reconciliationReason}
-                  onChange={(event) =>
-                    setReconciliationReason(event.target.value)
-                  }
-                />
-                <span className="font-normal text-muted-foreground">
-                  Record the provider-panel verification. Do not include
-                  customer personal information.
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  checked={verifiedInPanel}
-                  type="checkbox"
-                  onChange={(event) => setVerifiedInPanel(event.target.checked)}
-                />
-                I verified this consignment in the Pathao Merchant Panel.
-              </label>
-              <Button
-                disabled={
-                  pending ||
-                  !consignmentId ||
-                  !parcelQuantity ||
-                  !parcelWeightKg ||
-                  !reconciliationReason.trim() ||
-                  !verifiedInPanel
+      {eligible && options && booking?.status !== "booked" && (
+        <details className="mt-6 rounded-xl border border-border p-4">
+          <summary className="cursor-pointer font-medium">
+            Reconcile an existing Pathao consignment
+          </summary>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Use this only after checking the consignment in the Pathao Merchant
+            Panel. AARAJ verifies the consignment with Pathao and records your
+            reason. A webhook reference alone never links an Order.
+          </p>
+          <div className="mt-4 grid gap-4">
+            <label className="grid gap-2 text-sm font-medium">
+              Pathao consignment ID
+              <Input
+                autoComplete="off"
+                maxLength={120}
+                value={consignmentId}
+                onChange={(event) => setConsignmentId(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Actual parcel count
+              <Input
+                min={1}
+                step={1}
+                type="number"
+                value={parcelQuantity}
+                onChange={(event) => setParcelQuantity(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Actual parcel weight (kg)
+              <Input
+                min={0.5}
+                max={10}
+                step="any"
+                type="number"
+                value={parcelWeightKg}
+                onChange={(event) => setParcelWeightKg(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Reconciliation reason
+              <textarea
+                className="min-h-24 rounded-md border border-input bg-background px-3 py-2"
+                maxLength={500}
+                value={reconciliationReason}
+                onChange={(event) =>
+                  setReconciliationReason(event.target.value)
                 }
-                variant="outline"
-                onClick={() => void reconcile()}
-              >
-                {pending ? "Verifying consignment…" : "Verify and reconcile"}
-              </Button>
-            </div>
-          </details>
-        )}
+              />
+              <span className="font-normal text-muted-foreground">
+                Record the provider-panel verification. Do not include customer
+                personal information.
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                checked={verifiedInPanel}
+                type="checkbox"
+                onChange={(event) => setVerifiedInPanel(event.target.checked)}
+              />
+              I verified this consignment in the Pathao Merchant Panel.
+            </label>
+            <Button
+              disabled={
+                pending ||
+                !consignmentId ||
+                !parcelQuantity ||
+                !parcelWeightKg ||
+                !reconciliationReason.trim() ||
+                !verifiedInPanel
+              }
+              variant="outline"
+              onClick={() => void reconcile()}
+            >
+              {pending ? "Verifying consignment…" : "Verify and reconcile"}
+            </Button>
+          </div>
+        </details>
+      )}
     </section>
   );
 }

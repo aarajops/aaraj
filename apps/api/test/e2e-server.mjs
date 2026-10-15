@@ -126,7 +126,7 @@ try {
   process.env.CLIENT_URL = `http://${process.env.HOST ?? "127.0.0.1"}:3180`;
 
   Object.assign(process.env, {
-    PATHAO_MODE: "sandbox",
+    PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
     PATHAO_DELIVERY_TYPE: "48",
     PATHAO_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
     PATHAO_SANDBOX_CLIENT_ID: "pathao-browser-e2e-client",
@@ -134,7 +134,6 @@ try {
     PATHAO_SANDBOX_USERNAME: "pathao-browser-e2e@example.invalid",
     PATHAO_SANDBOX_PASSWORD: "pathao-browser-e2e-only-password",
     PATHAO_SANDBOX_WEBHOOK_SECRET: "pathao-browser-e2e-webhook-secret",
-    PATHAO_SANDBOX_APPROVED_STORE_IDS: "101",
   });
 
   const networkFetch = globalThis.fetch.bind(globalThis);
