@@ -23,13 +23,20 @@ describe("Contracts Schema Validation", () => {
   it("keeps public storefront settings safe and validates managed updates", () => {
     const publicSettings = {
       siteName: "AARAJ",
+      brandColor: "#7b2220",
+      backgroundColor: "#fafafafa",
+      seoTitle: "AARAJ | Everyday style",
+      seoDescription: "Thoughtfully selected clothing for every day.",
+      socialImageAlt: "AARAJ latest collection",
       announcementEnabled: true,
       announcementText: "A new season starts here",
       supportPhone: "+8801712345678",
       supportEmail: "support@example.com",
       businessAddress: "Dhaka, Bangladesh",
       logo: null,
+      brandIcon: null,
       favicon: null,
+      socialImage: null,
       socialLinks: {
         instagram: "https://instagram.com/aaraj",
         facebook: null,
@@ -42,7 +49,11 @@ describe("Contracts Schema Validation", () => {
     };
     const editableSettings = Object.fromEntries(
       Object.entries(publicSettings).filter(
-        ([key]) => key !== "logo" && key !== "favicon",
+        ([key]) =>
+          key !== "logo" &&
+          key !== "brandIcon" &&
+          key !== "favicon" &&
+          key !== "socialImage",
       ),
     );
     expect(
@@ -52,6 +63,20 @@ describe("Contracts Schema Validation", () => {
       PublicStorefrontSettingsSchema.safeParse({
         ...publicSettings,
         updatedBy: "internal-user-id",
+      }).success,
+    ).toBe(false);
+    expect(
+      PublicStorefrontSettingsSchema.safeParse({
+        ...publicSettings,
+        backgroundColor: "var(--background)",
+      }).success,
+    ).toBe(false);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...editableSettings,
+        backgroundColor: "fafafafa",
+        expectedVersion: 1,
+        reason: "Update the storefront appearance",
       }).success,
     ).toBe(false);
     expect(
@@ -70,6 +95,50 @@ describe("Contracts Schema Validation", () => {
         reason: "Update the storefront announcement",
       }).success,
     ).toBe(false);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...editableSettings,
+        seoTitle: "x".repeat(161),
+        expectedVersion: 1,
+        reason: "Update the storefront SEO defaults",
+      }).success,
+    ).toBe(false);
+    expect(
+      PublicStorefrontSettingsSchema.safeParse({
+        ...publicSettings,
+        brandIcon: {
+          id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          src: "/api/v1/storefront/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.png",
+          contentType: "image/png",
+          width: 1024,
+          height: 1024,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      PublicStorefrontSettingsSchema.safeParse({
+        ...publicSettings,
+        brandIcon: {
+          id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          src: "/api/v1/storefront/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.png",
+          contentType: "image/png",
+          width: 1024,
+          height: 1025,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      PublicStorefrontSettingsSchema.safeParse({
+        ...publicSettings,
+        socialImage: {
+          id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+          src: "/api/v1/storefront/assets/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.jpg",
+          contentType: "image/jpeg",
+          width: 1200,
+          height: 630,
+        },
+      }).success,
+    ).toBe(true);
     expect(
       StorefrontSettingsUpdateSchema.safeParse({
         ...editableSettings,

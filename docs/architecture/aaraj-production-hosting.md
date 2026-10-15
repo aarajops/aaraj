@@ -29,13 +29,18 @@ authorization, backups, recovery access, or deployment have been verified.
   those AARAJ prefixes. Do not expose Redis publicly.
 - Store AARAJ production secrets on the VPS in root-managed files with narrow
   ownership and permissions. The API alone receives runtime secrets; the
-  storefront does not receive database or provider credentials. Migration
-  credentials are separately available only to the migration service. GitHub
-  receives neither database password.
+  storefront does not receive database or provider credentials. Keep the
+  public canonical origin in `/etc/sites/aaraj/site.env`; it is the only value
+  shared with the storefront process. Migration credentials are separately
+  available only to the migration service. GitHub receives neither database
+  password.
 - Run PM2 under `aaraj-pm2.service`, with one forked API and one storefront
   process under Linux identity `aaraj`. The API reads `/etc/sites/aaraj/runtime.env`
-  through Node's `--env-file`; the web process receives only its internal API
-  origin and non-secret runtime settings. Rotate PM2 logs with logrotate.
+  through Node's `--env-file`. Systemd loads the non-secret
+  `/etc/sites/aaraj/site.env` and passes `CLIENT_URL` to both processes for
+  auth/CSRF origin checks and canonical metadata; the storefront also receives
+  only its internal API origin and other non-secret runtime settings. Rotate
+  PM2 logs with logrotate.
 - Keep release directories owned by `aaraj-deploy:aaraj-code` mode `2750`;
   application and migration identities receive read-only group access. The
   deployment account extracts and activates releases without a root installer.
@@ -44,8 +49,12 @@ authorization, backups, recovery access, or deployment have been verified.
   mode `2750`, the shared Next.js cache as `root:aaraj` mode `2770`, and
   `incoming` as `aaraj-deploy:aaraj-deploy` mode `0700`.
   Add the app, migration, and deployment identities to `aaraj-code` as needed.
-  Keep `/etc/sites/aaraj` root-managed; the
-  runtime and migration env files have separate groups and mode `0640`.
+  Keep `/etc/sites/aaraj` root-managed; the runtime, site, and migration env
+  files have separate purposes, group `aaraj`, and mode `0640`. The site env
+  contains only `CLIENT_URL`, never credentials.
+  Before enabling this unit on an existing host, create `site.env` from the
+  currently configured public origin, remove `CLIENT_URL` from `runtime.env`,
+  install the updated unit, run `systemctl daemon-reload`, then restart PM2.
 - Store encrypted backups offsite and document a tested restore path.
 - Do not install a persistent GitHub Actions runner on the production VPS.
 
@@ -253,9 +262,11 @@ with the previous app version.
    database, restricted runtime role, and separate migration role. The
    migration role owns only AARAJ database/schema objects it needs; do not use
    a shared-site or superuser credential for the application.
-2. Install the verified PostgreSQL CA on the VPS and populate the protected
-   runtime and migration environment files. Confirm certificate and hostname
-   validation from the VPS before a migration.
+2. Install the verified PostgreSQL CA on the VPS and populate the site,
+   protected runtime, and migration environment files from their checked-in
+   examples. Set the same HTTPS public origin in `site.env` that is used by
+   `BETTER_AUTH_URL` and the storefront's public DNS. Confirm certificate and
+   hostname validation from the VPS before a migration.
 3. Confirm the database is new and empty, verify the encrypted offsite backup
    destination and restore procedure, and review the initial Drizzle journal
    and SQL in a pull request.

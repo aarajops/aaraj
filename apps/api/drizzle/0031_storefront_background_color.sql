@@ -1,0 +1,2 @@
+ALTER TABLE "storefront"."configuration" ADD COLUMN "background_color" text DEFAULT '#fafafafa' NOT NULL;--> statement-breakpoint
+ALTER TABLE "storefront"."configuration" ADD CONSTRAINT "configuration_background_color_check" CHECK ("storefront"."configuration"."background_color" ~ '^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$');

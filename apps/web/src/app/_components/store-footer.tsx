@@ -33,20 +33,16 @@ export async function StoreFooter() {
             className="inline-flex min-h-10 items-center"
             href="/"
           >
-            {settings.logo ? (
-              <Image
-                alt={`${settings.siteName} logo`}
-                className="h-auto max-h-12 w-auto max-w-48 object-contain"
-                height={settings.logo.height}
-                src={settings.logo.src}
-                unoptimized
-                width={settings.logo.width}
-              />
-            ) : (
-              <span className="text-lg font-semibold tracking-[0.16em]">
-                {settings.siteName}
-              </span>
-            )}
+            <Image
+              alt={`${settings.siteName} logo`}
+              className={`h-auto max-h-12 w-auto max-w-48 object-contain ${
+                settings.logo ? "" : "brightness-0 invert"
+              }`}
+              height={settings.logo?.height ?? 156}
+              src={settings.logo?.src ?? "/aaraj-logo.svg"}
+              unoptimized
+              width={settings.logo?.width ?? 512}
+            />
           </Link>
           {settings.footerDescription && (
             <p className="mt-4 max-w-sm whitespace-pre-line text-sm leading-6 text-neutral-300">

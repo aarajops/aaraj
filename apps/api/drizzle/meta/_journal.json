@@ -211,6 +211,34 @@
       "when": 1792054589518,
       "tag": "0029_storefront_brand_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792056504505,
+      "tag": "0030_storefront_seo_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792061698214,
+      "tag": "0031_storefront_background_color",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792061953527,
+      "tag": "0032_storefront_brand_color",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792062970897,
+      "tag": "0033_storefront_brand_icon",
+      "breakpoints": true
     }
   ]
 }

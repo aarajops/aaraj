@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
+import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
+import { getStorefrontOrigin } from "@/lib/storefront-origin";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,13 +16,28 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { siteName } = await getPublicStorefrontSettings();
+  const { settings, title, description, image } =
+    await getStorefrontMetadataDefaults();
   return {
+    metadataBase: new URL(getStorefrontOrigin()),
     title: {
-      default: `${siteName} | Products`,
-      template: `${siteName} | %s`,
+      default: title,
+      template: `${settings.siteName} | %s`,
     },
-    description: `Browse products from ${siteName}.`,
+    description,
+    openGraph: {
+      type: "website",
+      siteName: settings.siteName,
+      title,
+      description,
+      images: [image],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image],
+    },
   };
 }
 

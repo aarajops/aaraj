@@ -26,10 +26,21 @@ const socialFields = [
 ] as const satisfies ReadonlyArray<
   readonly [keyof StorefrontSocialLinks, string]
 >;
+const assetLabels: Record<StorefrontBrandAssetKind, string> = {
+  logo: "Logo",
+  brandIcon: "Brand icon",
+  favicon: "Favicon",
+  socialImage: "Social image",
+};
 
 export function StorefrontSettingsManager() {
   const [settings, setSettings] = useState<StorefrontSettings | null>(null);
   const [siteName, setSiteName] = useState("");
+  const [brandColor, setBrandColor] = useState("");
+  const [backgroundColor, setBackgroundColor] = useState("");
+  const [seoTitle, setSeoTitle] = useState("");
+  const [seoDescription, setSeoDescription] = useState("");
+  const [socialImageAlt, setSocialImageAlt] = useState("");
   const [announcementEnabled, setAnnouncementEnabled] = useState(false);
   const [announcementText, setAnnouncementText] = useState("");
   const [supportPhone, setSupportPhone] = useState("");
@@ -46,7 +57,9 @@ export function StorefrontSettingsManager() {
   const [footerLinks, setFooterLinks] = useState<StorefrontFooterLink[]>([]);
   const [reason, setReason] = useState("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [brandIconFile, setBrandIconFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
+  const [socialImageFile, setSocialImageFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState<StorefrontBrandAssetKind | null>(
     null,
   );
@@ -58,10 +71,17 @@ export function StorefrontSettingsManager() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const logoInput = useRef<HTMLInputElement>(null);
+  const brandIconInput = useRef<HTMLInputElement>(null);
   const faviconInput = useRef<HTMLInputElement>(null);
+  const socialImageInput = useRef<HTMLInputElement>(null);
 
   function applyTextSettings(value: StorefrontSettings) {
     setSiteName(value.siteName);
+    setBrandColor(value.brandColor);
+    setBackgroundColor(value.backgroundColor);
+    setSeoTitle(value.seoTitle ?? "");
+    setSeoDescription(value.seoDescription ?? "");
+    setSocialImageAlt(value.socialImageAlt ?? "");
     setAnnouncementEnabled(value.announcementEnabled);
     setAnnouncementText(value.announcementText ?? "");
     setSupportPhone(value.supportPhone ?? "");
@@ -114,6 +134,11 @@ export function StorefrontSettingsManager() {
   const changed = Boolean(
     settings &&
     (siteName !== settings.siteName ||
+      brandColor !== settings.brandColor ||
+      backgroundColor !== settings.backgroundColor ||
+      seoTitle !== (settings.seoTitle ?? "") ||
+      seoDescription !== (settings.seoDescription ?? "") ||
+      socialImageAlt !== (settings.socialImageAlt ?? "") ||
       announcementEnabled !== settings.announcementEnabled ||
       announcementText !== (settings.announcementText ?? "") ||
       supportPhone !== (settings.supportPhone ?? "") ||
@@ -133,11 +158,16 @@ export function StorefrontSettingsManager() {
     try {
       const input = StorefrontSettingsUpdateSchema.parse({
         siteName,
+        brandColor: brandColor.trim(),
+        backgroundColor: backgroundColor.trim(),
+        seoTitle: seoTitle.trim() || null,
+        seoDescription: seoDescription.trim() || null,
         announcementEnabled,
         announcementText: announcementText.trim() || null,
         supportPhone: supportPhone.trim() || null,
         supportEmail: supportEmail.trim() || null,
         businessAddress: businessAddress.trim() || null,
+        socialImageAlt: socialImageAlt.trim() || null,
         socialLinks: Object.fromEntries(
           socialFields.map(([key]) => [key, socialLinks[key]?.trim() || null]),
         ),
@@ -172,7 +202,7 @@ export function StorefrontSettingsManager() {
       setSettings(result.data);
       applyTextSettings(result.data);
       setReason("");
-      setNotice("Store profile and footer settings saved.");
+      setNotice("Storefront settings saved.");
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -186,7 +216,14 @@ export function StorefrontSettingsManager() {
 
   async function uploadAsset(kind: StorefrontBrandAssetKind) {
     if (!settings || uploading || clearing) return;
-    const file = kind === "logo" ? logoFile : faviconFile;
+    const file =
+      kind === "logo"
+        ? logoFile
+        : kind === "brandIcon"
+          ? brandIconFile
+          : kind === "favicon"
+            ? faviconFile
+            : socialImageFile;
     if (!file) return;
     setUploading(kind);
     setError(null);
@@ -220,13 +257,17 @@ export function StorefrontSettingsManager() {
       if (kind === "logo") {
         setLogoFile(null);
         if (logoInput.current) logoInput.current.value = "";
-      } else {
+      } else if (kind === "brandIcon") {
+        setBrandIconFile(null);
+        if (brandIconInput.current) brandIconInput.current.value = "";
+      } else if (kind === "favicon") {
         setFaviconFile(null);
         if (faviconInput.current) faviconInput.current.value = "";
+      } else {
+        setSocialImageFile(null);
+        if (socialImageInput.current) socialImageInput.current.value = "";
       }
-      setNotice(
-        `${kind === "logo" ? "Logo" : "Favicon"} uploaded and published.`,
-      );
+      setNotice(`${assetLabels[kind]} uploaded and published.`);
     } catch (uploadError) {
       setError(
         uploadError instanceof Error
@@ -265,7 +306,7 @@ export function StorefrontSettingsManager() {
         throw new Error("The server returned invalid storefront settings.");
       }
       setSettings(result.data);
-      setNotice(`${kind === "logo" ? "Logo" : "Favicon"} removed.`);
+      setNotice(`${assetLabels[kind]} removed.`);
     } catch (clearError) {
       setError(
         clearError instanceof Error
@@ -336,9 +377,11 @@ export function StorefrontSettingsManager() {
                 normalized before publication; SVG files are not accepted.
               </p>
             </div>
-            <div className="grid gap-5 md:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
               <Field>
-                <FieldLabel htmlFor="storefront-logo">Store logo</FieldLabel>
+                <FieldLabel htmlFor="storefront-logo">
+                  Storefront logo lockup
+                </FieldLabel>
                 <Input
                   ref={logoInput}
                   accept="image/png,image/jpeg,image/webp"
@@ -360,6 +403,9 @@ export function StorefrontSettingsManager() {
                 ) : (
                   <FieldDescription>No logo uploaded.</FieldDescription>
                 )}
+                <FieldDescription>
+                  Wide brand artwork shown in the storefront header and footer.
+                </FieldDescription>
                 {logoFile && (
                   <FieldDescription>Selected: {logoFile.name}</FieldDescription>
                 )}
@@ -394,7 +440,77 @@ export function StorefrontSettingsManager() {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="storefront-favicon">Favicon</FieldLabel>
+                <FieldLabel htmlFor="storefront-brand-icon">
+                  Square brand icon
+                </FieldLabel>
+                <Input
+                  ref={brandIconInput}
+                  accept="image/png,image/webp"
+                  id="storefront-brand-icon"
+                  type="file"
+                  onChange={(event) =>
+                    setBrandIconFile(event.currentTarget.files?.[0] ?? null)
+                  }
+                />
+                {settings.brandIcon ? (
+                  <Image
+                    alt="Current square brand icon preview"
+                    className="size-16 rounded border border-border bg-background object-contain"
+                    height={settings.brandIcon.height}
+                    src={settings.brandIcon.src}
+                    unoptimized
+                    width={settings.brandIcon.width}
+                  />
+                ) : (
+                  <FieldDescription>No brand icon uploaded.</FieldDescription>
+                )}
+                <FieldDescription>
+                  Used for generated browser and app icons. Upload a square,
+                  transparent PNG or WebP; a 1024 × 1024 source is recommended.
+                </FieldDescription>
+                {brandIconFile && (
+                  <FieldDescription>
+                    Selected: {brandIconFile.name}
+                  </FieldDescription>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={
+                      !brandIconFile ||
+                      uploading !== null ||
+                      clearing !== null ||
+                      reason.trim().length < 3
+                    }
+                    type="button"
+                    onClick={() => void uploadAsset("brandIcon")}
+                  >
+                    {uploading === "brandIcon"
+                      ? "Uploading…"
+                      : "Upload brand icon"}
+                  </Button>
+                  {settings.brandIcon && (
+                    <Button
+                      disabled={
+                        uploading !== null ||
+                        clearing !== null ||
+                        reason.trim().length < 3
+                      }
+                      type="button"
+                      variant="outline"
+                      onClick={() => void clearAsset("brandIcon")}
+                    >
+                      {clearing === "brandIcon"
+                        ? "Removing…"
+                        : "Remove brand icon"}
+                    </Button>
+                  )}
+                </div>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="storefront-favicon">
+                  Small browser favicon override
+                </FieldLabel>
                 <Input
                   ref={faviconInput}
                   accept="image/png,image/jpeg,image/webp"
@@ -416,6 +532,10 @@ export function StorefrontSettingsManager() {
                 ) : (
                   <FieldDescription>No favicon uploaded.</FieldDescription>
                 )}
+                <FieldDescription>
+                  Optional 64 × 64 override for browser tabs. The square brand
+                  icon is used when this is empty.
+                </FieldDescription>
                 {faviconFile && (
                   <FieldDescription>
                     Selected: {faviconFile.name}
@@ -450,7 +570,202 @@ export function StorefrontSettingsManager() {
                   )}
                 </div>
               </Field>
+
+              <Field>
+                <FieldLabel htmlFor="storefront-social-image">
+                  Social sharing image
+                </FieldLabel>
+                <Input
+                  ref={socialImageInput}
+                  accept="image/png,image/jpeg,image/webp"
+                  id="storefront-social-image"
+                  type="file"
+                  onChange={(event) =>
+                    setSocialImageFile(event.currentTarget.files?.[0] ?? null)
+                  }
+                />
+                {settings.socialImage ? (
+                  <Image
+                    alt={
+                      settings.socialImageAlt ?? "Current social image preview"
+                    }
+                    className="aspect-[1200/630] w-full max-w-64 rounded border border-border object-cover"
+                    height={settings.socialImage.height}
+                    src={settings.socialImage.src}
+                    unoptimized
+                    width={settings.socialImage.width}
+                  />
+                ) : (
+                  <FieldDescription>No social image uploaded.</FieldDescription>
+                )}
+                <FieldDescription>
+                  Published as a 1200 × 630 JPEG for link previews.
+                </FieldDescription>
+                {socialImageFile && (
+                  <FieldDescription>
+                    Selected: {socialImageFile.name}
+                  </FieldDescription>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={
+                      !socialImageFile ||
+                      uploading !== null ||
+                      clearing !== null ||
+                      reason.trim().length < 3
+                    }
+                    type="button"
+                    onClick={() => void uploadAsset("socialImage")}
+                  >
+                    {uploading === "socialImage"
+                      ? "Uploading…"
+                      : "Upload social image"}
+                  </Button>
+                  {settings.socialImage && (
+                    <Button
+                      disabled={
+                        uploading !== null ||
+                        clearing !== null ||
+                        reason.trim().length < 3
+                      }
+                      type="button"
+                      variant="outline"
+                      onClick={() => void clearAsset("socialImage")}
+                    >
+                      {clearing === "socialImage"
+                        ? "Removing…"
+                        : "Remove social image"}
+                    </Button>
+                  )}
+                </div>
+              </Field>
             </div>
+          </section>
+
+          <section
+            aria-labelledby="storefront-appearance-heading"
+            className="grid gap-5"
+          >
+            <div>
+              <h3
+                className="text-lg font-semibold"
+                id="storefront-appearance-heading"
+              >
+                Storefront appearance
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Configure the storefront surface and brand accent colors.
+                Background color also fills generated app icons; brand color is
+                used by browser and installed-app chrome.
+              </p>
+            </div>
+            <Field>
+              <FieldLabel htmlFor="storefront-brand-color">
+                Brand color
+              </FieldLabel>
+              <Input
+                id="storefront-brand-color"
+                autoComplete="off"
+                maxLength={9}
+                pattern="#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?"
+                placeholder="#7b2220"
+                required
+                spellCheck={false}
+                value={brandColor}
+                onChange={(event) => setBrandColor(event.currentTarget.value)}
+              />
+              <FieldDescription>
+                Sets the storefront brand accent and web app manifest theme
+                color. Enter #RRGGBB or #RRGGBBAA.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="storefront-background-color">
+                Background color
+              </FieldLabel>
+              <Input
+                id="storefront-background-color"
+                autoComplete="off"
+                maxLength={9}
+                pattern="#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?"
+                placeholder="#fafafafa"
+                required
+                spellCheck={false}
+                value={backgroundColor}
+                onChange={(event) =>
+                  setBackgroundColor(event.currentTarget.value)
+                }
+              />
+              <FieldDescription>
+                Enter a CSS hexadecimal color: #RRGGBB or #RRGGBBAA.
+              </FieldDescription>
+            </Field>
+          </section>
+
+          <section
+            aria-labelledby="seo-defaults-heading"
+            className="grid gap-5"
+          >
+            <div>
+              <h3 className="text-lg font-semibold" id="seo-defaults-heading">
+                SEO and sharing defaults
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Used on the storefront home page and as defaults for pages that
+                do not define their own metadata. Product pages use their own
+                product details.
+              </p>
+            </div>
+            <Field>
+              <FieldLabel htmlFor="storefront-seo-title">Site title</FieldLabel>
+              <Input
+                id="storefront-seo-title"
+                maxLength={160}
+                placeholder={`${siteName || "AARAJ"} | Products`}
+                value={seoTitle}
+                onChange={(event) => setSeoTitle(event.currentTarget.value)}
+              />
+              <FieldDescription>
+                Optional title shown in search and link previews. Leave blank to
+                use the store name. Search engines may shorten or rewrite
+                titles.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="storefront-seo-description">
+                Site description
+              </FieldLabel>
+              <Textarea
+                id="storefront-seo-description"
+                maxLength={500}
+                placeholder={`Browse products from ${siteName || "AARAJ"}.`}
+                value={seoDescription}
+                onChange={(event) =>
+                  setSeoDescription(event.currentTarget.value)
+                }
+              />
+              <FieldDescription>
+                Optional page summary. Leave blank to use a store-name-based
+                description. Search engines may choose a different snippet.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="storefront-social-image-alt">
+                Social image description
+              </FieldLabel>
+              <Input
+                id="storefront-social-image-alt"
+                maxLength={250}
+                value={socialImageAlt}
+                onChange={(event) =>
+                  setSocialImageAlt(event.currentTarget.value)
+                }
+              />
+              <FieldDescription>
+                Describe the social image for assistive technology and link
+                previews. Leave blank to use the store name.
+              </FieldDescription>
+            </Field>
           </section>
 
           <section
@@ -725,7 +1040,7 @@ export function StorefrontSettingsManager() {
                 }
                 type="submit"
               >
-                {saving ? "Saving…" : "Save store profile"}
+                {saving ? "Saving…" : "Save storefront settings"}
               </Button>
             </div>
           </section>

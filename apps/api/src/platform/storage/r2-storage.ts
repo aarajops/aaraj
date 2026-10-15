@@ -13,7 +13,8 @@ import { createHash } from "node:crypto";
 
 export type UploadedImageContentType =
   "image/jpeg" | "image/png" | "image/webp";
-export type PublishedImageContentType = "image/png" | "image/webp";
+export type PublishedImageContentType =
+  "image/jpeg" | "image/png" | "image/webp";
 
 // Bound R2 work for the current 10 MiB upload and 3 MiB rendition limits.
 // These are operation safeguards, not product latency targets.

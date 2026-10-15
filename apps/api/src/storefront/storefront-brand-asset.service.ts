@@ -26,6 +26,7 @@ import {
 } from "./storefront-schema.js";
 import { StorefrontSettingsService } from "./storefront.service.js";
 import {
+  processStorefrontBrandIcon,
   processStorefrontBrandImage,
   type StorefrontBrandUploadFile,
 } from "./storefront-brand-image.js";
@@ -85,7 +86,12 @@ export class StorefrontBrandAssetService {
     const processed = await processStorefrontBrandImage(file, kind);
     const sha256 = createHash("sha256").update(processed.body).digest("hex");
     const id = randomUUID();
-    const extension = kind === "favicon" ? "png" : "webp";
+    const extension =
+      kind === "favicon" || kind === "brandIcon"
+        ? "png"
+        : kind === "socialImage"
+          ? "jpg"
+          : "webp";
     const objectKey = `published/storefront/${kind}/${id}/${sha256}.${extension}`;
 
     let assetCommitted = false;
@@ -147,8 +153,7 @@ export class StorefrontBrandAssetService {
           createdBy: actor.id,
         });
 
-        const assetPointer =
-          kind === "logo" ? { logoAssetId: id } : { faviconAssetId: id };
+        const assetPointer = assetPointerFor(kind, id);
         const [next] = await transaction
           .update(storefrontConfiguration)
           .set({
@@ -171,7 +176,7 @@ export class StorefrontBrandAssetService {
           metadata: {
             previousVersion: current.version,
             version: next.version,
-            changedFields: [kind === "logo" ? "logo" : "favicon"],
+            changedFields: [kind],
           },
         });
         return { duplicate: false as const };
@@ -208,12 +213,10 @@ export class StorefrontBrandAssetService {
           { errorCode: "STOREFRONT_SETTINGS_STALE" },
         );
       }
-      const currentAssetId =
-        kind === "logo" ? current.logoAssetId : current.faviconAssetId;
+      const currentAssetId = assetIdFor(current, kind);
       if (!currentAssetId) return;
 
-      const assetPointer =
-        kind === "logo" ? { logoAssetId: null } : { faviconAssetId: null };
+      const assetPointer = assetPointerFor(kind, null);
       const [next] = await transaction
         .update(storefrontConfiguration)
         .set({
@@ -235,7 +238,7 @@ export class StorefrontBrandAssetService {
         metadata: {
           previousVersion: current.version,
           version: next.version,
-          changedFields: [kind === "logo" ? "logo" : "favicon"],
+          changedFields: [kind],
         },
       });
     });
@@ -245,8 +248,11 @@ export class StorefrontBrandAssetService {
   async getPublicAsset(
     assetId: string,
     sha256: string,
-    extension: "png" | "webp",
-  ): Promise<{ body: Buffer; contentType: "image/png" | "image/webp" }> {
+    extension: "png" | "webp" | "jpg",
+  ): Promise<{
+    body: Buffer;
+    contentType: "image/png" | "image/webp" | "image/jpeg";
+  }> {
     const [row] = await this.database.db
       .select({ asset: storefrontBrandAsset })
       .from(storefrontBrandAsset)
@@ -254,7 +260,12 @@ export class StorefrontBrandAssetService {
         storefrontConfiguration,
         or(
           eq(storefrontConfiguration.logoAssetId, storefrontBrandAsset.id),
+          eq(storefrontConfiguration.brandIconAssetId, storefrontBrandAsset.id),
           eq(storefrontConfiguration.faviconAssetId, storefrontBrandAsset.id),
+          eq(
+            storefrontConfiguration.socialImageAssetId,
+            storefrontBrandAsset.id,
+          ),
         ),
       )
       .where(
@@ -263,7 +274,11 @@ export class StorefrontBrandAssetService {
           eq(storefrontBrandAsset.sha256, sha256),
           eq(
             storefrontBrandAsset.contentType,
-            extension === "png" ? "image/png" : "image/webp",
+            extension === "png"
+              ? "image/png"
+              : extension === "jpg"
+                ? "image/jpeg"
+                : "image/webp",
           ),
         ),
       )
@@ -278,12 +293,25 @@ export class StorefrontBrandAssetService {
       });
       return {
         body,
-        contentType: row.asset.contentType as "image/png" | "image/webp",
+        contentType: row.asset.contentType as
+          "image/png" | "image/webp" | "image/jpeg",
       };
     } catch (error) {
       this.logStorageFailure("get", assetId, error);
       throw storefrontAssetStorageUnavailable();
     }
+  }
+
+  async getPublicAssetAsPng(
+    assetId: string,
+    sha256: string,
+    extension: "png" | "webp" | "jpg",
+  ): Promise<{ body: Buffer; contentType: "image/png" }> {
+    const asset = await this.getPublicAsset(assetId, sha256, extension);
+    return {
+      body: await processStorefrontBrandIcon(asset.body),
+      contentType: "image/png",
+    };
   }
 
   private async readConfiguration(
@@ -320,6 +348,38 @@ export class StorefrontBrandAssetService {
       assetId,
       errorName: error instanceof Error ? error.name : "unknown",
     });
+  }
+}
+
+function assetIdFor(
+  configuration: typeof storefrontConfiguration.$inferSelect,
+  kind: StorefrontBrandAssetKind,
+) {
+  switch (kind) {
+    case "logo":
+      return configuration.logoAssetId;
+    case "brandIcon":
+      return configuration.brandIconAssetId;
+    case "favicon":
+      return configuration.faviconAssetId;
+    case "socialImage":
+      return configuration.socialImageAssetId;
+  }
+}
+
+function assetPointerFor(
+  kind: StorefrontBrandAssetKind,
+  assetId: string | null,
+) {
+  switch (kind) {
+    case "logo":
+      return { logoAssetId: assetId };
+    case "brandIcon":
+      return { brandIconAssetId: assetId };
+    case "favicon":
+      return { faviconAssetId: assetId };
+    case "socialImage":
+      return { socialImageAssetId: assetId };
   }
 }
 

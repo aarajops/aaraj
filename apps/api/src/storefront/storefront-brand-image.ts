@@ -9,7 +9,9 @@ export const MAX_STOREFRONT_BRAND_DERIVATIVE_BYTES = 3 * 1024 * 1024;
 const MAX_DECODED_PIXELS = 24_000_000;
 const PROCESS_TIMEOUT_SECONDS = 15;
 const LOGO_DIMENSIONS = { width: 1200, height: 400 } as const;
+const BRAND_ICON_DIMENSIONS = { width: 1024, height: 1024 } as const;
 const FAVICON_DIMENSIONS = { width: 64, height: 64 } as const;
+const SOCIAL_IMAGE_DIMENSIONS = { width: 1200, height: 630 } as const;
 const SUPPORTED_FORMATS = new Map([
   ["image/jpeg", "jpeg"],
   ["image/png", "png"],
@@ -25,7 +27,7 @@ export interface StorefrontBrandUploadFile {
 
 export interface ProcessedStorefrontBrandImage {
   body: Buffer;
-  contentType: "image/webp" | "image/png";
+  contentType: "image/webp" | "image/png" | "image/jpeg";
   width: number;
   height: number;
 }
@@ -44,6 +46,23 @@ export function processStorefrontBrandImage(
     () => undefined,
   );
   return result;
+}
+
+export function processStorefrontBrandIcon(source: Buffer): Promise<Buffer> {
+  return sharp(source, {
+    failOn: "warning",
+    limitInputPixels: MAX_DECODED_PIXELS,
+    pages: 1,
+  })
+    .timeout({ seconds: PROCESS_TIMEOUT_SECONDS })
+    .resize({
+      width: 512,
+      height: 512,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
 }
 
 async function processStorefrontBrandImageWithinLimits(
@@ -76,6 +95,11 @@ async function processStorefrontBrandImageWithinLimits(
   if (!expectedFormat) {
     throw new BadRequestException("Use a JPEG, PNG, or WebP image file.");
   }
+  if (kind === "brandIcon" && expectedFormat === "jpeg") {
+    throw new BadRequestException(
+      "Use a PNG or WebP brand icon so transparent padding is preserved.",
+    );
+  }
 
   try {
     const source = sharp(file.buffer, {
@@ -94,7 +118,14 @@ async function processStorefrontBrandImageWithinLimits(
       throw new BadRequestException("The uploaded image is not supported.");
     }
 
-    const dimensions = kind === "logo" ? LOGO_DIMENSIONS : FAVICON_DIMENSIONS;
+    const dimensions =
+      kind === "logo"
+        ? LOGO_DIMENSIONS
+        : kind === "brandIcon"
+          ? BRAND_ICON_DIMENSIONS
+          : kind === "favicon"
+            ? FAVICON_DIMENSIONS
+            : SOCIAL_IMAGE_DIMENSIONS;
     const pipeline = sharp(file.buffer, {
       failOn: "warning",
       limitInputPixels: MAX_DECODED_PIXELS,
@@ -105,10 +136,18 @@ async function processStorefrontBrandImageWithinLimits(
       .resize({
         width: dimensions.width,
         height: dimensions.height,
-        fit: kind === "favicon" ? "contain" : "inside",
+        fit:
+          kind === "favicon" || kind === "brandIcon"
+            ? "contain"
+            : kind === "socialImage"
+              ? "cover"
+              : "inside",
         position: "centre",
         withoutEnlargement: kind === "logo",
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
+        background:
+          kind === "socialImage"
+            ? { r: 255, g: 255, b: 255, alpha: 1 }
+            : { r: 0, g: 0, b: 0, alpha: 0 },
       });
 
     const output =
@@ -116,15 +155,24 @@ async function processStorefrontBrandImageWithinLimits(
         ? await pipeline.webp({ quality: 84, effort: 4 }).toBuffer({
             resolveWithObject: true,
           })
-        : await pipeline.png({ compressionLevel: 9 }).toBuffer({
-            resolveWithObject: true,
-          });
+        : kind === "favicon" || kind === "brandIcon"
+          ? await pipeline.png({ compressionLevel: 9 }).toBuffer({
+              resolveWithObject: true,
+            })
+          : await pipeline.jpeg({ quality: 84, mozjpeg: true }).toBuffer({
+              resolveWithObject: true,
+            });
     if (output.data.byteLength > MAX_STOREFRONT_BRAND_DERIVATIVE_BYTES) {
       throw new BadRequestException("The optimized image is too large.");
     }
     return {
       body: output.data,
-      contentType: kind === "logo" ? "image/webp" : "image/png",
+      contentType:
+        kind === "logo"
+          ? "image/webp"
+          : kind === "favicon" || kind === "brandIcon"
+            ? "image/png"
+            : "image/jpeg",
       width: output.info.width,
       height: output.info.height,
     };

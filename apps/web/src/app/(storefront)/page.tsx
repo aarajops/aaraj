@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { CatalogFilters } from "@/features/catalog/catalog-filters";
@@ -10,6 +11,31 @@ import {
   parsePublishedCatalogPageQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
+import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { settings, title, description, image } =
+    await getStorefrontMetadataDefaults();
+  return {
+    title: { absolute: title },
+    description,
+    alternates: { canonical: "/" },
+    openGraph: {
+      type: "website",
+      siteName: settings.siteName,
+      title,
+      description,
+      url: "/",
+      images: [image],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image],
+    },
+  };
+}
 
 export default function Home({
   searchParams,

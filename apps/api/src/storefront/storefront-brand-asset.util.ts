@@ -10,7 +10,7 @@ export function toStorefrontBrandAsset(
 ): StorefrontBrandAsset {
   return StorefrontBrandAssetSchema.parse({
     id: asset.id,
-    src: `${API_V1_BASE_PATH}/storefront/assets/${asset.id}/${asset.sha256}.${asset.kind === "favicon" ? "png" : "webp"}`,
+    src: `${API_V1_BASE_PATH}/storefront/assets/${asset.id}/${asset.sha256}.${asset.kind === "favicon" || asset.kind === "brandIcon" ? "png" : asset.kind === "socialImage" ? "jpg" : "webp"}`,
     contentType: asset.contentType,
     width: asset.width,
     height: asset.height,

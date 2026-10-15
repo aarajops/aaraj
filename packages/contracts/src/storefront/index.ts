@@ -2,8 +2,13 @@ import { z } from "zod";
 import { API_V1_BASE_PATH } from "../platform/api-version.js";
 
 export const STOREFRONT_SETTINGS_ID = "default" as const;
+export const DEFAULT_STOREFRONT_BACKGROUND_COLOR = "#fafafafa";
+export const DEFAULT_STOREFRONT_BRAND_COLOR = "#7b2220";
 
 const StoreNameSchema = z.string().trim().min(1).max(80);
+const StorefrontHexColorSchema = z
+  .string()
+  .regex(/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
 const AnnouncementTextSchema = z.string().trim().min(1).max(160).nullable();
 const StorefrontPhoneSchema = z
   .string()
@@ -75,7 +80,12 @@ const StorefrontFooterLinkSchema = z.strictObject({
 });
 export type StorefrontFooterLink = z.infer<typeof StorefrontFooterLinkSchema>;
 
-export const StorefrontBrandAssetKindSchema = z.enum(["logo", "favicon"]);
+export const StorefrontBrandAssetKindSchema = z.enum([
+  "logo",
+  "brandIcon",
+  "favicon",
+  "socialImage",
+]);
 export type StorefrontBrandAssetKind = z.infer<
   typeof StorefrontBrandAssetKindSchema
 >;
@@ -86,24 +96,38 @@ export const StorefrontBrandAssetSchema = z.strictObject({
     .string()
     .regex(
       new RegExp(
-        `^${API_V1_BASE_PATH}/storefront/assets/[0-9a-f-]{36}/[0-9a-f]{64}\\.(?:webp|png)$`,
+        `^${API_V1_BASE_PATH}/storefront/assets/[0-9a-f-]{36}/[0-9a-f]{64}\\.(?:webp|png|jpg)$`,
       ),
     ),
-  contentType: z.enum(["image/webp", "image/png"]),
+  contentType: z.enum(["image/webp", "image/png", "image/jpeg"]),
   width: z.number().int().positive().max(1200),
-  height: z.number().int().positive().max(400),
+  height: z.number().int().positive().max(1200),
 });
 export type StorefrontBrandAsset = z.infer<typeof StorefrontBrandAssetSchema>;
+export const StorefrontBrandIconAssetSchema = StorefrontBrandAssetSchema.extend(
+  {
+    contentType: z.literal("image/png"),
+    width: z.literal(1024),
+    height: z.literal(1024),
+  },
+);
 
 export const PublicStorefrontSettingsSchema = z.strictObject({
   siteName: StoreNameSchema,
+  brandColor: StorefrontHexColorSchema,
+  backgroundColor: StorefrontHexColorSchema,
+  seoTitle: z.string().trim().min(1).max(160).nullable(),
+  seoDescription: PublicTextSchema,
   announcementEnabled: z.boolean(),
   announcementText: AnnouncementTextSchema,
   supportPhone: StorefrontPhoneSchema,
   supportEmail: StorefrontEmailSchema,
   businessAddress: PublicTextSchema,
   logo: StorefrontBrandAssetSchema.nullable(),
+  brandIcon: StorefrontBrandIconAssetSchema.nullable(),
   favicon: StorefrontBrandAssetSchema.nullable(),
+  socialImage: StorefrontBrandAssetSchema.nullable(),
+  socialImageAlt: z.string().trim().min(1).max(250).nullable(),
   socialLinks: StorefrontSocialLinksSchema,
   footerDescription: PublicTextSchema,
   footerLinks: StorefrontFooterLinkSchema.array().max(8),
@@ -121,11 +145,16 @@ export type StorefrontSettings = z.infer<typeof StorefrontSettingsSchema>;
 export const StorefrontSettingsUpdateSchema = z
   .strictObject({
     siteName: StoreNameSchema,
+    brandColor: StorefrontHexColorSchema,
+    backgroundColor: StorefrontHexColorSchema,
+    seoTitle: z.string().trim().min(1).max(160).nullable(),
+    seoDescription: PublicTextSchema,
     announcementEnabled: z.boolean(),
     announcementText: AnnouncementTextSchema,
     supportPhone: StorefrontPhoneSchema,
     supportEmail: StorefrontEmailSchema,
     businessAddress: PublicTextSchema,
+    socialImageAlt: z.string().trim().min(1).max(250).nullable(),
     socialLinks: StorefrontSocialLinksSchema,
     footerDescription: PublicTextSchema,
     footerLinks: StorefrontFooterLinkSchema.array().max(8),
@@ -139,13 +168,18 @@ export const StorefrontSettingsUpdateSchema = z
       message: "An announcement is required when the banner is enabled.",
     },
   )
-  .refine((settings) => {
-    const labels = settings.footerLinks.map(({ label }) => label.toLowerCase());
-    return new Set(labels).size === labels.length;
-  }, {
-    path: ["footerLinks"],
-    message: "Footer link labels must be unique.",
-  });
+  .refine(
+    (settings) => {
+      const labels = settings.footerLinks.map(({ label }) =>
+        label.toLowerCase(),
+      );
+      return new Set(labels).size === labels.length;
+    },
+    {
+      path: ["footerLinks"],
+      message: "Footer link labels must be unique.",
+    },
+  );
 export type StorefrontSettingsUpdate = z.infer<
   typeof StorefrontSettingsUpdateSchema
 >;

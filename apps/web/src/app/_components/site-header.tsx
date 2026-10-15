@@ -23,18 +23,14 @@ export async function SiteHeader() {
             className="inline-flex min-h-10 items-center text-lg font-semibold tracking-[0.16em] text-primary"
             href="/"
           >
-            {settings.logo ? (
-              <Image
-                alt={`${settings.siteName} logo`}
-                className="h-auto max-h-10 w-auto max-w-44 object-contain"
-                height={settings.logo.height}
-                src={settings.logo.src}
-                unoptimized
-                width={settings.logo.width}
-              />
-            ) : (
-              settings.siteName
-            )}
+            <Image
+              alt={`${settings.siteName} logo`}
+              className="h-auto max-h-10 w-auto max-w-44 object-contain"
+              height={settings.logo?.height ?? 156}
+              src={settings.logo?.src ?? "/aaraj-logo.svg"}
+              unoptimized
+              width={settings.logo?.width ?? 512}
+            />
           </Link>
           <nav
             aria-label="Main navigation"

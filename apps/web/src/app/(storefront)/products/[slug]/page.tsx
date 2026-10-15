@@ -5,6 +5,10 @@ import { notFound } from "next/navigation";
 import { getPublishedProduct } from "@/features/catalog/catalog-queries";
 import { formatCatalogPrice } from "@/features/catalog/price";
 import { AddToCart } from "@/features/cart/add-to-cart";
+import {
+  getStorefrontMetadataDefaults,
+  getStorefrontShareImage,
+} from "@/features/storefront/storefront-metadata";
 
 export async function generateMetadata({
   params,
@@ -12,26 +16,58 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const result = await getPublishedProduct(slug);
+  const [result, defaults] = await Promise.all([
+    getPublishedProduct(slug),
+    getStorefrontMetadataDefaults(),
+  ]);
 
   if ("kind" in result) {
     return {
       title:
         result.kind === "not-found" ? "Product not found" : "Product details",
-      description: "Browse products from Aaraj.",
+      description: defaults.description,
+      robots: { index: false, follow: false },
     };
   }
 
-  const description =
-    result.product.description || `View details for ${result.product.name}.`;
+  const description = result.product.description || defaults.description;
+  const productImage = result.product.images[0];
+  const images = productImage
+    ? [
+        {
+          url: productImage.detail.src,
+          width: productImage.detail.width,
+          height: productImage.detail.height,
+          alt: productImage.altText,
+        },
+        ...(defaults.settings.socialImage ? [defaults.image] : []),
+      ]
+    : [getStorefrontShareImage(defaults.settings)];
+  const canonical = `/products/${encodeURIComponent(slug)}`;
 
   return {
     title: result.product.name,
     description,
+    alternates: { canonical },
     openGraph: {
       title: result.product.name,
       description,
+      siteName: defaults.settings.siteName,
+      url: canonical,
       type: "website",
+      images,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: result.product.name,
+      description,
+      images: images.map(({ url, width, height, alt, ...image }) => ({
+        url,
+        width,
+        height,
+        alt,
+        ...("type" in image ? { type: image.type } : {}),
+      })),
     },
   };
 }

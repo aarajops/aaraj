@@ -9,6 +9,7 @@ import {
 export const metadata: Metadata = {
   title: "Your account",
   description: "Sign in to or create your Aaraj account.",
+  robots: { index: false, follow: false },
 };
 
 export default async function AccountPage() {

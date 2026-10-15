@@ -6,6 +6,7 @@ import { CustomerOrderDetails } from "@/features/orders/customer-order-details";
 export const metadata: Metadata = {
   title: "Order details",
   description: "View your Aaraj COD Order and delivery status.",
+  robots: { index: false, follow: false },
 };
 
 export default async function CustomerOrderPage({

@@ -5,6 +5,7 @@ import { QuoteIdSchema } from "@aaraj/contracts";
 export const metadata: Metadata = {
   title: "Checkout",
   description: "Review your Bangladesh delivery address and place a COD order.",
+  robots: { index: false, follow: false },
 };
 
 export default async function StorefrontCheckoutPage({

@@ -2,8 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const host = "127.0.0.1";
 const webPort = 3190;
-const apiPort = 3191;
-const apiInternalUrl = `http://${host}:${apiPort}`;
+const apiInternalUrl = process.env.API_INTERNAL_URL ?? `http://${host}:3001`;
+const configuredApiPort = new URL(apiInternalUrl).port;
+const apiPort = Number(configuredApiPort || 3001);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -40,6 +41,7 @@ export default defineConfig({
         HOSTNAME: host,
         PORT: String(webPort),
         API_INTERNAL_URL: apiInternalUrl,
+        CLIENT_URL: "https://aaraj.invalid",
       },
     },
   ],

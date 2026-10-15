@@ -9,7 +9,10 @@ import type {
   StorefrontSettings,
   StorefrontSettingsUpdate,
 } from "@aaraj/contracts";
-import { PublicStorefrontSettingsSchema } from "@aaraj/contracts";
+import {
+  PublicStorefrontSettingsSchema,
+  StorefrontBrandIconAssetSchema,
+} from "@aaraj/contracts";
 import { eq, inArray, sql } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
@@ -70,6 +73,17 @@ export class StorefrontSettingsService {
 
       const changedFields = [
         ...(current.siteName !== input.siteName ? ["siteName"] : []),
+        ...(current.brandColor !== input.brandColor ? ["brandColor"] : []),
+        ...(current.backgroundColor !== input.backgroundColor
+          ? ["backgroundColor"]
+          : []),
+        ...(current.seoTitle !== input.seoTitle ? ["seoTitle"] : []),
+        ...(current.seoDescription !== input.seoDescription
+          ? ["seoDescription"]
+          : []),
+        ...(current.socialImageAlt !== input.socialImageAlt
+          ? ["socialImageAlt"]
+          : []),
         ...(current.announcementEnabled !== input.announcementEnabled
           ? ["announcementEnabled"]
           : []),
@@ -103,6 +117,11 @@ export class StorefrontSettingsService {
         .update(storefrontConfiguration)
         .set({
           siteName: input.siteName,
+          brandColor: input.brandColor,
+          backgroundColor: input.backgroundColor,
+          seoTitle: input.seoTitle,
+          seoDescription: input.seoDescription,
+          socialImageAlt: input.socialImageAlt,
           announcementEnabled: input.announcementEnabled,
           announcementText: input.announcementText,
           supportPhone: input.supportPhone,
@@ -168,7 +187,9 @@ export class StorefrontSettingsService {
   ): Promise<PublicStorefrontSettings> {
     const assetIds = [
       configuration.logoAssetId,
+      configuration.brandIconAssetId,
       configuration.faviconAssetId,
+      configuration.socialImageAssetId,
     ].filter((assetId): assetId is string => assetId !== null);
     const assets = assetIds.length
       ? await this.database.db
@@ -180,19 +201,36 @@ export class StorefrontSettingsService {
     const logo = configuration.logoAssetId
       ? assetsById.get(configuration.logoAssetId)
       : null;
+    const brandIcon = configuration.brandIconAssetId
+      ? assetsById.get(configuration.brandIconAssetId)
+      : null;
     const favicon = configuration.faviconAssetId
       ? assetsById.get(configuration.faviconAssetId)
+      : null;
+    const socialImage = configuration.socialImageAssetId
+      ? assetsById.get(configuration.socialImageAssetId)
       : null;
 
     return PublicStorefrontSettingsSchema.parse({
       siteName: configuration.siteName,
+      brandColor: configuration.brandColor,
+      backgroundColor: configuration.backgroundColor,
+      seoTitle: configuration.seoTitle,
+      seoDescription: configuration.seoDescription,
       announcementEnabled: configuration.announcementEnabled,
       announcementText: configuration.announcementText,
       supportPhone: configuration.supportPhone,
       supportEmail: configuration.supportEmail,
       businessAddress: configuration.businessAddress,
       logo: logo ? toStorefrontBrandAsset(logo) : null,
+      brandIcon: brandIcon
+        ? StorefrontBrandIconAssetSchema.parse(
+            toStorefrontBrandAsset(brandIcon),
+          )
+        : null,
       favicon: favicon ? toStorefrontBrandAsset(favicon) : null,
+      socialImage: socialImage ? toStorefrontBrandAsset(socialImage) : null,
+      socialImageAlt: configuration.socialImageAlt,
       socialLinks: configuration.socialLinks,
       footerDescription: configuration.footerDescription,
       footerLinks: configuration.footerLinks,

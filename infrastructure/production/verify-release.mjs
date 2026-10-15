@@ -185,7 +185,7 @@ async function smokeRelease(root, manifest) {
       REDIS_URL: redisUrl,
       BETTER_AUTH_SECRET: "artifact-smoke-only-secret-with-at-least-32-bytes",
       BETTER_AUTH_URL: "http://127.0.0.1:3001",
-      CLIENT_URL: "http://127.0.0.1:3000",
+      CLIENT_URL: "https://aaraj.invalid",
       ORDER_PII_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64url"),
       BETTER_AUTH_REDIS_KEY_PREFIX: "aaraj:artifact-smoke:auth:",
       CART_REDIS_KEY_PREFIX: "aaraj:artifact-smoke:cart:",

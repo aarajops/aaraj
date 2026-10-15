@@ -11,6 +11,7 @@ SupplementaryGroups=aaraj-code
 Environment=NODE_ENV=production
 Environment=PM2_HOME=/var/lib/sites/aaraj/pm2
 WorkingDirectory=/srv/sites/aaraj/releases/current
+EnvironmentFile=/etc/sites/aaraj/site.env
 StateDirectory=sites/aaraj/pm2
 LogsDirectory=sites/aaraj
 UMask=0027

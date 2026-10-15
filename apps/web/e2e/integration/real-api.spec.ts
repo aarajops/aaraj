@@ -6,6 +6,10 @@ const brandPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
   "base64",
 );
+const brandIconPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAD0lEQVQImWNg+P8fhFAoAHedC/Wy/lr2AAAAAElFTkSuQmCC",
+  "base64",
+);
 
 test("real browser session reaches the API through Next and respects roles", async ({
   page,
@@ -94,7 +98,7 @@ test("admin updates public storefront settings through to the rendered header", 
   await page
     .getByLabel("Reason for this change")
     .fill("Publish E2E store logo");
-  await page.getByLabel("Store logo").setInputFiles({
+  await page.getByLabel("Storefront logo lockup").setInputFiles({
     name: "store-logo.png",
     mimeType: "image/png",
     buffer: brandPng,
@@ -104,10 +108,42 @@ test("admin updates public storefront settings through to the rendered header", 
     "Logo uploaded and published.",
   );
 
+  const logoOnlySettings = await page.request
+    .get("/api/v1/storefront/settings")
+    .then((response) => response.json());
+  expect(logoOnlySettings.logo).not.toBeNull();
+  expect(logoOnlySettings.brandIcon).toBeNull();
+  expect(logoOnlySettings.socialImage).toBeNull();
+  const logoOnlyHome = await page.request.get("/", {
+    headers: { "User-Agent": "facebookexternalhit/1.1" },
+  });
+  const logoOnlyHead = (await logoOnlyHome.text()).match(
+    /<head>([\s\S]*?)<\/head>/,
+  )?.[1];
+  expect(logoOnlyHead).toBeTruthy();
+  const logoOnlyShareImage = logoOnlyHead!.match(
+    /<meta property="og:image" content="([^"]+)"/,
+  )?.[1];
+  expect(logoOnlyShareImage).toBeTruthy();
+  expect(new URL(logoOnlyShareImage!).pathname).toBe(logoOnlySettings.logo.src);
+
+  await page
+    .getByLabel("Reason for this change")
+    .fill("Publish E2E square brand icon");
+  await page.getByLabel("Square brand icon").setInputFiles({
+    name: "store-brand-icon.png",
+    mimeType: "image/png",
+    buffer: brandIconPng,
+  });
+  await page.getByRole("button", { name: "Upload brand icon" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Brand icon uploaded and published.",
+  );
+
   await page
     .getByLabel("Reason for this change")
     .fill("Publish E2E store favicon");
-  await page.getByLabel("Favicon").setInputFiles({
+  await page.getByLabel("Small browser favicon override").setInputFiles({
     name: "store-favicon.png",
     mimeType: "image/png",
     buffer: brandPng,
@@ -117,7 +153,31 @@ test("admin updates public storefront settings through to the rendered header", 
     "Favicon uploaded and published.",
   );
 
+  await page
+    .getByLabel("Reason for this change")
+    .fill("Publish E2E social sharing image");
+  await page.getByLabel("Social sharing image").setInputFiles({
+    name: "social-preview.png",
+    mimeType: "image/png",
+    buffer: brandPng,
+  });
+  await page.getByRole("button", { name: "Upload social image" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Social image uploaded and published.",
+  );
+
   await page.getByLabel("Store name").fill("AARAJ Festive Edit");
+  await page.getByLabel("Brand color").fill("#8c2b2b");
+  await page.getByLabel("Background color").fill("#f8f8f8fa");
+  await page
+    .getByLabel("Site title")
+    .fill("AARAJ Festive Edit | Modern fashion");
+  await page
+    .getByLabel("Site description")
+    .fill("Explore the latest AARAJ collection in Bangladesh.");
+  await page
+    .getByLabel("Social image description")
+    .fill("AARAJ seasonal collection against a warm background");
   await page.getByLabel("Show announcement banner").check();
   await page
     .getByLabel("Announcement text")
@@ -135,10 +195,10 @@ test("admin updates public storefront settings through to the rendered header", 
   await page
     .getByLabel("Reason for this change")
     .fill("Publish the festive storefront update");
-  await page.getByRole("button", { name: "Save store profile" }).click();
+  await page.getByRole("button", { name: "Save storefront settings" }).click();
   await expect(
     page.getByRole("status").filter({
-      hasText: "Store profile and footer settings saved.",
+      hasText: "Storefront settings saved.",
     }),
   ).toBeVisible();
 
@@ -146,8 +206,14 @@ test("admin updates public storefront settings through to the rendered header", 
     "/api/v1/storefront/settings",
   );
   expect(publicSettingsResponse.status()).toBe(200);
-  expect(await publicSettingsResponse.json()).toMatchObject({
+  const configuredSettings = await publicSettingsResponse.json();
+  expect(configuredSettings).toMatchObject({
     siteName: "AARAJ Festive Edit",
+    brandColor: "#8c2b2b",
+    backgroundColor: "#f8f8f8fa",
+    seoTitle: "AARAJ Festive Edit | Modern fashion",
+    seoDescription: "Explore the latest AARAJ collection in Bangladesh.",
+    socialImageAlt: "AARAJ seasonal collection against a warm background",
     announcementEnabled: true,
     announcementText: "Step into the festive season with AARAJ",
     supportPhone: "+8801712345678",
@@ -158,16 +224,98 @@ test("admin updates public storefront settings through to the rendered header", 
       width: 2,
       height: 3,
     },
+    brandIcon: {
+      contentType: "image/png",
+      width: 1024,
+      height: 1024,
+    },
     favicon: {
       contentType: "image/png",
       width: 64,
       height: 64,
+    },
+    socialImage: {
+      contentType: "image/jpeg",
+      width: 1200,
+      height: 630,
     },
     socialLinks: {
       instagram: "https://instagram.com/aaraj",
     },
     footerDescription: "Everyday style, thoughtfully selected.",
     footerLinks: [{ label: "Contact us", href: "/contact" }],
+  });
+  const brandIconResponse = await page.request.get(
+    configuredSettings.brandIcon.src,
+  );
+  expect(brandIconResponse.status()).toBe(200);
+  expect(brandIconResponse.headers()["content-type"]).toContain("image/png");
+  const appIconCenterPixel = await page.evaluate(async () => {
+    const image = new Image();
+    image.src = "/icon/192";
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = 192;
+    canvas.height = 192;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas context is unavailable.");
+    context.drawImage(image, 0, 0);
+    return Array.from(context.getImageData(96, 96, 1, 1).data);
+  });
+  expect(appIconCenterPixel).toEqual([0, 255, 255, 255]);
+
+  const configuredManifestResponse = await page.request.get(
+    "/manifest.webmanifest",
+  );
+  expect(configuredManifestResponse.status()).toBe(200);
+  expect(await configuredManifestResponse.json()).toMatchObject({
+    background_color: "#f8f8f8fa",
+    theme_color: "#8c2b2b",
+  });
+
+  await page.goto("/");
+  await expect(page.locator("header")).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator("header")
+        .evaluate((element) =>
+          getComputedStyle(element).getPropertyValue("--background").trim(),
+        ),
+    )
+    .toBe("#f8f8f8fa");
+  await expect
+    .poll(() =>
+      page
+        .locator("header")
+        .evaluate((element) =>
+          getComputedStyle(element).getPropertyValue("--brand").trim(),
+        ),
+    )
+    .toBe("#8c2b2b");
+
+  for (const [pathname, dimension] of [
+    ["/icon/64", 64],
+    ["/icon/192", 192],
+    ["/apple-icon", 180],
+  ] as const) {
+    const iconResponse = await page.request.get(pathname);
+    expect(iconResponse.status()).toBe(200);
+    expect(iconResponse.headers()["content-type"]).toContain("image/png");
+    const icon = await iconResponse.body();
+    expect(icon.subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    expect(icon.readUInt32BE(16)).toBe(dimension);
+    expect(icon.readUInt32BE(20)).toBe(dimension);
+  }
+
+  const manifestResponse = await page.request.get("/manifest.webmanifest");
+  expect(manifestResponse.status()).toBe(200);
+  expect(await manifestResponse.json()).toMatchObject({
+    name: "AARAJ Festive Edit",
+    short_name: "AARAJ Festiv",
+    description: "Explore the latest AARAJ collection in Bangladesh.",
   });
 
   await page.goto("/");
@@ -208,6 +356,76 @@ test("admin updates public storefront settings through to the rendered header", 
   );
   expect(iconResponse.status()).toBe(200);
   expect(iconResponse.headers()["content-type"]).toContain("image/png");
+  const appleIconHref = await page
+    .locator('link[rel="apple-touch-icon"]')
+    .getAttribute("href");
+  expect(appleIconHref).toBeTruthy();
+  const appleIconResponse = await page.request.get(
+    new URL(appleIconHref!, page.url()).toString(),
+  );
+  expect(appleIconResponse.status()).toBe(200);
+  expect(appleIconResponse.headers()["content-type"]).toContain("image/png");
+  for (const size of [192, 512]) {
+    const appIconResponse = await page.request.get(`/icon/${size}`);
+    expect(appIconResponse.status()).toBe(200);
+    expect(appIconResponse.headers()["content-type"]).toContain("image/png");
+  }
+
+  const socialImage = (await publicSettingsResponse.json()).socialImage;
+  const socialImageResponse = await page.request.get(socialImage.src);
+  expect(socialImageResponse.status()).toBe(200);
+  expect(socialImageResponse.headers()["content-type"]).toContain("image/jpeg");
+
+  const homeSeoResponse = await page.request.get("/", {
+    headers: { "User-Agent": "facebookexternalhit/1.1" },
+  });
+  expect(homeSeoResponse.status()).toBe(200);
+  const homeHtml = await homeSeoResponse.text();
+  const homeHead = homeHtml.match(/<head>([\s\S]*?)<\/head>/)?.[1];
+  expect(homeHead).toBeTruthy();
+  expect(homeHead).toContain(
+    "<title>AARAJ Festive Edit | Modern fashion</title>",
+  );
+  expect(homeHead).toContain(
+    '<meta name="description" content="Explore the latest AARAJ collection in Bangladesh."',
+  );
+  expect(homeHead).toContain(
+    '<meta property="og:title" content="AARAJ Festive Edit | Modern fashion"',
+  );
+  expect(homeHead).toContain(
+    '<meta property="og:description" content="Explore the latest AARAJ collection in Bangladesh."',
+  );
+  expect(homeHead).toContain(
+    '<meta property="og:image:alt" content="AARAJ seasonal collection against a warm background"',
+  );
+  expect(homeHead).toContain(
+    '<meta name="twitter:image:alt" content="AARAJ seasonal collection against a warm background"',
+  );
+  expect(homeHead).toContain(
+    '<meta name="twitter:card" content="summary_large_image"',
+  );
+  expect(homeHead).toContain('rel="canonical" href="http://127.0.0.1:3180"');
+  expect(homeHead).toContain(
+    `property="og:image" content="http://127.0.0.1:3180${socialImage.src}"`,
+  );
+  for (const path of [
+    "/account",
+    "/cart",
+    "/checkout",
+    "/admin/settings/storefront",
+  ]) {
+    const privateResponse = await page.request.get(path, {
+      headers: { "User-Agent": "facebookexternalhit/1.1" },
+    });
+    const privateHead = (await privateResponse.text()).match(
+      /<head>([\s\S]*?)<\/head>/,
+    )?.[1];
+    expect(
+      privateHead,
+      `${path} should render metadata in the head`,
+    ).toBeTruthy();
+    expect(privateHead).toContain('name="robots" content="noindex, nofollow"');
+  }
 });
 
 test("catalog operator configures a product through to storefront visibility", async ({
@@ -390,6 +608,54 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("heading", { name: productName, level: 1 }),
   ).toBeVisible();
+  const productSeoResponse = await page.request.get(`/products/${slug}`, {
+    headers: { "User-Agent": "facebookexternalhit/1.1" },
+  });
+  expect(productSeoResponse.status()).toBe(200);
+  const storefrontSettings = await page.request
+    .get("/api/v1/storefront/settings")
+    .then((response) => response.json());
+  const productSocialImage = storefrontSettings.socialImage;
+  const productHead = (await productSeoResponse.text()).match(
+    /<head>([\s\S]*?)<\/head>/,
+  )?.[1];
+  expect(productHead).toBeTruthy();
+  expect(productHead).toContain(
+    `<title>AARAJ Festive Edit | ${productName}</title>`,
+  );
+  expect(productHead).toContain(
+    `<meta property="og:title" content="${productName}"`,
+  );
+  expect(productHead).toContain(
+    '<meta property="og:description" content="A product configured in a real browser and database flow."',
+  );
+  expect(productHead).toContain(
+    `rel="canonical" href="http://127.0.0.1:3180/products/${slug}"`,
+  );
+  expect(productHead).toContain(
+    `property="og:image" content="http://127.0.0.1:3180${productSocialImage.src}"`,
+  );
+  expect(productHead).toContain(
+    '<meta name="twitter:image:alt" content="AARAJ seasonal collection against a warm background"',
+  );
+
+  const robotsResponse = await page.request.get("/robots.txt");
+  expect(robotsResponse.status()).toBe(200);
+  const robotsBody = await robotsResponse.text();
+  expect(robotsBody).toContain("User-Agent: *");
+  expect(robotsBody).toContain("Allow: /");
+  expect(robotsBody).toContain("Sitemap: http://127.0.0.1:3180/sitemap.xml");
+  expect(robotsBody).not.toContain("Disallow:");
+
+  const sitemapResponse = await page.request.get("/sitemap.xml");
+  expect(sitemapResponse.status()).toBe(200);
+  const sitemapBody = await sitemapResponse.text();
+  expect(sitemapBody).toContain("<loc>http://127.0.0.1:3180/</loc>");
+  expect(sitemapBody).toContain(
+    `<loc>http://127.0.0.1:3180/products/${slug}</loc>`,
+  );
+  expect(sitemapBody).not.toContain("/account");
+  expect(sitemapBody).not.toContain("/admin");
 
   await page.goto("/admin/inventory");
   await expect(

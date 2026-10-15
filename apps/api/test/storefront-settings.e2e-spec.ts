@@ -171,13 +171,20 @@ describe("storefront settings", () => {
     storage.objects.clear();
     await database.db.update(storefrontConfiguration).set({
       siteName: "AARAJ",
+      brandColor: "#7b2220",
+      backgroundColor: "#fafafafa",
+      seoTitle: null,
+      seoDescription: null,
+      socialImageAlt: null,
       announcementEnabled: false,
       announcementText: null,
       supportPhone: null,
       supportEmail: null,
       businessAddress: null,
       logoAssetId: null,
+      brandIconAssetId: null,
       faviconAssetId: null,
+      socialImageAssetId: null,
       socialLinks: {
         instagram: null,
         facebook: null,
@@ -202,13 +209,20 @@ describe("storefront settings", () => {
     expect(publicResponse.headers["cache-control"]).toBe("no-store");
     expect(publicResponse.body).toEqual({
       siteName: "AARAJ",
+      brandColor: "#7b2220",
+      backgroundColor: "#fafafafa",
+      seoTitle: null,
+      seoDescription: null,
       announcementEnabled: false,
       announcementText: null,
       supportPhone: null,
       supportEmail: null,
       businessAddress: null,
       logo: null,
+      brandIcon: null,
       favicon: null,
+      socialImage: null,
+      socialImageAlt: null,
       socialLinks: emptySocialLinks,
       footerDescription: null,
       footerLinks: [],
@@ -224,6 +238,11 @@ describe("storefront settings", () => {
         .expect(403);
       await update(actor, {
         siteName: "Unauthorized store",
+        brandColor: "#7b2220",
+        backgroundColor: "#fafafafa",
+        seoTitle: null,
+        seoDescription: null,
+        socialImageAlt: null,
         announcementEnabled: false,
         announcementText: null,
         supportPhone: null,
@@ -244,13 +263,20 @@ describe("storefront settings", () => {
     expect(managementResponse.headers["cache-control"]).toBe("no-store");
     expect(managementResponse.body).toEqual({
       siteName: "AARAJ",
+      brandColor: "#7b2220",
+      backgroundColor: "#fafafafa",
+      seoTitle: null,
+      seoDescription: null,
       announcementEnabled: false,
       announcementText: null,
       supportPhone: null,
       supportEmail: null,
       businessAddress: null,
       logo: null,
+      brandIcon: null,
       favicon: null,
+      socialImage: null,
+      socialImageAlt: null,
       socialLinks: emptySocialLinks,
       footerDescription: null,
       footerLinks: [],
@@ -260,6 +286,11 @@ describe("storefront settings", () => {
 
     const validUpdate = {
       siteName: "AARAJ Festive Edit",
+      brandColor: "#8c2b2b",
+      backgroundColor: "#f8f8f8fa",
+      seoTitle: "AARAJ Festive Edit | Modern fashion",
+      seoDescription: "Explore the latest AARAJ collection in Bangladesh.",
+      socialImageAlt: "AARAJ seasonal collection against a warm background",
       announcementEnabled: true,
       announcementText: "Step into the festive season with AARAJ",
       supportPhone: "+8801712345678",
@@ -282,12 +313,21 @@ describe("storefront settings", () => {
       ...validUpdate,
       internalSecret: "must be rejected",
     }).expect(400);
+    await update(admin, {
+      ...validUpdate,
+      backgroundColor: "var(--background)",
+    }).expect(400);
 
     await update(admin, validUpdate)
       .expect(200)
       .expect(({ body }) => {
         expect(body).toMatchObject({
           siteName: "AARAJ Festive Edit",
+          brandColor: "#8c2b2b",
+          backgroundColor: "#f8f8f8fa",
+          seoTitle: "AARAJ Festive Edit | Modern fashion",
+          seoDescription: "Explore the latest AARAJ collection in Bangladesh.",
+          socialImageAlt: "AARAJ seasonal collection against a warm background",
           announcementEnabled: true,
           announcementText: "Step into the festive season with AARAJ",
           supportPhone: "+8801712345678",
@@ -309,13 +349,20 @@ describe("storefront settings", () => {
       .expect(200);
     expect(updatedPublicSettings.body).toEqual({
       siteName: "AARAJ Festive Edit",
+      brandColor: "#8c2b2b",
+      backgroundColor: "#f8f8f8fa",
+      seoTitle: "AARAJ Festive Edit | Modern fashion",
+      seoDescription: "Explore the latest AARAJ collection in Bangladesh.",
+      socialImageAlt: "AARAJ seasonal collection against a warm background",
       announcementEnabled: true,
       announcementText: "Step into the festive season with AARAJ",
       supportPhone: "+8801712345678",
       supportEmail: "help@aaraj.example",
       businessAddress: "Dhaka, Bangladesh",
       logo: null,
+      brandIcon: null,
       favicon: null,
+      socialImage: null,
       socialLinks: {
         ...emptySocialLinks,
         instagram: "https://instagram.com/aaraj",
@@ -348,6 +395,11 @@ describe("storefront settings", () => {
         version: 2,
         changedFields: [
           "siteName",
+          "brandColor",
+          "backgroundColor",
+          "seoTitle",
+          "seoDescription",
+          "socialImageAlt",
           "announcementEnabled",
           "announcementText",
           "supportPhone",
@@ -370,6 +422,11 @@ describe("storefront settings", () => {
       .set("Cookie", admin.cookie)
       .send({
         siteName: "Origin blocked",
+        brandColor: "#7b2220",
+        backgroundColor: "#fafafafa",
+        seoTitle: null,
+        seoDescription: null,
+        socialImageAlt: null,
         announcementEnabled: false,
         announcementText: null,
         supportPhone: null,
@@ -388,6 +445,11 @@ describe("storefront settings", () => {
     );
     await update(admin, {
       siteName: "Must roll back",
+      brandColor: "#7b2220",
+      backgroundColor: "#fafafafa",
+      seoTitle: null,
+      seoDescription: null,
+      socialImageAlt: null,
       announcementEnabled: false,
       announcementText: null,
       supportPhone: null,
@@ -404,6 +466,8 @@ describe("storefront settings", () => {
     expect(stored).toMatchObject({
       id: "default",
       siteName: "AARAJ",
+      brandColor: "#7b2220",
+      backgroundColor: "#fafafafa",
       version: 1,
       updatedBy: null,
     });
@@ -414,6 +478,7 @@ describe("storefront settings", () => {
       .get(`${API_V1_BASE_PATH}/storefront/settings`)
       .expect(200);
     expect(before.body.logo).toBeNull();
+    expect(before.body.brandIcon).toBeNull();
 
     await uploadAsset(staff, "logo", png).expect(403);
     expect(storage.objects.size).toBe(0);
@@ -432,6 +497,7 @@ describe("storefront settings", () => {
         height: 3,
       },
       favicon: null,
+      brandIcon: null,
     });
     expect(afterLogo.body.logo.src).toMatch(
       /^\/api\/v1\/storefront\/assets\/[0-9a-f-]{36}\/[0-9a-f]{64}\.webp$/,
@@ -456,6 +522,11 @@ describe("storefront settings", () => {
     );
     expect(logoResponse.headers["x-content-type-options"]).toBe("nosniff");
 
+    const iconAssetResponse = await request(app.getHttpServer())
+      .get(`${afterLogo.body.logo.src}?format=png`)
+      .expect(200);
+    expect(iconAssetResponse.headers["content-type"]).toContain("image/png");
+
     const afterFavicon = await uploadAsset(admin, "favicon", png, {
       expectedVersion: 2,
       reason: "Publish the store favicon",
@@ -469,15 +540,92 @@ describe("storefront settings", () => {
       .expect(200);
     expect(faviconResponse.headers["content-type"]).toContain("image/png");
 
+    const afterBrandIcon = await uploadAsset(admin, "brandIcon", png, {
+      expectedVersion: 3,
+      reason: "Publish the square brand icon",
+    }).expect(201);
+    expect(afterBrandIcon.body).toMatchObject({
+      version: 4,
+      brandIcon: {
+        contentType: "image/png",
+        width: 1024,
+        height: 1024,
+      },
+    });
+    expect(afterBrandIcon.body.brandIcon.src).toMatch(
+      /^\/api\/v1\/storefront\/assets\/[0-9a-f-]{36}\/[0-9a-f]{64}\.png$/,
+    );
+    const brandIconResponse = await request(app.getHttpServer())
+      .get(afterBrandIcon.body.brandIcon.src)
+      .expect(200);
+    expect(brandIconResponse.headers["content-type"]).toContain("image/png");
+
+    const afterSocialImage = await uploadAsset(admin, "socialImage", png, {
+      expectedVersion: 4,
+      reason: "Publish the default social sharing image",
+    }).expect(201);
+    expect(afterSocialImage.body).toMatchObject({
+      version: 5,
+      socialImage: {
+        contentType: "image/jpeg",
+        width: 1200,
+        height: 630,
+      },
+    });
+    expect(afterSocialImage.body.socialImage.src).toMatch(
+      /^\/api\/v1\/storefront\/assets\/[0-9a-f-]{36}\/[0-9a-f]{64}\.jpg$/,
+    );
+    const socialImageResponse = await request(app.getHttpServer())
+      .get(afterSocialImage.body.socialImage.src)
+      .expect(200);
+    expect(socialImageResponse.headers["content-type"]).toContain("image/jpeg");
+
     const cleared = await request(app.getHttpServer())
       .delete(`${API_V1_BASE_PATH}/storefront/manage/assets/logo`)
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
-      .send({ expectedVersion: 3, reason: "Remove the old store logo" })
+      .send({ expectedVersion: 5, reason: "Remove the old store logo" })
       .expect(200);
-    expect(cleared.body).toMatchObject({ version: 4, logo: null });
+    expect(cleared.body).toMatchObject({ version: 6, logo: null });
     await request(app.getHttpServer()).get(afterLogo.body.logo.src).expect(404);
-    expect(storage.objects.size).toBe(2);
+    await request(app.getHttpServer())
+      .get(afterSocialImage.body.socialImage.src)
+      .expect(200);
+
+    const clearedBrandIcon = await request(app.getHttpServer())
+      .delete(`${API_V1_BASE_PATH}/storefront/manage/assets/brandIcon`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        expectedVersion: 6,
+        reason: "Remove the old square brand icon",
+      })
+      .expect(200);
+    expect(clearedBrandIcon.body).toMatchObject({
+      version: 7,
+      brandIcon: null,
+    });
+    await request(app.getHttpServer())
+      .get(afterBrandIcon.body.brandIcon.src)
+      .expect(404);
+
+    const clearedSocialImage = await request(app.getHttpServer())
+      .delete(`${API_V1_BASE_PATH}/storefront/manage/assets/socialImage`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        expectedVersion: 7,
+        reason: "Remove the old social sharing image",
+      })
+      .expect(200);
+    expect(clearedSocialImage.body).toMatchObject({
+      version: 8,
+      socialImage: null,
+    });
+    await request(app.getHttpServer())
+      .get(afterSocialImage.body.socialImage.src)
+      .expect(404);
+    expect(storage.objects.size).toBe(4);
 
     const events = await database.db
       .select()
@@ -487,12 +635,16 @@ describe("storefront settings", () => {
       events.filter((event) =>
         event.eventType.startsWith("storefront.brand_asset_"),
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(7);
     expect(events.map((event) => event.reason)).toEqual(
       expect.arrayContaining([
         "Publish the store logo",
         "Publish the store favicon",
+        "Publish the square brand icon",
         "Remove the old store logo",
+        "Remove the old square brand icon",
+        "Publish the default social sharing image",
+        "Remove the old social sharing image",
       ]),
     );
   });
@@ -509,7 +661,11 @@ describe("storefront settings", () => {
     const [configuration] = await database.db
       .select()
       .from(storefrontConfiguration);
-    expect(configuration).toMatchObject({ version: 1, logoAssetId: null });
+    expect(configuration).toMatchObject({
+      version: 1,
+      logoAssetId: null,
+      brandIconAssetId: null,
+    });
     const assets = await database.db.select().from(storefrontBrandAsset);
     expect(assets).toHaveLength(assetsBefore.length);
   });
@@ -528,7 +684,11 @@ describe("storefront settings", () => {
     const [configuration] = await database.db
       .select()
       .from(storefrontConfiguration);
-    expect(configuration).toMatchObject({ version: 1, logoAssetId: null });
+    expect(configuration).toMatchObject({
+      version: 1,
+      logoAssetId: null,
+      brandIconAssetId: null,
+    });
     const assets = await database.db.select().from(storefrontBrandAsset);
     expect(assets).toHaveLength(assetsBefore.length);
   });

@@ -1,0 +1,2 @@
+ALTER TABLE "storefront"."configuration" ADD COLUMN "brand_color" text DEFAULT '#7b2220' NOT NULL;--> statement-breakpoint
+ALTER TABLE "storefront"."configuration" ADD CONSTRAINT "configuration_brand_color_check" CHECK ("storefront"."configuration"."brand_color" ~ '^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$');

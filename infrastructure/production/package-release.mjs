@@ -71,6 +71,7 @@ try {
   command("pnpm", ["--filter", "@aaraj/api", "run", "build"]);
   command("pnpm", ["--filter", "@aaraj/web", "run", "build"], {
     API_INTERNAL_URL: "http://127.0.0.1:3001",
+    CLIENT_URL: "https://aaraj.invalid",
     RELEASE_COMMIT_SHA: options.commit,
   });
   command("pnpm", ["--filter", "@aaraj/api", "deploy", "--prod", apiDeploy]);

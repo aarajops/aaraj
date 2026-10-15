@@ -2,6 +2,8 @@ import "server-only";
 
 import { cache } from "react";
 import {
+  DEFAULT_STOREFRONT_BACKGROUND_COLOR,
+  DEFAULT_STOREFRONT_BRAND_COLOR,
   PublicStorefrontSettingsSchema,
   type PublicStorefrontSettings,
 } from "@aaraj/contracts";
@@ -9,13 +11,20 @@ import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
 
 const fallbackSettings: PublicStorefrontSettings = {
   siteName: "AARAJ",
+  brandColor: DEFAULT_STOREFRONT_BRAND_COLOR,
+  backgroundColor: DEFAULT_STOREFRONT_BACKGROUND_COLOR,
+  seoTitle: null,
+  seoDescription: null,
   announcementEnabled: false,
   announcementText: null,
   supportPhone: null,
   supportEmail: null,
   businessAddress: null,
   logo: null,
+  brandIcon: null,
   favicon: null,
+  socialImage: null,
+  socialImageAlt: null,
   socialLinks: {
     instagram: null,
     facebook: null,

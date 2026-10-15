@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Res,
   StandardSchemaValidationPipe,
   UploadedFile,
@@ -48,7 +49,7 @@ import { StorefrontSettingsService } from "./storefront.service.js";
 
 const BrandAssetIdSchema = z.uuid();
 const BrandAssetSha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
-const BrandAssetExtensionSchema = z.enum(["png", "webp"]);
+const BrandAssetExtensionSchema = z.enum(["png", "webp", "jpg"]);
 
 @Controller("storefront")
 @UsePipes(StandardSchemaValidationPipe)
@@ -72,21 +73,21 @@ export class StorefrontController {
     @Param("assetId", { schema: BrandAssetIdSchema }) assetId: string,
     @Param("sha256", { schema: BrandAssetSha256Schema }) sha256: string,
     @Param("extension", { schema: BrandAssetExtensionSchema })
-    extension: "png" | "webp",
+    extension: "png" | "webp" | "jpg",
+    @Query("format", { schema: z.enum(["png"]).optional() })
+    format: "png" | undefined,
     @Res() response: Response,
   ): Promise<void> {
-    const asset = await this.brandAssets.getPublicAsset(
-      assetId,
-      sha256,
-      extension,
-    );
+    const asset = format
+      ? await this.brandAssets.getPublicAssetAsPng(assetId, sha256, extension)
+      : await this.brandAssets.getPublicAsset(assetId, sha256, extension);
     response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Content-Type", asset.contentType);
     response.setHeader("Content-Length", String(asset.body.byteLength));
     response.setHeader(
       "Content-Disposition",
-      `inline; filename="${assetId}.${extension}"`,
+      `inline; filename="${assetId}.${format ?? extension}"`,
     );
     response.status(200).end(asset.body);
   }

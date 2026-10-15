@@ -17,6 +17,32 @@ import {
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3181);
 const products = [];
+const publicStorefrontSettings = {
+  siteName: "Aaraj",
+  brandColor: "#7b2220",
+  backgroundColor: "#fafafafa",
+  seoTitle: null,
+  seoDescription: null,
+  announcementEnabled: false,
+  announcementText: null,
+  supportPhone: null,
+  supportEmail: null,
+  businessAddress: null,
+  logo: null,
+  brandIcon: null,
+  favicon: null,
+  socialImage: null,
+  socialImageAlt: null,
+  socialLinks: {
+    instagram: null,
+    facebook: null,
+    tiktok: null,
+    youtube: null,
+    x: null,
+  },
+  footerDescription: null,
+  footerLinks: [],
+};
 const clothingCategory = makeCategory("Clothing", "clothing");
 const tshirtCategory = makeCategory(
   "T-shirts",
@@ -205,6 +231,10 @@ const server = createServer(async (request, response) => {
   const method = request.method ?? "GET";
   if (url.pathname === "/api/health/ready") {
     send(response, 200, { status: "ok", database: "ok", redis: "ok" });
+    return;
+  }
+  if (url.pathname === "/api/v1/storefront/settings" && method === "GET") {
+    send(response, 200, publicStorefrontSettings);
     return;
   }
   if (url.pathname === "/api/auth/get-session") {

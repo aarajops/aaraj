@@ -1,5 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
+  DEFAULT_STOREFRONT_BACKGROUND_COLOR,
+  DEFAULT_STOREFRONT_BRAND_COLOR,
+} from "@aaraj/contracts";
+import {
   check,
   boolean,
   integer,
@@ -37,14 +41,17 @@ export const storefrontBrandAsset = storefrontSchema.table(
   (table) => [
     uniqueIndex("brand_asset_command_uidx").on(table.commandId),
     uniqueIndex("brand_asset_object_key_uidx").on(table.objectKey),
-    check("brand_asset_kind_check", sql`${table.kind} in ('logo', 'favicon')`),
+    check(
+      "brand_asset_kind_check",
+      sql`${table.kind} in ('logo', 'brandIcon', 'favicon', 'socialImage')`,
+    ),
     check(
       "brand_asset_kind_content_type_check",
-      sql`(${table.kind} = 'logo' and ${table.contentType} = 'image/webp') or (${table.kind} = 'favicon' and ${table.contentType} = 'image/png')`,
+      sql`(${table.kind} = 'logo' and ${table.contentType} = 'image/webp') or (${table.kind} in ('brandIcon', 'favicon') and ${table.contentType} = 'image/png') or (${table.kind} = 'socialImage' and ${table.contentType} = 'image/jpeg')`,
     ),
     check(
       "brand_asset_object_key_check",
-      sql`${table.objectKey} ~ '^published/storefront/(logo|favicon)/[0-9a-f-]{36}/[0-9a-f]{64}\\.(webp|png)$'`,
+      sql`${table.objectKey} ~ '^published/storefront/(logo|brandIcon|favicon|socialImage)/[0-9a-f-]{36}/[0-9a-f]{64}\\.(webp|png|jpg)$'`,
     ),
     check(
       "brand_asset_source_sha256_check",
@@ -57,7 +64,7 @@ export const storefrontBrandAsset = storefrontSchema.table(
     ),
     check(
       "brand_asset_dimensions_check",
-      sql`(${table.kind} = 'logo' and ${table.width} between 1 and 1200 and ${table.height} between 1 and 400) or (${table.kind} = 'favicon' and ${table.width} = 64 and ${table.height} = 64)`,
+      sql`(${table.kind} = 'logo' and ${table.width} between 1 and 1200 and ${table.height} between 1 and 400) or (${table.kind} = 'brandIcon' and ${table.width} = 1024 and ${table.height} = 1024) or (${table.kind} = 'favicon' and ${table.width} = 64 and ${table.height} = 64) or (${table.kind} = 'socialImage' and ${table.width} = 1200 and ${table.height} = 630)`,
     ),
   ],
 );
@@ -67,6 +74,15 @@ export const storefrontConfiguration = storefrontSchema.table(
   {
     id: text("id").primaryKey().default("default"),
     siteName: text("site_name").notNull().default("AARAJ"),
+    brandColor: text("brand_color")
+      .notNull()
+      .default(DEFAULT_STOREFRONT_BRAND_COLOR),
+    backgroundColor: text("background_color")
+      .notNull()
+      .default(DEFAULT_STOREFRONT_BACKGROUND_COLOR),
+    seoTitle: text("seo_title"),
+    seoDescription: text("seo_description"),
+    socialImageAlt: text("social_image_alt"),
     announcementEnabled: boolean("announcement_enabled")
       .notNull()
       .default(false),
@@ -78,7 +94,15 @@ export const storefrontConfiguration = storefrontSchema.table(
       () => storefrontBrandAsset.id,
       { onDelete: "restrict" },
     ),
+    brandIconAssetId: uuid("brand_icon_asset_id").references(
+      () => storefrontBrandAsset.id,
+      { onDelete: "restrict" },
+    ),
     faviconAssetId: uuid("favicon_asset_id").references(
+      () => storefrontBrandAsset.id,
+      { onDelete: "restrict" },
+    ),
+    socialImageAssetId: uuid("social_image_asset_id").references(
       () => storefrontBrandAsset.id,
       { onDelete: "restrict" },
     ),
@@ -114,6 +138,26 @@ export const storefrontConfiguration = storefrontSchema.table(
     check(
       "configuration_site_name_check",
       sql`${table.siteName} = btrim(${table.siteName}) and length(${table.siteName}) between 1 and 80`,
+    ),
+    check(
+      "configuration_brand_color_check",
+      sql`${table.brandColor} ~ '^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$'`,
+    ),
+    check(
+      "configuration_background_color_check",
+      sql`${table.backgroundColor} ~ '^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$'`,
+    ),
+    check(
+      "configuration_seo_title_check",
+      sql`${table.seoTitle} is null or (${table.seoTitle} = btrim(${table.seoTitle}) and length(${table.seoTitle}) between 1 and 160)`,
+    ),
+    check(
+      "configuration_seo_description_check",
+      sql`${table.seoDescription} is null or (${table.seoDescription} = btrim(${table.seoDescription}) and length(${table.seoDescription}) between 1 and 500)`,
+    ),
+    check(
+      "configuration_social_image_alt_check",
+      sql`${table.socialImageAlt} is null or (${table.socialImageAlt} = btrim(${table.socialImageAlt}) and length(${table.socialImageAlt}) between 1 and 250)`,
     ),
     check(
       "configuration_announcement_text_check",
