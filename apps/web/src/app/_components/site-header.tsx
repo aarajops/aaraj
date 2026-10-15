@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { CartBadge } from "@/features/cart/cart-badge";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
@@ -18,10 +19,22 @@ export async function SiteHeader() {
       <header className="border-b border-border bg-background text-foreground">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-5 px-5 py-4">
           <Link
-            className="text-lg font-semibold tracking-[0.16em] text-primary"
+            aria-label={`${settings.siteName} home`}
+            className="inline-flex min-h-10 items-center text-lg font-semibold tracking-[0.16em] text-primary"
             href="/"
           >
-            {settings.siteName}
+            {settings.logo ? (
+              <Image
+                alt={`${settings.siteName} logo`}
+                className="h-auto max-h-10 w-auto max-w-44 object-contain"
+                height={settings.logo.height}
+                src={settings.logo.src}
+                unoptimized
+                width={settings.logo.width}
+              />
+            ) : (
+              settings.siteName
+            )}
           </Link>
           <nav
             aria-label="Main navigation"

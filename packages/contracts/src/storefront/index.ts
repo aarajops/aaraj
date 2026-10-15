@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { API_V1_BASE_PATH } from "../platform/api-version.js";
 
 export const STOREFRONT_SETTINGS_ID = "default" as const;
 
@@ -8,12 +9,104 @@ const StorefrontPhoneSchema = z
   .string()
   .regex(/^\+[1-9][0-9]{7,14}$/, "Use an international E.164 phone number.")
   .nullable();
+const StorefrontEmailSchema = z
+  .string()
+  .trim()
+  .max(254)
+  .pipe(z.email())
+  .nullable();
+const PublicTextSchema = z.string().trim().min(1).max(500).nullable();
+
+function httpsUrlForHosts(hosts: readonly string[]) {
+  return z
+    .string()
+    .trim()
+    .max(2048)
+    .pipe(z.url())
+    .refine((value) => {
+      try {
+        const parsed = new URL(value);
+        return (
+          parsed.protocol === "https:" &&
+          parsed.username.length === 0 &&
+          parsed.password.length === 0 &&
+          hosts.some(
+            (host) =>
+              parsed.hostname === host || parsed.hostname.endsWith(`.${host}`),
+          )
+        );
+      } catch {
+        return false;
+      }
+    }, "Use a secure URL for the matching social network.")
+    .nullable();
+}
+
+export const StorefrontSocialLinksSchema = z.strictObject({
+  instagram: httpsUrlForHosts(["instagram.com"]),
+  facebook: httpsUrlForHosts(["facebook.com", "fb.com"]),
+  tiktok: httpsUrlForHosts(["tiktok.com"]),
+  youtube: httpsUrlForHosts(["youtube.com", "youtu.be"]),
+  x: httpsUrlForHosts(["x.com", "twitter.com"]),
+});
+export type StorefrontSocialLinks = z.infer<typeof StorefrontSocialLinksSchema>;
+
+const StorefrontFooterLinkSchema = z.strictObject({
+  label: z.string().trim().min(1).max(40),
+  href: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2048)
+    .refine((value) => {
+      if (value.includes("\\") || /[\u0000-\u001f]/.test(value)) return false;
+      if (value.startsWith("/")) return !value.startsWith("//");
+      try {
+        const parsed = new URL(value);
+        return (
+          parsed.protocol === "https:" &&
+          parsed.username.length === 0 &&
+          parsed.password.length === 0
+        );
+      } catch {
+        return false;
+      }
+    }, "Use an internal path or a secure HTTPS link."),
+});
+export type StorefrontFooterLink = z.infer<typeof StorefrontFooterLinkSchema>;
+
+export const StorefrontBrandAssetKindSchema = z.enum(["logo", "favicon"]);
+export type StorefrontBrandAssetKind = z.infer<
+  typeof StorefrontBrandAssetKindSchema
+>;
+
+export const StorefrontBrandAssetSchema = z.strictObject({
+  id: z.uuid(),
+  src: z
+    .string()
+    .regex(
+      new RegExp(
+        `^${API_V1_BASE_PATH}/storefront/assets/[0-9a-f-]{36}/[0-9a-f]{64}\\.(?:webp|png)$`,
+      ),
+    ),
+  contentType: z.enum(["image/webp", "image/png"]),
+  width: z.number().int().positive().max(1200),
+  height: z.number().int().positive().max(400),
+});
+export type StorefrontBrandAsset = z.infer<typeof StorefrontBrandAssetSchema>;
 
 export const PublicStorefrontSettingsSchema = z.strictObject({
   siteName: StoreNameSchema,
   announcementEnabled: z.boolean(),
   announcementText: AnnouncementTextSchema,
   supportPhone: StorefrontPhoneSchema,
+  supportEmail: StorefrontEmailSchema,
+  businessAddress: PublicTextSchema,
+  logo: StorefrontBrandAssetSchema.nullable(),
+  favicon: StorefrontBrandAssetSchema.nullable(),
+  socialLinks: StorefrontSocialLinksSchema,
+  footerDescription: PublicTextSchema,
+  footerLinks: StorefrontFooterLinkSchema.array().max(8),
 });
 export type PublicStorefrontSettings = z.infer<
   typeof PublicStorefrontSettingsSchema
@@ -31,18 +124,45 @@ export const StorefrontSettingsUpdateSchema = z
     announcementEnabled: z.boolean(),
     announcementText: AnnouncementTextSchema,
     supportPhone: StorefrontPhoneSchema,
+    supportEmail: StorefrontEmailSchema,
+    businessAddress: PublicTextSchema,
+    socialLinks: StorefrontSocialLinksSchema,
+    footerDescription: PublicTextSchema,
+    footerLinks: StorefrontFooterLinkSchema.array().max(8),
     expectedVersion: z.number().int().positive(),
     reason: z.string().trim().min(3).max(500),
   })
-  .superRefine((settings, context) => {
-    if (settings.announcementEnabled && !settings.announcementText) {
-      context.addIssue({
-        code: "custom",
-        path: ["announcementText"],
-        message: "An announcement is required when the banner is enabled.",
-      });
-    }
+  .refine(
+    (settings) => !settings.announcementEnabled || settings.announcementText,
+    {
+      path: ["announcementText"],
+      message: "An announcement is required when the banner is enabled.",
+    },
+  )
+  .refine((settings) => {
+    const labels = settings.footerLinks.map(({ label }) => label.toLowerCase());
+    return new Set(labels).size === labels.length;
+  }, {
+    path: ["footerLinks"],
+    message: "Footer link labels must be unique.",
   });
 export type StorefrontSettingsUpdate = z.infer<
   typeof StorefrontSettingsUpdateSchema
+>;
+
+export const StorefrontBrandAssetUploadSchema = z.strictObject({
+  commandId: z.uuid(),
+  expectedVersion: z.coerce.number().int().positive(),
+  reason: z.string().trim().min(3).max(500),
+});
+export type StorefrontBrandAssetUpload = z.infer<
+  typeof StorefrontBrandAssetUploadSchema
+>;
+
+export const StorefrontBrandAssetClearSchema = z.strictObject({
+  expectedVersion: z.number().int().positive(),
+  reason: z.string().trim().min(3).max(500),
+});
+export type StorefrontBrandAssetClear = z.infer<
+  typeof StorefrontBrandAssetClearSchema
 >;

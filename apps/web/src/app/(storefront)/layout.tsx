@@ -1,4 +1,5 @@
 import { SiteHeader } from "@/app/_components/site-header";
+import { StoreFooter } from "@/app/_components/store-footer";
 import { CartProvider } from "@/features/cart/cart-provider";
 
 export default function StorefrontLayout({
@@ -10,6 +11,7 @@ export default function StorefrontLayout({
     <CartProvider>
       <SiteHeader />
       {children}
+      <StoreFooter />
     </CartProvider>
   );
 }

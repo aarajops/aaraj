@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -220,6 +220,28 @@ try {
   });
   configureApp(app);
   await app.init();
+
+  const brandAssetObjects = new Map();
+  const brandAssetStorage = app.get(
+    (await import("../dist/platform/storage/r2-storage.js")).R2Storage,
+  );
+  brandAssetStorage.putPublishedObject = async ({ key, body }) => {
+    brandAssetObjects.set(key, Buffer.from(body));
+  };
+  brandAssetStorage.getPublishedObject = async ({ key, sha256, sizeBytes }) => {
+    const body = brandAssetObjects.get(key);
+    if (
+      !body ||
+      body.byteLength !== sizeBytes ||
+      createHash("sha256").update(body).digest("hex") !== sha256
+    ) {
+      throw new Error("missing test brand asset");
+    }
+    return Buffer.from(body);
+  };
+  brandAssetStorage.deleteObjects = async (keys) => {
+    for (const key of keys) brandAssetObjects.delete(key);
+  };
 
   const fixtureEmail = "catalog-e2e@example.test";
   const fixturePassword = "CatalogE2E-Only-Password-2026!";

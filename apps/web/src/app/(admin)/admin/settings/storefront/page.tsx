@@ -6,7 +6,7 @@ import { StorefrontSettingsManager } from "@/features/admin/storefront-settings-
 export const metadata: Metadata = {
   title: "Storefront settings",
   description:
-    "Manage the public AARAJ storefront identity and contact details.",
+    "Manage the AARAJ storefront brand, public contact information, and footer.",
 };
 
 export default async function StorefrontSettingsPage() {
@@ -24,8 +24,8 @@ export default async function StorefrontSettingsPage() {
           Storefront settings
         </h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">
-          Manage public store identity, the announcement banner, and customer
-          support contact details.
+          Manage store branding, the announcement banner, public contact
+          details, social links, and footer content.
         </p>
         <StorefrontSettingsManager />
       </div>

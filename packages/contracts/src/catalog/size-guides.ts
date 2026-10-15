@@ -99,7 +99,16 @@ export const CatalogSizeGuideCreateSchema = z
       .max(40),
     reason: z.string().trim().min(3).max(500),
   })
-  .superRefine(validateGuideRows);
+  .check(({ value, issues }) => {
+    for (const issue of validateGuideRows(value)) {
+      issues.push({
+        code: "custom",
+        ...issue,
+        input: value,
+        continue: true,
+      });
+    }
+  });
 export type CatalogSizeGuideCreateInput = z.input<
   typeof CatalogSizeGuideCreateSchema
 >;
@@ -135,16 +144,15 @@ function validateGuideRows(
       measurements: Array<{ key: CatalogMeasurementKey; value: string }>;
     }>;
   },
-  context: z.RefinementCtx,
-) {
+): Array<{ path: (string | number)[]; message: string }> {
+  const issues: Array<{ path: (string | number)[]; message: string }> = [];
   const sizeLabels = new Set<string>();
   let expectedKeys: string | null = null;
 
   for (const [rowIndex, row] of input.rows.entries()) {
     const sizeLabel = row.sizeLabel.trim().toLowerCase();
     if (sizeLabels.has(sizeLabel)) {
-      context.addIssue({
-        code: "custom",
+      issues.push({
         path: ["rows", rowIndex, "sizeLabel"],
         message: "Size labels must be unique within a guide.",
       });
@@ -153,20 +161,19 @@ function validateGuideRows(
 
     const keys = row.measurements.map(({ key }) => key);
     if (new Set(keys).size !== keys.length) {
-      context.addIssue({
-        code: "custom",
+      issues.push({
         path: ["rows", rowIndex, "measurements"],
         message: "A measurement can appear only once per size.",
       });
     }
     const keySet = [...keys].sort().join(",");
     if (expectedKeys !== null && keySet !== expectedKeys) {
-      context.addIssue({
-        code: "custom",
+      issues.push({
         path: ["rows", rowIndex, "measurements"],
         message: "Every size row in a guide must use the same measurements.",
       });
     }
     expectedKeys ??= keySet;
   }
+  return issues;
 }

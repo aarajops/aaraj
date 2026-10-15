@@ -50,6 +50,7 @@ const runtimeTableGrants = [
   ["delivery", "pathao_webhook_resolution", ["SELECT", "INSERT"]],
   ["tax", "profile", ["SELECT"]],
   ["tax", "configuration", ["SELECT", "UPDATE"]],
+  ["storefront", "brand_asset", ["SELECT", "INSERT"]],
   ["storefront", "configuration", ["SELECT", "UPDATE"]],
   ["quote", "snapshot", ["SELECT", "INSERT"]],
   ["orders", "order_header", ["SELECT", "INSERT", "UPDATE"]],
@@ -343,6 +344,7 @@ async function main(): Promise<void> {
     await runtimePool.query(
       'SELECT 1 FROM "storefront"."configuration" LIMIT 0',
     );
+    await runtimePool.query('SELECT 1 FROM "storefront"."brand_asset" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "quote"."snapshot" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "orders"."order_header" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "orders"."order_line" LIMIT 0');
@@ -366,6 +368,27 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         "Quote snapshots must be insertable and immutable to the runtime role.",
+      );
+    }
+    const storefrontAssetPrivileges = await runtimePool.query<{
+      can_insert: boolean;
+      can_update: boolean;
+      can_delete: boolean;
+      can_truncate: boolean;
+    }>(
+      `SELECT has_table_privilege(current_user, 'storefront.brand_asset', 'INSERT') AS can_insert,
+              has_table_privilege(current_user, 'storefront.brand_asset', 'UPDATE') AS can_update,
+              has_table_privilege(current_user, 'storefront.brand_asset', 'DELETE') AS can_delete,
+              has_table_privilege(current_user, 'storefront.brand_asset', 'TRUNCATE') AS can_truncate`,
+    );
+    if (
+      !storefrontAssetPrivileges.rows[0]?.can_insert ||
+      storefrontAssetPrivileges.rows[0].can_update ||
+      storefrontAssetPrivileges.rows[0].can_delete ||
+      storefrontAssetPrivileges.rows[0].can_truncate
+    ) {
+      throw new Error(
+        "Storefront brand asset manifests must be insertable and immutable to the runtime role.",
       );
     }
     console.log("Runtime PostgreSQL privileges applied.");

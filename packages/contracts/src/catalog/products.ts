@@ -115,7 +115,16 @@ const CatalogProductFieldsSchema = z.strictObject({
 
 export const CatalogProductCreateSchema = CatalogProductFieldsSchema.extend({
   reason: z.string().trim().min(3).max(500),
-}).superRefine(validateVariantInputs);
+}).check(({ value, issues }) => {
+  for (const issue of validateVariantInputs(value)) {
+    issues.push({
+      code: "custom",
+      ...issue,
+      input: value,
+      continue: true,
+    });
+  }
+});
 export type CatalogProductCreateInput = z.input<
   typeof CatalogProductCreateSchema
 >;
@@ -130,7 +139,16 @@ export const CatalogProductUpdateSchema = CatalogProductFieldsSchema.partial()
     ({ reason: _reason, ...changes }) => Object.keys(changes).length > 0,
     { message: "At least one product field must change." },
   )
-  .superRefine(validateVariantInputs);
+  .check(({ value, issues }) => {
+    for (const issue of validateVariantInputs(value)) {
+      issues.push({
+        code: "custom",
+        ...issue,
+        input: value,
+        continue: true,
+      });
+    }
+  });
 export type CatalogProductUpdateInput = z.input<
   typeof CatalogProductUpdateSchema
 >;
@@ -220,10 +238,10 @@ export type CatalogPublishedProductPage = z.infer<
 
 export const CatalogProductIdSchema = z.uuid();
 
-function validateVariantInputs(
-  input: { variants?: CatalogProductVariantInput[] },
-  context: z.RefinementCtx,
-) {
+function validateVariantInputs(input: {
+  variants?: CatalogProductVariantInput[];
+}): Array<{ path: (string | number)[]; message: string }> {
+  const issues: Array<{ path: (string | number)[]; message: string }> = [];
   const variants = input.variants ?? [];
   const skus = new Set<string>();
   const combinations = new Set<string>();
@@ -232,15 +250,13 @@ function validateVariantInputs(
     const sku = variant.sku.trim().toLowerCase();
     const combination = `${variant.color.trim().toLowerCase()}\u0000${variant.sizeLabel.trim().toLowerCase()}`;
     if (skus.has(sku)) {
-      context.addIssue({
-        code: "custom",
+      issues.push({
         path: ["variants", index, "sku"],
         message: "Variant SKUs must be unique.",
       });
     }
     if (combinations.has(combination)) {
-      context.addIssue({
-        code: "custom",
+      issues.push({
         path: ["variants", index, "sizeLabel"],
         message: "Each color and size combination may appear only once.",
       });
@@ -248,6 +264,7 @@ function validateVariantInputs(
     skus.add(sku);
     combinations.add(combination);
   }
+  return issues;
 }
 
 function isValidGtin(value: string): boolean {

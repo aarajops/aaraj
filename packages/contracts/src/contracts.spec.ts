@@ -26,7 +26,25 @@ describe("Contracts Schema Validation", () => {
       announcementEnabled: true,
       announcementText: "A new season starts here",
       supportPhone: "+8801712345678",
+      supportEmail: "support@example.com",
+      businessAddress: "Dhaka, Bangladesh",
+      logo: null,
+      favicon: null,
+      socialLinks: {
+        instagram: "https://instagram.com/aaraj",
+        facebook: null,
+        tiktok: null,
+        youtube: null,
+        x: null,
+      },
+      footerDescription: "Thoughtful everyday clothing.",
+      footerLinks: [{ label: "About", href: "/about" }],
     };
+    const editableSettings = Object.fromEntries(
+      Object.entries(publicSettings).filter(
+        ([key]) => key !== "logo" && key !== "favicon",
+      ),
+    );
     expect(
       PublicStorefrontSettingsSchema.safeParse(publicSettings).success,
     ).toBe(true);
@@ -38,14 +56,14 @@ describe("Contracts Schema Validation", () => {
     ).toBe(false);
     expect(
       StorefrontSettingsUpdateSchema.safeParse({
-        ...publicSettings,
+        ...editableSettings,
         expectedVersion: 1,
         reason: "Update the storefront announcement",
       }).success,
     ).toBe(true);
     expect(
       StorefrontSettingsUpdateSchema.safeParse({
-        ...publicSettings,
+        ...editableSettings,
         announcementEnabled: true,
         announcementText: null,
         expectedVersion: 1,
@@ -54,7 +72,55 @@ describe("Contracts Schema Validation", () => {
     ).toBe(false);
     expect(
       StorefrontSettingsUpdateSchema.safeParse({
-        ...publicSettings,
+        ...editableSettings,
+        socialLinks: {
+          ...publicSettings.socialLinks,
+          instagram: "https://instagram.com.attacker.example/aaraj",
+        },
+        expectedVersion: 1,
+        reason: "Update the storefront profile",
+      }).success,
+    ).toBe(false);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...editableSettings,
+        socialLinks: {
+          ...publicSettings.socialLinks,
+          instagram: "https://user:password@instagram.com/aaraj",
+        },
+        expectedVersion: 1,
+        reason: "Update the storefront profile",
+      }).success,
+    ).toBe(false);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...editableSettings,
+        footerLinks: [
+          { label: "Shipping", href: "https://shipping.example.com" },
+        ],
+        expectedVersion: 1,
+        reason: "Update the storefront profile",
+      }).success,
+    ).toBe(true);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...editableSettings,
+        footerLinks: [{ label: "External", href: "//attacker.example" }],
+        expectedVersion: 1,
+        reason: "Update the storefront profile",
+      }).success,
+    ).toBe(false);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...editableSettings,
+        footerLinks: [{ label: "External", href: "javascript:alert(1)" }],
+        expectedVersion: 1,
+        reason: "Update the storefront profile",
+      }).success,
+    ).toBe(false);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...editableSettings,
         supportPhone: "01712345678",
         expectedVersion: 1,
         reason: "Update the storefront announcement",

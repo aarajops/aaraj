@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import {
   PublicStorefrontSettingsSchema,
   type PublicStorefrontSettings,
@@ -11,29 +12,44 @@ const fallbackSettings: PublicStorefrontSettings = {
   announcementEnabled: false,
   announcementText: null,
   supportPhone: null,
+  supportEmail: null,
+  businessAddress: null,
+  logo: null,
+  favicon: null,
+  socialLinks: {
+    instagram: null,
+    facebook: null,
+    tiktok: null,
+    youtube: null,
+    x: null,
+  },
+  footerDescription: null,
+  footerLinks: [],
 };
 
-export async function getPublicStorefrontSettings(): Promise<PublicStorefrontSettings> {
-  try {
-    const response = await fetch(
-      `${getApiInternalUrl()}/api/v1/storefront/settings`,
-      { cache: "no-store" },
-    );
-    if (!response.ok) {
+export const getPublicStorefrontSettings = cache(
+  async (): Promise<PublicStorefrontSettings> => {
+    try {
+      const response = await fetch(
+        `${getApiInternalUrl()}/api/v1/storefront/settings`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        console.error("Public storefront settings could not be loaded.");
+        return fallbackSettings;
+      }
+
+      const result = PublicStorefrontSettingsSchema.safeParse(
+        await response.json(),
+      );
+      if (!result.success) {
+        console.error("Public storefront settings failed contract validation.");
+        return fallbackSettings;
+      }
+      return result.data;
+    } catch {
       console.error("Public storefront settings could not be loaded.");
       return fallbackSettings;
     }
-
-    const result = PublicStorefrontSettingsSchema.safeParse(
-      await response.json(),
-    );
-    if (!result.success) {
-      console.error("Public storefront settings failed contract validation.");
-      return fallbackSettings;
-    }
-    return result.data;
-  } catch {
-    console.error("Public storefront settings could not be loaded.");
-    return fallbackSettings;
-  }
-}
+  },
+);

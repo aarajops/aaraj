@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { chooseSelectOption } from "../select";
 
+const brandPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
+  "base64",
+);
+
 test("real browser session reaches the API through Next and respects roles", async ({
   page,
 }) => {
@@ -85,19 +90,55 @@ test("admin updates public storefront settings through to the rendered header", 
   await expect(
     page.getByRole("heading", { name: "Storefront settings", level: 1 }),
   ).toBeVisible();
+
+  await page
+    .getByLabel("Reason for this change")
+    .fill("Publish E2E store logo");
+  await page.getByLabel("Store logo").setInputFiles({
+    name: "store-logo.png",
+    mimeType: "image/png",
+    buffer: brandPng,
+  });
+  await page.getByRole("button", { name: "Upload logo" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Logo uploaded and published.",
+  );
+
+  await page
+    .getByLabel("Reason for this change")
+    .fill("Publish E2E store favicon");
+  await page.getByLabel("Favicon").setInputFiles({
+    name: "store-favicon.png",
+    mimeType: "image/png",
+    buffer: brandPng,
+  });
+  await page.getByRole("button", { name: "Upload favicon" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Favicon uploaded and published.",
+  );
+
   await page.getByLabel("Store name").fill("AARAJ Festive Edit");
   await page.getByLabel("Show announcement banner").check();
   await page
     .getByLabel("Announcement text")
     .fill("Step into the festive season with AARAJ");
   await page.getByLabel("Customer support phone").fill("+8801712345678");
+  await page.getByLabel("Customer support email").fill("help@aaraj.example");
+  await page.getByLabel("Business address").fill("Dhaka, Bangladesh");
+  await page.getByLabel("Instagram URL").fill("https://instagram.com/aaraj");
+  await page.getByRole("button", { name: "Add footer link" }).click();
+  await page.locator("#footer-link-0-label").fill("Contact us");
+  await page.locator("#footer-link-0-href").fill("/contact");
+  await page
+    .getByLabel("Footer description")
+    .fill("Everyday style, thoughtfully selected.");
   await page
     .getByLabel("Reason for this change")
     .fill("Publish the festive storefront update");
-  await page.getByRole("button", { name: "Save storefront settings" }).click();
+  await page.getByRole("button", { name: "Save store profile" }).click();
   await expect(
     page.getByRole("status").filter({
-      hasText: "Storefront settings saved and published.",
+      hasText: "Store profile and footer settings saved.",
     }),
   ).toBeVisible();
 
@@ -105,11 +146,28 @@ test("admin updates public storefront settings through to the rendered header", 
     "/api/v1/storefront/settings",
   );
   expect(publicSettingsResponse.status()).toBe(200);
-  expect(await publicSettingsResponse.json()).toEqual({
+  expect(await publicSettingsResponse.json()).toMatchObject({
     siteName: "AARAJ Festive Edit",
     announcementEnabled: true,
     announcementText: "Step into the festive season with AARAJ",
     supportPhone: "+8801712345678",
+    supportEmail: "help@aaraj.example",
+    businessAddress: "Dhaka, Bangladesh",
+    logo: {
+      contentType: "image/webp",
+      width: 2,
+      height: 3,
+    },
+    favicon: {
+      contentType: "image/png",
+      width: 64,
+      height: 64,
+    },
+    socialLinks: {
+      instagram: "https://instagram.com/aaraj",
+    },
+    footerDescription: "Everyday style, thoughtfully selected.",
+    footerLinks: [{ label: "Contact us", href: "/contact" }],
   });
 
   await page.goto("/");
@@ -117,11 +175,39 @@ test("admin updates public storefront settings through to the rendered header", 
     page.getByRole("complementary", { name: "Store announcement" }),
   ).toHaveText("Step into the festive season with AARAJ");
   await expect(
-    page.getByRole("link", { name: "AARAJ Festive Edit" }),
+    page.getByRole("banner").getByRole("link", {
+      name: "AARAJ Festive Edit home",
+    }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Call us: +8801712345678" }),
   ).toHaveAttribute("href", "tel:+8801712345678");
+  await expect(
+    page.locator('header img[alt="AARAJ Festive Edit logo"]'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "help@aaraj.example" }),
+  ).toHaveAttribute("href", "mailto:help@aaraj.example");
+  await expect(page.getByText("Dhaka, Bangladesh")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Contact us", exact: true }),
+  ).toHaveAttribute("href", "/contact");
+  await expect(
+    page.getByRole("link", { name: "Instagram", exact: true }),
+  ).toHaveAttribute("href", "https://instagram.com/aaraj");
+  await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute(
+    "href",
+    /icon/,
+  );
+  const iconHref = await page
+    .locator('link[rel="icon"]')
+    .first()
+    .getAttribute("href");
+  const iconResponse = await page.request.get(
+    new URL(iconHref!, page.url()).toString(),
+  );
+  expect(iconResponse.status()).toBe(200);
+  expect(iconResponse.headers()["content-type"]).toContain("image/png");
 });
 
 test("catalog operator configures a product through to storefront visibility", async ({

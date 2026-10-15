@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,13 +14,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "Aaraj | Products",
-    template: "Aaraj | %s",
-  },
-  description: "Browse products from Aaraj.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { siteName } = await getPublicStorefrontSettings();
+  return {
+    title: {
+      default: `${siteName} | Products`,
+      template: `${siteName} | %s`,
+    },
+    description: `Browse products from ${siteName}.`,
+  };
+}
 
 export default async function RootLayout({
   children,
