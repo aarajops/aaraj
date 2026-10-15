@@ -136,15 +136,13 @@ export type CatalogSizeGuideListQuery = z.infer<
 
 export const CatalogSizeGuideIdSchema = z.uuid();
 
-function validateGuideRows(
-  input: {
-    fit?: string | null;
-    rows: Array<{
-      sizeLabel: string;
-      measurements: Array<{ key: CatalogMeasurementKey; value: string }>;
-    }>;
-  },
-): Array<{ path: (string | number)[]; message: string }> {
+function validateGuideRows(input: {
+  fit?: string | null;
+  rows: Array<{
+    sizeLabel: string;
+    measurements: Array<{ key: CatalogMeasurementKey; value: string }>;
+  }>;
+}): Array<{ path: (string | number)[]; message: string }> {
   const issues: Array<{ path: (string | number)[]; message: string }> = [];
   const sizeLabels = new Set<string>();
   let expectedKeys: string | null = null;
