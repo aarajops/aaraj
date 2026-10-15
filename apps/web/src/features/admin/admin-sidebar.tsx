@@ -72,6 +72,12 @@ const operationsLinks = [
 
 const settingsLinks = [
   {
+    href: "/admin/settings/storefront",
+    label: "Storefront",
+    icon: Store,
+    permission: "storefront.settings.manage",
+  },
+  {
     href: "/admin/tax",
     label: "Tax",
     icon: ReceiptText,

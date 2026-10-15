@@ -15,9 +15,53 @@ import {
   MAX_LIST_PAGE_SIZE,
   MAX_PUBLIC_CATALOG_PAGE_SIZE,
   RoleSchema,
+  PublicStorefrontSettingsSchema,
+  StorefrontSettingsUpdateSchema,
 } from "./index.js";
 
 describe("Contracts Schema Validation", () => {
+  it("keeps public storefront settings safe and validates managed updates", () => {
+    const publicSettings = {
+      siteName: "AARAJ",
+      announcementEnabled: true,
+      announcementText: "A new season starts here",
+      supportPhone: "+8801712345678",
+    };
+    expect(
+      PublicStorefrontSettingsSchema.safeParse(publicSettings).success,
+    ).toBe(true);
+    expect(
+      PublicStorefrontSettingsSchema.safeParse({
+        ...publicSettings,
+        updatedBy: "internal-user-id",
+      }).success,
+    ).toBe(false);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...publicSettings,
+        expectedVersion: 1,
+        reason: "Update the storefront announcement",
+      }).success,
+    ).toBe(true);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...publicSettings,
+        announcementEnabled: true,
+        announcementText: null,
+        expectedVersion: 1,
+        reason: "Update the storefront announcement",
+      }).success,
+    ).toBe(false);
+    expect(
+      StorefrontSettingsUpdateSchema.safeParse({
+        ...publicSettings,
+        supportPhone: "01712345678",
+        expectedVersion: 1,
+        reason: "Update the storefront announcement",
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates health check schema correctly", () => {
     const validHealth = {
       status: "ok",

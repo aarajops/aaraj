@@ -51,6 +51,77 @@ test("real browser session reaches the API through Next and respects roles", asy
   await expect(
     page.getByRole("heading", { name: "Staff access required" }),
   ).toBeVisible();
+
+  await page.goto("/admin/settings/storefront");
+  await expect(page).toHaveURL(/\/$/);
+});
+
+test("admin updates public storefront settings through to the rendered header", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  await page.goto("/account");
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill("catalog-e2e@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("CatalogE2E-Only-Password-2026!");
+  await page
+    .locator("form")
+    .getByRole("button", { name: "Sign in", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/admin$/);
+
+  const settingsNavigation = page.getByRole("navigation", {
+    name: "Settings",
+  });
+  await expect(
+    settingsNavigation.getByRole("link", { name: "Storefront" }),
+  ).toBeVisible();
+
+  await page.goto("/admin/settings/storefront");
+  await expect(
+    page.getByRole("heading", { name: "Storefront settings", level: 1 }),
+  ).toBeVisible();
+  await page.getByLabel("Store name").fill("AARAJ Festive Edit");
+  await page.getByLabel("Show announcement banner").check();
+  await page
+    .getByLabel("Announcement text")
+    .fill("Step into the festive season with AARAJ");
+  await page.getByLabel("Customer support phone").fill("+8801712345678");
+  await page
+    .getByLabel("Reason for this change")
+    .fill("Publish the festive storefront update");
+  await page.getByRole("button", { name: "Save storefront settings" }).click();
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Storefront settings saved and published.",
+    }),
+  ).toBeVisible();
+
+  const publicSettingsResponse = await page.request.get(
+    "/api/v1/storefront/settings",
+  );
+  expect(publicSettingsResponse.status()).toBe(200);
+  expect(await publicSettingsResponse.json()).toEqual({
+    siteName: "AARAJ Festive Edit",
+    announcementEnabled: true,
+    announcementText: "Step into the festive season with AARAJ",
+    supportPhone: "+8801712345678",
+  });
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("complementary", { name: "Store announcement" }),
+  ).toHaveText("Step into the festive season with AARAJ");
+  await expect(
+    page.getByRole("link", { name: "AARAJ Festive Edit" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Call us: +8801712345678" }),
+  ).toHaveAttribute("href", "tel:+8801712345678");
 });
 
 test("catalog operator configures a product through to storefront visibility", async ({

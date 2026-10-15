@@ -226,6 +226,7 @@ const server = createServer(async (request, response) => {
     }
     if (["admin", "superadmin"].includes(role)) {
       permissions.push("catalog.categories.manage");
+      permissions.push("storefront.settings.manage");
     }
     send(response, 200, {
       userId: "aaraj-e2e-user",

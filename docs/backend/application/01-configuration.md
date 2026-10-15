@@ -2,9 +2,9 @@
 
 > **Source Reference**: [NestJS Official Documentation - Configuration](https://docs.nestjs.com/application/configuration)
 
-Applications operate in multiple environments (local development, CI test runners, staging clusters, production Kubernetes pods). Following the [Twelve-Factor App methodology](https://12factor.net/config), configuration settings must be strictly segregated from application code and stored in the environment.
+Applications operate in multiple environments. Deployment-varying runtime values and secrets belong to the deployment configuration path; merchant-editable settings are business data and belong to their owning domain. The [Twelve-Factor App config guidance](https://12factor.net/config) applies to deployment-varying configuration and does not prescribe where runtime business settings must live.
 
-NestJS provides the `@nestjs/config` package to manage configuration loading, precedence resolution, strict schema validation, and dependency-injected access across the application graph.
+This guide describes the recommended NestJS `@nestjs/config` option for validating deployment environment values. **The current Aaraj API does not use `@nestjs/config`**: local values are loaded by `loadLocalEnvironment`, and domain-specific readers validate integration configuration. Treat the examples below as a migration guide, not a description of the current runtime. See [configuration ownership and change policy](./02-configuration-governance.md) for the implemented boundary between deployment settings, secrets, and database-owned business settings.
 
 ---
 
