@@ -335,8 +335,10 @@ jobs:
           if bash infrastructure/production/deploy-release.sh activate "$RELEASE_COMMIT"; then
             activated=true
           fi
-          if [[ "$activated" == true ]] && check_public_health; then
+          if [[ "$activated" == true ]] && check_public_health && \
+            node infrastructure/production/check-public-storefront.mjs "$health_base"; then
             echo "AARAJ release $RELEASE_COMMIT passed public HTTPS, API, PostgreSQL, and Redis health checks." >> "$GITHUB_STEP_SUMMARY"
+            echo 'The storefront HTML, SEO metadata, canonical origin, manifest, and generated icons passed public checks.' >> "$GITHUB_STEP_SUMMARY"
             bash infrastructure/production/deploy-release.sh pathao-commit "$RELEASE_COMMIT"
             exit 0
           fi
