@@ -26,7 +26,7 @@ export async function StoreFooter() {
 
   return (
     <footer className="mt-auto border-t border-border bg-neutral-950 text-white">
-      <div className="mx-auto grid max-w-6xl gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="container mx-auto grid gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-4">
         <section aria-label={`${settings.siteName} information`}>
           <Link
             aria-label={`${settings.siteName} home`}
@@ -35,7 +35,7 @@ export async function StoreFooter() {
           >
             <Image
               alt={`${settings.siteName} logo`}
-              className={`h-auto max-h-12 w-auto max-w-48 object-contain ${
+              className={`h-12 w-auto max-w-48 object-contain ${
                 settings.logo ? "" : "brightness-0 invert"
               }`}
               height={settings.logo?.height ?? 156}

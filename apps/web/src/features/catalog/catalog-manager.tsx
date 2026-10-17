@@ -244,7 +244,7 @@ export function CatalogManager({
 
   return (
     <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-      <div className="mx-auto max-w-6xl">
+      <div className="container mx-auto">
         <p className="text-sm font-semibold tracking-[0.18em] text-primary">
           AARAJ STAFF
         </p>

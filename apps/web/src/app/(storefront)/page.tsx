@@ -68,7 +68,7 @@ async function PublishedProductList({
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
-      <div className="mx-auto max-w-6xl">
+      <div className="container mx-auto">
         <p className="text-sm font-semibold tracking-[0.18em] text-primary">
           THE AARAJ CATALOG
         </p>
@@ -170,7 +170,7 @@ async function PublishedProductList({
 function InvalidCatalogQuery() {
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
-      <div className="mx-auto max-w-6xl">
+      <div className="container mx-auto">
         <p className="text-sm font-semibold tracking-[0.18em] text-primary">
           THE AARAJ CATALOG
         </p>
@@ -201,7 +201,7 @@ function CatalogLoading() {
       className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-14 text-muted-foreground sm:py-20"
       role="status"
     >
-      <div className="mx-auto max-w-6xl">Loading Aaraj products…</div>
+      <div className="container mx-auto">Loading Aaraj products…</div>
     </main>
   );
 }

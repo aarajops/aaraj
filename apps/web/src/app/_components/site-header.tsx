@@ -17,7 +17,7 @@ export async function SiteHeader() {
         </aside>
       )}
       <header className="border-b border-border bg-background text-foreground">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-5 px-5 py-4">
+        <div className="container mx-auto flex flex-wrap items-center justify-between gap-5 px-3 py-4 lg:px-0">
           <Link
             aria-label={`${settings.siteName} home`}
             className="inline-flex min-h-10 items-center text-lg font-semibold tracking-[0.16em] text-primary"
@@ -25,7 +25,7 @@ export async function SiteHeader() {
           >
             <Image
               alt={`${settings.siteName} logo`}
-              className="h-auto max-h-10 w-auto max-w-44 object-contain"
+              className="h-10 w-auto max-w-44 object-contain"
               height={settings.logo?.height ?? 156}
               src={settings.logo?.src ?? "/aaraj-logo.svg"}
               unoptimized

@@ -111,7 +111,7 @@ export function CategoryManager({
 
   return (
     <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-      <div className="mx-auto max-w-6xl">
+      <div className="container mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <Link
             className="text-sm text-primary hover:text-primary/80"
