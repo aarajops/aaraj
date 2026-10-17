@@ -167,10 +167,7 @@ export function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
     rows: guide.rows.map((row) => ({
       sizeLabel: row.sizeLabel,
       values: Object.fromEntries(
-        row.measurements.map(({ key, valueCm }) => [
-          key,
-          valueCm,
-        ]),
+        row.measurements.map(({ key, valueCm }) => [key, valueCm]),
       ),
     })),
     reason: "",

@@ -327,7 +327,8 @@ export default async function ProductPage({
 
 function formatMeasurement(valueCm: string, unit: "cm" | "in"): string {
   const [whole, fraction = "000"] = valueCm.split(".");
-  const thousandthsOfCentimeter = Number(whole ?? "0") * 1000 + Number(fraction);
+  const thousandthsOfCentimeter =
+    Number(whole ?? "0") * 1000 + Number(fraction);
   const tenths =
     unit === "cm"
       ? Math.floor((thousandthsOfCentimeter + 50) / 100)
