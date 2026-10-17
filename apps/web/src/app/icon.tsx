@@ -4,6 +4,8 @@ import { getStorefrontBrandIconSource } from "@/features/storefront/storefront-b
 
 const iconSizes = [64, 192, 512] as const;
 
+export const dynamic = "force-dynamic";
+
 export function generateImageMetadata() {
   return iconSizes.map((dimension) => ({
     id: String(dimension),
