@@ -628,11 +628,12 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   await page.goto("/");
+  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
+  await page.getByLabel("Search products").fill("100% cotton");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await chooseSelectOption(page, "Audience", "Unisex");
-  await chooseSelectOption(page, "Category", "Clothing / T-shirts");
   await chooseSelectOption(page, "Color", "Black");
   await chooseSelectOption(page, "Size", "S");
-  await page.getByLabel("Search products").fill("100% cotton");
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/audience=unisex/);
   expect(new URL(page.url()).searchParams.get("search")).toBe("100% cotton");
@@ -794,10 +795,23 @@ test("catalog operator configures a product through to storefront visibility", a
       .getByRole("status")
       .filter({ hasText: `${productName} added to your cart.` }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Cart, 1 item" })).toBeVisible();
+  const cartButton = page.getByRole("button", {
+    name: "Open cart, 1 item",
+  });
+  await expect(cartButton).toBeVisible();
+  await cartButton.click();
+  const cartSheet = page.getByRole("dialog", { name: "Your cart" });
+  await expect(cartSheet).toBeVisible();
+  await expect(
+    cartSheet.getByRole("link", { name: productName }),
+  ).toBeVisible();
+  await cartSheet.getByRole("link", { name: "View cart" }).click();
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(cartSheet).not.toBeVisible();
 
-  await page.goto("/cart");
-  await expect(page.getByRole("heading", { name: "Your cart" })).toBeVisible();
+  await expect(
+    page.getByRole("main").getByRole("heading", { name: "Your cart" }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
 
   const quoteSection = page.getByRole("region", { name: "Delivery and quote" });
@@ -867,7 +881,9 @@ test("catalog operator configures a product through to storefront visibility", a
     label: "Black · S",
   });
   await page.getByRole("button", { name: "Add to cart" }).click();
-  await expect(page.getByRole("link", { name: "Cart, 1 item" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open cart, 1 item" }),
+  ).toBeVisible();
   const browserStorage = await page.evaluate(() =>
     JSON.stringify({
       local: Object.fromEntries(
@@ -1149,7 +1165,9 @@ test("catalog operator configures a product through to storefront visibility", a
     label: "Black · S",
   });
   await page.getByRole("button", { name: "Add to cart" }).click();
-  await expect(page.getByRole("link", { name: "Cart, 1 item" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open cart, 1 item" }),
+  ).toBeVisible();
   await page.goto("/cart");
   const guestQuoteSection = page.getByRole("region", {
     name: "Delivery and quote",

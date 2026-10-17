@@ -634,6 +634,23 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (url.pathname === "/api/v1/catalog/products/filters" && method === "GET") {
+    const publishedProducts = products.filter(({ isPublished }) => isPublished);
+    const purchasableVariants = publishedProducts.flatMap((product) =>
+      product.variants.filter(
+        ({ isActive, price }) => isActive && price !== null,
+      ),
+    );
+    send(response, 200, {
+      categories: publicCategoryFilters(publishedProducts),
+      colors: uniqueFilterValues(purchasableVariants.map(({ color }) => color)),
+      sizes: uniqueFilterValues(
+        purchasableVariants.map(({ sizeLabel }) => sizeLabel),
+      ),
+    });
+    return;
+  }
+
   const managedProductPath = url.pathname.match(
     /^\/api\/v1\/catalog\/products\/manage\/([^/]+)$/,
   );

@@ -12,6 +12,7 @@ import {
   CatalogProductPageSchema,
   CatalogPublishedProductListQuerySchema,
   CatalogPublishedProductPageSchema,
+  CatalogProductFilterOptionsSchema,
   CatalogCategoryListSchema,
   CatalogCategoryOptionsSchema,
   CatalogSizeGuideListQuerySchema,
@@ -21,6 +22,7 @@ import {
   type CatalogProductPage,
   type CatalogPublishedProductListQuery,
   type CatalogPublishedProductPage,
+  type CatalogProductFilterOptions,
   type CatalogProductDetail,
   type CatalogManagedProductDetail,
   type CatalogCategoryOption,
@@ -181,6 +183,23 @@ export async function getPublishedProducts(
     if (!response.ok) return null;
 
     const result = CatalogPublishedProductPageSchema.safeParse(
+      await response.json(),
+    );
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getPublishedProductFilterOptions(): Promise<CatalogProductFilterOptions | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/products/filters`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) return null;
+
+    const result = CatalogProductFilterOptionsSchema.safeParse(
       await response.json(),
     );
     return result.success ? result.data : null;

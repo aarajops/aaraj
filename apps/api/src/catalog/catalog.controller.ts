@@ -138,6 +138,13 @@ export class CatalogController {
     return this.catalog.listPublished(query);
   }
 
+  @Get("filters")
+  @AllowAnonymous()
+  @Header("Cache-Control", "no-store")
+  getPublishedFilters() {
+    return this.catalog.getPublishedProductFilterOptions();
+  }
+
   @Get(":slug")
   @AllowAnonymous()
   findPublished(

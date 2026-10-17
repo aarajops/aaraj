@@ -1,5 +1,5 @@
-import Image from "next/image";
-import Link from "next/link";
+import { StorefrontBrandLogo } from "@/features/storefront/storefront-brand-logo";
+import { StorefrontLink } from "@/features/storefront/storefront-link";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 
 const socialNames = {
@@ -28,22 +28,12 @@ export async function StoreFooter() {
     <footer className="mt-auto border-t border-border bg-neutral-950 text-white">
       <div className="container mx-auto grid gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-4">
         <section aria-label={`${settings.siteName} information`}>
-          <Link
-            aria-label={`${settings.siteName} home`}
-            className="inline-flex min-h-10 items-center"
-            href="/"
-          >
-            <Image
-              alt={`${settings.siteName} logo`}
-              className={`h-12 w-auto max-w-48 object-contain ${
-                settings.logo ? "" : "brightness-0 invert"
-              }`}
-              height={settings.logo?.height ?? 156}
-              src={settings.logo?.src ?? "/aaraj-logo.svg"}
-              unoptimized
-              width={settings.logo?.width ?? 512}
-            />
-          </Link>
+          <StorefrontBrandLogo
+            imageClassName="h-12 max-w-48"
+            inverseFallback
+            logo={settings.logo}
+            siteName={settings.siteName}
+          />
           {settings.footerDescription && (
             <p className="mt-4 max-w-sm whitespace-pre-line text-sm leading-6 text-neutral-300">
               {settings.footerDescription}
@@ -95,20 +85,9 @@ export async function StoreFooter() {
             <ul className="mt-4 grid gap-3 text-sm text-neutral-300">
               {settings.footerLinks.map(({ href, label }) => (
                 <li key={`${label}:${href}`}>
-                  {href.startsWith("/") ? (
-                    <Link className="hover:text-white" href={href}>
-                      {label}
-                    </Link>
-                  ) : (
-                    <a
-                      className="hover:text-white"
-                      href={href}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      {label}
-                    </a>
-                  )}
+                  <StorefrontLink className="hover:text-white" href={href}>
+                    {label}
+                  </StorefrontLink>
                 </li>
               ))}
             </ul>

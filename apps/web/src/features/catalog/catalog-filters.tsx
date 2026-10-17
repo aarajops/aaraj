@@ -6,7 +6,6 @@ import { useEffect, useRef } from "react";
 import { Controller, useForm, type Control } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -15,44 +14,36 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  MAX_CATALOG_SEARCH_LENGTH,
   type CatalogProductFilterOptions,
   type CatalogPublishedProductListQuery,
 } from "@aaraj/contracts";
 
 interface CatalogFiltersProps {
-  options: CatalogProductFilterOptions | null;
+  options: Pick<CatalogProductFilterOptions, "colors" | "sizes"> | null;
   query: CatalogPublishedProductListQuery;
 }
 
 interface FilterForm {
-  search: string;
   audience: string;
-  category: string;
   color: string;
   size: string;
 }
 
 export function CatalogFilters({ options, query }: CatalogFiltersProps) {
   const router = useRouter();
-  const search = query.search ?? "";
   const audience = query.audience ?? "";
-  const category = selectedCategoryValue(
-    options?.categories ?? [],
-    query.category,
-  );
   const color = selectedFilterValue(options?.colors ?? [], query.color);
   const size = selectedFilterValue(options?.sizes ?? [], query.size);
-  const { control, handleSubmit, register, reset } = useForm<FilterForm>({
-    defaultValues: { search, audience, category, color, size },
+  const { control, handleSubmit, reset } = useForm<FilterForm>({
+    defaultValues: { audience, color, size },
   });
-  const selectionKey = [search, audience, category, color, size].join("\u0000");
+  const selectionKey = [audience, color, size].join("\u0000");
   const previousSelectionKey = useRef(selectionKey);
   useEffect(() => {
     if (selectionKey === previousSelectionKey.current) return;
     previousSelectionKey.current = selectionKey;
-    reset({ search, audience, category, color, size });
-  }, [search, audience, category, color, size, reset, selectionKey]);
+    reset({ audience, color, size });
+  }, [audience, color, size, reset, selectionKey]);
   const hasActiveFilters = Boolean(
     query.search ||
     query.audience ||
@@ -63,18 +54,13 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
 
   function applyFilters(values: FilterForm) {
     const params = new URLSearchParams({ limit: String(query.limit) });
-    const { search: searchValue, ...filters } = values;
-    if (searchValue.trim()) params.set("search", searchValue.trim());
-    for (const [key, value] of Object.entries(filters)) {
+    for (const [key, value] of Object.entries(values)) {
       if (value) params.set(key, value);
     }
+    if (query.search) params.set("search", query.search);
+    if (query.category) params.set("category", query.category);
     router.push(`/?${params.toString()}`);
   }
-
-  const categoryOptions = (options?.categories ?? []).map((category) => ({
-    label: category.path,
-    value: category.slug,
-  }));
 
   return (
     <form
@@ -85,16 +71,6 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
       onSubmit={handleSubmit(applyFilters)}
     >
       <input name="limit" type="hidden" value={query.limit} />
-      <Field className="sm:col-span-2 lg:col-span-4">
-        <FieldLabel htmlFor="catalog-search">Search products</FieldLabel>
-        <Input
-          id="catalog-search"
-          maxLength={MAX_CATALOG_SEARCH_LENGTH}
-          placeholder="Name, description, fabric, or care instructions"
-          type="search"
-          {...register("search")}
-        />
-      </Field>
       <FilterSelect
         control={control}
         id="filter-audience"
@@ -106,14 +82,6 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
           { label: "Women", value: "women" },
           { label: "Unisex", value: "unisex" },
         ]}
-      />
-      <FilterSelect
-        control={control}
-        id="filter-category"
-        label="Category"
-        name="category"
-        allLabel="All categories"
-        options={categoryOptions}
       />
       <FilterSelect
         control={control}
@@ -165,7 +133,7 @@ function FilterSelect({
   control: Control<FilterForm>;
   id: string;
   label: string;
-  name: Exclude<keyof FilterForm, "search">;
+  name: keyof FilterForm;
   allLabel: string;
   options: Array<{ label: string; value: string }>;
 }) {
@@ -220,13 +188,4 @@ function selectedFilterValue(
       (value) => value.trim().toLocaleLowerCase("en-US") === normalized,
     ) ?? ""
   );
-}
-
-function selectedCategoryValue(
-  values: CatalogProductFilterOptions["categories"],
-  selectedValue: string | undefined,
-): string {
-  return selectedValue && values.some(({ slug }) => slug === selectedValue)
-    ? selectedValue
-    : "";
 }

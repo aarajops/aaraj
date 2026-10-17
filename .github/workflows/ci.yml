@@ -106,6 +106,7 @@ jobs:
         run: pnpm run build
         env:
           API_INTERNAL_URL: http://127.0.0.1:3191
+          CLIENT_URL: https://aaraj.invalid
 
       - name: E2E Test (Production Storefront)
         run: pnpm --filter @aaraj/web test:e2e:production

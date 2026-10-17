@@ -335,7 +335,7 @@ export class CatalogService {
     return [...ids];
   }
 
-  private async getPublishedProductFilterOptions(): Promise<CatalogProductFilterOptions> {
+  async getPublishedProductFilterOptions(): Promise<CatalogProductFilterOptions> {
     const cached = await readPublishedFilterOptionsCache();
     if (cached) return cached;
 
