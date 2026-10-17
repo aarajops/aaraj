@@ -129,15 +129,9 @@ test("admin updates public storefront settings through to the rendered header", 
   });
   const initialStoreName = await page.getByLabel("Store name").inputValue();
   await expect(saveSettings).toBeDisabled();
-  await page.getByLabel("Reason for this change").fill("Reason only");
-  await expect(saveSettings).toBeDisabled();
   await page.getByLabel("Store name").fill(`${initialStoreName} temporary`);
   await expect(saveSettings).toBeEnabled();
   await page.getByLabel("Store name").fill(initialStoreName);
-  await expect(saveSettings).toBeDisabled();
-  await page
-    .getByLabel("Reason for this change")
-    .fill("Publish E2E store logo");
   await expect(saveSettings).toBeDisabled();
   await page.getByLabel("Storefront logo lockup").setInputFiles({
     name: "store-logo.png",
@@ -168,9 +162,6 @@ test("admin updates public storefront settings through to the rendered header", 
   expect(logoOnlyShareImage).toBeTruthy();
   expect(new URL(logoOnlyShareImage!).pathname).toBe(logoOnlySettings.logo.src);
 
-  await page
-    .getByLabel("Reason for this change")
-    .fill("Publish E2E square brand icon");
   await page.getByLabel("Square brand icon").setInputFiles({
     name: "store-brand-icon.png",
     mimeType: "image/png",
@@ -181,9 +172,6 @@ test("admin updates public storefront settings through to the rendered header", 
     "Brand icon uploaded and published.",
   );
 
-  await page
-    .getByLabel("Reason for this change")
-    .fill("Publish E2E store favicon");
   await page.getByLabel("Small browser favicon override").setInputFiles({
     name: "store-favicon.png",
     mimeType: "image/png",
@@ -194,9 +182,6 @@ test("admin updates public storefront settings through to the rendered header", 
     "Favicon uploaded and published.",
   );
 
-  await page
-    .getByLabel("Reason for this change")
-    .fill("Publish E2E social sharing image");
   await page.getByLabel("Social sharing image").setInputFiles({
     name: "social-preview.png",
     mimeType: "image/png",
@@ -239,9 +224,6 @@ test("admin updates public storefront settings through to the rendered header", 
   await expect(page.getByLabel("Catalog category")).toHaveValue(
     headerCategory.id,
   );
-  await page
-    .getByLabel("Reason for this change")
-    .fill("Publish the festive storefront update");
   await page.getByRole("button", { name: "Save storefront settings" }).click();
   await expect(
     page.getByRole("status").filter({
@@ -683,7 +665,14 @@ test("catalog operator configures a product through to storefront visibility", a
   const storefrontSettings = await page.request
     .get("/api/v1/storefront/settings")
     .then((response) => response.json());
-  const productSocialImage = storefrontSettings.socialImage;
+  const productShareImageSrc =
+    storefrontSettings.socialImage?.src ??
+    storefrontSettings.logo?.src ??
+    "/aaraj-social.png";
+  const productShareImageAlt = storefrontSettings.socialImage
+    ? (storefrontSettings.socialImageAlt ??
+      `${storefrontSettings.siteName} storefront`)
+    : `${storefrontSettings.siteName} logo`;
   const productHead = (await productSeoResponse.text()).match(
     /<head>([\s\S]*?)<\/head>/,
   )?.[1];
@@ -701,10 +690,10 @@ test("catalog operator configures a product through to storefront visibility", a
     `rel="canonical" href="http://127.0.0.1:3180/products/${slug}"`,
   );
   expect(productHead).toContain(
-    `property="og:image" content="http://127.0.0.1:3180${productSocialImage.src}"`,
+    `property="og:image" content="http://127.0.0.1:3180${productShareImageSrc}"`,
   );
   expect(productHead).toContain(
-    '<meta name="twitter:image:alt" content="AARAJ seasonal collection against a warm background"',
+    `<meta name="twitter:image:alt" content="${productShareImageAlt}"`,
   );
 
   const robotsResponse = await page.request.get("/robots.txt");
