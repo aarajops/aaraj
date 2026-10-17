@@ -94,15 +94,15 @@ test("Orders preserves direct query state, page size, search, empty, and error s
     table.getByText("AA-000000000033", { exact: true }),
   ).toBeVisible();
 
-  await page.reload();
-  await expect(search).toHaveValue("AA-000000000033");
-  await expect(table.locator("tbody tr")).toHaveCount(1);
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/orders\?limit=100$/);
   await page.goForward();
   await expect(page).toHaveURL(
     /\/admin\/orders\?limit=100&search=AA-000000000033$/,
   );
+  await page.reload();
+  await expect(search).toHaveValue("AA-000000000033");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
 
   await search.fill("AA-FFFFFFFFFFFE");
   await page.getByRole("button", { name: "Apply orders search" }).click();
