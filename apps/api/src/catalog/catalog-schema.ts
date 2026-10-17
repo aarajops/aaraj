@@ -257,7 +257,7 @@ export const catalogProductMedia = catalogSchema.table(
       .notNull()
       .default([]),
     altText: text("alt_text").notNull(),
-    reason: text("reason").notNull(),
+    reason: text("reason"),
     deletionReason: text("deletion_reason"),
     sortOrder: integer("sort_order").notNull(),
     status: text("status").$type<CatalogMediaStatus>().notNull(),
@@ -298,7 +298,7 @@ export const catalogProductMedia = catalogSchema.table(
     ),
     check(
       "product_media_reason_check",
-      sql`${table.reason} = btrim(${table.reason}) and length(${table.reason}) between 3 and 500`,
+      sql`${table.reason} is null or (${table.reason} = btrim(${table.reason}) and length(${table.reason}) between 3 and 500)`,
     ),
     check(
       "product_media_deletion_reason_check",

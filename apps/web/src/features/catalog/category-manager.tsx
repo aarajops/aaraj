@@ -74,10 +74,7 @@ export function CategoryManager({
       : emptyCategoryForm,
   });
   const editingId = useWatch({ control, name: "id" });
-  const hasCategoryChanges = hasDirtyFieldsExcept(dirtyFields, [
-    "id",
-    "reason",
-  ]);
+  const hasCategoryChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   async function saveCategory(submission: CategorySubmission) {
@@ -323,28 +320,6 @@ export function CategoryManager({
                     <FieldLabel htmlFor="category-active">Active</FieldLabel>
                   </Field>
                 )}
-                <Field>
-                  <FieldLabel htmlFor="category-reason">
-                    Reason for change
-                  </FieldLabel>
-                  <Input
-                    aria-describedby={
-                      errors.reason ? "category-reason-error" : undefined
-                    }
-                    aria-invalid={Boolean(errors.reason)}
-                    className={fieldClassName}
-                    id="category-reason"
-                    maxLength={500}
-                    minLength={3}
-                    required
-                    {...register("reason")}
-                  />
-                  {errors.reason && (
-                    <FieldError id="category-reason-error">
-                      {errors.reason.message}
-                    </FieldError>
-                  )}
-                </Field>
                 <div className="flex gap-3 pt-2">
                   <Button
                     disabled={

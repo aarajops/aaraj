@@ -100,7 +100,7 @@ export function SizeGuideManager({
     control,
     name: ["keys", "inputUnit"],
   });
-  const hasGuideChanges = hasDirtyFieldsExcept(dirtyFields, ["id", "reason"]);
+  const hasGuideChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   function clearKeyValues(key: CatalogMeasurementKey) {
@@ -559,28 +559,6 @@ export function SizeGuideManager({
                   )}
                 </section>
 
-                <Field>
-                  <FieldLabel htmlFor="guide-audit-reason">
-                    Audit reason
-                  </FieldLabel>
-                  <Input
-                    aria-describedby={
-                      errors.reason ? "guide-reason-error" : undefined
-                    }
-                    aria-invalid={Boolean(errors.reason)}
-                    className={inputClassName}
-                    id="guide-audit-reason"
-                    maxLength={500}
-                    minLength={3}
-                    required
-                    {...register("reason")}
-                  />
-                  {errors.reason && (
-                    <FieldError id="guide-reason-error">
-                      {errors.reason.message}
-                    </FieldError>
-                  )}
-                </Field>
                 {errorMessage && (
                   <p
                     className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"

@@ -55,7 +55,7 @@ interface UploadRecord {
   sourceSha256: string;
   derivatives: CatalogMediaDerivatives;
   altText: string;
-  reason: string;
+  reason: string | null;
   deletionReason: string | null;
   sortOrder: number;
   status: string;
@@ -134,7 +134,7 @@ export class CatalogMediaService {
           sizeBytes: image.buffer.byteLength,
           sourceSha256,
           altText: input.altText,
-          reason: input.reason,
+          ...(input.reason ? { reason: input.reason } : {}),
         });
         if (existing.status === "ready" || existing.status === "rejected") {
           return existing;
@@ -207,7 +207,7 @@ export class CatalogMediaService {
           sizeBytes: image.buffer.byteLength,
           sourceSha256,
           altText: input.altText,
-          reason: input.reason,
+          reason: input.reason ?? null,
           sortOrder: order?.next ?? 0,
           status: "uploading",
           createdBy: actor.id,
@@ -230,7 +230,7 @@ export class CatalogMediaService {
           sizeBytes: image.buffer.byteLength,
           sourceSha256,
           altText: input.altText,
-          reason: input.reason,
+          ...(input.reason ? { reason: input.reason } : {}),
         });
         if (raced.status === "ready" || raced.status === "rejected") {
           return raced;
@@ -439,7 +439,7 @@ export class CatalogMediaService {
         eventType: "catalog.media_processing_started",
         subjectType: "catalog_product_media",
         subjectId: current.id,
-        reason: current.reason,
+        reason: current.reason ?? undefined,
         metadata: { productId: current.productId },
       });
       return processingRecord;
@@ -542,7 +542,7 @@ export class CatalogMediaService {
         eventType: "catalog.media_ready",
         subjectType: "catalog_product_media",
         subjectId: ready.id,
-        reason: ready.reason,
+        reason: ready.reason ?? undefined,
         metadata: {
           productId: ready.productId,
           renditionCount: derivatives.length,
@@ -590,7 +590,7 @@ export class CatalogMediaService {
         eventType: "catalog.media_rejected",
         subjectType: "catalog_product_media",
         subjectId: rejected.id,
-        reason: rejected.reason,
+        reason: rejected.reason ?? undefined,
         metadata: {
           productId: rejected.productId,
           rejectionCode: "IMAGE_DECODE_FAILED",
@@ -637,7 +637,7 @@ export class CatalogMediaService {
         .update(catalogProductMedia)
         .set({
           status: "deleting",
-          deletionReason: input.reason,
+          deletionReason: input.reason ?? null,
           updatedAt: new Date(),
         })
         .where(eq(catalogProductMedia.id, current.id))
@@ -773,7 +773,7 @@ function assertSameUpload(
     sizeBytes: number;
     sourceSha256: string;
     altText: string;
-    reason: string;
+    reason?: string;
   },
 ): void {
   if (
@@ -783,7 +783,7 @@ function assertSameUpload(
     existing.sizeBytes !== next.sizeBytes ||
     existing.sourceSha256 !== next.sourceSha256 ||
     existing.altText !== next.altText ||
-    existing.reason !== next.reason
+    (next.reason !== undefined && existing.reason !== next.reason)
   ) {
     throw new ConflictException(
       "This upload command was already used for different content.",

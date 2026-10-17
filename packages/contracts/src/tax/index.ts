@@ -9,6 +9,6 @@ export type TaxSettings = z.infer<typeof TaxSettingsSchema>;
 
 export const TaxSettingsUpdateSchema = z.strictObject({
   enabled: z.boolean(),
-  reason: z.string().trim().min(3).max(500),
+  reason: z.string().trim().min(3).max(500).optional(),
 });
 export type TaxSettingsUpdate = z.infer<typeof TaxSettingsUpdateSchema>;

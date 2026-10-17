@@ -127,7 +127,7 @@ export function uploadCatalogProductMedia(
   body.set("commandId", input.commandId);
   if (input.variantId) body.set("variantId", input.variantId);
   body.set("altText", input.altText);
-  body.set("reason", input.reason);
+  if (input.reason) body.set("reason", input.reason);
   body.set("file", file, file.name);
 
   return fetch(

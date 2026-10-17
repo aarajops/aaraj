@@ -49,7 +49,7 @@ export const CatalogCategoryCreateSchema = z.strictObject({
   slug: CatalogCategorySlugSchema,
   parentId: z.uuid().nullable().optional(),
   sortOrder: z.number().int().min(0).max(10_000).optional(),
-  reason: z.string().trim().min(3).max(500),
+  reason: z.string().trim().min(3).max(500).optional(),
 });
 export type CatalogCategoryCreateInput = z.input<
   typeof CatalogCategoryCreateSchema
@@ -62,7 +62,7 @@ export const CatalogCategoryUpdateSchema = z
     parentId: z.uuid().nullable().optional(),
     sortOrder: z.number().int().min(0).max(10_000).optional(),
     isActive: z.boolean().optional(),
-    reason: z.string().trim().min(3).max(500),
+    reason: z.string().trim().min(3).max(500).optional(),
   })
   .refine(
     ({ reason: _reason, ...changes }) => Object.keys(changes).length > 0,

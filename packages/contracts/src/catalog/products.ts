@@ -114,7 +114,7 @@ const CatalogProductFieldsSchema = z.strictObject({
 });
 
 export const CatalogProductCreateSchema = CatalogProductFieldsSchema.extend({
-  reason: z.string().trim().min(3).max(500),
+  reason: z.string().trim().min(3).max(500).optional(),
 }).check(({ value, issues }) => {
   for (const issue of validateVariantInputs(value)) {
     issues.push({
@@ -133,7 +133,7 @@ export const CatalogProductUpdateSchema = CatalogProductFieldsSchema.partial()
   .extend({
     audience: CatalogAudienceSchema.nullable().optional(),
     categoryId: z.uuid().nullable().optional(),
-    reason: z.string().trim().min(3).max(500),
+    reason: z.string().trim().min(3).max(500).optional(),
   })
   .refine(
     ({ reason: _reason, ...changes }) => Object.keys(changes).length > 0,

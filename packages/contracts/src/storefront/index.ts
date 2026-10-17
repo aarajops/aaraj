@@ -202,7 +202,7 @@ export const StorefrontSettingsUpdateSchema = z
     footerDescription: PublicTextSchema,
     footerLinks: StorefrontLinkSchema.array().max(8),
     expectedVersion: z.number().int().positive(),
-    reason: z.string().trim().min(3).max(500),
+    reason: z.string().trim().min(3).max(500).optional(),
   })
   .refine(
     (settings) => !settings.announcementEnabled || settings.announcementText,
@@ -230,7 +230,7 @@ export type StorefrontSettingsUpdate = z.infer<
 export const StorefrontBrandAssetUploadSchema = z.strictObject({
   commandId: z.uuid(),
   expectedVersion: z.coerce.number().int().positive(),
-  reason: z.string().trim().min(3).max(500),
+  reason: z.string().trim().min(3).max(500).optional(),
 });
 export type StorefrontBrandAssetUpload = z.infer<
   typeof StorefrontBrandAssetUploadSchema
@@ -238,7 +238,7 @@ export type StorefrontBrandAssetUpload = z.infer<
 
 export const StorefrontBrandAssetClearSchema = z.strictObject({
   expectedVersion: z.number().int().positive(),
-  reason: z.string().trim().min(3).max(500),
+  reason: z.string().trim().min(3).max(500).optional(),
 });
 export type StorefrontBrandAssetClear = z.infer<
   typeof StorefrontBrandAssetClearSchema

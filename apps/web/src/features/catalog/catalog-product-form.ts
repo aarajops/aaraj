@@ -33,7 +33,6 @@ export interface ProductForm {
   sizeGuideId: string;
   variants: VariantDraft[];
   isPublished: boolean;
-  reason: string;
 }
 
 export const blankProductForm: ProductForm = {
@@ -49,7 +48,6 @@ export const blankProductForm: ProductForm = {
   sizeGuideId: "",
   variants: [],
   isPublished: false,
-  reason: "",
 };
 
 export type ProductSubmission =
@@ -103,7 +101,6 @@ function prepareProductSubmission(
     sizeGuideId: form.sizeGuideId || null,
     variants,
     isPublished: form.isPublished,
-    reason: form.reason.trim(),
   };
   const variantDraftIndices = variantDrafts.map(({ index }) => index);
 
@@ -177,7 +174,6 @@ export const productFormSchema = z
       }),
     ),
     isPublished: z.boolean(),
-    reason: z.string(),
   })
   .superRefine((form, context) => {
     const submission = prepareProductSubmission(form);
@@ -274,7 +270,6 @@ export function toProductFormState(
       gtin: variant.gtin ?? "",
     })),
     isPublished: product.isPublished,
-    reason: "",
   };
 }
 

@@ -15,7 +15,6 @@ import { Field, FieldLabel } from "@/components/ui/field";
 export function TaxSettingsManager() {
   const [settings, setSettings] = useState<TaxSettings | null>(null);
   const [enabled, setEnabled] = useState(false);
-  const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,10 +62,7 @@ export function TaxSettingsManager() {
     setError(null);
     setSaved(false);
     try {
-      const input = TaxSettingsUpdateSchema.parse({
-        enabled,
-        reason,
-      });
+      const input = TaxSettingsUpdateSchema.parse({ enabled });
       const response = await fetch(`${API_V1_BASE_PATH}/tax/manage`, {
         method: "PUT",
         cache: "no-store",
@@ -85,7 +81,6 @@ export function TaxSettingsManager() {
         throw new Error("The server returned invalid tax settings.");
       setSettings(result.data);
       setEnabled(result.data.enabled);
-      setReason("");
       setSaved(true);
     } catch (saveError) {
       setError(
@@ -183,31 +178,14 @@ export function TaxSettingsManager() {
           )}
 
           {changed && (
-            <>
-              <label className="grid gap-2 text-sm font-medium">
-                Reason for this change
-                <textarea
-                  className="min-h-24 rounded-lg border border-input bg-background px-3 py-2 font-normal"
-                  maxLength={500}
-                  minLength={3}
-                  required
-                  value={reason}
-                  onChange={(event) => setReason(event.currentTarget.value)}
-                />
-              </label>
-              <div>
-                <Button
-                  disabled={
-                    saving ||
-                    reason.trim().length < 3 ||
-                    (enabled && !canEnable)
-                  }
-                  type="submit"
-                >
-                  {saving ? "Saving…" : "Save tax setting"}
-                </Button>
-              </div>
-            </>
+            <div>
+              <Button
+                disabled={saving || (enabled && !canEnable)}
+                type="submit"
+              >
+                {saving ? "Saving…" : "Save tax setting"}
+              </Button>
+            </div>
           )}
         </form>
       ) : null}

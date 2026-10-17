@@ -57,7 +57,6 @@ export function StorefrontSettingsManager({
     register,
     handleSubmit,
     reset,
-    getValues,
     setValue,
     formState: { errors, dirtyFields },
   } = useForm<StorefrontSettingsDraft, unknown, StorefrontSettingsFormValues>({
@@ -85,7 +84,6 @@ export function StorefrontSettingsManager({
       footerLinks: [],
       headerNavigation: [],
       expectedVersion: 1,
-      reason: "",
     },
   });
   const {
@@ -108,11 +106,9 @@ export function StorefrontSettingsManager({
     useWatch({ control, name: "announcementEnabled" }) ?? false;
   const announcementText =
     useWatch({ control, name: "announcementText" }) ?? "";
-  const reason = useWatch({ control, name: "reason" }) ?? "";
   const siteName = useWatch({ control, name: "siteName" }) ?? "";
   const changed =
-    settings &&
-    hasDirtyFieldsExcept(dirtyFields, ["reason", "expectedVersion"]);
+    settings && hasDirtyFieldsExcept(dirtyFields, ["expectedVersion"]);
   const logoInput = useRef<HTMLInputElement>(null);
   const brandIconInput = useRef<HTMLInputElement>(null);
   const faviconInput = useRef<HTMLInputElement>(null);
@@ -215,7 +211,6 @@ export function StorefrontSettingsManager({
       const form = new FormData();
       form.set("commandId", crypto.randomUUID());
       form.set("expectedVersion", String(settings.version));
-      form.set("reason", getValues("reason"));
       form.set("file", file);
       const response = await fetch(
         `${API_V1_BASE_PATH}/storefront/manage/assets/${kind}`,
@@ -278,7 +273,6 @@ export function StorefrontSettingsManager({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             expectedVersion: settings.version,
-            reason: getValues("reason"),
           }),
         },
       );
@@ -413,10 +407,7 @@ export function StorefrontSettingsManager({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     disabled={
-                      !logoFile ||
-                      uploading !== null ||
-                      clearing !== null ||
-                      reason.trim().length < 3
+                      !logoFile || uploading !== null || clearing !== null
                     }
                     type="button"
                     onClick={() => void uploadAsset("logo")}
@@ -425,11 +416,7 @@ export function StorefrontSettingsManager({
                   </Button>
                   {settings.logo && (
                     <Button
-                      disabled={
-                        uploading !== null ||
-                        clearing !== null ||
-                        reason.trim().length < 3
-                      }
+                      disabled={uploading !== null || clearing !== null}
                       type="button"
                       variant="outline"
                       onClick={() => void clearAsset("logo")}
@@ -477,10 +464,7 @@ export function StorefrontSettingsManager({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     disabled={
-                      !brandIconFile ||
-                      uploading !== null ||
-                      clearing !== null ||
-                      reason.trim().length < 3
+                      !brandIconFile || uploading !== null || clearing !== null
                     }
                     type="button"
                     onClick={() => void uploadAsset("brandIcon")}
@@ -491,11 +475,7 @@ export function StorefrontSettingsManager({
                   </Button>
                   {settings.brandIcon && (
                     <Button
-                      disabled={
-                        uploading !== null ||
-                        clearing !== null ||
-                        reason.trim().length < 3
-                      }
+                      disabled={uploading !== null || clearing !== null}
                       type="button"
                       variant="outline"
                       onClick={() => void clearAsset("brandIcon")}
@@ -545,10 +525,7 @@ export function StorefrontSettingsManager({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     disabled={
-                      !faviconFile ||
-                      uploading !== null ||
-                      clearing !== null ||
-                      reason.trim().length < 3
+                      !faviconFile || uploading !== null || clearing !== null
                     }
                     type="button"
                     onClick={() => void uploadAsset("favicon")}
@@ -557,11 +534,7 @@ export function StorefrontSettingsManager({
                   </Button>
                   {settings.favicon && (
                     <Button
-                      disabled={
-                        uploading !== null ||
-                        clearing !== null ||
-                        reason.trim().length < 3
-                      }
+                      disabled={uploading !== null || clearing !== null}
                       type="button"
                       variant="outline"
                       onClick={() => void clearAsset("favicon")}
@@ -612,8 +585,7 @@ export function StorefrontSettingsManager({
                     disabled={
                       !socialImageFile ||
                       uploading !== null ||
-                      clearing !== null ||
-                      reason.trim().length < 3
+                      clearing !== null
                     }
                     type="button"
                     onClick={() => void uploadAsset("socialImage")}
@@ -624,11 +596,7 @@ export function StorefrontSettingsManager({
                   </Button>
                   {settings.socialImage && (
                     <Button
-                      disabled={
-                        uploading !== null ||
-                        clearing !== null ||
-                        reason.trim().length < 3
-                      }
+                      disabled={uploading !== null || clearing !== null}
                       type="button"
                       variant="outline"
                       onClick={() => void clearAsset("socialImage")}
@@ -1158,18 +1126,6 @@ export function StorefrontSettingsManager({
           </section>
 
           <section className="grid gap-4 border-t border-border pt-6">
-            <Field>
-              <FieldLabel htmlFor="storefront-change-reason">
-                Reason for this change
-              </FieldLabel>
-              <Textarea
-                id="storefront-change-reason"
-                maxLength={500}
-                minLength={3}
-                required
-                {...register("reason")}
-              />
-            </Field>
             <div>
               <Button
                 disabled={
@@ -1177,7 +1133,6 @@ export function StorefrontSettingsManager({
                   uploading !== null ||
                   clearing !== null ||
                   !changed ||
-                  reason.trim().length < 3 ||
                   (announcementEnabled && !announcementText.trim())
                 }
                 type="submit"

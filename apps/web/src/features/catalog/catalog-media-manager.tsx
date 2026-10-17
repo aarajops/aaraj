@@ -33,7 +33,6 @@ interface UploadDraft {
   commandId: string;
   variantId?: string;
   altText: string;
-  reason: string;
 }
 
 interface SelectedUpload {
@@ -105,10 +104,6 @@ export function CatalogMediaManager({
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedUploads, setSelectedUploads] = useState<SelectedUpload[]>([]);
   const [variantId, setVariantId] = useState("");
-  const [reason, setReason] = useState("");
-  const [deletionReasons, setDeletionReasons] = useState<
-    Record<string, string>
-  >({});
   const mediaIsLoading = isLoading || loadedProductId !== productId;
   const mediaLimitReached = media.length >= MAX_CATALOG_PRODUCT_MEDIA;
   const remainingMediaSlots = Math.max(
@@ -162,10 +157,6 @@ export function CatalogMediaManager({
       setProblem("Choose one or more image files before uploading.");
       return;
     }
-    if (reason.trim().length < 3) {
-      setProblem("Enter an audit reason with at least 3 characters.");
-      return;
-    }
     if (
       selectedUploads.some(
         (upload) => !upload.draft && upload.altText.trim().length === 0,
@@ -183,7 +174,6 @@ export function CatalogMediaManager({
           commandId: upload.id,
           ...(variantId ? { variantId } : {}),
           altText: upload.altText.trim(),
-          reason: reason.trim(),
         },
       }));
     if (uploads.length === 0) return;
@@ -276,7 +266,6 @@ export function CatalogMediaManager({
         );
       } else {
         setVariantId("");
-        setReason("");
         if (completed === 0) setNotice("No upload commands needed processing.");
       }
     } finally {
@@ -289,7 +278,7 @@ export function CatalogMediaManager({
       commandId: item.commandId,
       ...(item.variantId ? { variantId: item.variantId } : {}),
       altText: item.altText,
-      reason: item.reason,
+      ...(item.reason ? { reason: item.reason } : {}),
     };
     setOperation(`upload:${item.id}`);
     setProblem(null);
@@ -321,14 +310,12 @@ export function CatalogMediaManager({
     }
   }
 
-  async function deleteMedia(item: CatalogMedia, reason: string) {
+  async function deleteMedia(item: CatalogMedia) {
     setOperation(`delete:${item.id}`);
     setProblem(null);
     setNotice(null);
     try {
-      const response = await deleteCatalogProductMedia(productId, item.id, {
-        reason,
-      });
+      const response = await deleteCatalogProductMedia(productId, item.id, {});
       if (!response.ok) {
         const apiError = await readApiErrorResponse(response);
         const message =
@@ -544,20 +531,6 @@ export function CatalogMediaManager({
           </select>
         </Field>
 
-        <Field>
-          <FieldLabel htmlFor="catalog-media-reason">Audit reason</FieldLabel>
-          <Input
-            className="h-10"
-            disabled={operation !== null || hasPendingUploadCommands}
-            id="catalog-media-reason"
-            maxLength={500}
-            minLength={3}
-            onChange={(event) => setReason(event.currentTarget.value)}
-            required
-            value={reason}
-          />
-        </Field>
-
         <Button
           className="justify-self-start"
           disabled={
@@ -669,39 +642,9 @@ export function CatalogMediaManager({
                     item.status === "ready" ||
                     item.status === "rejected") && (
                     <>
-                      <label
-                        className="w-full text-xs text-muted-foreground"
-                        htmlFor={`delete-reason-${item.id}`}
-                      >
-                        Deletion reason
-                      </label>
-                      <Input
-                        className="h-9 w-full"
-                        disabled={operation !== null}
-                        id={`delete-reason-${item.id}`}
-                        maxLength={500}
-                        minLength={3}
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-                          setDeletionReasons((current) => ({
-                            ...current,
-                            [item.id]: value,
-                          }));
-                        }}
-                        placeholder="Reason for removal"
-                        value={deletionReasons[item.id] ?? ""}
-                      />
                       <Button
-                        disabled={
-                          operation !== null ||
-                          (deletionReasons[item.id] ?? "").trim().length < 3
-                        }
-                        onClick={() =>
-                          void deleteMedia(
-                            item,
-                            deletionReasons[item.id]?.trim() ?? "",
-                          )
-                        }
+                        disabled={operation !== null}
+                        onClick={() => void deleteMedia(item)}
                         type="button"
                         variant="destructive"
                       >
@@ -713,11 +656,8 @@ export function CatalogMediaManager({
                   )}
                   {item.status === "deleting" && (
                     <Button
-                      disabled={operation !== null || !item.deletionReason}
-                      onClick={() =>
-                        item.deletionReason &&
-                        void deleteMedia(item, item.deletionReason)
-                      }
+                      disabled={operation !== null}
+                      onClick={() => void deleteMedia(item)}
                       type="button"
                       variant="outline"
                     >

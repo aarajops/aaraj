@@ -109,7 +109,7 @@ export function CatalogManager({
     control,
     name: ["id", "categoryId", "fit", "sizeGuideId", "isPublished"],
   });
-  const hasProductChanges = hasDirtyFieldsExcept(dirtyFields, ["id", "reason"]);
+  const hasProductChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const slugError = errors.slug?.message;
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -900,27 +900,6 @@ export function CatalogManager({
                     </span>
                   </span>
                 </label>
-
-                <Field>
-                  <FieldLabel htmlFor="audit-reason">Audit reason</FieldLabel>
-                  <Input
-                    aria-describedby={
-                      errors.reason ? "audit-reason-error" : undefined
-                    }
-                    aria-invalid={Boolean(errors.reason)}
-                    className={fieldClassName}
-                    id="audit-reason"
-                    maxLength={500}
-                    minLength={3}
-                    required
-                    {...register("reason")}
-                  />
-                  {errors.reason && (
-                    <FieldError id="audit-reason-error">
-                      {errors.reason.message}
-                    </FieldError>
-                  )}
-                </Field>
 
                 {formErrorMessage && (
                   <p

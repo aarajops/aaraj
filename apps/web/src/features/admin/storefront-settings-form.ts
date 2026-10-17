@@ -40,7 +40,6 @@ const storefrontSettingsDraftSchema = z.strictObject({
   footerLinks: z.array(z.strictObject({ label: z.string(), href: z.string() })),
   headerNavigation: StorefrontHeaderNavigationItemSchema.array(),
   expectedVersion: z.number().int().positive(),
-  reason: z.string(),
 });
 
 export type StorefrontSettingsDraft = z.input<
@@ -78,7 +77,6 @@ function toStorefrontSettingsUpdate(
       href: href.trim(),
     })),
     expectedVersion: values.expectedVersion,
-    reason: values.reason,
   };
 }
 
@@ -129,6 +127,5 @@ export function toStorefrontSettingsDraft(
     footerLinks: settings.footerLinks,
     headerNavigation: settings.headerNavigation,
     expectedVersion: settings.version,
-    reason: "",
   };
 }

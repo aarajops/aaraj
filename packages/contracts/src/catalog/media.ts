@@ -92,14 +92,14 @@ export const CatalogMediaUploadInputSchema = z.strictObject({
     .optional()
     .transform((value) => value || undefined),
   altText: z.string().trim().min(1).max(500),
-  reason: z.string().trim().min(3).max(500),
+  reason: z.string().trim().min(3).max(500).optional(),
 });
 export type CatalogMediaUploadInput = z.input<
   typeof CatalogMediaUploadInputSchema
 >;
 
 export const CatalogMediaDeleteInputSchema = z.strictObject({
-  reason: z.string().trim().min(3).max(500),
+  reason: z.string().trim().min(3).max(500).optional(),
 });
 export type CatalogMediaDeleteInput = z.infer<
   typeof CatalogMediaDeleteInputSchema
@@ -111,7 +111,7 @@ export const CatalogMediaSchema = z.strictObject({
   productId: z.uuid(),
   variantId: z.uuid().nullable(),
   altText: z.string().min(1).max(500),
-  reason: z.string().min(3).max(500),
+  reason: z.string().min(3).max(500).nullable(),
   deletionReason: z.string().min(3).max(500).nullable(),
   contentType: CatalogMediaContentTypeSchema,
   sizeBytes: z.number().int().min(1).max(MAX_CATALOG_MEDIA_UPLOAD_BYTES),

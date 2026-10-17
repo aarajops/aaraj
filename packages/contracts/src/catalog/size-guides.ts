@@ -97,7 +97,7 @@ export const CatalogSizeGuideCreateSchema = z
       )
       .min(1)
       .max(40),
-    reason: z.string().trim().min(3).max(500),
+    reason: z.string().trim().min(3).max(500).optional(),
   })
   .check(({ value, issues }) => {
     for (const issue of validateGuideRows(value)) {

@@ -23,7 +23,6 @@ export interface GuideForm {
   inputUnit: "cm" | "in";
   keys: CatalogMeasurementKey[];
   rows: GuideRowDraft[];
-  reason: string;
 }
 
 export const blankGuideForm: GuideForm = {
@@ -35,7 +34,6 @@ export const blankGuideForm: GuideForm = {
   inputUnit: "cm",
   keys: ["chest_width", "body_length"],
   rows: [],
-  reason: "",
 };
 
 export type GuideSubmission =
@@ -56,7 +54,6 @@ function toGuideSubmission(form: GuideForm): GuideSubmission {
         value: row.values[key]?.trim() ?? "",
       })),
     })),
-    reason: form.reason.trim(),
   };
 
   return form.id
@@ -109,7 +106,6 @@ export const guideFormSchema = z
         values: z.record(CatalogMeasurementKeySchema, z.string().optional()),
       }),
     ),
-    reason: z.string(),
   })
   .superRefine((form, context) => {
     const submission = toGuideSubmission(form);
@@ -170,7 +166,6 @@ export function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
         row.measurements.map(({ key, valueCm }) => [key, valueCm]),
       ),
     })),
-    reason: "",
   };
 }
 

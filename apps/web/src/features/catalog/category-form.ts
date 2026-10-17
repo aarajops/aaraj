@@ -14,7 +14,6 @@ export interface CategoryFormDraft {
   parentId: string;
   sortOrder: string;
   isActive: boolean;
-  reason: string;
 }
 
 export const emptyCategoryForm: CategoryFormDraft = {
@@ -24,7 +23,6 @@ export const emptyCategoryForm: CategoryFormDraft = {
   parentId: "",
   sortOrder: "0",
   isActive: true,
-  reason: "",
 };
 
 export type CategorySubmission =
@@ -37,7 +35,6 @@ function toCategorySubmission(form: CategoryFormDraft): CategorySubmission {
     slug: form.slug.trim(),
     parentId: form.parentId || null,
     sortOrder: Number(form.sortOrder),
-    reason: form.reason.trim(),
   };
 
   if (form.id) {
@@ -66,7 +63,6 @@ export const categoryFormSchema = z
       error: "Enter a whole display order.",
     }),
     isActive: z.boolean(),
-    reason: z.string(),
   })
   .superRefine((form, context) => {
     const submission = toCategorySubmission(form);
@@ -96,6 +92,5 @@ export function toCategoryFormState(
     parentId: category.parentId ?? "",
     sortOrder: String(category.sortOrder),
     isActive: category.isActive,
-    reason: "",
   };
 }

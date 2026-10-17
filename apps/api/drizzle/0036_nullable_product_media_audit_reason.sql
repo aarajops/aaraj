@@ -1,0 +1,3 @@
+ALTER TABLE "catalog"."product_media" DROP CONSTRAINT "product_media_reason_check";--> statement-breakpoint
+ALTER TABLE "catalog"."product_media" ALTER COLUMN "reason" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "catalog"."product_media" ADD CONSTRAINT "product_media_reason_check" CHECK ("catalog"."product_media"."reason" is null or ("catalog"."product_media"."reason" = btrim("catalog"."product_media"."reason") and length("catalog"."product_media"."reason") between 3 and 500));
