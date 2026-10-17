@@ -28,6 +28,7 @@ export function CatalogCategorySelect({
   label,
   value,
   required = false,
+  errorMessage,
   name,
   triggerRef,
   onBlur,
@@ -37,6 +38,7 @@ export function CatalogCategorySelect({
   label: string;
   value: string;
   required?: boolean;
+  errorMessage?: string;
   name?: string;
   triggerRef?: Ref<HTMLButtonElement>;
   onBlur?: () => void;
@@ -100,6 +102,15 @@ export function CatalogCategorySelect({
           className={fieldClassName}
           id={id}
           aria-labelledby={`${id}-label`}
+          aria-describedby={
+            [
+              errorMessage ? `${id}-error` : null,
+              loadState === "error" ? `${id}-load-error` : null,
+            ]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
+          aria-invalid={Boolean(errorMessage)}
           ref={triggerRef}
           onBlur={onBlur}
         >
@@ -114,8 +125,11 @@ export function CatalogCategorySelect({
           ))}
         </SelectContent>
       </Select>
+      {errorMessage && (
+        <FieldError id={`${id}-error`}>{errorMessage}</FieldError>
+      )}
       {loadState === "error" && (
-        <FieldError>
+        <FieldError id={`${id}-load-error`}>
           Product categories could not be loaded. Try again later.
         </FieldError>
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { CatalogCategorySchema, type CatalogCategory } from "@aaraj/contracts";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,16 +9,29 @@ import {
   createCatalogCategory,
   updateCatalogCategory,
 } from "@/features/catalog/catalog-client";
+import {
+  categoryFormSchema,
+  emptyCategoryForm,
+  toCategoryFormState,
+  type CategoryFormDraft,
+  type CategorySubmission,
+} from "@/features/catalog/category-form";
 import { CategoryTable } from "@/features/catalog/category-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import {
   getApiErrorMessage,
   readApiErrorResponse,
 } from "@/lib/api-error-response";
+import { hasDirtyFieldsExcept } from "@/lib/form-dirty-state";
 import {
   Select,
   SelectContent,
@@ -26,25 +40,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-interface CategoryForm {
-  id: string | null;
-  name: string;
-  slug: string;
-  parentId: string;
-  sortOrder: string;
-  isActive: boolean;
-  reason: string;
-}
-
-const emptyForm: CategoryForm = {
-  id: null,
-  name: "",
-  slug: "",
-  parentId: "",
-  sortOrder: "0",
-  isActive: true,
-  reason: "",
-};
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
 
@@ -71,32 +66,29 @@ export function CategoryManager({
     control,
     register,
     handleSubmit,
-    formState: { isSubmitting },
-  } = useForm<CategoryForm>({
+    formState: { errors, isSubmitting, dirtyFields },
+  } = useForm<CategoryFormDraft, unknown, CategorySubmission>({
+    resolver: zodResolver(categoryFormSchema),
     defaultValues: initialCategory
       ? toCategoryFormState(initialCategory)
-      : emptyForm,
+      : emptyCategoryForm,
   });
   const editingId = useWatch({ control, name: "id" });
+  const hasCategoryChanges = hasDirtyFieldsExcept(dirtyFields, [
+    "id",
+    "reason",
+  ]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  async function saveCategory(form: CategoryForm) {
+  async function saveCategory(submission: CategorySubmission) {
+    if (submission.id && !hasCategoryChanges) return;
     setErrorMessage(null);
-    const payload = {
-      name: form.name.trim(),
-      slug: form.slug.trim(),
-      parentId: form.parentId || null,
-      sortOrder: Number(form.sortOrder),
-      reason: form.reason.trim(),
-    };
 
     try {
-      const response = form.id
-        ? await updateCatalogCategory(form.id, {
-            ...payload,
-            isActive: form.isActive,
-          })
-        : await createCatalogCategory(payload);
+      const response =
+        submission.id === null
+          ? await createCatalogCategory(submission.input)
+          : await updateCatalogCategory(submission.id, submission.input);
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
         setErrorMessage(
@@ -191,29 +183,49 @@ export function CategoryManager({
               </p>
               <form
                 className="mt-5 space-y-4"
+                noValidate
                 onSubmit={handleSubmit(saveCategory)}
               >
                 <Field>
                   <FieldLabel htmlFor="category-name">Name</FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.name ? "category-name-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.name)}
                     className={fieldClassName}
                     id="category-name"
                     maxLength={80}
                     required
-                    {...register("name", { required: true, maxLength: 80 })}
+                    {...register("name")}
                   />
+                  {errors.name && (
+                    <FieldError id="category-name-error">
+                      {errors.name.message}
+                    </FieldError>
+                  )}
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="category-slug">Slug</FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.slug
+                        ? "category-slug-error category-slug-description"
+                        : "category-slug-description"
+                    }
+                    aria-invalid={Boolean(errors.slug)}
                     className={fieldClassName}
                     id="category-slug"
                     maxLength={100}
-                    pattern="[a-z0-9]+(-[a-z0-9]+)*"
                     required
-                    {...register("slug", { required: true, maxLength: 100 })}
+                    {...register("slug")}
                   />
-                  <FieldDescription>
+                  {errors.slug && (
+                    <FieldError id="category-slug-error">
+                      {errors.slug.message}
+                    </FieldError>
+                  )}
+                  <FieldDescription id="category-slug-description">
                     Used in storefront URLs; keep it stable once products use
                     it.
                   </FieldDescription>
@@ -228,38 +240,53 @@ export function CategoryManager({
                   <Controller
                     control={control}
                     name="parentId"
-                    render={({ field }) => (
-                      <Select
-                        items={[
-                          { label: "Top level", value: null },
-                          ...parentOptions,
-                        ]}
-                        name={field.name}
-                        value={field.value || null}
-                        onValueChange={(value) =>
-                          field.onChange(typeof value === "string" ? value : "")
-                        }
-                      >
-                        <SelectTrigger
-                          id="category-parent"
-                          aria-labelledby="category-parent-label"
-                          ref={field.ref}
-                          onBlur={field.onBlur}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <Select
+                          items={[
+                            { label: "Top level", value: null },
+                            ...parentOptions,
+                          ]}
+                          name={field.name}
+                          value={field.value || null}
+                          onValueChange={(value) =>
+                            field.onChange(
+                              typeof value === "string" ? value : "",
+                            )
+                          }
                         >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={null}>Top level</SelectItem>
-                          {parentOptions.map((category) => (
-                            <SelectItem
-                              key={category.value}
-                              value={category.value}
-                            >
-                              {category.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                          <SelectTrigger
+                            id="category-parent"
+                            aria-labelledby="category-parent-label"
+                            aria-describedby={
+                              fieldState.error
+                                ? "category-parent-error"
+                                : undefined
+                            }
+                            aria-invalid={Boolean(fieldState.error)}
+                            ref={field.ref}
+                            onBlur={field.onBlur}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={null}>Top level</SelectItem>
+                            {parentOptions.map((category) => (
+                              <SelectItem
+                                key={category.value}
+                                value={category.value}
+                              >
+                                {category.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {fieldState.error && (
+                          <FieldError id="category-parent-error">
+                            {fieldState.error.message}
+                          </FieldError>
+                        )}
+                      </>
                     )}
                   />
                 </Field>
@@ -268,14 +295,23 @@ export function CategoryManager({
                     Display order
                   </FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.sortOrder ? "category-order-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.sortOrder)}
                     className={fieldClassName}
                     id="category-order"
                     max={10000}
                     min={0}
                     required
                     type="number"
-                    {...register("sortOrder", { required: true })}
+                    {...register("sortOrder")}
                   />
+                  {errors.sortOrder && (
+                    <FieldError id="category-order-error">
+                      {errors.sortOrder.message}
+                    </FieldError>
+                  )}
                 </Field>
                 {editingId && (
                   <Field className="flex flex-row items-center gap-2">
@@ -292,16 +328,31 @@ export function CategoryManager({
                     Reason for change
                   </FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.reason ? "category-reason-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.reason)}
                     className={fieldClassName}
                     id="category-reason"
                     maxLength={500}
                     minLength={3}
                     required
-                    {...register("reason", { required: true, minLength: 3 })}
+                    {...register("reason")}
                   />
+                  {errors.reason && (
+                    <FieldError id="category-reason-error">
+                      {errors.reason.message}
+                    </FieldError>
+                  )}
                 </Field>
                 <div className="flex gap-3 pt-2">
-                  <Button disabled={isSubmitting} type="submit">
+                  <Button
+                    disabled={
+                      isSubmitting ||
+                      (Boolean(editingId) && !hasCategoryChanges)
+                    }
+                    type="submit"
+                  >
                     {isSubmitting
                       ? "Saving…"
                       : editingId
@@ -322,16 +373,4 @@ export function CategoryManager({
       </div>
     </main>
   );
-}
-
-function toCategoryFormState(category: CatalogCategory): CategoryForm {
-  return {
-    id: category.id,
-    name: category.name,
-    slug: category.slug,
-    parentId: category.parentId ?? "",
-    sortOrder: String(category.sortOrder),
-    isActive: category.isActive,
-    reason: "",
-  };
 }

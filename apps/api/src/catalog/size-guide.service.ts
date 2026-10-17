@@ -321,7 +321,7 @@ async function replaceSizeGuideRows(
     (inputRows[sortOrder]?.measurements ?? []).map((measurement, index) => ({
       rowId: id,
       key: measurement.key,
-      valueMm: values[sortOrder]?.[index] ?? "0.00",
+      valueCm: values[sortOrder]?.[index] ?? "0.000",
     })),
   );
   if (measurements.length) {
@@ -352,11 +352,11 @@ async function loadSizeGuide(
     : [];
   const measurementsByRow = new Map<
     string,
-    Array<{ key: CatalogMeasurementKey; valueMm: string }>
+    Array<{ key: CatalogMeasurementKey; valueCm: string }>
   >();
   for (const measurement of measurements) {
     const values = measurementsByRow.get(measurement.rowId) ?? [];
-    values.push({ key: measurement.key, valueMm: measurement.valueMm });
+    values.push({ key: measurement.key, valueCm: measurement.valueCm });
     measurementsByRow.set(measurement.rowId, values);
   }
   const category = await loadCategoryReference(database, guide.categoryId);
@@ -428,23 +428,23 @@ function normalizeMeasurements(
   rows: CatalogSizeGuideCreateInput["rows"],
 ): string[][] {
   return rows.map((row) =>
-    row.measurements.map(({ value }) => toMillimeters(unit, value)),
+    row.measurements.map(({ value }) => toCentimeters(unit, value)),
   );
 }
 
-function toMillimeters(unit: CatalogMeasurementUnit, value: string): string {
+function toCentimeters(unit: CatalogMeasurementUnit, value: string): string {
   const [wholePart, fractionPart = ""] = value.split(".");
   const valueThousandths =
     BigInt(wholePart ?? "0") * 1000n + BigInt(fractionPart.padEnd(3, "0"));
-  const millimeterHundredths =
+  const centimeterThousandths =
     unit === "cm" ? valueThousandths : (valueThousandths * 254n + 50n) / 100n;
-  if (millimeterHundredths <= 0n || millimeterHundredths > 99_999_999n) {
+  if (centimeterThousandths <= 0n || centimeterThousandths > 99_999_999n) {
     throw new BadRequestException(
-      "Measurements must fit a positive numeric(8,2) millimetre value.",
+      "Measurements must fit a positive numeric(8,3) centimetre value.",
     );
   }
-  const whole = millimeterHundredths / 100n;
-  const fraction = String(millimeterHundredths % 100n).padStart(2, "0");
+  const whole = centimeterThousandths / 1000n;
+  const fraction = String(centimeterThousandths % 1000n).padStart(3, "0");
   return `${whole}.${fraction}`;
 }
 

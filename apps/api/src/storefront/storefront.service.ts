@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   ServiceUnavailableException,
@@ -12,6 +13,7 @@ import type {
 import {
   PublicStorefrontSettingsSchema,
   StorefrontBrandIconAssetSchema,
+  StorefrontSettingsSchema,
 } from "@aaraj/contracts";
 import { eq, inArray, sql } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
@@ -19,6 +21,7 @@ import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AccessPrincipal } from "../platform/authorization/permissions.service.js";
 import { StorefrontPolicy } from "./storefront.policy.js";
+import { CategoryService } from "../catalog/category.service.js";
 import {
   storefrontBrandAsset,
   storefrontConfiguration,
@@ -31,6 +34,7 @@ export class StorefrontSettingsService {
     private readonly database: DatabaseService,
     private readonly authorization: AuthorizationService,
     private readonly audit: AuditService,
+    private readonly categories: CategoryService,
   ) {}
 
   async getPublicSettings(): Promise<PublicStorefrontSettings> {
@@ -71,6 +75,27 @@ export class StorefrontSettingsService {
         );
       }
 
+      const previouslyConfiguredCategoryIds = new Set(
+        current.headerNavigation.flatMap((item) =>
+          item.type === "category" ? [item.categoryId] : [],
+        ),
+      );
+      const newCategoryIds = input.headerNavigation.flatMap((item) =>
+        item.type === "category" &&
+        !previouslyConfiguredCategoryIds.has(item.categoryId)
+          ? [item.categoryId]
+          : [],
+      );
+      const activeCategoryIds = await this.categories.findActiveIds(
+        newCategoryIds,
+        transaction,
+      );
+      if (activeCategoryIds.size !== newCategoryIds.length) {
+        throw new BadRequestException(
+          "Choose active catalog categories for header navigation.",
+        );
+      }
+
       const changedFields = [
         ...(current.siteName !== input.siteName ? ["siteName"] : []),
         ...(current.brandColor !== input.brandColor ? ["brandColor"] : []),
@@ -103,6 +128,10 @@ export class StorefrontSettingsService {
         JSON.stringify(input.socialLinks)
           ? ["socialLinks"]
           : []),
+        ...(JSON.stringify(current.headerNavigation) !==
+        JSON.stringify(input.headerNavigation)
+          ? ["headerNavigation"]
+          : []),
         ...(current.footerDescription !== input.footerDescription
           ? ["footerDescription"]
           : []),
@@ -128,6 +157,7 @@ export class StorefrontSettingsService {
           supportEmail: input.supportEmail,
           businessAddress: input.businessAddress,
           socialLinks: input.socialLinks,
+          headerNavigation: input.headerNavigation,
           footerDescription: input.footerDescription,
           footerLinks: input.footerLinks,
           version: current.version + 1,
@@ -172,19 +202,56 @@ export class StorefrontSettingsService {
     return configuration;
   }
 
-  private toManagementSettings(
+  private async toManagementSettings(
     configuration: typeof storefrontConfiguration.$inferSelect,
   ): Promise<StorefrontSettings> {
-    return this.toPublicSettings(configuration).then((publicSettings) => ({
-      ...publicSettings,
+    const publicFields = await this.publicSettingsFields(configuration);
+    return StorefrontSettingsSchema.parse({
+      ...publicFields,
+      headerNavigation: configuration.headerNavigation,
       version: configuration.version,
       updatedAt: configuration.updatedAt?.toISOString() ?? null,
-    }));
+    });
   }
 
   private async toPublicSettings(
     configuration: typeof storefrontConfiguration.$inferSelect,
   ): Promise<PublicStorefrontSettings> {
+    const categoryIds = configuration.headerNavigation.flatMap((item) =>
+      item.type === "category" ? [item.categoryId] : [],
+    );
+    const [publicFields, categories] = await Promise.all([
+      this.publicSettingsFields(configuration),
+      this.categories.findActiveNavigationCategories(categoryIds),
+    ]);
+    const categoriesById = new Map(
+      categories.map((category) => [category.id, category]),
+    );
+    const headerNavigation = configuration.headerNavigation.flatMap((item) => {
+      if (item.type === "link") {
+        return [{ label: item.label, href: item.href }];
+      }
+
+      const category = categoriesById.get(item.categoryId);
+      return category
+        ? [
+            {
+              label: category.name,
+              href: `/?category=${encodeURIComponent(category.slug)}`,
+            },
+          ]
+        : [];
+    });
+
+    return PublicStorefrontSettingsSchema.parse({
+      ...publicFields,
+      headerNavigation,
+    });
+  }
+
+  private async publicSettingsFields(
+    configuration: typeof storefrontConfiguration.$inferSelect,
+  ) {
     const assetIds = [
       configuration.logoAssetId,
       configuration.brandIconAssetId,
@@ -211,7 +278,7 @@ export class StorefrontSettingsService {
       ? assetsById.get(configuration.socialImageAssetId)
       : null;
 
-    return PublicStorefrontSettingsSchema.parse({
+    return {
       siteName: configuration.siteName,
       brandColor: configuration.brandColor,
       backgroundColor: configuration.backgroundColor,
@@ -234,7 +301,7 @@ export class StorefrontSettingsService {
       socialLinks: configuration.socialLinks,
       footerDescription: configuration.footerDescription,
       footerLinks: configuration.footerLinks,
-    });
+    };
   }
 }
 

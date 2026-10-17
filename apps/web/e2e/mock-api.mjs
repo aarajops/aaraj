@@ -10,6 +10,7 @@ import {
   InventoryListQuerySchema,
   OrderListQuerySchema,
   DEFAULT_LIST_PAGE_SIZE,
+  DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
   MAX_LIST_OFFSET,
   MAX_LIST_PAGE_SIZE,
 } from "@aaraj/contracts";
@@ -40,6 +41,7 @@ const publicStorefrontSettings = {
     youtube: null,
     x: null,
   },
+  headerNavigation: [...DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS],
   footerDescription: null,
   footerLinks: [],
 };
@@ -893,7 +895,7 @@ function makeGuide(input, createdAt) {
       sortOrder,
       measurements: row.measurements.map((measurement) => ({
         key: measurement.key,
-        valueMm: toMillimeters(input.inputUnit, measurement.value),
+        valueCm: toCentimeters(input.inputUnit, measurement.value),
       })),
     })),
     createdAt: createdAt ?? now,
@@ -901,12 +903,12 @@ function makeGuide(input, createdAt) {
   };
 }
 
-function toMillimeters(unit, value) {
+function toCentimeters(unit, value) {
   const [whole, fraction = ""] = value.split(".");
   const thousandths = BigInt(whole) * 1000n + BigInt(fraction.padEnd(3, "0"));
-  const hundredths =
+  const centimeters =
     unit === "cm" ? thousandths : (thousandths * 254n + 50n) / 100n;
-  return `${hundredths / 100n}.${String(hundredths % 100n).padStart(2, "0")}`;
+  return `${centimeters / 1000n}.${String(centimeters % 1000n).padStart(3, "0")}`;
 }
 
 function sizeGuideSummary(guide) {

@@ -9,6 +9,7 @@ import {
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
 } from "@aaraj/contracts";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,16 +18,25 @@ import {
   updateCatalogSizeGuide,
 } from "@/features/catalog/catalog-client";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
+import {
+  blankGuideForm,
+  convertMeasurementUnit,
+  guideFormSchema,
+  toSizeGuideFormState,
+  type GuideForm,
+  type GuideSubmission,
+} from "@/features/catalog/size-guide-form";
 import { SizeGuideTable } from "@/features/catalog/size-guide-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
   getApiErrorMessage,
   readApiErrorResponse,
 } from "@/lib/api-error-response";
+import { hasDirtyFieldsExcept } from "@/lib/form-dirty-state";
 import {
   Select,
   SelectContent,
@@ -34,23 +44,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-type MeasurementValues = Partial<Record<CatalogMeasurementKey, string>>;
-interface GuideRowDraft {
-  sizeLabel: string;
-  values: MeasurementValues;
-}
-interface GuideForm {
-  id: string | null;
-  name: string;
-  categoryId: string;
-  fit: string;
-  measurementBasis: "garment" | "body";
-  inputUnit: "cm" | "in";
-  keys: CatalogMeasurementKey[];
-  rows: GuideRowDraft[];
-  reason: string;
-}
 
 const keys = CatalogMeasurementKeySchema.options;
 const labels: Record<CatalogMeasurementKey, string> = {
@@ -68,18 +61,6 @@ const labels: Record<CatalogMeasurementKey, string> = {
 };
 const inputClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
-const blankForm: GuideForm = {
-  id: null,
-  name: "",
-  categoryId: "",
-  fit: "",
-  measurementBasis: "garment",
-  inputUnit: "cm",
-  keys: ["chest_width", "body_length"],
-  rows: [],
-  reason: "",
-};
-
 export function SizeGuideManager({
   view = "list",
   initialPage,
@@ -103,11 +84,12 @@ export function SizeGuideManager({
     handleSubmit,
     getValues,
     setValue,
-    formState: { isSubmitting },
-  } = useForm<GuideForm>({
+    formState: { errors, isSubmitting, dirtyFields },
+  } = useForm<GuideForm, unknown, GuideSubmission>({
+    resolver: zodResolver(guideFormSchema),
     defaultValues: initialGuide
       ? toSizeGuideFormState(initialGuide)
-      : blankForm,
+      : blankGuideForm,
   });
   const {
     fields: rowFields,
@@ -118,6 +100,7 @@ export function SizeGuideManager({
     control,
     name: ["keys", "inputUnit"],
   });
+  const hasGuideChanges = hasDirtyFieldsExcept(dirtyFields, ["id", "reason"]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   function clearKeyValues(key: CatalogMeasurementKey) {
@@ -148,32 +131,14 @@ export function SizeGuideManager({
     onChange(inputUnit);
   }
 
-  async function saveGuide(form: GuideForm) {
+  async function saveGuide(submission: GuideSubmission) {
+    if (submission.id && !hasGuideChanges) return;
     setErrorMessage(null);
-    if (form.keys.length === 0 || form.rows.length === 0) {
-      setErrorMessage("Choose at least one measurement and add a size row.");
-      return;
-    }
-    const payload = {
-      name: form.name.trim(),
-      categoryId: form.categoryId,
-      fit: form.fit.trim() || null,
-      measurementBasis: form.measurementBasis,
-      inputUnit: form.inputUnit,
-      rows: form.rows.map((row) => ({
-        sizeLabel: row.sizeLabel.trim(),
-        measurements: form.keys.map((key) => ({
-          key,
-          value: row.values[key]?.trim() ?? "",
-        })),
-      })),
-      reason: form.reason.trim(),
-    };
 
     try {
-      const response = form.id
-        ? await updateCatalogSizeGuide(form.id, payload)
-        : await createCatalogSizeGuide(payload);
+      const response = submission.id
+        ? await updateCatalogSizeGuide(submission.id, submission.input)
+        : await createCatalogSizeGuide(submission.input);
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
         setErrorMessage(
@@ -278,8 +243,8 @@ export function SizeGuideManager({
                       : "Create a size guide"}
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Measurements are stored once in millimetres and shown in cm
-                    and inches.
+                    Measurements are stored in centimeters. You can enter them
+                    in cm or inches.
                   </p>
                 </div>
                 <Link
@@ -292,27 +257,38 @@ export function SizeGuideManager({
 
               <form
                 className="mt-6 space-y-4"
+                noValidate
                 onSubmit={handleSubmit(saveGuide)}
               >
                 <Field>
                   <FieldLabel htmlFor="guide-name">Guide name</FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.name ? "guide-name-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.name)}
                     className={inputClassName}
                     id="guide-name"
                     maxLength={120}
                     required
-                    {...register("name", { required: true, maxLength: 120 })}
+                    {...register("name")}
                   />
+                  {errors.name && (
+                    <FieldError id="guide-name-error">
+                      {errors.name.message}
+                    </FieldError>
+                  )}
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Controller
                     control={control}
                     name="categoryId"
-                    render={({ field }) => (
+                    render={({ field, fieldState }) => (
                       <CatalogCategorySelect
                         id="guide-category"
                         label="Product category"
                         required
+                        errorMessage={fieldState.error?.message}
                         value={field.value}
                         name={field.name}
                         triggerRef={field.ref}
@@ -329,11 +305,20 @@ export function SizeGuideManager({
                       </span>
                     </FieldLabel>
                     <Input
+                      aria-describedby={
+                        errors.fit ? "guide-fit-error" : undefined
+                      }
+                      aria-invalid={Boolean(errors.fit)}
                       className={inputClassName}
                       id="guide-fit"
                       maxLength={80}
                       {...register("fit")}
                     />
+                    {errors.fit && (
+                      <FieldError id="guide-fit-error">
+                        {errors.fit.message}
+                      </FieldError>
+                    )}
                   </Field>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -420,7 +405,12 @@ export function SizeGuideManager({
                   </Field>
                 </div>
 
-                <fieldset className="space-y-2 rounded-xl border border-border p-4">
+                <fieldset
+                  aria-describedby={
+                    errors.keys ? "guide-keys-error" : undefined
+                  }
+                  className="space-y-2 rounded-xl border border-border p-4"
+                >
                   <legend className="px-1 text-sm font-medium">
                     Measurements included
                   </legend>
@@ -431,6 +421,10 @@ export function SizeGuideManager({
                         key={key}
                       >
                         <input
+                          aria-describedby={
+                            errors.keys ? "guide-keys-error" : undefined
+                          }
+                          aria-invalid={Boolean(errors.keys)}
                           type="checkbox"
                           value={key}
                           {...register("keys", {
@@ -441,10 +435,18 @@ export function SizeGuideManager({
                       </label>
                     ))}
                   </div>
+                  {errors.keys && (
+                    <FieldError id="guide-keys-error">
+                      {errors.keys.message}
+                    </FieldError>
+                  )}
                 </fieldset>
 
                 <section
                   aria-labelledby="guide-sizes-heading"
+                  aria-describedby={
+                    errors.rows?.root ? "guide-rows-error" : undefined
+                  }
                   className="space-y-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -473,31 +475,47 @@ export function SizeGuideManager({
                       key={row.id}
                     >
                       <legend className="sr-only">Size row {index + 1}</legend>
-                      <label
-                        className="block space-y-1 text-sm font-medium"
-                        htmlFor={`size-label-${index}`}
-                      >
-                        Size label
+                      <div className="space-y-1 text-sm font-medium">
+                        <label htmlFor={`size-label-${index}`}>
+                          Size label
+                        </label>
                         <Input
+                          aria-describedby={
+                            errors.rows?.[index]?.sizeLabel
+                              ? `size-label-${index}-error`
+                              : undefined
+                          }
+                          aria-invalid={Boolean(
+                            errors.rows?.[index]?.sizeLabel,
+                          )}
                           className={inputClassName}
                           id={`size-label-${index}`}
                           maxLength={40}
                           required
-                          {...register(`rows.${index}.sizeLabel` as const, {
-                            required: true,
-                          })}
+                          {...register(`rows.${index}.sizeLabel` as const)}
                           placeholder="Example: M or One Size"
                         />
-                      </label>
+                        {errors.rows?.[index]?.sizeLabel && (
+                          <FieldError id={`size-label-${index}-error`}>
+                            {errors.rows[index].sizeLabel.message}
+                          </FieldError>
+                        )}
+                      </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         {selectedKeys.map((key) => (
-                          <label
-                            className="block space-y-1 text-sm"
-                            htmlFor={`size-${index}-${key}`}
-                            key={key}
-                          >
-                            {labels[key]} ({inputUnit})
+                          <div className="space-y-1 text-sm" key={key}>
+                            <label htmlFor={`size-${index}-${key}`}>
+                              {labels[key]} ({inputUnit})
+                            </label>
                             <Input
+                              aria-describedby={
+                                errors.rows?.[index]?.values?.[key]
+                                  ? `size-${index}-${key}-error`
+                                  : undefined
+                              }
+                              aria-invalid={Boolean(
+                                errors.rows?.[index]?.values?.[key],
+                              )}
                               className={inputClassName}
                               id={`size-${index}-${key}`}
                               inputMode="decimal"
@@ -508,10 +526,14 @@ export function SizeGuideManager({
                               type="number"
                               {...register(
                                 `rows.${index}.values.${key}` as const,
-                                { required: true },
                               )}
                             />
-                          </label>
+                            {errors.rows?.[index]?.values?.[key] && (
+                              <FieldError id={`size-${index}-${key}-error`}>
+                                {errors.rows[index].values[key].message}
+                              </FieldError>
+                            )}
+                          </div>
                         ))}
                       </div>
                       <Button
@@ -530,6 +552,11 @@ export function SizeGuideManager({
                       label.
                     </p>
                   )}
+                  {errors.rows?.root?.message && (
+                    <FieldError id="guide-rows-error">
+                      {errors.rows.root.message}
+                    </FieldError>
+                  )}
                 </section>
 
                 <Field>
@@ -537,13 +564,22 @@ export function SizeGuideManager({
                     Audit reason
                   </FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.reason ? "guide-reason-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.reason)}
                     className={inputClassName}
                     id="guide-audit-reason"
                     maxLength={500}
                     minLength={3}
                     required
-                    {...register("reason", { required: true, minLength: 3 })}
+                    {...register("reason")}
                   />
+                  {errors.reason && (
+                    <FieldError id="guide-reason-error">
+                      {errors.reason.message}
+                    </FieldError>
+                  )}
                 </Field>
                 {errorMessage && (
                   <p
@@ -555,7 +591,9 @@ export function SizeGuideManager({
                 )}
                 <Button
                   className="h-auto w-full px-4 py-3 text-base font-semibold"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting || (view === "edit" && !hasGuideChanges)
+                  }
                   type="submit"
                 >
                   {isSubmitting
@@ -571,49 +609,4 @@ export function SizeGuideManager({
       </div>
     </main>
   );
-}
-
-function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
-  return {
-    id: guide.id,
-    name: guide.name,
-    categoryId: guide.category.id,
-    fit: guide.fit ?? "",
-    measurementBasis: guide.measurementBasis,
-    inputUnit: "cm",
-    keys: guide.rows[0]?.measurements.map(({ key }) => key) ?? [],
-    rows: guide.rows.map((row) => ({
-      sizeLabel: row.sizeLabel,
-      values: Object.fromEntries(
-        row.measurements.map(({ key, valueMm }) => [
-          key,
-          millimetersToCm(valueMm),
-        ]),
-      ),
-    })),
-    reason: "",
-  };
-}
-
-function millimetersToCm(valueMm: string): string {
-  const [whole, fraction = "00"] = valueMm.split(".");
-  const thousandthsOfCm = Number(whole ?? "0") * 100 + Number(fraction);
-  return `${Math.floor(thousandthsOfCm / 1000)}.${String(thousandthsOfCm % 1000).padStart(3, "0")}`;
-}
-
-function convertMeasurementUnit(
-  value: string,
-  from: GuideForm["inputUnit"],
-  to: GuideForm["inputUnit"],
-): string {
-  if (!value || from === to) return value;
-  const [whole, fraction = ""] = value.split(".");
-  const thousandths = Number(whole) * 1000 + Number(fraction.padEnd(3, "0"));
-  const millimeterHundredths =
-    from === "cm" ? thousandths : Math.floor((thousandths * 254 + 50) / 100);
-  const converted =
-    to === "cm"
-      ? millimeterHundredths
-      : Math.floor((millimeterHundredths * 100 + 127) / 254);
-  return `${Math.floor(converted / 1000)}.${String(converted % 1000).padStart(3, "0")}`;
 }

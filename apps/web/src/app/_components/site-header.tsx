@@ -34,8 +34,31 @@ export async function SiteHeader() {
           </Link>
           <nav
             aria-label="Main navigation"
-            className="flex items-center gap-3 sm:gap-5"
+            className="flex flex-wrap items-center justify-end gap-3 sm:gap-5"
           >
+            <ul className="flex flex-wrap items-center gap-3 sm:gap-5">
+              {settings.headerNavigation.map(({ href, label }, index) => (
+                <li key={`link:${index}:${label}:${href}`}>
+                  {href.startsWith("/") ? (
+                    <Link
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                      href={href}
+                    >
+                      {label}
+                    </Link>
+                  ) : (
+                    <a
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                      href={href}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      {label}
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
             {settings.supportPhone && (
               <a
                 className="text-sm text-muted-foreground hover:text-foreground"
@@ -44,12 +67,6 @@ export async function SiteHeader() {
                 Call us: {settings.supportPhone}
               </a>
             )}
-            <Link
-              className="text-sm text-muted-foreground hover:text-foreground"
-              href="/"
-            >
-              Products
-            </Link>
             <CartBadge />
             <Link
               className="rounded-lg border border-input px-3 py-2 text-sm text-foreground hover:border-ring"

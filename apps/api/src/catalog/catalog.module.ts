@@ -49,6 +49,6 @@ import { CatalogMediaPublicController } from "./media/catalog-media-public.contr
       useExisting: CatalogService,
     },
   ],
-  exports: [CATALOG_INVENTORY_PORT, CATALOG_CART_PORT],
+  exports: [CATALOG_INVENTORY_PORT, CATALOG_CART_PORT, CategoryService],
 })
 export class CatalogModule {}

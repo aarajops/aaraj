@@ -1,0 +1,2 @@
+ALTER TABLE "storefront"."configuration" ADD COLUMN "header_navigation" jsonb DEFAULT '[{"type":"link","label":"Products","href":"/"}]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "storefront"."configuration" ADD CONSTRAINT "configuration_header_navigation_check" CHECK (case when jsonb_typeof("storefront"."configuration"."header_navigation") = 'array' then jsonb_array_length("storefront"."configuration"."header_navigation") <= 8 else false end);

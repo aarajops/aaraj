@@ -306,7 +306,7 @@ export default async function ProductPage({
                                 key={key}
                               >
                                 {measurement
-                                  ? `${formatMeasurement(measurement.valueMm, "cm")} / ${formatMeasurement(measurement.valueMm, "in")}`
+                                  ? `${formatMeasurement(measurement.valueCm, "cm")} / ${formatMeasurement(measurement.valueCm, "in")}`
                                   : "—"}
                               </td>
                             );
@@ -325,12 +325,12 @@ export default async function ProductPage({
   );
 }
 
-function formatMeasurement(valueMm: string, unit: "cm" | "in"): string {
-  const [whole, fraction = "00"] = valueMm.split(".");
-  const hundredthsOfMillimeter = Number(whole ?? "0") * 100 + Number(fraction);
+function formatMeasurement(valueCm: string, unit: "cm" | "in"): string {
+  const [whole, fraction = "000"] = valueCm.split(".");
+  const thousandthsOfCentimeter = Number(whole ?? "0") * 1000 + Number(fraction);
   const tenths =
     unit === "cm"
-      ? Math.floor((hundredthsOfMillimeter + 50) / 100)
-      : Math.floor((hundredthsOfMillimeter + 127) / 254);
+      ? Math.floor((thousandthsOfCentimeter + 50) / 100)
+      : Math.floor((thousandthsOfCentimeter + 127) / 254);
   return `${Math.floor(tenths / 10)}.${tenths % 10}`;
 }

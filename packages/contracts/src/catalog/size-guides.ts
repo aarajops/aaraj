@@ -32,7 +32,7 @@ export type CatalogMeasurementKey = z.infer<typeof CatalogMeasurementKeySchema>;
 
 export const CatalogSizeGuideMeasurementSchema = z.strictObject({
   key: CatalogMeasurementKeySchema,
-  valueMm: z.string().regex(/^\d{1,6}\.\d{2}$/),
+  valueCm: z.string().regex(/^\d{1,5}\.\d{3}$/),
 });
 
 export const CatalogSizeGuideRowSchema = z.strictObject({

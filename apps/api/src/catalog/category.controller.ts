@@ -34,6 +34,7 @@ export class CategoryController {
 
   @Get()
   @AllowAnonymous()
+  @Header("Cache-Control", "no-store")
   listPublic() {
     return this.categories.listPublic();
   }

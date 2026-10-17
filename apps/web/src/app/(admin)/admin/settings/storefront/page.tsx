@@ -1,18 +1,20 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getInitialAccess } from "@/features/auth/auth-session";
+import { getPublicCatalogCategories } from "@/features/catalog/catalog-queries";
 import { StorefrontSettingsManager } from "@/features/admin/storefront-settings-manager";
 
 export const metadata: Metadata = {
   title: "Storefront settings",
   description:
-    "Manage the AARAJ storefront brand, public contact information, and footer.",
+    "Manage the AARAJ storefront brand, public profile, header navigation, and footer.",
 };
 
 export default async function StorefrontSettingsPage() {
   const access = await getInitialAccess();
   if (!access) redirect("/account");
   if (!access.permissions.includes("storefront.settings.manage")) redirect("/");
+  const categoryOptions = await getPublicCatalogCategories();
 
   return (
     <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10">
@@ -25,9 +27,9 @@ export default async function StorefrontSettingsPage() {
         </h1>
         <p className="mt-3 max-w-2xl text-muted-foreground">
           Manage store branding, the announcement banner, public contact
-          details, social links, and footer content.
+          details, social links, header navigation, and footer content.
         </p>
-        <StorefrontSettingsManager />
+        <StorefrontSettingsManager categoryOptions={categoryOptions} />
       </div>
     </main>
   );

@@ -13,12 +13,20 @@ import {
   it,
   vi,
 } from "vitest";
-import { API_V1_BASE_PATH } from "@aaraj/contracts";
-import type { StorefrontBrandAssetKind } from "@aaraj/contracts";
+import {
+  API_V1_BASE_PATH,
+  DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
+  DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG,
+} from "@aaraj/contracts";
+import type {
+  StorefrontBrandAssetKind,
+  StorefrontHeaderNavigationItem,
+} from "@aaraj/contracts";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/configure-app.js";
 import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
+import { catalogCategory } from "../src/catalog/catalog-schema.js";
 import { AccessService } from "../src/platform/authorization/access.service.js";
 import { AuditService } from "../src/platform/audit/audit.service.js";
 import { auditEvent } from "../src/platform/audit/audit-schema.js";
@@ -39,6 +47,9 @@ const emptySocialLinks = {
   youtube: null,
   x: null,
 };
+const defaultHeaderNavigationConfig: StorefrontHeaderNavigationItem[] = [
+  ...DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG,
+];
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
   "base64",
@@ -194,6 +205,7 @@ describe("storefront settings", () => {
       },
       footerDescription: null,
       footerLinks: [],
+      headerNavigation: defaultHeaderNavigationConfig,
       version: 1,
       updatedAt: null,
       updatedBy: null,
@@ -226,6 +238,7 @@ describe("storefront settings", () => {
       socialLinks: emptySocialLinks,
       footerDescription: null,
       footerLinks: [],
+      headerNavigation: DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
     });
 
     await request(app.getHttpServer())
@@ -251,6 +264,7 @@ describe("storefront settings", () => {
         socialLinks: emptySocialLinks,
         footerDescription: null,
         footerLinks: [],
+        headerNavigation: defaultHeaderNavigationConfig,
         expectedVersion: 1,
         reason: "Try to change the storefront",
       }).expect(403);
@@ -280,6 +294,7 @@ describe("storefront settings", () => {
       socialLinks: emptySocialLinks,
       footerDescription: null,
       footerLinks: [],
+      headerNavigation: defaultHeaderNavigationConfig,
       version: 1,
       updatedAt: null,
     });
@@ -302,6 +317,7 @@ describe("storefront settings", () => {
       },
       footerDescription: "Everyday style, thoughtfully selected.",
       footerLinks: [{ label: "Contact us", href: "/contact" }],
+      headerNavigation: defaultHeaderNavigationConfig,
       expectedVersion: 1,
       reason: "Publish the festive storefront update",
     };
@@ -339,6 +355,7 @@ describe("storefront settings", () => {
           },
           footerDescription: "Everyday style, thoughtfully selected.",
           footerLinks: [{ label: "Contact us", href: "/contact" }],
+          headerNavigation: defaultHeaderNavigationConfig,
           version: 2,
         });
         expect(body).not.toHaveProperty("updatedBy");
@@ -369,6 +386,7 @@ describe("storefront settings", () => {
       },
       footerDescription: "Everyday style, thoughtfully selected.",
       footerLinks: [{ label: "Contact us", href: "/contact" }],
+      headerNavigation: DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
     });
     expect(updatedPublicSettings.body).not.toHaveProperty("version");
     expect(updatedPublicSettings.body).not.toHaveProperty("updatedAt");
@@ -406,6 +424,7 @@ describe("storefront settings", () => {
           "supportEmail",
           "businessAddress",
           "socialLinks",
+          "headerNavigation",
           "footerDescription",
           "footerLinks",
         ],
@@ -414,6 +433,69 @@ describe("storefront settings", () => {
     expect(JSON.stringify(events[0]?.metadata)).not.toContain(
       validUpdate.supportPhone,
     );
+  });
+
+  it("keeps category configuration in management settings and publishes active category links", async () => {
+    const slug = `header-nav-${randomUUID().slice(0, 8)}`;
+    const [category] = await database.db
+      .insert(catalogCategory)
+      .values({ name: "Header category", slug })
+      .returning({ id: catalogCategory.id });
+    expect(category).toBeDefined();
+
+    const categoryConfiguration = {
+      type: "category",
+      categoryId: category!.id,
+    } as const;
+    const updateResponse = await update(admin, {
+      siteName: "AARAJ",
+      brandColor: "#7b2220",
+      backgroundColor: "#fafafafa",
+      seoTitle: null,
+      seoDescription: null,
+      socialImageAlt: null,
+      announcementEnabled: false,
+      announcementText: null,
+      supportPhone: null,
+      supportEmail: null,
+      businessAddress: null,
+      socialLinks: emptySocialLinks,
+      footerDescription: null,
+      footerLinks: [],
+      headerNavigation: [categoryConfiguration],
+      expectedVersion: 1,
+      reason: "Configure a category in storefront navigation",
+    }).expect(200);
+    expect(updateResponse.body.headerNavigation).toEqual([
+      categoryConfiguration,
+    ]);
+
+    const managementResponse = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/manage/settings`)
+      .set("Cookie", admin.cookie)
+      .expect(200);
+    expect(managementResponse.body.headerNavigation).toEqual([
+      categoryConfiguration,
+    ]);
+
+    const publicResponse = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/settings`)
+      .expect(200);
+    expect(publicResponse.body.headerNavigation).toEqual([
+      { label: "Header category", href: `/?category=${slug}` },
+    ]);
+    expect(JSON.stringify(publicResponse.body.headerNavigation)).not.toContain(
+      category!.id,
+    );
+
+    await database.db
+      .update(catalogCategory)
+      .set({ isActive: false })
+      .where(eq(catalogCategory.id, category!.id));
+    const inactiveCategoryResponse = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/settings`)
+      .expect(200);
+    expect(inactiveCategoryResponse.body.headerNavigation).toEqual([]);
   });
 
   it("rejects untrusted mutation origins and rolls back an update if audit writing fails", async () => {
@@ -435,6 +517,7 @@ describe("storefront settings", () => {
         socialLinks: emptySocialLinks,
         footerDescription: null,
         footerLinks: [],
+        headerNavigation: defaultHeaderNavigationConfig,
         expectedVersion: 1,
         reason: "Test origin protection",
       })
@@ -458,6 +541,7 @@ describe("storefront settings", () => {
       socialLinks: emptySocialLinks,
       footerDescription: null,
       footerLinks: [],
+      headerNavigation: defaultHeaderNavigationConfig,
       expectedVersion: 1,
       reason: "Test audit transaction rollback",
     }).expect(500);

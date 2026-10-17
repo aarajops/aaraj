@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import type { CatalogMedia } from "@aaraj/contracts";
 import { chooseSelectOption } from "./select";
 
@@ -154,26 +155,26 @@ test("staff manages reusable size guides and apparel products safely", async ({
     .fill("A test product used to verify the clothing catalog workflow.");
   await chooseSelectOption(page, "Audience", "Unisex");
   await page.getByRole("button", { name: "Add variant" }).click();
-  await page.getByLabel("Variant 1 SKU").fill("AA-TEE-BLK-S");
-  await page.getByLabel("Variant 1 color").fill("Black");
-  await page.getByLabel("Variant 1 size").fill("S");
-  await page.getByLabel("Variant 1 price in BDT").fill("1999");
+  await variantField(page, 1, "SKU").fill("AA-TEE-BLK-S");
+  await variantField(page, 1, "Color").fill("Black");
+  await variantField(page, 1, "Size").fill("S");
+  await variantField(page, 1, "Price (BDT)").fill("1999");
   await page.getByRole("button", { name: "Add variant" }).click();
-  await page.getByLabel("Variant 2 SKU").fill("AA-TEE-BLK-M");
-  await page.getByLabel("Variant 2 color").fill("Black");
-  await page.getByLabel("Variant 2 size").fill("M");
-  await page.getByLabel("Variant 2 price in BDT").fill("2200");
+  await variantField(page, 2, "SKU").fill("AA-TEE-BLK-M");
+  await variantField(page, 2, "Color").fill("Black");
+  await variantField(page, 2, "Size").fill("M");
+  await variantField(page, 2, "Price (BDT)").fill("2200");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
   await page.getByLabel("Published on the storefront").check();
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Publish apparel test product");
-  await page.getByLabel("Variant 2 price in BDT").fill("2200.50");
+  await variantField(page, 2, "Price (BDT)").fill("2200.50");
   await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(
     page.getByText("Enter each price as a whole BDT amount, for example 1999."),
   ).toBeVisible();
-  await page.getByLabel("Variant 2 price in BDT").fill("2200");
+  await variantField(page, 2, "Price (BDT)").fill("2200");
   await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
@@ -341,10 +342,10 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Add variant" }).click();
-  await page.getByLabel("Variant 1 SKU").fill("AA-TEE-WHT-M");
-  await page.getByLabel("Variant 1 color").fill("White");
-  await page.getByLabel("Variant 1 size").fill("M");
-  await page.getByLabel("Variant 1 price in BDT").fill("1999");
+  await variantField(page, 1, "SKU").fill("AA-TEE-WHT-M");
+  await variantField(page, 1, "Color").fill("White");
+  await variantField(page, 1, "Size").fill("M");
+  await variantField(page, 1, "Price (BDT)").fill("1999");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
   await page.getByLabel("Published on the storefront").check();
   await page
@@ -593,6 +594,10 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
   await page
     .getByRole("region", { name: "Edit product" })
+    .getByLabel("Name", { exact: true })
+    .fill("Aaraj E2E Tee auth recovery check");
+  await page
+    .getByRole("region", { name: "Edit product" })
     .getByLabel("Audit reason", { exact: true })
     .fill("Verify recent sign-in recovery");
   await page.getByRole("button", { name: "Save changes" }).click();
@@ -700,3 +705,9 @@ test("customer Order page explains serviceability timeout cancellation", async (
     page.getByText("stock reservation was released", { exact: false }),
   ).toBeVisible();
 });
+
+function variantField(page: Page, index: number, label: string) {
+  return page
+    .getByRole("group", { name: `Variant ${index}` })
+    .getByLabel(label, { exact: true });
+}

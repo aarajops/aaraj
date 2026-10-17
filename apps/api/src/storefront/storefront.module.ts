@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { CatalogModule } from "../catalog/catalog.module.js";
 import { AuditModule } from "../platform/audit/audit.module.js";
 import { DatabaseModule } from "../platform/database/database.module.js";
 import { PlatformAuthorizationModule } from "../platform/authorization/authorization.module.js";
@@ -14,6 +15,7 @@ import { StorefrontSettingsService } from "./storefront.service.js";
 
 @Module({
   imports: [
+    CatalogModule,
     DatabaseModule,
     AuditModule,
     PlatformAuthorizationModule,

@@ -1,31 +1,30 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, type SubmitEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   API_V1_BASE_PATH,
   ApiErrorResponseSchema,
   StorefrontSettingsSchema,
-  StorefrontSettingsUpdateSchema,
+  type CatalogCategoryOption,
   type StorefrontBrandAssetKind,
-  type StorefrontFooterLink,
   type StorefrontSettings,
-  type StorefrontSocialLinks,
+  type StorefrontSettingsUpdate,
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-
-const socialFields = [
-  ["instagram", "Instagram URL"],
-  ["facebook", "Facebook URL"],
-  ["tiktok", "TikTok URL"],
-  ["youtube", "YouTube URL"],
-  ["x", "X URL"],
-] as const satisfies ReadonlyArray<
-  readonly [keyof StorefrontSocialLinks, string]
->;
+import { hasDirtyFieldsExcept } from "@/lib/form-dirty-state";
+import {
+  socialFields,
+  storefrontSettingsFormSchema,
+  toStorefrontSettingsDraft,
+  type StorefrontSettingsDraft,
+  type StorefrontSettingsFormValues,
+} from "./storefront-settings-form";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 const assetLabels: Record<StorefrontBrandAssetKind, string> = {
   logo: "Logo",
   brandIcon: "Brand icon",
@@ -33,29 +32,12 @@ const assetLabels: Record<StorefrontBrandAssetKind, string> = {
   socialImage: "Social image",
 };
 
-export function StorefrontSettingsManager() {
+export function StorefrontSettingsManager({
+  categoryOptions,
+}: {
+  categoryOptions: CatalogCategoryOption[];
+}) {
   const [settings, setSettings] = useState<StorefrontSettings | null>(null);
-  const [siteName, setSiteName] = useState("");
-  const [brandColor, setBrandColor] = useState("");
-  const [backgroundColor, setBackgroundColor] = useState("");
-  const [seoTitle, setSeoTitle] = useState("");
-  const [seoDescription, setSeoDescription] = useState("");
-  const [socialImageAlt, setSocialImageAlt] = useState("");
-  const [announcementEnabled, setAnnouncementEnabled] = useState(false);
-  const [announcementText, setAnnouncementText] = useState("");
-  const [supportPhone, setSupportPhone] = useState("");
-  const [supportEmail, setSupportEmail] = useState("");
-  const [businessAddress, setBusinessAddress] = useState("");
-  const [socialLinks, setSocialLinks] = useState<StorefrontSocialLinks>({
-    instagram: null,
-    facebook: null,
-    tiktok: null,
-    youtube: null,
-    x: null,
-  });
-  const [footerDescription, setFooterDescription] = useState("");
-  const [footerLinks, setFooterLinks] = useState<StorefrontFooterLink[]>([]);
-  const [reason, setReason] = useState("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [brandIconFile, setBrandIconFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
@@ -70,27 +52,71 @@ export function StorefrontSettingsManager() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const {
+    control,
+    register,
+    handleSubmit,
+    reset,
+    getValues,
+    setValue,
+    formState: { errors, dirtyFields },
+  } = useForm<StorefrontSettingsDraft, unknown, StorefrontSettingsFormValues>({
+    resolver: zodResolver(storefrontSettingsFormSchema),
+    defaultValues: {
+      siteName: "",
+      brandColor: "",
+      backgroundColor: "",
+      seoTitle: "",
+      seoDescription: "",
+      socialImageAlt: "",
+      announcementEnabled: false,
+      announcementText: "",
+      supportPhone: "",
+      supportEmail: "",
+      businessAddress: "",
+      socialLinks: {
+        instagram: "",
+        facebook: "",
+        tiktok: "",
+        youtube: "",
+        x: "",
+      },
+      footerDescription: "",
+      footerLinks: [],
+      headerNavigation: [],
+      expectedVersion: 1,
+      reason: "",
+    },
+  });
+  const {
+    fields: footerLinkFields,
+    append: appendFooterLink,
+    remove: removeFooterLink,
+    move: moveFooterLink,
+  } = useFieldArray({ control, name: "footerLinks" });
+  const {
+    fields: headerNavigationFields,
+    append: appendHeaderNavigationItem,
+    remove: removeHeaderNavigationItem,
+    move: moveHeaderNavigationItem,
+    update: updateHeaderNavigationItem,
+  } = useFieldArray({ control, name: "headerNavigation" });
+  const footerLinks = useWatch({ control, name: "footerLinks" }) ?? [];
+  const headerNavigation =
+    useWatch({ control, name: "headerNavigation" }) ?? [];
+  const announcementEnabled =
+    useWatch({ control, name: "announcementEnabled" }) ?? false;
+  const announcementText =
+    useWatch({ control, name: "announcementText" }) ?? "";
+  const reason = useWatch({ control, name: "reason" }) ?? "";
+  const siteName = useWatch({ control, name: "siteName" }) ?? "";
+  const changed =
+    settings &&
+    hasDirtyFieldsExcept(dirtyFields, ["reason", "expectedVersion"]);
   const logoInput = useRef<HTMLInputElement>(null);
   const brandIconInput = useRef<HTMLInputElement>(null);
   const faviconInput = useRef<HTMLInputElement>(null);
   const socialImageInput = useRef<HTMLInputElement>(null);
-
-  function applyTextSettings(value: StorefrontSettings) {
-    setSiteName(value.siteName);
-    setBrandColor(value.brandColor);
-    setBackgroundColor(value.backgroundColor);
-    setSeoTitle(value.seoTitle ?? "");
-    setSeoDescription(value.seoDescription ?? "");
-    setSocialImageAlt(value.socialImageAlt ?? "");
-    setAnnouncementEnabled(value.announcementEnabled);
-    setAnnouncementText(value.announcementText ?? "");
-    setSupportPhone(value.supportPhone ?? "");
-    setSupportEmail(value.supportEmail ?? "");
-    setBusinessAddress(value.businessAddress ?? "");
-    setSocialLinks(value.socialLinks);
-    setFooterDescription(value.footerDescription ?? "");
-    setFooterLinks(value.footerLinks);
-  }
 
   useEffect(() => {
     let active = true;
@@ -111,7 +137,7 @@ export function StorefrontSettingsManager() {
         }
         if (active) {
           setSettings(result.data);
-          applyTextSettings(result.data);
+          reset(toStorefrontSettingsDraft(result.data));
         }
       })
       .catch((loadError: unknown) => {
@@ -129,56 +155,14 @@ export function StorefrontSettingsManager() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reset]);
 
-  const changed = Boolean(
-    settings &&
-    (siteName !== settings.siteName ||
-      brandColor !== settings.brandColor ||
-      backgroundColor !== settings.backgroundColor ||
-      seoTitle !== (settings.seoTitle ?? "") ||
-      seoDescription !== (settings.seoDescription ?? "") ||
-      socialImageAlt !== (settings.socialImageAlt ?? "") ||
-      announcementEnabled !== settings.announcementEnabled ||
-      announcementText !== (settings.announcementText ?? "") ||
-      supportPhone !== (settings.supportPhone ?? "") ||
-      supportEmail !== (settings.supportEmail ?? "") ||
-      businessAddress !== (settings.businessAddress ?? "") ||
-      JSON.stringify(socialLinks) !== JSON.stringify(settings.socialLinks) ||
-      footerDescription !== (settings.footerDescription ?? "") ||
-      JSON.stringify(footerLinks) !== JSON.stringify(settings.footerLinks)),
-  );
-
-  async function save(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function save(input: StorefrontSettingsUpdate) {
     if (!settings || saving || !changed) return;
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      const input = StorefrontSettingsUpdateSchema.parse({
-        siteName,
-        brandColor: brandColor.trim(),
-        backgroundColor: backgroundColor.trim(),
-        seoTitle: seoTitle.trim() || null,
-        seoDescription: seoDescription.trim() || null,
-        announcementEnabled,
-        announcementText: announcementText.trim() || null,
-        supportPhone: supportPhone.trim() || null,
-        supportEmail: supportEmail.trim() || null,
-        businessAddress: businessAddress.trim() || null,
-        socialImageAlt: socialImageAlt.trim() || null,
-        socialLinks: Object.fromEntries(
-          socialFields.map(([key]) => [key, socialLinks[key]?.trim() || null]),
-        ),
-        footerDescription: footerDescription.trim() || null,
-        footerLinks: footerLinks.map(({ label, href }) => ({
-          label: label.trim(),
-          href: href.trim(),
-        })),
-        expectedVersion: settings.version,
-        reason,
-      });
       const response = await fetch(
         `${API_V1_BASE_PATH}/storefront/manage/settings`,
         {
@@ -200,8 +184,7 @@ export function StorefrontSettingsManager() {
         throw new Error("The server returned invalid storefront settings.");
       }
       setSettings(result.data);
-      applyTextSettings(result.data);
-      setReason("");
+      reset(toStorefrontSettingsDraft(result.data));
       setNotice("Storefront settings saved.");
     } catch (saveError) {
       setError(
@@ -232,7 +215,7 @@ export function StorefrontSettingsManager() {
       const form = new FormData();
       form.set("commandId", crypto.randomUUID());
       form.set("expectedVersion", String(settings.version));
-      form.set("reason", reason);
+      form.set("reason", getValues("reason"));
       form.set("file", file);
       const response = await fetch(
         `${API_V1_BASE_PATH}/storefront/manage/assets/${kind}`,
@@ -254,6 +237,7 @@ export function StorefrontSettingsManager() {
         throw new Error("The server returned invalid storefront settings.");
       }
       setSettings(result.data);
+      setValue("expectedVersion", result.data.version, { shouldDirty: false });
       if (kind === "logo") {
         setLogoFile(null);
         if (logoInput.current) logoInput.current.value = "";
@@ -292,7 +276,10 @@ export function StorefrontSettingsManager() {
           cache: "no-store",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expectedVersion: settings.version, reason }),
+          body: JSON.stringify({
+            expectedVersion: settings.version,
+            reason: getValues("reason"),
+          }),
         },
       );
       const body: unknown = await response.json().catch(() => null);
@@ -306,6 +293,7 @@ export function StorefrontSettingsManager() {
         throw new Error("The server returned invalid storefront settings.");
       }
       setSettings(result.data);
+      setValue("expectedVersion", result.data.version, { shouldDirty: false });
       setNotice(`${assetLabels[kind]} removed.`);
     } catch (clearError) {
       setError(
@@ -318,24 +306,26 @@ export function StorefrontSettingsManager() {
     }
   }
 
-  function updateFooterLink(
-    index: number,
-    field: keyof StorefrontFooterLink,
-    value: string,
-  ) {
-    setFooterLinks((current) =>
-      current.map((link, currentIndex) =>
-        currentIndex === index ? { ...link, [field]: value } : link,
-      ),
-    );
+  function addHeaderCategory(categoryId: string) {
+    if (!categoryId || headerNavigation.length >= 8) return;
+    appendHeaderNavigationItem({ type: "category", categoryId });
   }
+
+  const configuredCategoryIds = new Set(
+    headerNavigation.flatMap((item) =>
+      item.type === "category" ? [item.categoryId] : [],
+    ),
+  );
+  const availableCategories = categoryOptions.filter(
+    ({ id }) => !configuredCategoryIds.has(id),
+  );
 
   return (
     <section className="mt-8 rounded-2xl border border-border p-5 sm:p-7">
-      <h2 className="text-xl font-semibold">Brand and store profile</h2>
+      <h2 className="text-xl font-semibold">Storefront configuration</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        Manage the public identity, contact information, social links, and
-        storefront footer.
+        Manage the public identity, contact information, header navigation,
+        social links, and storefront footer.
       </p>
 
       {error && (
@@ -362,8 +352,19 @@ export function StorefrontSettingsManager() {
       ) : settings ? (
         <form
           className="mt-6 grid gap-8"
-          onSubmit={(event) => void save(event)}
+          noValidate
+          onSubmit={handleSubmit(save)}
         >
+          {Object.keys(errors).length > 0 && (
+            <ul
+              className="grid gap-1 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              {collectFieldErrorMessages(errors).map((message, index) => (
+                <li key={`${message}-${index}`}>{message}</li>
+              ))}
+            </ul>
+          )}
           <section
             aria-labelledby="brand-assets-heading"
             className="grid gap-5"
@@ -671,8 +672,7 @@ export function StorefrontSettingsManager() {
                 placeholder="#7b2220"
                 required
                 spellCheck={false}
-                value={brandColor}
-                onChange={(event) => setBrandColor(event.currentTarget.value)}
+                {...register("brandColor")}
               />
               <FieldDescription>
                 Sets the storefront brand accent and web app manifest theme
@@ -691,10 +691,7 @@ export function StorefrontSettingsManager() {
                 placeholder="#fafafafa"
                 required
                 spellCheck={false}
-                value={backgroundColor}
-                onChange={(event) =>
-                  setBackgroundColor(event.currentTarget.value)
-                }
+                {...register("backgroundColor")}
               />
               <FieldDescription>
                 Enter a CSS hexadecimal color: #RRGGBB or #RRGGBBAA.
@@ -722,8 +719,7 @@ export function StorefrontSettingsManager() {
                 id="storefront-seo-title"
                 maxLength={160}
                 placeholder={`${siteName || "AARAJ"} | Products`}
-                value={seoTitle}
-                onChange={(event) => setSeoTitle(event.currentTarget.value)}
+                {...register("seoTitle")}
               />
               <FieldDescription>
                 Optional title shown in search and link previews. Leave blank to
@@ -739,10 +735,7 @@ export function StorefrontSettingsManager() {
                 id="storefront-seo-description"
                 maxLength={500}
                 placeholder={`Browse products from ${siteName || "AARAJ"}.`}
-                value={seoDescription}
-                onChange={(event) =>
-                  setSeoDescription(event.currentTarget.value)
-                }
+                {...register("seoDescription")}
               />
               <FieldDescription>
                 Optional page summary. Leave blank to use a store-name-based
@@ -756,10 +749,7 @@ export function StorefrontSettingsManager() {
               <Input
                 id="storefront-social-image-alt"
                 maxLength={250}
-                value={socialImageAlt}
-                onChange={(event) =>
-                  setSocialImageAlt(event.currentTarget.value)
-                }
+                {...register("socialImageAlt")}
               />
               <FieldDescription>
                 Describe the social image for assistive technology and link
@@ -787,8 +777,7 @@ export function StorefrontSettingsManager() {
                 autoComplete="organization"
                 maxLength={80}
                 required
-                value={siteName}
-                onChange={(event) => setSiteName(event.currentTarget.value)}
+                {...register("siteName")}
               />
               <FieldDescription>
                 Used as the storefront brand name and page title.
@@ -799,12 +788,9 @@ export function StorefrontSettingsManager() {
               <div className="flex items-center gap-3">
                 <input
                   id="storefront-announcement-enabled"
-                  checked={announcementEnabled}
                   className="size-4 accent-primary"
                   type="checkbox"
-                  onChange={(event) =>
-                    setAnnouncementEnabled(event.currentTarget.checked)
-                  }
+                  {...register("announcementEnabled")}
                 />
                 <FieldLabel htmlFor="storefront-announcement-enabled">
                   Show announcement banner
@@ -815,10 +801,7 @@ export function StorefrontSettingsManager() {
                 aria-label="Announcement text"
                 maxLength={160}
                 placeholder="Step into the festive season with AARAJ"
-                value={announcementText}
-                onChange={(event) =>
-                  setAnnouncementText(event.currentTarget.value)
-                }
+                {...register("announcementText")}
               />
               <FieldDescription>
                 Plain text only, up to 160 characters.
@@ -837,10 +820,7 @@ export function StorefrontSettingsManager() {
                   maxLength={16}
                   pattern="\+[1-9][0-9]{7,14}"
                   placeholder="+8801XXXXXXXXX"
-                  value={supportPhone}
-                  onChange={(event) =>
-                    setSupportPhone(event.currentTarget.value)
-                  }
+                  {...register("supportPhone")}
                 />
               </Field>
               <Field>
@@ -852,10 +832,7 @@ export function StorefrontSettingsManager() {
                   autoComplete="email"
                   maxLength={254}
                   type="email"
-                  value={supportEmail}
-                  onChange={(event) =>
-                    setSupportEmail(event.currentTarget.value)
-                  }
+                  {...register("supportEmail")}
                 />
               </Field>
             </div>
@@ -867,10 +844,7 @@ export function StorefrontSettingsManager() {
                 id="storefront-business-address"
                 autoComplete="street-address"
                 maxLength={500}
-                value={businessAddress}
-                onChange={(event) =>
-                  setBusinessAddress(event.currentTarget.value)
-                }
+                {...register("businessAddress")}
               />
             </Field>
           </section>
@@ -899,18 +873,197 @@ export function StorefrontSettingsManager() {
                     maxLength={2048}
                     placeholder={`https://${key === "x" ? "x.com" : `${key}.com`}/…`}
                     type="url"
-                    value={socialLinks[key] ?? ""}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value || null;
-                      setSocialLinks((current) => ({
-                        ...current,
-                        [key]: value,
-                      }));
-                    }}
+                    {...register(`socialLinks.${key}`)}
                   />
                 </Field>
               ))}
             </div>
+          </section>
+
+          <section
+            aria-labelledby="header-navigation-heading"
+            className="grid gap-5 border-t border-border pt-6"
+          >
+            <div>
+              <h3
+                className="text-lg font-semibold"
+                id="header-navigation-heading"
+              >
+                Header navigation
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Arrange up to eight links and active catalog categories. A
+                category’s current name and URL come from catalog management.
+              </p>
+            </div>
+
+            <ol className="grid gap-4">
+              {headerNavigation.map((item, index) => {
+                const otherCategoryIds = new Set(
+                  headerNavigation.flatMap((candidate, candidateIndex) =>
+                    candidateIndex !== index && candidate.type === "category"
+                      ? [candidate.categoryId]
+                      : [],
+                  ),
+                );
+                const selectedCategory =
+                  item.type === "category"
+                    ? categoryOptions.find(({ id }) => id === item.categoryId)
+                    : undefined;
+
+                return (
+                  <li
+                    className="grid gap-3 rounded-lg border border-border p-4"
+                    key={headerNavigationFields[index]?.id ?? index}
+                  >
+                    {item.type === "link" ? (
+                      <div className="grid items-end gap-3 md:grid-cols-[1fr_2fr]">
+                        <Field>
+                          <FieldLabel htmlFor={`header-link-${index}-label`}>
+                            Link label
+                          </FieldLabel>
+                          <Input
+                            id={`header-link-${index}-label`}
+                            maxLength={40}
+                            {...register(`headerNavigation.${index}.label`)}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor={`header-link-${index}-href`}>
+                            Link URL
+                          </FieldLabel>
+                          <Input
+                            id={`header-link-${index}-href`}
+                            maxLength={2048}
+                            placeholder="/ or https://example.com"
+                            {...register(`headerNavigation.${index}.href`)}
+                          />
+                        </Field>
+                      </div>
+                    ) : (
+                      <Field>
+                        <FieldLabel htmlFor={`header-category-${index}`}>
+                          Catalog category
+                        </FieldLabel>
+                        <select
+                          className="min-h-10 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring"
+                          id={`header-category-${index}`}
+                          value={item.categoryId}
+                          onChange={(event) => {
+                            const categoryId = event.currentTarget.value;
+                            updateHeaderNavigationItem(index, {
+                              type: "category",
+                              categoryId,
+                            });
+                          }}
+                        >
+                          {!selectedCategory && (
+                            <option value={item.categoryId}>
+                              Unavailable category ({item.categoryId})
+                            </option>
+                          )}
+                          {categoryOptions
+                            .filter(
+                              ({ id }) =>
+                                id === item.categoryId ||
+                                !otherCategoryIds.has(id),
+                            )
+                            .map(({ id, path }) => (
+                              <option key={id} value={id}>
+                                {path}
+                              </option>
+                            ))}
+                        </select>
+                        {!selectedCategory && (
+                          <FieldDescription>
+                            This category is inactive or unavailable. Remove it,
+                            or choose an active category.
+                          </FieldDescription>
+                        )}
+                      </Field>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        aria-label={`Move header item ${index + 1} up`}
+                        disabled={index === 0}
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          moveHeaderNavigationItem(index, index - 1)
+                        }
+                      >
+                        Move up
+                      </Button>
+                      <Button
+                        aria-label={`Move header item ${index + 1} down`}
+                        disabled={index === headerNavigation.length - 1}
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          moveHeaderNavigationItem(index, index + 1)
+                        }
+                      >
+                        Move down
+                      </Button>
+                      <Button
+                        aria-label={`Remove header item ${index + 1}`}
+                        type="button"
+                        variant="outline"
+                        onClick={() => removeHeaderNavigationItem(index)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+
+            {headerNavigation.length < 8 && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Button
+                    disabled={headerNavigation.length >= 8}
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      appendHeaderNavigationItem({
+                        type: "link",
+                        label: "",
+                        href: "",
+                      })
+                    }
+                  >
+                    Add header link
+                  </Button>
+                </div>
+                <Field>
+                  <FieldLabel htmlFor="storefront-add-header-category">
+                    Add an active category
+                  </FieldLabel>
+                  <select
+                    className="min-h-10 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    disabled={availableCategories.length === 0}
+                    id="storefront-add-header-category"
+                    value=""
+                    onChange={(event) =>
+                      addHeaderCategory(event.currentTarget.value)
+                    }
+                  >
+                    <option value="">
+                      {availableCategories.length > 0
+                        ? "Choose a category…"
+                        : "No additional active categories"}
+                    </option>
+                    {availableCategories.map(({ id, path }) => (
+                      <option key={id} value={id}>
+                        {path}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            )}
           </section>
 
           <section
@@ -932,17 +1085,14 @@ export function StorefrontSettingsManager() {
               <Textarea
                 id="storefront-footer-description"
                 maxLength={500}
-                value={footerDescription}
-                onChange={(event) =>
-                  setFooterDescription(event.currentTarget.value)
-                }
+                {...register("footerDescription")}
               />
             </Field>
             <div className="grid gap-4">
-              {footerLinks.map((link, index) => (
+              {footerLinks.map((_, index) => (
                 <div
-                  className="grid items-end gap-3 rounded-lg border border-border p-4 md:grid-cols-[1fr_2fr_auto]"
-                  key={`footer-link-${index}`}
+                  className="grid items-end gap-3 rounded-lg border border-border p-4 md:grid-cols-[1fr_2fr_auto_auto_auto]"
+                  key={footerLinkFields[index]?.id ?? index}
                 >
                   <Field>
                     <FieldLabel htmlFor={`footer-link-${index}-label`}>
@@ -951,14 +1101,7 @@ export function StorefrontSettingsManager() {
                     <Input
                       id={`footer-link-${index}-label`}
                       maxLength={40}
-                      value={link.label}
-                      onChange={(event) =>
-                        updateFooterLink(
-                          index,
-                          "label",
-                          event.currentTarget.value,
-                        )
-                      }
+                      {...register(`footerLinks.${index}.label`)}
                     />
                   </Field>
                   <Field>
@@ -969,27 +1112,32 @@ export function StorefrontSettingsManager() {
                       id={`footer-link-${index}-href`}
                       maxLength={2048}
                       placeholder="/about or https://example.com"
-                      value={link.href}
-                      onChange={(event) =>
-                        updateFooterLink(
-                          index,
-                          "href",
-                          event.currentTarget.value,
-                        )
-                      }
+                      {...register(`footerLinks.${index}.href`)}
                     />
                   </Field>
+                  <Button
+                    aria-label={`Move footer link ${index + 1} up`}
+                    disabled={index === 0}
+                    type="button"
+                    variant="outline"
+                    onClick={() => moveFooterLink(index, index - 1)}
+                  >
+                    Move up
+                  </Button>
+                  <Button
+                    aria-label={`Move footer link ${index + 1} down`}
+                    disabled={index === footerLinks.length - 1}
+                    type="button"
+                    variant="outline"
+                    onClick={() => moveFooterLink(index, index + 1)}
+                  >
+                    Move down
+                  </Button>
                   <Button
                     aria-label={`Remove footer link ${index + 1}`}
                     type="button"
                     variant="outline"
-                    onClick={() =>
-                      setFooterLinks((current) =>
-                        current.filter(
-                          (_, currentIndex) => currentIndex !== index,
-                        ),
-                      )
-                    }
+                    onClick={() => removeFooterLink(index)}
                   >
                     Remove
                   </Button>
@@ -1000,12 +1148,7 @@ export function StorefrontSettingsManager() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() =>
-                      setFooterLinks((current) => [
-                        ...current,
-                        { label: "", href: "" },
-                      ])
-                    }
+                    onClick={() => appendFooterLink({ label: "", href: "" })}
                   >
                     Add footer link
                   </Button>
@@ -1024,8 +1167,7 @@ export function StorefrontSettingsManager() {
                 maxLength={500}
                 minLength={3}
                 required
-                value={reason}
-                onChange={(event) => setReason(event.currentTarget.value)}
+                {...register("reason")}
               />
             </Field>
             <div>
@@ -1059,4 +1201,13 @@ function responseMessage(body: unknown, fallback: string): string {
   return Array.isArray(result.data.message)
     ? result.data.message.join(" ")
     : result.data.message;
+}
+
+function collectFieldErrorMessages(value: unknown): string[] {
+  if (typeof value !== "object" || value === null) return [];
+  const record = value as Record<string, unknown>;
+  if (typeof record.message === "string") return [record.message];
+  return Object.entries(record)
+    .filter(([key]) => key !== "ref" && key !== "types")
+    .flatMap(([, nested]) => collectFieldErrorMessages(nested));
 }

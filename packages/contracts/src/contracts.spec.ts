@@ -15,6 +15,7 @@ import {
   MAX_LIST_PAGE_SIZE,
   MAX_PUBLIC_CATALOG_PAGE_SIZE,
   RoleSchema,
+  DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG,
   PublicStorefrontSettingsSchema,
   StorefrontSettingsUpdateSchema,
 } from "./index.js";
@@ -44,18 +45,22 @@ describe("Contracts Schema Validation", () => {
         youtube: null,
         x: null,
       },
+      headerNavigation: [{ label: "Products", href: "/" }],
       footerDescription: "Thoughtful everyday clothing.",
       footerLinks: [{ label: "About", href: "/about" }],
     };
-    const editableSettings = Object.fromEntries(
-      Object.entries(publicSettings).filter(
-        ([key]) =>
-          key !== "logo" &&
-          key !== "brandIcon" &&
-          key !== "favicon" &&
-          key !== "socialImage",
+    const editableSettings = {
+      ...Object.fromEntries(
+        Object.entries(publicSettings).filter(
+          ([key]) =>
+            key !== "logo" &&
+            key !== "brandIcon" &&
+            key !== "favicon" &&
+            key !== "socialImage",
+        ),
       ),
-    );
+      headerNavigation: [...DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG],
+    };
     expect(
       PublicStorefrontSettingsSchema.safeParse(publicSettings).success,
     ).toBe(true);

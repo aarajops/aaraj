@@ -86,6 +86,7 @@ export default async function EditCatalogProductPage({
 
   return (
     <CatalogManager
+      key={product.product.id}
       view="edit"
       initialProduct={product.product}
       initialSizeGuides={guides.page.guides}

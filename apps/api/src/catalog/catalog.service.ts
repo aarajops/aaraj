@@ -1108,11 +1108,11 @@ async function loadSizeGuideDetail(
     : [];
   const measurementsByRow = new Map<
     string,
-    Array<{ key: (typeof measurements)[number]["key"]; valueMm: string }>
+    Array<{ key: (typeof measurements)[number]["key"]; valueCm: string }>
   >();
   for (const measurement of measurements) {
     const values = measurementsByRow.get(measurement.rowId) ?? [];
-    values.push({ key: measurement.key, valueMm: measurement.valueMm });
+    values.push({ key: measurement.key, valueCm: measurement.valueCm });
     measurementsByRow.set(measurement.rowId, values);
   }
   return {

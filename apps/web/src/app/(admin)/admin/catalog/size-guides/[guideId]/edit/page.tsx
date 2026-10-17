@@ -62,6 +62,7 @@ export default async function EditSizeGuidePage({
 
   return (
     <SizeGuideManager
+      key={result.guide.id}
       view="edit"
       initialGuide={result.guide}
       query={parseCatalogSizeGuidePageQuery({})}

@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState, type SubmitEvent } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   type AuthoritativeQuote,
   type BangladeshGeography,
+  CheckoutAddressInputSchema,
   type CreateOrderInput,
 } from "@aaraj/contracts";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCatalogPrice } from "@/features/catalog/price";
@@ -21,19 +24,22 @@ import {
   OrderRequestError,
   resumeCodOrder,
 } from "./orders-client";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
-type FormValues = {
-  recipientName: string;
-  phone: string;
-  locality: string;
-  doorstepDetails: string;
-  street: string;
-  house: string;
-  postalCode: string;
-  instructions: string;
-};
+const checkoutAddressFormSchema = CheckoutAddressInputSchema.omit({
+  geographyVersion: true,
+  divisionId: true,
+  districtId: true,
+  upazilaId: true,
+})
+  .required()
+  .extend({ requestIdempotencyKey: z.uuid().optional() });
 
-const initialForm: FormValues = {
+type CheckoutAddressFormDraft = z.input<typeof checkoutAddressFormSchema>;
+type CheckoutAddressFormValues = z.output<typeof checkoutAddressFormSchema>;
+
+const initialForm: CheckoutAddressFormDraft = {
   recipientName: "",
   phone: "",
   locality: "",
@@ -48,11 +54,17 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
   const router = useRouter();
   const [quote, setQuote] = useState<AuthoritativeQuote | null>(null);
   const [geography, setGeography] = useState<BangladeshGeography | null>(null);
-  const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(Boolean(quoteId));
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const requestKey = useRef<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<CheckoutAddressFormDraft, unknown, CheckoutAddressFormValues>({
+    resolver: zodResolver(checkoutAddressFormSchema),
+    defaultValues: initialForm,
+  });
 
   useEffect(() => {
     if (!quoteId) return;
@@ -69,7 +81,7 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
     } catch {
       key = crypto.randomUUID();
     }
-    requestKey.current = key;
+    setValue("requestIdempotencyKey", key, { shouldValidate: false });
 
     void resumeCodOrder(key)
       .then((order) => {
@@ -112,7 +124,7 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
     return () => {
       active = false;
     };
-  }, [quoteId, router]);
+  }, [quoteId, router, setValue]);
 
   const division = geography?.locations.find(
     ({ id }) => id === quote?.destination.divisionId,
@@ -124,25 +136,22 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
     ? geography?.locations.find(({ id }) => id === quote.destination.upazilaId)
     : undefined;
 
-  async function submit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const idempotencyKey = requestKey.current;
-    if (!quote || !division || !district || !idempotencyKey || submitting)
-      return;
+  async function submit(values: CheckoutAddressFormValues) {
+    const { requestIdempotencyKey, ...addressValues } = values;
+    if (!quote || !division || !district || !requestIdempotencyKey) return;
     setError(null);
     const input: CreateOrderInput = {
       quoteId: quote.id,
       address: {
-        ...form,
+        ...addressValues,
         geographyVersion: quote.destination.geographyVersion,
         divisionId: division.id,
         districtId: district.id,
         ...(upazila ? { upazilaId: upazila.id } : {}),
       },
     };
-    setSubmitting(true);
     try {
-      const order = await createCodOrder(input, idempotencyKey);
+      const order = await createCodOrder(input, requestIdempotencyKey);
       router.push(`/orders/${order.id}`);
     } catch (reason) {
       if (
@@ -152,7 +161,7 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
         )
       ) {
         try {
-          const existing = await resumeCodOrder(idempotencyKey);
+          const existing = await resumeCodOrder(requestIdempotencyKey);
           router.push(`/orders/${existing.id}`);
           return;
         } catch (resumeError) {
@@ -170,8 +179,6 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
           ? reason.message
           : "The Order could not be placed. Retry with the same details.",
       );
-    } finally {
-      setSubmitting(false);
     }
   }
 
@@ -277,7 +284,8 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
 
             <form
               className="mt-6 grid gap-4 rounded-2xl border border-border p-5 sm:p-7"
-              onSubmit={(event) => void submit(event)}
+              noValidate
+              onSubmit={handleSubmit(submit)}
             >
               <h2 className="text-xl font-semibold">Delivery address</h2>
               <p className="text-sm text-muted-foreground">
@@ -292,89 +300,150 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
                   {error}
                 </p>
               )}
-              <label className="grid gap-2 text-sm font-medium">
-                Recipient name
+              <Field>
+                <FieldLabel htmlFor="checkout-recipient-name">
+                  Recipient name
+                </FieldLabel>
                 <Input
+                  id="checkout-recipient-name"
                   autoComplete="name"
                   maxLength={120}
-                  required
-                  value={form.recipientName}
-                  onChange={(event) =>
-                    setForm({ ...form, recipientName: event.target.value })
+                  aria-invalid={Boolean(errors.recipientName)}
+                  aria-describedby={
+                    errors.recipientName
+                      ? "checkout-recipient-name-error"
+                      : undefined
                   }
+                  {...register("recipientName")}
                 />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Bangladesh mobile number
+                {errors.recipientName?.message && (
+                  <FieldError id="checkout-recipient-name-error">
+                    {errors.recipientName.message}
+                  </FieldError>
+                )}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="checkout-phone">
+                  Bangladesh mobile number
+                </FieldLabel>
                 <Input
+                  id="checkout-phone"
                   autoComplete="tel"
                   inputMode="tel"
                   maxLength={32}
                   placeholder="01XXXXXXXXX or +8801XXXXXXXXX"
-                  required
-                  value={form.phone}
-                  onChange={(event) =>
-                    setForm({ ...form, phone: event.target.value })
+                  aria-invalid={Boolean(errors.phone)}
+                  aria-describedby={
+                    errors.phone ? "checkout-phone-error" : undefined
                   }
+                  {...register("phone")}
                 />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Locality / area
+                {errors.phone?.message && (
+                  <FieldError id="checkout-phone-error">
+                    {errors.phone.message}
+                  </FieldError>
+                )}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="checkout-locality">
+                  Locality / area
+                </FieldLabel>
                 <Input
+                  id="checkout-locality"
                   autoComplete="address-level3"
                   maxLength={160}
-                  required
-                  value={form.locality}
-                  onChange={(event) =>
-                    setForm({ ...form, locality: event.target.value })
+                  aria-invalid={Boolean(errors.locality)}
+                  aria-describedby={
+                    errors.locality ? "checkout-locality-error" : undefined
                   }
+                  {...register("locality")}
                 />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Doorstep delivery details
+                {errors.locality?.message && (
+                  <FieldError id="checkout-locality-error">
+                    {errors.locality.message}
+                  </FieldError>
+                )}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="checkout-doorstep-details">
+                  Doorstep delivery details
+                </FieldLabel>
                 <Textarea
+                  id="checkout-doorstep-details"
                   autoComplete="street-address"
                   maxLength={400}
-                  required
-                  value={form.doorstepDetails}
-                  onChange={(event) =>
-                    setForm({ ...form, doorstepDetails: event.target.value })
+                  aria-invalid={Boolean(errors.doorstepDetails)}
+                  aria-describedby={
+                    errors.doorstepDetails
+                      ? "checkout-doorstep-details-error"
+                      : undefined
                   }
+                  {...register("doorstepDetails")}
                 />
-              </label>
+                {errors.doorstepDetails?.message && (
+                  <FieldError id="checkout-doorstep-details-error">
+                    {errors.doorstepDetails.message}
+                  </FieldError>
+                )}
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
-                <OptionalField
-                  label="House / building"
-                  value={form.house}
-                  onChange={(house) => setForm({ ...form, house })}
-                />
-                <OptionalField
-                  label="Street"
-                  value={form.street}
-                  onChange={(street) => setForm({ ...form, street })}
-                />
-                <OptionalField
-                  label="Postal code"
-                  value={form.postalCode}
-                  onChange={(postalCode) => setForm({ ...form, postalCode })}
-                />
+                {(
+                  [
+                    ["house", "House / building"],
+                    ["street", "Street"],
+                    ["postalCode", "Postal code"],
+                  ] as const
+                ).map(([name, label]) => {
+                  const fieldError = errors[name]?.message;
+                  const errorId = `checkout-${name}-error`;
+                  return (
+                    <Field key={name}>
+                      <FieldLabel htmlFor={`checkout-${name}`}>
+                        {label}
+                      </FieldLabel>
+                      <Input
+                        id={`checkout-${name}`}
+                        maxLength={
+                          name === "house" ? 120 : name === "street" ? 160 : 20
+                        }
+                        aria-invalid={Boolean(fieldError)}
+                        aria-describedby={fieldError ? errorId : undefined}
+                        {...register(name)}
+                      />
+                      {fieldError && (
+                        <FieldError id={errorId}>{fieldError}</FieldError>
+                      )}
+                    </Field>
+                  );
+                })}
               </div>
-              <label className="grid gap-2 text-sm font-medium">
-                Delivery instructions (optional)
+              <Field>
+                <FieldLabel htmlFor="checkout-instructions">
+                  Delivery instructions (optional)
+                </FieldLabel>
                 <Textarea
+                  id="checkout-instructions"
                   maxLength={400}
-                  value={form.instructions}
-                  onChange={(event) =>
-                    setForm({ ...form, instructions: event.target.value })
+                  aria-invalid={Boolean(errors.instructions)}
+                  aria-describedby={
+                    errors.instructions
+                      ? "checkout-instructions-error"
+                      : undefined
                   }
+                  {...register("instructions")}
                 />
-              </label>
+                {errors.instructions?.message && (
+                  <FieldError id="checkout-instructions-error">
+                    {errors.instructions.message}
+                  </FieldError>
+                )}
+              </Field>
               <Button
                 className="mt-2 w-fit"
-                disabled={submitting}
+                disabled={isSubmitting}
                 type="submit"
               >
-                {submitting ? "Placing COD order…" : "Place COD order"}
+                {isSubmitting ? "Placing COD order…" : "Place COD order"}
               </Button>
             </form>
           </>
@@ -390,26 +459,5 @@ function MoneyRow({ label, amount }: { label: string; amount: number }) {
       <dt className="text-muted-foreground">{label}</dt>
       <dd>{formatCatalogPrice({ amountBdt: amount })}</dd>
     </div>
-  );
-}
-
-function OptionalField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="grid gap-2 text-sm font-medium">
-      {label}
-      <Input
-        maxLength={160}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
   );
 }

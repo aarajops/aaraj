@@ -13,7 +13,7 @@ import type {
   CatalogCategoryUpdateInput,
   CatalogCategoryOption,
 } from "@aaraj/contracts";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DatabaseService } from "../platform/database/database.service.js";
@@ -33,6 +33,44 @@ export class CategoryService {
     private readonly authorization: AuthorizationService,
     private readonly audit: AuditService,
   ) {}
+
+  async findActiveIds(
+    categoryIds: readonly string[],
+    transaction: AuditTransaction,
+  ): Promise<ReadonlySet<string>> {
+    if (categoryIds.length === 0) return new Set();
+
+    const activeCategories = await transaction
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory)
+      .where(
+        and(
+          inArray(catalogCategory.id, [...categoryIds]),
+          eq(catalogCategory.isActive, true),
+        ),
+      );
+    return new Set(activeCategories.map(({ id }) => id));
+  }
+
+  async findActiveNavigationCategories(
+    categoryIds: readonly string[],
+  ): Promise<Array<Pick<CatalogCategoryOption, "id" | "name" | "slug">>> {
+    if (categoryIds.length === 0) return [];
+
+    return this.database.db
+      .select({
+        id: catalogCategory.id,
+        name: catalogCategory.name,
+        slug: catalogCategory.slug,
+      })
+      .from(catalogCategory)
+      .where(
+        and(
+          inArray(catalogCategory.id, [...categoryIds]),
+          eq(catalogCategory.isActive, true),
+        ),
+      );
+  }
 
   async listPublic(): Promise<CatalogCategoryOptions> {
     const rows = await this.database.db

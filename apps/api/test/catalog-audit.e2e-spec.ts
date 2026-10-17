@@ -359,8 +359,8 @@ describe("catalog and security audit", () => {
       .expect(409);
     expect(guide.body.rows[0].measurements).toEqual(
       expect.arrayContaining([
-        { key: "chest_width", valueMm: "508.00" },
-        { key: "body_length", valueMm: "711.20" },
+        { key: "chest_width", valueCm: "50.800" },
+        { key: "body_length", valueCm: "71.120" },
       ]),
     );
     await request(app.getHttpServer())

@@ -8,8 +8,8 @@ import {
   type CatalogManagedProductDetail,
   type CatalogProductListQuery,
   type CatalogProductPage,
-  type CatalogSizeGuideSummary,
 } from "@aaraj/contracts";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,12 +22,21 @@ import {
 } from "@/features/catalog/catalog-client";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
 import { CatalogMediaManager } from "@/features/catalog/catalog-media-manager";
+import {
+  blankProductForm,
+  productFormSchema,
+  toProductFormState,
+  withProductSizeGuide,
+  type ProductForm,
+  type ProductSubmission,
+  type SizeGuideOption,
+} from "@/features/catalog/catalog-product-form";
 import { ProductTable } from "@/features/catalog/product-table";
-import { formatBdtInput, parseBdtPrice } from "@/features/catalog/price";
 import {
   getApiErrorMessage,
   readApiErrorResponse,
 } from "@/lib/api-error-response";
+import { hasDirtyFieldsExcept } from "@/lib/form-dirty-state";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
@@ -45,48 +54,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-type SizeGuideOption = CatalogSizeGuideSummary;
-type Audience = "" | "men" | "women" | "unisex";
-type VariantDraft = {
-  sku: string;
-  color: string;
-  sizeLabel: string;
-  priceBdt: string;
-  gtin: string;
-};
-
-interface ProductForm {
-  id: string | null;
-  slug: string;
-  name: string;
-  description: string;
-  audience: Audience;
-  categoryId: string;
-  fit: string;
-  fabricComposition: string;
-  careInstructions: string;
-  sizeGuideId: string;
-  variants: VariantDraft[];
-  isPublished: boolean;
-  reason: string;
-}
-
-const blankForm: ProductForm = {
-  id: null,
-  slug: "",
-  name: "",
-  description: "",
-  audience: "",
-  categoryId: "",
-  fit: "",
-  fabricComposition: "",
-  careInstructions: "",
-  sizeGuideId: "",
-  variants: [],
-  isPublished: false,
-  reason: "",
-};
 
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
@@ -126,12 +93,12 @@ export function CatalogManager({
     control,
     register,
     handleSubmit,
-    clearErrors,
-    formState: { errors, isSubmitting },
-  } = useForm<ProductForm>({
+    formState: { errors, isSubmitting, dirtyFields },
+  } = useForm<ProductForm, unknown, ProductSubmission>({
+    resolver: zodResolver(productFormSchema),
     defaultValues: initialProduct
       ? toProductFormState(initialProduct)
-      : blankForm,
+      : blankProductForm,
   });
   const {
     fields: variantFields,
@@ -142,6 +109,7 @@ export function CatalogManager({
     control,
     name: ["id", "categoryId", "fit", "sizeGuideId", "isPublished"],
   });
+  const hasProductChanges = hasDirtyFieldsExcept(dirtyFields, ["id", "reason"]);
   const slugError = errors.slug?.message;
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -234,82 +202,16 @@ export function CatalogManager({
     }
   }
 
-  async function saveProduct(form: ProductForm) {
+  async function saveProduct(submission: ProductSubmission) {
+    if (submission.id && !hasProductChanges) return;
     setFormErrorMessage(null);
     setErrorCode(null);
-    clearErrors("slug");
-    if (!form.audience && (!form.id || form.isPublished)) {
-      setFormErrorMessage("Choose an audience before saving.");
-      return;
-    }
-
-    const variantDrafts = form.variants.filter((variant) =>
-      [
-        variant.sku,
-        variant.color,
-        variant.sizeLabel,
-        variant.priceBdt,
-        variant.gtin,
-      ].some((value) => value.trim().length > 0),
-    );
-    if (
-      variantDrafts.some(
-        ({ priceBdt }) =>
-          priceBdt.trim().length > 0 && parseBdtPrice(priceBdt) === null,
-      )
-    ) {
-      setFormErrorMessage(
-        "Enter each price as a whole BDT amount, for example 1999.",
-      );
-      return;
-    }
-
-    const variants = variantDrafts.map((variant) => {
-      const amountBdt = parseBdtPrice(variant.priceBdt);
-      return {
-        sku: variant.sku.trim(),
-        color: variant.color.trim(),
-        sizeLabel: variant.sizeLabel.trim(),
-        price: amountBdt === null ? null : { amountBdt },
-        gtin: variant.gtin.trim() || null,
-      };
-    });
-    if (
-      form.isPublished &&
-      (!variants.length ||
-        !form.sizeGuideId ||
-        !form.audience ||
-        !form.categoryId ||
-        variants.some((variant) => variant.price === null))
-    ) {
-      setFormErrorMessage(
-        "Before publishing, choose an audience and category, assign a matching size guide, and set a BDT price for every complete color and size variant.",
-      );
-      return;
-    }
-
-    const payload = {
-      slug: form.slug.trim(),
-      name: form.name.trim(),
-      description: form.description.trim() || null,
-      audience: form.audience || null,
-      categoryId: form.categoryId || null,
-      fit: form.fit.trim() || null,
-      fabricComposition: form.fabricComposition.trim() || null,
-      careInstructions: form.careInstructions.trim() || null,
-      sizeGuideId: form.sizeGuideId || null,
-      variants,
-      isPublished: form.isPublished,
-      reason: form.reason.trim(),
-    };
 
     try {
-      const response = form.id
-        ? await updateCatalogProduct(form.id, payload)
-        : await createCatalogProduct({
-            ...payload,
-            audience: form.audience as Exclude<Audience, "">,
-          });
+      const response =
+        submission.id === null
+          ? await createCatalogProduct(submission.input)
+          : await updateCatalogProduct(submission.id, submission.input);
 
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
@@ -468,40 +370,50 @@ export function CatalogManager({
 
               <form
                 className="mt-6 space-y-4"
+                noValidate
                 onSubmit={handleSubmit(saveProduct)}
               >
                 <Field>
                   <FieldLabel htmlFor="product-name">Name</FieldLabel>
                   <Input
                     autoComplete="off"
+                    aria-describedby={
+                      errors.name ? "product-name-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.name)}
                     className={fieldClassName}
                     id="product-name"
                     maxLength={160}
                     required
-                    {...register("name", { required: true, maxLength: 160 })}
+                    {...register("name")}
                   />
+                  {errors.name && (
+                    <FieldError id="product-name-error">
+                      {errors.name.message}
+                    </FieldError>
+                  )}
                 </Field>
 
                 <Field data-invalid={Boolean(slugError)}>
                   <FieldLabel htmlFor="product-slug">Slug</FieldLabel>
                   <Input
                     autoComplete="off"
-                    aria-describedby={slugError ? "slug-error" : undefined}
                     aria-invalid={Boolean(slugError)}
                     className={fieldClassName}
                     id="product-slug"
+                    aria-describedby={
+                      slugError
+                        ? "slug-error product-slug-description"
+                        : "product-slug-description"
+                    }
                     maxLength={120}
-                    pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                     required
-                    {...register("slug", {
-                      required: true,
-                      onChange: () => clearErrors("slug"),
-                    })}
+                    {...register("slug")}
                   />
                   {slugError && (
                     <FieldError id="slug-error">{slugError}</FieldError>
                   )}
-                  <FieldDescription>
+                  <FieldDescription id="product-slug-description">
                     Use lowercase letters, numbers, and single hyphens.
                   </FieldDescription>
                 </Field>
@@ -511,11 +423,22 @@ export function CatalogManager({
                     Description
                   </FieldLabel>
                   <Textarea
+                    aria-describedby={
+                      errors.description
+                        ? "product-description-error"
+                        : undefined
+                    }
+                    aria-invalid={Boolean(errors.description)}
                     className="min-h-24 resize-y bg-background px-3 py-2.5 text-base md:text-base"
                     id="product-description"
                     maxLength={5000}
                     {...register("description")}
                   />
+                  {errors.description && (
+                    <FieldError id="product-description-error">
+                      {errors.description.message}
+                    </FieldError>
+                  )}
                 </Field>
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -529,51 +452,65 @@ export function CatalogManager({
                     <Controller
                       control={control}
                       name="audience"
-                      render={({ field }) => (
-                        <Select
-                          items={[
-                            { label: "Choose audience", value: null },
-                            { label: "Men", value: "men" },
-                            { label: "Women", value: "women" },
-                            { label: "Unisex", value: "unisex" },
-                          ]}
-                          name={field.name}
-                          required={!editingId || isPublished}
-                          value={field.value || null}
-                          onValueChange={(value) =>
-                            field.onChange(
-                              typeof value === "string" ? value : "",
-                            )
-                          }
-                        >
-                          <SelectTrigger
-                            id="product-audience"
-                            aria-labelledby="product-audience-label"
-                            ref={field.ref}
-                            onBlur={field.onBlur}
+                      render={({ field, fieldState }) => (
+                        <>
+                          <Select
+                            items={[
+                              { label: "Choose audience", value: null },
+                              { label: "Men", value: "men" },
+                              { label: "Women", value: "women" },
+                              { label: "Unisex", value: "unisex" },
+                            ]}
+                            name={field.name}
+                            required={!editingId || isPublished}
+                            value={field.value || null}
+                            onValueChange={(value) =>
+                              field.onChange(
+                                typeof value === "string" ? value : "",
+                              )
+                            }
                           >
-                            <SelectValue placeholder="Choose audience" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={null}>
-                              Choose audience
-                            </SelectItem>
-                            <SelectItem value="men">Men</SelectItem>
-                            <SelectItem value="women">Women</SelectItem>
-                            <SelectItem value="unisex">Unisex</SelectItem>
-                          </SelectContent>
-                        </Select>
+                            <SelectTrigger
+                              id="product-audience"
+                              aria-labelledby="product-audience-label"
+                              aria-describedby={
+                                fieldState.error
+                                  ? "product-audience-error"
+                                  : undefined
+                              }
+                              aria-invalid={Boolean(fieldState.error)}
+                              ref={field.ref}
+                              onBlur={field.onBlur}
+                            >
+                              <SelectValue placeholder="Choose audience" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={null}>
+                                Choose audience
+                              </SelectItem>
+                              <SelectItem value="men">Men</SelectItem>
+                              <SelectItem value="women">Women</SelectItem>
+                              <SelectItem value="unisex">Unisex</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {fieldState.error && (
+                            <FieldError id="product-audience-error">
+                              {fieldState.error.message}
+                            </FieldError>
+                          )}
+                        </>
                       )}
                     />
                   </Field>
                   <Controller
                     control={control}
                     name="categoryId"
-                    render={({ field }) => (
+                    render={({ field, fieldState }) => (
                       <CatalogCategorySelect
                         id="product-category"
                         label="Product category"
                         required={isPublished}
+                        errorMessage={fieldState.error?.message}
                         value={field.value}
                         name={field.name}
                         triggerRef={field.ref}
@@ -584,56 +521,85 @@ export function CatalogManager({
                   />
                 </div>
 
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="product-fit"
-                >
-                  Fit{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (optional, for example Regular)
-                  </span>
+                <Field>
+                  <FieldLabel htmlFor="product-fit">
+                    Fit{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (optional, for example Regular)
+                    </span>
+                  </FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.fit ? "product-fit-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.fit)}
                     className={fieldClassName}
                     id="product-fit"
                     maxLength={80}
                     {...register("fit")}
                   />
-                </label>
+                  {errors.fit && (
+                    <FieldError id="product-fit-error">
+                      {errors.fit.message}
+                    </FieldError>
+                  )}
+                </Field>
 
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="product-fabric"
-                >
-                  Fabric composition{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (optional)
-                  </span>
+                <Field>
+                  <FieldLabel htmlFor="product-fabric">
+                    Fabric composition{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (optional)
+                    </span>
+                  </FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.fabricComposition
+                        ? "product-fabric-error"
+                        : undefined
+                    }
+                    aria-invalid={Boolean(errors.fabricComposition)}
                     className={fieldClassName}
                     id="product-fabric"
                     maxLength={1000}
                     {...register("fabricComposition")}
                   />
-                </label>
+                  {errors.fabricComposition && (
+                    <FieldError id="product-fabric-error">
+                      {errors.fabricComposition.message}
+                    </FieldError>
+                  )}
+                </Field>
 
-                <label
-                  className="block space-y-2 text-sm font-medium"
-                  htmlFor="product-care"
-                >
-                  Care instructions{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (optional)
-                  </span>
+                <Field>
+                  <FieldLabel htmlFor="product-care">
+                    Care instructions{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (optional)
+                    </span>
+                  </FieldLabel>
                   <Textarea
+                    aria-describedby={
+                      errors.careInstructions ? "product-care-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.careInstructions)}
                     className="min-h-20 resize-y bg-background px-3 py-2.5 text-base md:text-base"
                     id="product-care"
                     maxLength={2000}
                     {...register("careInstructions")}
                   />
-                </label>
+                  {errors.careInstructions && (
+                    <FieldError id="product-care-error">
+                      {errors.careInstructions.message}
+                    </FieldError>
+                  )}
+                </Field>
 
                 <section
                   aria-labelledby="product-variants-heading"
+                  aria-describedby={
+                    errors.variants?.root ? "product-variants-error" : undefined
+                  }
                   className="space-y-3 rounded-xl border border-border p-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -672,70 +638,132 @@ export function CatalogManager({
                       key={variant.id}
                     >
                       <legend className="sr-only">Variant {index + 1}</legend>
-                      <label className="space-y-1 text-sm">
-                        SKU
+                      <div className="space-y-1 text-sm">
+                        <label htmlFor={`variant-${index}-sku`}>SKU</label>
                         <Input
-                          aria-label={`Variant ${index + 1} SKU`}
+                          id={`variant-${index}-sku`}
+                          aria-describedby={
+                            errors.variants?.[index]?.sku
+                              ? `variant-${index}-sku-error`
+                              : undefined
+                          }
+                          aria-invalid={Boolean(errors.variants?.[index]?.sku)}
                           className={fieldClassName}
                           maxLength={100}
                           required
-                          {...register(`variants.${index}.sku` as const, {
-                            required: true,
-                          })}
+                          {...register(`variants.${index}.sku` as const)}
                         />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        Color
+                        {errors.variants?.[index]?.sku && (
+                          <FieldError id={`variant-${index}-sku-error`}>
+                            {errors.variants[index].sku.message}
+                          </FieldError>
+                        )}
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <label htmlFor={`variant-${index}-color`}>Color</label>
                         <Input
-                          aria-label={`Variant ${index + 1} color`}
+                          id={`variant-${index}-color`}
+                          aria-describedby={
+                            errors.variants?.[index]?.color
+                              ? `variant-${index}-color-error`
+                              : undefined
+                          }
+                          aria-invalid={Boolean(
+                            errors.variants?.[index]?.color,
+                          )}
                           className={fieldClassName}
                           maxLength={80}
                           required
-                          {...register(`variants.${index}.color` as const, {
-                            required: true,
-                          })}
+                          {...register(`variants.${index}.color` as const)}
                         />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        Size
+                        {errors.variants?.[index]?.color && (
+                          <FieldError id={`variant-${index}-color-error`}>
+                            {errors.variants[index].color.message}
+                          </FieldError>
+                        )}
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <label htmlFor={`variant-${index}-size`}>Size</label>
                         <Input
-                          aria-label={`Variant ${index + 1} size`}
+                          id={`variant-${index}-size`}
+                          aria-describedby={
+                            errors.variants?.[index]?.sizeLabel
+                              ? `variant-${index}-size-error`
+                              : undefined
+                          }
+                          aria-invalid={Boolean(
+                            errors.variants?.[index]?.sizeLabel,
+                          )}
                           className={fieldClassName}
                           maxLength={40}
                           required
-                          {...register(`variants.${index}.sizeLabel` as const, {
-                            required: true,
-                          })}
+                          {...register(`variants.${index}.sizeLabel` as const)}
                         />
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        Price (BDT)
+                        {errors.variants?.[index]?.sizeLabel && (
+                          <FieldError id={`variant-${index}-size-error`}>
+                            {errors.variants[index].sizeLabel.message}
+                          </FieldError>
+                        )}
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <label htmlFor={`variant-${index}-price`}>
+                          Price (BDT)
+                        </label>
                         <Input
-                          aria-label={`Variant ${index + 1} price in BDT`}
+                          id={`variant-${index}-price`}
+                          aria-describedby={
+                            errors.variants?.[index]?.priceBdt
+                              ? `variant-${index}-price-error variant-${index}-price-help`
+                              : `variant-${index}-price-help`
+                          }
+                          aria-invalid={Boolean(
+                            errors.variants?.[index]?.priceBdt,
+                          )}
                           className={fieldClassName}
                           inputMode="numeric"
                           maxLength={10}
                           placeholder="1999"
                           {...register(`variants.${index}.priceBdt` as const)}
                         />
-                        <span className="block text-xs text-muted-foreground">
+                        {errors.variants?.[index]?.priceBdt && (
+                          <FieldError id={`variant-${index}-price-error`}>
+                            {errors.variants[index].priceBdt.message}
+                          </FieldError>
+                        )}
+                        <span
+                          className="block text-xs text-muted-foreground"
+                          id={`variant-${index}-price-help`}
+                        >
                           Enter whole BDT only. Use 0 for a free product.
                           Required to publish.
                         </span>
-                      </label>
-                      <label className="space-y-1 text-sm">
-                        GTIN{" "}
-                        <span className="font-normal text-muted-foreground">
-                          (optional)
-                        </span>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <label htmlFor={`variant-${index}-gtin`}>
+                          GTIN{" "}
+                          <span className="font-normal text-muted-foreground">
+                            (optional)
+                          </span>
+                        </label>
                         <Input
-                          aria-label={`Variant ${index + 1} GTIN`}
+                          id={`variant-${index}-gtin`}
+                          aria-describedby={
+                            errors.variants?.[index]?.gtin
+                              ? `variant-${index}-gtin-error`
+                              : undefined
+                          }
+                          aria-invalid={Boolean(errors.variants?.[index]?.gtin)}
                           className={fieldClassName}
                           inputMode="numeric"
                           maxLength={14}
                           {...register(`variants.${index}.gtin` as const)}
                         />
-                      </label>
+                        {errors.variants?.[index]?.gtin && (
+                          <FieldError id={`variant-${index}-gtin-error`}>
+                            {errors.variants[index].gtin.message}
+                          </FieldError>
+                        )}
+                      </div>
                       <Button
                         className="h-auto justify-self-start px-2 py-1 text-sm text-destructive"
                         type="button"
@@ -751,6 +779,11 @@ export function CatalogManager({
                       No variants added. Add them before publishing.
                     </p>
                   )}
+                  {errors.variants?.root?.message && (
+                    <FieldError id="product-variants-error">
+                      {errors.variants.root.message}
+                    </FieldError>
+                  )}
                 </section>
 
                 <Field>
@@ -763,7 +796,7 @@ export function CatalogManager({
                   <Controller
                     control={control}
                     name="sizeGuideId"
-                    render={({ field }) => (
+                    render={({ field, fieldState }) => (
                       <Select
                         items={[
                           { label: "No size guide assigned", value: null },
@@ -781,6 +814,12 @@ export function CatalogManager({
                         <SelectTrigger
                           id="product-size-guide"
                           aria-labelledby="product-size-guide-label"
+                          aria-describedby={
+                            fieldState.error
+                              ? "product-size-guide-error"
+                              : undefined
+                          }
+                          aria-invalid={Boolean(fieldState.error)}
                           ref={field.ref}
                           onBlur={field.onBlur}
                         >
@@ -800,6 +839,11 @@ export function CatalogManager({
                       </Select>
                     )}
                   />
+                  {errors.sizeGuideId && (
+                    <FieldError id="product-size-guide-error">
+                      {errors.sizeGuideId.message}
+                    </FieldError>
+                  )}
                   {categoryId && compatibleGuides.length === 0 && (
                     <FieldDescription>
                       No matching size guide is available.{" "}
@@ -860,13 +904,22 @@ export function CatalogManager({
                 <Field>
                   <FieldLabel htmlFor="audit-reason">Audit reason</FieldLabel>
                   <Input
+                    aria-describedby={
+                      errors.reason ? "audit-reason-error" : undefined
+                    }
+                    aria-invalid={Boolean(errors.reason)}
                     className={fieldClassName}
                     id="audit-reason"
                     maxLength={500}
                     minLength={3}
                     required
-                    {...register("reason", { required: true, minLength: 3 })}
+                    {...register("reason")}
                   />
+                  {errors.reason && (
+                    <FieldError id="audit-reason-error">
+                      {errors.reason.message}
+                    </FieldError>
+                  )}
                 </Field>
 
                 {formErrorMessage && (
@@ -884,7 +937,9 @@ export function CatalogManager({
                 )}
                 <Button
                   className="h-auto w-full px-4 py-3 text-base font-semibold"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting || (Boolean(editingId) && !hasProductChanges)
+                  }
                   type="submit"
                 >
                   {isSubmitting
@@ -911,55 +966,4 @@ export function CatalogManager({
       </div>
     </main>
   );
-}
-
-function toProductFormState(product: CatalogManagedProductDetail): ProductForm {
-  return {
-    id: product.id,
-    slug: product.slug,
-    name: product.name,
-    description: product.description ?? "",
-    audience: product.audience ?? "",
-    categoryId: product.category?.id ?? "",
-    fit: product.fit ?? "",
-    fabricComposition: product.fabricComposition ?? "",
-    careInstructions: product.careInstructions ?? "",
-    sizeGuideId: product.sizeGuideId ?? "",
-    variants: product.variants.map((variant) => ({
-      sku: variant.sku,
-      color: variant.color,
-      sizeLabel: variant.sizeLabel,
-      priceBdt: formatBdtInput(variant.price?.amountBdt ?? null),
-      gtin: variant.gtin ?? "",
-    })),
-    isPublished: product.isPublished,
-    reason: "",
-  };
-}
-
-function toSizeGuideOption(
-  guide: NonNullable<CatalogManagedProductDetail["sizeGuide"]>,
-): SizeGuideOption {
-  return {
-    id: guide.id,
-    name: guide.name,
-    category: guide.category,
-    fit: guide.fit,
-    measurementBasis: guide.measurementBasis,
-    sizeLabels: guide.rows.map(({ sizeLabel }) => sizeLabel),
-    updatedAt: guide.updatedAt,
-  };
-}
-
-function withProductSizeGuide(
-  guides: SizeGuideOption[],
-  product: CatalogManagedProductDetail | undefined,
-): SizeGuideOption[] {
-  if (
-    !product?.sizeGuide ||
-    guides.some(({ id }) => id === product.sizeGuide?.id)
-  ) {
-    return guides;
-  }
-  return [toSizeGuideOption(product.sizeGuide), ...guides];
 }

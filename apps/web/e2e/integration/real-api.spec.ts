@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { chooseSelectOption } from "../select";
+
+function variantField(page: Page, index: number, label: string) {
+  return page
+    .getByRole("group", { name: `Variant ${index}` })
+    .getByLabel(label, { exact: true });
+}
 
 const brandPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
@@ -29,13 +36,19 @@ test("real browser session reaches the API through Next and respects roles", asy
 
   await page.goto("/account");
   await page.getByRole("tab", { name: "Create account" }).click();
-  await page.getByLabel("Name").fill("E2E Customer");
-  await page
-    .getByLabel("Email", { exact: true })
-    .fill(`e2e-${randomUUID()}@example.test`);
+  const customerEmail = `e2e-${randomUUID()}@example.test`;
+  await page.getByLabel("Email", { exact: true }).fill("not-an-email");
   await page
     .getByLabel("Password", { exact: true })
     .fill("CorrectHorseBattery1!");
+  await page
+    .locator("form")
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(page.getByText("Enter your name.")).toBeVisible();
+  await expect(page.getByText("Enter a valid email address.")).toBeVisible();
+  await page.getByLabel("Name").fill("E2E Customer");
+  await page.getByLabel("Email", { exact: true }).fill(customerEmail);
   await page
     .locator("form")
     .getByRole("button", { name: "Create account", exact: true })
@@ -83,6 +96,22 @@ test("admin updates public storefront settings through to the rendered header", 
     .click();
   await expect(page).toHaveURL(/\/admin$/);
 
+  const headerCategoryName = "Navigation E2E category";
+  const headerCategorySlug = `navigation-e2e-${randomUUID().slice(0, 8)}`;
+  const categoryResponse = await page.request.post(
+    "/api/v1/catalog/categories",
+    {
+      data: {
+        name: headerCategoryName,
+        slug: headerCategorySlug,
+        reason: "Create a category for storefront navigation E2E",
+      },
+      headers: { Origin: new URL(page.url()).origin },
+    },
+  );
+  expect(categoryResponse.status()).toBe(201);
+  const headerCategory = await categoryResponse.json();
+
   const settingsNavigation = page.getByRole("navigation", {
     name: "Settings",
   });
@@ -95,9 +124,21 @@ test("admin updates public storefront settings through to the rendered header", 
     page.getByRole("heading", { name: "Storefront settings", level: 1 }),
   ).toBeVisible();
 
+  const saveSettings = page.getByRole("button", {
+    name: "Save storefront settings",
+  });
+  const initialStoreName = await page.getByLabel("Store name").inputValue();
+  await expect(saveSettings).toBeDisabled();
+  await page.getByLabel("Reason for this change").fill("Reason only");
+  await expect(saveSettings).toBeDisabled();
+  await page.getByLabel("Store name").fill(`${initialStoreName} temporary`);
+  await expect(saveSettings).toBeEnabled();
+  await page.getByLabel("Store name").fill(initialStoreName);
+  await expect(saveSettings).toBeDisabled();
   await page
     .getByLabel("Reason for this change")
     .fill("Publish E2E store logo");
+  await expect(saveSettings).toBeDisabled();
   await page.getByLabel("Storefront logo lockup").setInputFiles({
     name: "store-logo.png",
     mimeType: "image/png",
@@ -193,6 +234,12 @@ test("admin updates public storefront settings through to the rendered header", 
     .getByLabel("Footer description")
     .fill("Everyday style, thoughtfully selected.");
   await page
+    .getByLabel("Add an active category")
+    .selectOption(headerCategory.id);
+  await expect(page.getByLabel("Catalog category")).toHaveValue(
+    headerCategory.id,
+  );
+  await page
     .getByLabel("Reason for this change")
     .fill("Publish the festive storefront update");
   await page.getByRole("button", { name: "Save storefront settings" }).click();
@@ -242,6 +289,13 @@ test("admin updates public storefront settings through to the rendered header", 
     socialLinks: {
       instagram: "https://instagram.com/aaraj",
     },
+    headerNavigation: [
+      { label: "Products", href: "/" },
+      {
+        label: headerCategoryName,
+        href: `/?category=${headerCategorySlug}`,
+      },
+    ],
     footerDescription: "Everyday style, thoughtfully selected.",
     footerLinks: [{ label: "Contact us", href: "/contact" }],
   });
@@ -330,6 +384,9 @@ test("admin updates public storefront settings through to the rendered header", 
   await expect(
     page.getByRole("link", { name: "Call us: +8801712345678" }),
   ).toHaveAttribute("href", "tel:+8801712345678");
+  await expect(
+    page.getByRole("link", { name: headerCategoryName, exact: true }),
+  ).toHaveAttribute("href", `/?category=${headerCategorySlug}`);
   await expect(
     page.locator('header img[alt="AARAJ Festive Edit logo"]'),
   ).toBeVisible();
@@ -484,6 +541,18 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByLabel("Reason for change").fill("Create clothing root");
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
+  await page.getByRole("link", { name: "Edit Clothing" }).click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
+    "Clothing",
+  );
+  const saveCategory = page.getByRole("button", { name: "Save category" });
+  await expect(saveCategory).toBeDisabled();
+  await page.getByLabel("Reason for change").fill("Reason only");
+  await expect(saveCategory).toBeDisabled();
+  await page.getByLabel("Name", { exact: true }).fill("Clothing edited");
+  await expect(saveCategory).toBeEnabled();
+  await page.getByLabel("Name", { exact: true }).fill("Clothing");
+  await expect(saveCategory).toBeDisabled();
   await page.goto("/admin/catalog/categories/create");
   await page.getByLabel("Name", { exact: true }).fill("T-shirts");
   await page.getByLabel("Slug").fill("t-shirts");
@@ -514,6 +583,15 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("row", { name: new RegExp(guideName) }),
   ).toBeVisible();
+  await page.getByRole("link", { name: `Edit ${guideName}` }).click();
+  const saveGuide = page.getByRole("button", { name: "Save guide" });
+  await expect(saveGuide).toBeDisabled();
+  await page.getByLabel("Audit reason").fill("Reason only");
+  await expect(saveGuide).toBeDisabled();
+  await page.getByLabel("Guide name").fill(`${guideName} edited`);
+  await expect(saveGuide).toBeEnabled();
+  await page.getByLabel("Guide name").fill(guideName);
+  await expect(saveGuide).toBeDisabled();
 
   await page.goto("/admin/catalog/create");
   await expect(
@@ -533,15 +611,15 @@ test("catalog operator configures a product through to storefront visibility", a
   await chooseSelectOption(page, "Reusable size guide", new RegExp(guideName));
 
   await page.getByRole("button", { name: "Add variant" }).click();
-  await page.getByLabel("Variant 1 SKU").fill(skuSmall);
-  await page.getByLabel("Variant 1 color").fill("Black");
-  await page.getByLabel("Variant 1 size").fill("S");
-  await page.getByLabel("Variant 1 price in BDT").fill("2450");
+  await variantField(page, 1, "SKU").fill(skuSmall);
+  await variantField(page, 1, "Color").fill("Black");
+  await variantField(page, 1, "Size").fill("S");
+  await variantField(page, 1, "Price (BDT)").fill("2450");
   await page.getByRole("button", { name: "Add variant" }).click();
-  await page.getByLabel("Variant 2 SKU").fill(skuMedium);
-  await page.getByLabel("Variant 2 color").fill("Black");
-  await page.getByLabel("Variant 2 size").fill("M");
-  await page.getByLabel("Variant 2 price in BDT").fill("2490");
+  await variantField(page, 2, "SKU").fill(skuMedium);
+  await variantField(page, 2, "Color").fill("Black");
+  await variantField(page, 2, "Size").fill("M");
+  await variantField(page, 2, "Price (BDT)").fill("2490");
   await page
     .getByLabel("Audit reason", { exact: true })
     .fill("Create configured integration product draft");
@@ -560,7 +638,16 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("heading", { name: "Edit product", level: 2 }),
   ).toBeVisible();
-  const managedSkuFields = page.locator('input[aria-label$="SKU"]');
+  const saveProduct = page.getByRole("button", { name: "Save changes" });
+  await expect(saveProduct).toBeDisabled();
+  await page
+    .getByRole("region", { name: "Edit product" })
+    .getByLabel("Audit reason", { exact: true })
+    .fill("Reason only");
+  await expect(saveProduct).toBeDisabled();
+  const managedSkuFields = page
+    .getByRole("group", { name: /^Variant \d+$/ })
+    .getByLabel("SKU", { exact: true });
   await expect(managedSkuFields).toHaveCount(2);
   const managedSkus = await managedSkuFields.evaluateAll((inputs) =>
     inputs.map((input) => (input as HTMLInputElement).value),
@@ -621,7 +708,7 @@ test("catalog operator configures a product through to storefront visibility", a
   )?.[1];
   expect(productHead).toBeTruthy();
   expect(productHead).toContain(
-    `<title>AARAJ Festive Edit | ${productName}</title>`,
+    `<title>${storefrontSettings.siteName} | ${productName}</title>`,
   );
   expect(productHead).toContain(
     `<meta property="og:title" content="${productName}"`,

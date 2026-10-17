@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import {
   DEFAULT_STOREFRONT_BACKGROUND_COLOR,
   DEFAULT_STOREFRONT_BRAND_COLOR,
+  DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG,
+  type StorefrontHeaderNavigationItem,
 } from "@aaraj/contracts";
 import {
   check,
@@ -127,6 +129,10 @@ export const storefrontConfiguration = storefrontSchema.table(
       .$type<Array<{ label: string; href: string }>>()
       .notNull()
       .default([]),
+    headerNavigation: jsonb("header_navigation")
+      .$type<StorefrontHeaderNavigationItem[]>()
+      .notNull()
+      .default([...DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG]),
     version: integer("version").notNull().default(1),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
     updatedBy: text("updated_by").references(() => user.id, {
@@ -190,6 +196,10 @@ export const storefrontConfiguration = storefrontSchema.table(
     check(
       "configuration_footer_links_check",
       sql`case when jsonb_typeof(${table.footerLinks}) = 'array' then jsonb_array_length(${table.footerLinks}) <= 8 else false end`,
+    ),
+    check(
+      "configuration_header_navigation_check",
+      sql`case when jsonb_typeof(${table.headerNavigation}) = 'array' then jsonb_array_length(${table.headerNavigation}) <= 8 else false end`,
     ),
     check("configuration_version_check", sql`${table.version} > 0`),
     check(

@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { z } from "zod";
 import { API_V1_BASE_PATH, EffectiveAccessSchema } from "@aaraj/contracts";
 import { authClient } from "@/features/auth/auth-client";
 import type { InitialSession } from "@/features/auth/auth-session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -25,6 +32,24 @@ import { useCartStore } from "@/features/cart/cart-provider";
 type FormMode = "sign-in" | "sign-up";
 type AuthForm = { name: string; email: string; password: string };
 
+function authFormSchemaFor(mode: FormMode) {
+  return z.strictObject({
+    name:
+      mode === "sign-up"
+        ? z.string().trim().min(1, { error: "Enter your name." })
+        : z.string(),
+    email: z
+      .string()
+      .trim()
+      .max(254, { error: "Email must be 254 characters or fewer." })
+      .pipe(z.email({ error: "Enter a valid email address." })),
+    password: z
+      .string()
+      .min(8, { error: "Use at least 8 characters." })
+      .max(128, { error: "Password must be 128 characters or fewer." }),
+  });
+}
+
 export function AuthPanel({
   initialSession,
 }: {
@@ -35,13 +60,16 @@ export function AuthPanel({
   const refreshCart = useCartStore((state) => state.refresh);
   authClient.hydrateSession(initialSession);
   const [mode, setMode] = useState<FormMode>("sign-in");
+  const authFormSchema = useMemo(() => authFormSchemaFor(mode), [mode]);
   const [showPassword, setShowPassword] = useState(false);
   const {
     register,
     handleSubmit,
     resetField,
-    formState: { isSubmitting },
-  } = useForm<AuthForm>({
+    clearErrors,
+    formState: { errors, isSubmitting },
+  } = useForm<AuthForm, unknown, AuthForm>({
+    resolver: zodResolver(authFormSchema),
     defaultValues: { name: "", email: "", password: "" },
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -156,17 +184,26 @@ export function AuthPanel({
   }
 
   const credentialsForm = (
-    <form className="space-y-4" onSubmit={handleSubmit(submitCredentials)}>
+    <form
+      className="space-y-4"
+      noValidate
+      onSubmit={handleSubmit(submitCredentials)}
+    >
       {mode === "sign-up" && (
         <Field>
           <FieldLabel htmlFor="name">Name</FieldLabel>
           <Input
             className="h-auto bg-background px-3 py-3 text-base md:text-base"
+            aria-invalid={Boolean(errors.name)}
+            aria-describedby={errors.name ? "name-error" : undefined}
             id="name"
             autoComplete="name"
             required
-            {...register("name", { required: mode === "sign-up" })}
+            {...register("name")}
           />
+          {errors.name?.message && (
+            <FieldError id="name-error">{errors.name.message}</FieldError>
+          )}
         </Field>
       )}
 
@@ -174,12 +211,18 @@ export function AuthPanel({
         <FieldLabel htmlFor="email">Email</FieldLabel>
         <Input
           className="h-auto bg-background px-3 py-3 text-base md:text-base"
+          aria-invalid={Boolean(errors.email)}
+          aria-describedby={errors.email ? "email-error" : undefined}
           id="email"
           type="email"
           autoComplete="email"
+          maxLength={254}
           required
-          {...register("email", { required: true })}
+          {...register("email")}
         />
+        {errors.email?.message && (
+          <FieldError id="email-error">{errors.email.message}</FieldError>
+        )}
       </Field>
 
       <Field>
@@ -187,6 +230,8 @@ export function AuthPanel({
         <InputGroup className="h-auto bg-background">
           <InputGroupInput
             className="h-auto px-3 py-3 text-base md:text-base"
+            aria-invalid={Boolean(errors.password)}
+            aria-describedby={errors.password ? "password-error" : undefined}
             id="password"
             type={showPassword ? "text" : "password"}
             autoComplete={
@@ -195,11 +240,7 @@ export function AuthPanel({
             minLength={8}
             maxLength={128}
             required
-            {...register("password", {
-              required: true,
-              minLength: 8,
-              maxLength: 128,
-            })}
+            {...register("password")}
           />
           <InputGroupAddon align="inline-end">
             <InputGroupButton
@@ -215,6 +256,9 @@ export function AuthPanel({
             </InputGroupButton>
           </InputGroupAddon>
         </InputGroup>
+        {errors.password?.message && (
+          <FieldError id="password-error">{errors.password.message}</FieldError>
+        )}
         {mode === "sign-up" && (
           <FieldDescription>Use at least 8 characters.</FieldDescription>
         )}
@@ -303,6 +347,7 @@ export function AuthPanel({
               if (value !== "sign-in" && value !== "sign-up") return;
 
               setMode(value);
+              clearErrors();
               setShowPassword(false);
               setErrorMessage(null);
               setStatusMessage(null);

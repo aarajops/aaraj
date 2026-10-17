@@ -56,7 +56,7 @@ export const StorefrontSocialLinksSchema = z.strictObject({
 });
 export type StorefrontSocialLinks = z.infer<typeof StorefrontSocialLinksSchema>;
 
-const StorefrontFooterLinkSchema = z.strictObject({
+const StorefrontLinkSchema = z.strictObject({
   label: z.string().trim().min(1).max(40),
   href: z
     .string()
@@ -78,7 +78,47 @@ const StorefrontFooterLinkSchema = z.strictObject({
       }
     }, "Use an internal path or a secure HTTPS link."),
 });
-export type StorefrontFooterLink = z.infer<typeof StorefrontFooterLinkSchema>;
+export type StorefrontLink = z.infer<typeof StorefrontLinkSchema>;
+export type StorefrontFooterLink = StorefrontLink;
+
+export const StorefrontHeaderNavigationItemSchema = z.discriminatedUnion(
+  "type",
+  [
+    z.strictObject({
+      type: z.literal("link"),
+      ...StorefrontLinkSchema.shape,
+    }),
+    z.strictObject({
+      type: z.literal("category"),
+      categoryId: z.uuid(),
+    }),
+  ],
+);
+export type StorefrontHeaderNavigationItem = z.infer<
+  typeof StorefrontHeaderNavigationItemSchema
+>;
+
+export const DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG = [
+  { type: "link", label: "Products", href: "/" },
+] as const satisfies readonly StorefrontHeaderNavigationItem[];
+
+export const DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS =
+  DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG.flatMap((item) =>
+    item.type === "link" ? [{ label: item.label, href: item.href }] : [],
+  ) satisfies readonly StorefrontLink[];
+
+export const StorefrontHeaderNavigationSchema =
+  StorefrontHeaderNavigationItemSchema.array()
+    .max(8)
+    .refine(
+      (items) => {
+        const categoryIds = items.flatMap((item) =>
+          item.type === "category" ? [item.categoryId] : [],
+        );
+        return new Set(categoryIds).size === categoryIds.length;
+      },
+      { message: "A category can appear only once in header navigation." },
+    );
 
 export const StorefrontBrandAssetKindSchema = z.enum([
   "logo",
@@ -129,14 +169,16 @@ export const PublicStorefrontSettingsSchema = z.strictObject({
   socialImage: StorefrontBrandAssetSchema.nullable(),
   socialImageAlt: z.string().trim().min(1).max(250).nullable(),
   socialLinks: StorefrontSocialLinksSchema,
+  headerNavigation: StorefrontLinkSchema.array().max(8),
   footerDescription: PublicTextSchema,
-  footerLinks: StorefrontFooterLinkSchema.array().max(8),
+  footerLinks: StorefrontLinkSchema.array().max(8),
 });
 export type PublicStorefrontSettings = z.infer<
   typeof PublicStorefrontSettingsSchema
 >;
 
 export const StorefrontSettingsSchema = PublicStorefrontSettingsSchema.extend({
+  headerNavigation: StorefrontHeaderNavigationSchema,
   version: z.number().int().positive(),
   updatedAt: z.iso.datetime().nullable(),
 });
@@ -156,8 +198,9 @@ export const StorefrontSettingsUpdateSchema = z
     businessAddress: PublicTextSchema,
     socialImageAlt: z.string().trim().min(1).max(250).nullable(),
     socialLinks: StorefrontSocialLinksSchema,
+    headerNavigation: StorefrontHeaderNavigationSchema,
     footerDescription: PublicTextSchema,
-    footerLinks: StorefrontFooterLinkSchema.array().max(8),
+    footerLinks: StorefrontLinkSchema.array().max(8),
     expectedVersion: z.number().int().positive(),
     reason: z.string().trim().min(3).max(500),
   })

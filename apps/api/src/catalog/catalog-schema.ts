@@ -125,7 +125,7 @@ export const catalogSizeGuideMeasurement = catalogSchema.table(
       .notNull()
       .references(() => catalogSizeGuideRow.id, { onDelete: "cascade" }),
     key: text("key").$type<CatalogMeasurementKey>().notNull(),
-    valueMm: numeric("value_mm", { precision: 8, scale: 2 }).notNull(),
+    valueCm: numeric("value_cm", { precision: 8, scale: 3 }).notNull(),
   },
   (table) => [
     uniqueIndex("size_guide_measurement_key_uidx").on(table.rowId, table.key),
@@ -133,7 +133,7 @@ export const catalogSizeGuideMeasurement = catalogSchema.table(
       "size_guide_measurement_key_check",
       sql`${table.key} in ('chest_width', 'body_length', 'shoulder_width', 'sleeve_length', 'waist', 'hip', 'inseam', 'outseam', 'rise', 'thigh', 'hem')`,
     ),
-    check("size_guide_measurement_value_check", sql`${table.valueMm} > 0`),
+    check("size_guide_measurement_value_check", sql`${table.valueCm} > 0`),
   ],
 );
 

@@ -61,6 +61,7 @@ export default async function EditCatalogCategoryPage({
 
   return (
     <CategoryManager
+      key={category.id}
       view="edit"
       initialCategories={result.categories}
       initialCategory={category}

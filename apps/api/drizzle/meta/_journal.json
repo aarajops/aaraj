@@ -239,6 +239,20 @@
       "when": 1792062970897,
       "tag": "0033_storefront_brand_icon",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792065116579,
+      "tag": "0034_storefront_header_navigation",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792213732442,
+      "tag": "0035_size_guide_centimeters",
+      "breakpoints": true
     }
   ]
 }

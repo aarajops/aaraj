@@ -4,6 +4,7 @@ import { cache } from "react";
 import {
   DEFAULT_STOREFRONT_BACKGROUND_COLOR,
   DEFAULT_STOREFRONT_BRAND_COLOR,
+  DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
   PublicStorefrontSettingsSchema,
   type PublicStorefrontSettings,
 } from "@aaraj/contracts";
@@ -32,6 +33,7 @@ const fallbackSettings: PublicStorefrontSettings = {
     youtube: null,
     x: null,
   },
+  headerNavigation: [...DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS],
   footerDescription: null,
   footerLinks: [],
 };
