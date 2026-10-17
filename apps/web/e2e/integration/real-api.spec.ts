@@ -538,7 +538,6 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill("Clothing");
   await page.getByLabel("Slug").fill("clothing");
-  await page.getByLabel("Reason for change").fill("Create clothing root");
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
   await page.getByRole("link", { name: "Edit Clothing" }).click();
@@ -546,8 +545,6 @@ test("catalog operator configures a product through to storefront visibility", a
     "Clothing",
   );
   const saveCategory = page.getByRole("button", { name: "Save category" });
-  await expect(saveCategory).toBeDisabled();
-  await page.getByLabel("Reason for change").fill("Reason only");
   await expect(saveCategory).toBeDisabled();
   await page.getByLabel("Name", { exact: true }).fill("Clothing edited");
   await expect(saveCategory).toBeEnabled();
@@ -557,7 +554,6 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByLabel("Name", { exact: true }).fill("T-shirts");
   await page.getByLabel("Slug").fill("t-shirts");
   await chooseSelectOption(page, "Parent category", "Clothing");
-  await page.getByLabel("Reason for change").fill("Create T-shirt category");
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
 
@@ -577,7 +573,6 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.locator("#size-label-1").fill("M");
   await page.locator("#size-1-chest_width").fill("21");
   await page.locator("#size-1-body_length").fill("29");
-  await page.getByLabel("Audit reason").fill("Create integration size guide");
   await page.getByRole("button", { name: "Create guide" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/size-guides$/);
   await expect(
@@ -585,8 +580,6 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBeVisible();
   await page.getByRole("link", { name: `Edit ${guideName}` }).click();
   const saveGuide = page.getByRole("button", { name: "Save guide" });
-  await expect(saveGuide).toBeDisabled();
-  await page.getByLabel("Audit reason").fill("Reason only");
   await expect(saveGuide).toBeDisabled();
   await page.getByLabel("Guide name").fill(`${guideName} edited`);
   await expect(saveGuide).toBeEnabled();
@@ -620,9 +613,6 @@ test("catalog operator configures a product through to storefront visibility", a
   await variantField(page, 2, "Color").fill("Black");
   await variantField(page, 2, "Size").fill("M");
   await variantField(page, 2, "Price (BDT)").fill("2490");
-  await page
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Create configured integration product draft");
   await page.getByRole("button", { name: "Create draft" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
@@ -640,11 +630,6 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBeVisible();
   const saveProduct = page.getByRole("button", { name: "Save changes" });
   await expect(saveProduct).toBeDisabled();
-  await page
-    .getByRole("region", { name: "Edit product" })
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Reason only");
-  await expect(saveProduct).toBeDisabled();
   const managedSkuFields = page
     .getByRole("group", { name: /^Variant \d+$/ })
     .getByLabel("SKU", { exact: true });
@@ -657,10 +642,6 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("combobox", { name: "Reusable size guide" }),
   ).toContainText(guideName);
   await page.getByLabel("Published on the storefront").check();
-  await page
-    .getByRole("region", { name: "Edit product" })
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Publish configured integration product");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
@@ -1278,10 +1259,6 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.goto("/admin/catalog");
   await page.getByRole("link", { name: `Edit ${productName}` }).click();
   await page.getByLabel("Published on the storefront").uncheck();
-  await page
-    .getByRole("region", { name: "Edit product" })
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Unpublish integration test product");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 

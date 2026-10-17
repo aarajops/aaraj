@@ -132,7 +132,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.locator("#size-label-1").fill("M");
   await page.locator("#size-1-chest_width").fill("21.000");
   await page.locator("#size-1-body_length").fill("29.000");
-  await page.getByLabel("Audit reason").fill("Create apparel size guide");
   await page.getByRole("button", { name: "Create guide" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/size-guides$/);
   await page.goto("/admin/catalog");
@@ -166,9 +165,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await variantField(page, 2, "Price (BDT)").fill("2200");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
   await page.getByLabel("Published on the storefront").check();
-  await page
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Publish apparel test product");
   await variantField(page, 2, "Price (BDT)").fill("2200.50");
   await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(
@@ -304,9 +300,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.locator("#product-slug").fill("aaraj-e2e-tee");
   await chooseSelectOption(page, "Audience", "Unisex");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
-  await page
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Check duplicate slug");
   await page.getByRole("button", { name: "Create draft" }).click();
   await expect(
     page.getByText("A product with this slug already exists"),
@@ -348,9 +341,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await variantField(page, 1, "Price (BDT)").fill("1999");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
   await page.getByLabel("Published on the storefront").check();
-  await page
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Create a second product");
   await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
@@ -384,10 +374,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.goto("/admin/catalog");
   await page.getByRole("link", { name: "Edit Aaraj E2E T-shirt" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
-  await page
-    .getByRole("region", { name: "Edit product" })
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Unpublish second pagination item");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
@@ -441,14 +427,14 @@ test("staff manages reusable size guides and apparel products safely", async ({
         return;
       }
       if (method === "DELETE") {
-        const body = route.request().postDataJSON() as { reason: string };
+        expect(route.request().postDataJSON()).toEqual({});
         deleteAttempts += 1;
         if (deleteAttempts === 1) {
           mediaRows = [
             {
               ...mediaRows[0]!,
               status: "deleting",
-              deletionReason: body.reason,
+              deletionReason: null,
             },
           ];
           await route.fulfill({
@@ -498,9 +484,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
     buffer: pngBuffer,
   });
   await expect(page.getByText("Processed", { exact: true })).toBeVisible();
-  await page
-    .getByLabel("Deletion reason")
-    .fill("Remove outdated product photo");
   await page.getByRole("button", { name: "Delete media" }).click();
   await expect(
     page.getByText("Deletion incomplete", { exact: true }),
@@ -513,10 +496,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.goto("/admin/catalog");
   await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
-  await page
-    .getByRole("region", { name: "Edit product" })
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Unpublish catalog test product");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
   await page.goto("/");
@@ -542,9 +521,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.goto("/admin/catalog/categories/create");
   await page.getByLabel("Name", { exact: true }).fill("Accessories");
   await page.getByLabel("Slug").fill("accessories");
-  await page
-    .getByLabel("Reason for change")
-    .fill("Add an independently managed category");
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
   await expect(page.getByRole("row", { name: /Accessories/ })).toBeVisible();
@@ -596,10 +572,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
     .getByRole("region", { name: "Edit product" })
     .getByLabel("Name", { exact: true })
     .fill("Aaraj E2E Tee auth recovery check");
-  await page
-    .getByRole("region", { name: "Edit product" })
-    .getByLabel("Audit reason", { exact: true })
-    .fill("Verify recent sign-in recovery");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.locator('p[role="alert"]')).toContainText(
     "Sign out and sign in again before retrying this action.",
