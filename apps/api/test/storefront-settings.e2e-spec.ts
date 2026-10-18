@@ -456,7 +456,6 @@ describe("storefront settings", () => {
           "supportEmail",
           "businessAddress",
           "socialLinks",
-          "headerNavigation",
           "footerDescription",
           "footerLinkGroups",
         ],
