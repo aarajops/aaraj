@@ -1,5 +1,6 @@
-import { StorefrontLink } from "@/features/storefront/storefront-link";
 import { getPublishedProductFilterOptions } from "@/features/catalog/catalog-queries";
+import { StorefrontBrandLogo } from "@/features/storefront/storefront-brand-logo";
+import { StorefrontLink } from "@/features/storefront/storefront-link";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 
 const socialNames = {
@@ -45,9 +46,21 @@ export async function StoreFooter() {
   );
 
   return (
-    <footer className="mt-auto border-t border-border bg-neutral-950 text-white">
+    <footer className="dark mt-auto border-t border-border bg-background text-foreground">
       <div className="container mx-auto grid w-full gap-x-8 gap-y-10 px-5 py-10 sm:grid-cols-2 lg:grid-cols-3 lg:px-0 xl:grid-cols-5">
-        <FooterNavigation label="Social Media" links={socialLinks} />
+        <section
+          aria-label={`${settings.siteName} footer brand and social links`}
+          className="grid content-start gap-6"
+        >
+          <StorefrontBrandLogo
+            imageClassName="h-10 max-w-48"
+            inverseFallback
+            loading="lazy"
+            logo={settings.logo}
+            siteName={settings.siteName}
+          />
+          <FooterNavigation label="Social Media" links={socialLinks} />
+        </section>
         <FooterNavigation label="Categories" links={categories} />
         <FooterNavigation
           label="About Us"
@@ -67,14 +80,14 @@ export async function StoreFooter() {
               Contacts
             </h2>
             {settings.footerDescription && (
-              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-neutral-300">
+              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-muted-foreground">
                 {settings.footerDescription}
               </p>
             )}
-            <address className="mt-4 grid gap-3 text-sm not-italic text-neutral-300">
+            <address className="mt-4 grid gap-3 text-sm not-italic text-muted-foreground">
               {settings.supportEmail && (
                 <a
-                  className="w-fit hover:text-white"
+                  className="w-fit hover:text-foreground"
                   href={`mailto:${settings.supportEmail}`}
                 >
                   {settings.supportEmail}
@@ -82,7 +95,7 @@ export async function StoreFooter() {
               )}
               {settings.supportPhone && (
                 <a
-                  className="w-fit hover:text-white"
+                  className="w-fit hover:text-foreground"
                   href={`tel:${settings.supportPhone}`}
                 >
                   {settings.supportPhone}
@@ -97,8 +110,9 @@ export async function StoreFooter() {
           </section>
         )}
       </div>
-      <div className="border-t border-white/15 px-5 py-4 text-center text-xs text-neutral-400">
-        © {new Date().getFullYear()} {settings.siteName}
+      <div className="border-t border-border px-5 py-4 text-center text-sm text-muted-foreground">
+        Copyright © {new Date().getFullYear()} {settings.siteName}. All rights
+        reserved.
       </div>
     </footer>
   );
@@ -116,10 +130,10 @@ function FooterNavigation({
   return (
     <nav aria-label={label}>
       <h2 className="text-sm font-semibold">{label}</h2>
-      <ul className="mt-4 grid gap-3 text-sm text-neutral-300">
+      <ul className="mt-4 grid gap-3 text-sm text-muted-foreground">
         {links.map(({ href, label: linkLabel }) => (
           <li key={`${linkLabel}:${href}`}>
-            <StorefrontLink className="hover:text-white" href={href}>
+            <StorefrontLink className="hover:text-foreground" href={href}>
               {linkLabel}
             </StorefrontLink>
           </li>
