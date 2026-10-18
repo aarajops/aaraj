@@ -45,6 +45,8 @@ const storefrontSettingsDraftSchema = z.strictObject({
     policies: z.array(z.strictObject({ label: z.string(), href: z.string() })),
   }),
   footerCategoryIds: z.array(z.uuid()),
+  homepageCategoriesEnabled: z.boolean(),
+  homepageCategoryIds: z.array(z.uuid()),
   headerNavigation: StorefrontHeaderNavigationItemSchema.array(),
   expectedVersion: z.number().int().positive(),
 });
@@ -92,6 +94,8 @@ function toStorefrontSettingsUpdate(
     footerDescription: values.footerDescription.trim() || null,
     footerLinkGroups,
     footerCategoryIds: values.footerCategoryIds,
+    homepageCategoriesEnabled: values.homepageCategoriesEnabled,
+    homepageCategoryIds: values.homepageCategoryIds,
     expectedVersion: values.expectedVersion,
   };
 }
@@ -143,6 +147,8 @@ export function toStorefrontSettingsDraft(
     footerDescription: settings.footerDescription ?? "",
     footerLinkGroups: settings.footerLinkGroups,
     footerCategoryIds: settings.footerCategoryIds,
+    homepageCategoriesEnabled: settings.homepageCategoriesEnabled,
+    homepageCategoryIds: settings.homepageCategoryIds,
     headerNavigation: settings.headerNavigation,
     expectedVersion: settings.version,
   };

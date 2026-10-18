@@ -138,6 +138,13 @@ export const StorefrontFooterCategoryIdsSchema = z
     message: "A catalog category can appear only once in the footer.",
   });
 
+export const StorefrontHomepageCategoryIdsSchema = z
+  .uuid()
+  .array()
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: "A catalog category can appear only once in the homepage section.",
+  });
+
 export const StorefrontHeaderNavigationItemSchema = z.discriminatedUnion(
   "type",
   [
@@ -231,6 +238,8 @@ export const PublicStorefrontSettingsSchema = z.strictObject({
   footerLinks: StorefrontLinkSchema.array().max(8),
   footerLinkGroups: StorefrontFooterLinkGroupsSchema,
   footerCategoryIds: StorefrontFooterCategoryIdsSchema,
+  homepageCategoriesEnabled: z.boolean().default(false),
+  homepageCategoryIds: StorefrontHomepageCategoryIdsSchema.default([]),
 });
 export type PublicStorefrontSettings = z.infer<
   typeof PublicStorefrontSettingsSchema
@@ -262,6 +271,8 @@ export const StorefrontSettingsUpdateSchema = z
     footerLinks: StorefrontLinkSchema.array().max(8).optional(),
     footerLinkGroups: StorefrontFooterLinkGroupsSchema.optional(),
     footerCategoryIds: StorefrontFooterCategoryIdsSchema.optional(),
+    homepageCategoriesEnabled: z.boolean().optional(),
+    homepageCategoryIds: StorefrontHomepageCategoryIdsSchema.optional(),
     expectedVersion: z.number().int().positive(),
     reason: z.string().trim().min(3).max(500).optional(),
   })

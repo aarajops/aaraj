@@ -1,12 +1,14 @@
 "use client";
 
 import { CatalogCategorySchema, type CatalogCategory } from "@aaraj/contracts";
+import Image from "next/image";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   createCatalogCategory,
+  uploadCatalogCategoryImage,
   updateCatalogCategory,
 } from "@/features/catalog/catalog-client";
 import {
@@ -19,7 +21,7 @@ import {
 import { CategoryTable } from "@/features/catalog/category-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import {
   Field,
@@ -76,6 +78,32 @@ export function CategoryManager({
   const editingId = useWatch({ control, name: "id" });
   const hasCategoryChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageInput = useRef<HTMLInputElement>(null);
+
+  async function uploadCategoryImage() {
+    const file = imageInput.current?.files?.[0];
+    if (!editingId || !file) return;
+    setImageUploading(true);
+    setErrorMessage(null);
+    try {
+      const response = await uploadCatalogCategoryImage(editingId, file);
+      if (!response.ok) {
+        const problem = await readApiErrorResponse(response);
+        setErrorMessage(
+          getApiErrorMessage(problem) ??
+            "The category image could not be saved.",
+        );
+        return;
+      }
+      if (imageInput.current) imageInput.current.value = "";
+      router.refresh();
+    } catch {
+      setErrorMessage("Could not reach the server. Please try again.");
+    } finally {
+      setImageUploading(false);
+    }
+  }
 
   async function saveCategory(submission: CategorySubmission) {
     if (submission.id && !hasCategoryChanges) return;
@@ -286,29 +314,42 @@ export function CategoryManager({
                     )}
                   />
                 </Field>
-                <Field>
-                  <FieldLabel htmlFor="category-order">
-                    Display order
-                  </FieldLabel>
-                  <Input
-                    aria-describedby={
-                      errors.sortOrder ? "category-order-error" : undefined
-                    }
-                    aria-invalid={Boolean(errors.sortOrder)}
-                    className={fieldClassName}
-                    id="category-order"
-                    max={10000}
-                    min={0}
-                    required
-                    type="number"
-                    {...register("sortOrder")}
-                  />
-                  {errors.sortOrder && (
-                    <FieldError id="category-order-error">
-                      {errors.sortOrder.message}
-                    </FieldError>
-                  )}
-                </Field>
+                {editingId && (
+                  <Field>
+                    <FieldLabel htmlFor="category-image">
+                      Category artwork
+                    </FieldLabel>
+                    {initialCategory?.image && (
+                      <Image
+                        alt={initialCategory.name}
+                        className="aspect-[3/4] w-40 rounded-lg object-cover"
+                        height={initialCategory.image.height}
+                        unoptimized
+                        src={initialCategory.image.src}
+                        width={initialCategory.image.width}
+                      />
+                    )}
+                    <Input
+                      accept="image/jpeg,image/png,image/webp"
+                      disabled={imageUploading}
+                      id="category-image"
+                      ref={imageInput}
+                      type="file"
+                    />
+                    <FieldDescription>
+                      Upload a JPEG, PNG, or WebP image. It will be optimized
+                      for the storefront.
+                    </FieldDescription>
+                    <Button
+                      disabled={imageUploading}
+                      type="button"
+                      variant="outline"
+                      onClick={() => void uploadCategoryImage()}
+                    >
+                      {imageUploading ? "Uploading…" : "Upload artwork"}
+                    </Button>
+                  </Field>
+                )}
                 {editingId && (
                   <Field className="flex flex-row items-center gap-2">
                     <input

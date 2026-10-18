@@ -71,13 +71,6 @@ export function CategoryTable({
             </Badge>
           ),
         }),
-        columnHelper.accessor("sortOrder", {
-          header: "Order",
-          meta: {
-            align: "right",
-            numeric: true,
-          },
-        }),
         columnHelper.display({
           id: "actions",
           header: "Actions",

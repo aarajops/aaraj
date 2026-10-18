@@ -274,6 +274,20 @@
       "when": 1792303607495,
       "tag": "0038_storefront_footer_configuration",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792314908439,
+      "tag": "0039_homepage_category_section",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792316992070,
+      "tag": "0040_remove_category_manual_order",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,10 @@
+ALTER TABLE "catalog"."category" ADD COLUMN "image_object_key" text;--> statement-breakpoint
+ALTER TABLE "catalog"."category" ADD COLUMN "image_sha256" text;--> statement-breakpoint
+ALTER TABLE "catalog"."category" ADD COLUMN "image_size_bytes" integer;--> statement-breakpoint
+ALTER TABLE "catalog"."category" ADD COLUMN "image_width" integer;--> statement-breakpoint
+ALTER TABLE "catalog"."category" ADD COLUMN "image_height" integer;--> statement-breakpoint
+ALTER TABLE "storefront"."configuration" ADD COLUMN "homepage_categories_enabled" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "storefront"."configuration" ADD COLUMN "homepage_category_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "catalog"."category" ADD CONSTRAINT "category_image_metadata_check" CHECK (("catalog"."category"."image_object_key" is null and "catalog"."category"."image_sha256" is null and "catalog"."category"."image_size_bytes" is null and "catalog"."category"."image_width" is null and "catalog"."category"."image_height" is null) or ("catalog"."category"."image_object_key" is not null and "catalog"."category"."image_sha256" is not null and "catalog"."category"."image_size_bytes" is not null and "catalog"."category"."image_width" is not null and "catalog"."category"."image_height" is not null and "catalog"."category"."image_sha256" ~ '^[0-9a-f]{64}$' and "catalog"."category"."image_size_bytes" between 1 and 3145728 and "catalog"."category"."image_width" between 1 and 480 and "catalog"."category"."image_height" between 1 and 640));--> statement-breakpoint
+ALTER TABLE "catalog"."category" ADD CONSTRAINT "category_image_object_key_check" CHECK ("catalog"."category"."image_object_key" is null or "catalog"."category"."image_object_key" = 'published/catalog/categories/' || "catalog"."category"."id"::text || '/' || "catalog"."category"."image_sha256" || '.webp');--> statement-breakpoint
+ALTER TABLE "storefront"."configuration" ADD CONSTRAINT "configuration_homepage_category_ids_check" CHECK (jsonb_typeof("storefront"."configuration"."homepage_category_ids") = 'array');

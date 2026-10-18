@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { hasDirtyFieldsExcept } from "@/lib/form-dirty-state";
+import { HomepageCategorySettings } from "./homepage-category-settings";
 import {
   socialFields,
   storefrontSettingsFormSchema,
@@ -96,6 +97,8 @@ export function StorefrontSettingsManager({
       footerDescription: "",
       footerLinkGroups: { about: [], policies: [] },
       footerCategoryIds: [],
+      homepageCategoriesEnabled: false,
+      homepageCategoryIds: [],
       headerNavigation: [],
       expectedVersion: 1,
     },
@@ -123,6 +126,10 @@ export function StorefrontSettingsManager({
   };
   const footerCategoryIds =
     useWatch({ control, name: "footerCategoryIds" }) ?? [];
+  const homepageCategoryIds =
+    useWatch({ control, name: "homepageCategoryIds" }) ?? [];
+  const homepageCategoriesEnabled =
+    useWatch({ control, name: "homepageCategoriesEnabled" }) ?? false;
   const headerNavigation =
     useWatch({ control, name: "headerNavigation" }) ?? [];
   const announcementEnabled =
@@ -342,6 +349,22 @@ export function StorefrontSettingsManager({
     setValue(
       "footerCategoryIds",
       footerCategoryIds.filter((configuredId) => configuredId !== categoryId),
+      { shouldDirty: true, shouldValidate: true },
+    );
+  }
+
+  function addHomepageCategory(categoryId: string) {
+    if (!categoryId || homepageCategoryIds.includes(categoryId)) return;
+    setValue("homepageCategoryIds", [...homepageCategoryIds, categoryId], {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function removeHomepageCategory(categoryId: string) {
+    setValue(
+      "homepageCategoryIds",
+      homepageCategoryIds.filter((configuredId) => configuredId !== categoryId),
       { shouldDirty: true, shouldValidate: true },
     );
   }
@@ -1100,6 +1123,20 @@ export function StorefrontSettingsManager({
               </div>
             )}
           </section>
+
+          <HomepageCategorySettings
+            categories={categoryOptions}
+            selectedCategoryIds={homepageCategoryIds}
+            enabled={homepageCategoriesEnabled}
+            onEnabledChange={(enabled) =>
+              setValue("homepageCategoriesEnabled", enabled, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+            onCategoryAdd={addHomepageCategory}
+            onCategoryRemove={removeHomepageCategory}
+          />
 
           <section
             aria-labelledby="footer-content-heading"

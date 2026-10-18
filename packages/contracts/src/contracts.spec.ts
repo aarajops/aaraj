@@ -486,5 +486,12 @@ describe("Contracts Schema Validation", () => {
         reason: "Create clothing category",
       }).success,
     ).toBe(false);
+    expect(
+      CatalogCategoryCreateSchema.safeParse({
+        name: "T-shirts",
+        slug: "t-shirts",
+        sortOrder: 10,
+      }).success,
+    ).toBe(false);
   });
 });

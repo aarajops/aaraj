@@ -164,7 +164,6 @@ describe("catalog and security audit", () => {
       .send({
         name: "Clothing",
         slug: "clothing",
-        sortOrder: 10,
         reason: "Create clothing category group",
       })
       .expect(201);
@@ -1117,7 +1116,6 @@ describe("catalog and security audit", () => {
           name: `Category limit fixture ${index}`,
           slug: `category-limit-fixture-${String(index).padStart(3, "0")}`,
           parentId: null,
-          sortOrder: 0,
           isActive: index !== 0,
         })),
       )
@@ -1246,7 +1244,6 @@ describe("catalog and security audit", () => {
             ? "legacy-overflow-category"
             : `legacy-overflow-fixture-${index}`,
         parentId: null,
-        sortOrder: 0,
         isActive: true,
       })),
     );

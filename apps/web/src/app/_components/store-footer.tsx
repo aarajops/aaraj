@@ -31,6 +31,10 @@ export async function StoreFooter() {
         : [],
     )
     .sort(compareLabels);
+  const aboutLinks = [...settings.footerLinkGroups.about].sort(compareLabels);
+  const policyLinks = [...settings.footerLinkGroups.policies].sort(
+    compareLabels,
+  );
   const selectedCategoryIds = new Set(settings.footerCategoryIds);
   const categories = (productFilters?.categories ?? [])
     .filter(({ id }) => selectedCategoryIds.has(id))
@@ -62,14 +66,8 @@ export async function StoreFooter() {
           <FooterNavigation label="Social Media" links={socialLinks} />
         </section>
         <FooterNavigation label="Categories" links={categories} />
-        <FooterNavigation
-          label="About Us"
-          links={settings.footerLinkGroups.about}
-        />
-        <FooterNavigation
-          label="Policies"
-          links={settings.footerLinkGroups.policies}
-        />
+        <FooterNavigation label="About Us" links={aboutLinks} />
+        <FooterNavigation label="Policies" links={policyLinks} />
 
         {contactDetails && (
           <section aria-labelledby="store-footer-contacts-heading">

@@ -5,15 +5,25 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  SetMetadata,
 } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import type { UserSession } from "@thallesp/nestjs-better-auth";
 import type { Request } from "express";
-import { MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY } from "@aaraj/contracts";
+import {
+  MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY,
+  type Permission,
+} from "@aaraj/contracts";
 import { PermissionsService } from "../../platform/authorization/permissions.service.js";
 
 export const CATALOG_MEDIA_UPLOAD_RELEASE = Symbol(
   "CATALOG_MEDIA_UPLOAD_RELEASE",
 );
+export const CATALOG_MEDIA_UPLOAD_PERMISSION = "catalogMediaUploadPermission";
+
+export function RequireCatalogMediaUploadPermission(permission: Permission) {
+  return SetMetadata(CATALOG_MEDIA_UPLOAD_PERMISSION, permission);
+}
 
 export type CatalogMediaUploadRequest = Request & {
   session?: UserSession;
@@ -26,13 +36,21 @@ export type CatalogMediaUploadRequest = Request & {
 export class CatalogMediaManageGuard implements CanActivate {
   private activeUploads = 0;
 
-  constructor(private readonly permissions: PermissionsService) {}
+  constructor(
+    private readonly permissions: PermissionsService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const http = context.switchToHttp();
     const request = http.getRequest<CatalogMediaUploadRequest>();
     const user = request.session?.user;
-    if (!(await this.permissions.has(user ?? null, "catalog.manage"))) {
+    const permission =
+      this.reflector.get<Permission>(
+        CATALOG_MEDIA_UPLOAD_PERMISSION,
+        context.getHandler(),
+      ) ?? "catalog.manage";
+    if (!(await this.permissions.has(user ?? null, permission))) {
       throw new ForbiddenException("Catalog management access is required.");
     }
 

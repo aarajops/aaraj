@@ -84,6 +84,13 @@ export class StorefrontSettingsService {
       );
       const nextFooterCategoryIds =
         input.footerCategoryIds ?? current.footerCategoryIds;
+      const nextHomepageCategoriesEnabled =
+        input.homepageCategoriesEnabled ?? current.homepageCategoriesEnabled;
+      const nextHomepageCategoryIds =
+        input.homepageCategoryIds &&
+        sameCategoryIds(current.homepageCategoryIds, input.homepageCategoryIds)
+          ? current.homepageCategoryIds
+          : (input.homepageCategoryIds ?? current.homepageCategoryIds);
       const nextLinkedinUrl =
         input.socialLinks.linkedin === undefined
           ? current.linkedinUrl
@@ -93,12 +100,14 @@ export class StorefrontSettingsService {
           item.type === "category" ? [item.categoryId] : [],
         ),
         ...current.footerCategoryIds,
+        ...current.homepageCategoryIds,
       ]);
       const requestedCategoryIds = [
         ...input.headerNavigation.flatMap((item) =>
           item.type === "category" ? [item.categoryId] : [],
         ),
         ...nextFooterCategoryIds,
+        ...nextHomepageCategoryIds,
       ];
       const newCategoryIds = [
         ...new Set(
@@ -184,6 +193,15 @@ export class StorefrontSettingsService {
         JSON.stringify(nextFooterCategoryIds)
           ? ["footerCategoryIds"]
           : []),
+        ...(current.homepageCategoriesEnabled !== nextHomepageCategoriesEnabled
+          ? ["homepageCategoriesEnabled"]
+          : []),
+        ...(!sameCategoryIds(
+          current.homepageCategoryIds,
+          nextHomepageCategoryIds,
+        )
+          ? ["homepageCategoryIds"]
+          : []),
       ];
       if (changedFields.length === 0) return current;
 
@@ -208,6 +226,8 @@ export class StorefrontSettingsService {
           footerLinks: legacyFooterLinks,
           footerLinkGroups: nextFooterLinkGroups,
           footerCategoryIds: nextFooterCategoryIds,
+          homepageCategoriesEnabled: nextHomepageCategoriesEnabled,
+          homepageCategoryIds: nextHomepageCategoryIds,
           version: current.version + 1,
           updatedAt: sql`now()`,
           updatedBy: actor.id,
@@ -354,8 +374,17 @@ export class StorefrontSettingsService {
       footerLinks: configuration.footerLinks,
       footerLinkGroups: configuration.footerLinkGroups,
       footerCategoryIds: configuration.footerCategoryIds,
+      homepageCategoriesEnabled: configuration.homepageCategoriesEnabled,
+      homepageCategoryIds: configuration.homepageCategoryIds,
     };
   }
+}
+
+function sameCategoryIds(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((categoryId) => right.includes(categoryId))
+  );
 }
 
 function storefrontConfigurationUnavailable(): ServiceUnavailableException {

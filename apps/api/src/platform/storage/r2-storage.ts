@@ -165,6 +165,26 @@ export class R2Storage implements OnApplicationShutdown, OnModuleInit {
     sha256: string;
     sizeBytes: number;
   }): Promise<Buffer> {
+    return this.readPublishedObject({
+      ...input,
+      maxSizeBytes: input.sizeBytes,
+    });
+  }
+
+  async getPublishedObjectByHash(input: {
+    key: string;
+    sha256: string;
+    maxSizeBytes: number;
+  }): Promise<Buffer> {
+    return this.readPublishedObject(input);
+  }
+
+  private async readPublishedObject(input: {
+    key: string;
+    sha256: string;
+    sizeBytes?: number;
+    maxSizeBytes: number;
+  }): Promise<Buffer> {
     const storage = this.getStorage();
     const response = await storage.client.send(
       new GetObjectCommand({ Bucket: storage.bucketName, Key: input.key }),
@@ -174,9 +194,16 @@ export class R2Storage implements OnApplicationShutdown, OnModuleInit {
     const body = response.Body as AsyncIterable<Uint8Array> & {
       destroy?: (error?: Error) => void;
     };
-    if (response.ContentLength !== input.sizeBytes) {
+    const sizeBytes = input.sizeBytes ?? response.ContentLength;
+    if (
+      !sizeBytes ||
+      sizeBytes > input.maxSizeBytes ||
+      (input.sizeBytes !== undefined && response.ContentLength !== sizeBytes) ||
+      (input.sizeBytes === undefined &&
+        response.Metadata?.["content-sha256"] !== input.sha256)
+    ) {
       body.destroy?.();
-      throw new Error("R2 media object size does not match its manifest.");
+      throw new Error("R2 media object does not match its content address.");
     }
 
     if (typeof body.destroy !== "function") {
@@ -191,12 +218,12 @@ export class R2Storage implements OnApplicationShutdown, OnModuleInit {
       for await (const chunk of body) {
         const bytes = Buffer.from(chunk);
         totalBytes += bytes.byteLength;
-        if (totalBytes > input.sizeBytes) {
+        if (totalBytes > sizeBytes) {
           throw new Error("R2 media object exceeded its manifest size.");
         }
         chunks.push(bytes);
       }
-      if (totalBytes !== input.sizeBytes) {
+      if (totalBytes !== sizeBytes) {
         throw new Error("R2 media object is shorter than its manifest size.");
       }
 

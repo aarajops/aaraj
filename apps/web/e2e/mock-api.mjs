@@ -421,7 +421,6 @@ const server = createServer(async (request, response) => {
       input.slug,
       input.parentId ?? null,
     );
-    category.sortOrder = input.sortOrder ?? 0;
     categories.push(category);
     send(
       response,
@@ -515,7 +514,6 @@ const server = createServer(async (request, response) => {
       name: input.name ?? category.name,
       slug: input.slug ?? category.slug,
       parentId,
-      sortOrder: input.sortOrder ?? category.sortOrder,
       isActive: input.isActive ?? category.isActive,
       updatedAt: new Date().toISOString(),
     });
@@ -950,7 +948,6 @@ function makeCategory(name, slug, parentId = null) {
     name,
     slug,
     parentId,
-    sortOrder: 0,
     isActive: true,
     createdAt: now,
     updatedAt: now,
@@ -978,13 +975,13 @@ function refreshCategoryTree() {
   }
   return [...categories].sort(
     (left, right) =>
-      left.sortOrder - right.sortOrder || left.path.localeCompare(right.path),
+      left.path.localeCompare(right.path) || left.id.localeCompare(right.id),
   );
 }
 
 function categoryOption(category) {
-  const { id, name, slug, parentId, sortOrder, path, isLeaf } = category;
-  return { id, name, slug, parentId, sortOrder, path, isLeaf };
+  const { id, name, slug, parentId, path, isLeaf } = category;
+  return { id, name, slug, parentId, path, isLeaf };
 }
 
 function categoryReference(category) {

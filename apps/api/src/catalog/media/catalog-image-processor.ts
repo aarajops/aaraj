@@ -34,9 +34,10 @@ let processingQueue: Promise<void> = Promise.resolve();
 export async function processCatalogImage(
   source: Buffer,
   expectedContentType: CatalogMediaContentType,
+  renditions: readonly CatalogMediaRendition[] = ["card", "detail"],
 ): Promise<ProcessedCatalogImage> {
   const result = processingQueue.then(() =>
-    processCatalogImageWithinLimits(source, expectedContentType),
+    processCatalogImageWithinLimits(source, expectedContentType, renditions),
   );
   processingQueue = result.then(
     () => undefined,
@@ -48,6 +49,7 @@ export async function processCatalogImage(
 async function processCatalogImageWithinLimits(
   source: Buffer,
   expectedContentType: CatalogMediaContentType,
+  renditions: readonly CatalogMediaRendition[],
 ): Promise<ProcessedCatalogImage> {
   try {
     const metadata = await sharp(source, {
@@ -69,7 +71,7 @@ async function processCatalogImageWithinLimits(
     }
 
     const derivatives: ProcessedCatalogImage["derivatives"] = [];
-    for (const rendition of ["card", "detail"] as const) {
+    for (const rendition of renditions) {
       const output = await createRendition(source, rendition);
       const sha256 = createHash("sha256").update(output.data).digest("hex");
       const derivative = CatalogMediaDerivativeSchema.parse({

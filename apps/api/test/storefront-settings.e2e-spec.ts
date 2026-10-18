@@ -213,6 +213,8 @@ describe("storefront settings", () => {
       footerLinks: [],
       footerLinkGroups: emptyFooterLinkGroups,
       footerCategoryIds: [],
+      homepageCategoriesEnabled: false,
+      homepageCategoryIds: [],
       headerNavigation: defaultHeaderNavigationConfig,
       version: 1,
       updatedAt: null,
@@ -248,6 +250,8 @@ describe("storefront settings", () => {
       footerLinks: [],
       footerLinkGroups: emptyFooterLinkGroups,
       footerCategoryIds: [],
+      homepageCategoriesEnabled: false,
+      homepageCategoryIds: [],
       headerNavigation: DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
     });
 
@@ -308,6 +312,8 @@ describe("storefront settings", () => {
       footerLinks: [],
       footerLinkGroups: emptyFooterLinkGroups,
       footerCategoryIds: [],
+      homepageCategoriesEnabled: false,
+      homepageCategoryIds: [],
       headerNavigation: defaultHeaderNavigationConfig,
       version: 1,
       updatedAt: null,
@@ -410,6 +416,8 @@ describe("storefront settings", () => {
         policies: [],
       },
       footerCategoryIds: [],
+      homepageCategoriesEnabled: false,
+      homepageCategoryIds: [],
       headerNavigation: DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
     });
     expect(updatedPublicSettings.body).not.toHaveProperty("version");

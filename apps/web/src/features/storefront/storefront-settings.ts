@@ -39,6 +39,8 @@ const fallbackSettings: PublicStorefrontSettings = {
   footerLinks: [],
   footerLinkGroups: { about: [], policies: [] },
   footerCategoryIds: [],
+  homepageCategoriesEnabled: false,
+  homepageCategoryIds: [],
 };
 
 export const getPublicStorefrontSettings = cache(

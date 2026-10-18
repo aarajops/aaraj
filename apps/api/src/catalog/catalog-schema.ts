@@ -14,6 +14,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import {
+  CATALOG_MEDIA_RENDITIONS,
+  MAX_CATALOG_MEDIA_DERIVATIVE_BYTES,
   MAX_CATALOG_MEDIA_UPLOAD_BYTES,
   type CatalogMediaContentType,
   type CatalogMediaDerivatives,
@@ -33,7 +35,11 @@ export const catalogCategory = catalogSchema.table(
       (): AnyPgColumn => catalogCategory.id,
       { onDelete: "restrict" },
     ),
-    sortOrder: integer("sort_order").notNull().default(0),
+    imageObjectKey: text("image_object_key"),
+    imageSha256: text("image_sha256"),
+    imageSizeBytes: integer("image_size_bytes"),
+    imageWidth: integer("image_width"),
+    imageHeight: integer("image_height"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -44,7 +50,7 @@ export const catalogCategory = catalogSchema.table(
   },
   (table) => [
     uniqueIndex("category_slug_uidx").on(table.slug),
-    index("category_parent_order_idx").on(table.parentId, table.sortOrder),
+    index("category_parent_idx").on(table.parentId),
     check(
       "category_name_nonempty_check",
       sql`${table.name} = btrim(${table.name}) AND length(${table.name}) > 0`,
@@ -53,7 +59,14 @@ export const catalogCategory = catalogSchema.table(
       "category_slug_format_check",
       sql`${table.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
     ),
-    check("category_sort_order_check", sql`${table.sortOrder} >= 0`),
+    check(
+      "category_image_metadata_check",
+      sql`(${table.imageObjectKey} is null and ${table.imageSha256} is null and ${table.imageSizeBytes} is null and ${table.imageWidth} is null and ${table.imageHeight} is null) or (${table.imageObjectKey} is not null and ${table.imageSha256} is not null and ${table.imageSizeBytes} is not null and ${table.imageWidth} is not null and ${table.imageHeight} is not null and ${table.imageSha256} ~ '^[0-9a-f]{64}$' and ${table.imageSizeBytes} between 1 and ${sql.raw(String(MAX_CATALOG_MEDIA_DERIVATIVE_BYTES))} and ${table.imageWidth} between 1 and ${sql.raw(String(CATALOG_MEDIA_RENDITIONS.card.width))} and ${table.imageHeight} between 1 and ${sql.raw(String(CATALOG_MEDIA_RENDITIONS.card.height))})`,
+    ),
+    check(
+      "category_image_object_key_check",
+      sql`${table.imageObjectKey} is null or ${table.imageObjectKey} = 'published/catalog/categories/' || ${table.id}::text || '/' || ${table.imageSha256} || '.webp'`,
+    ),
     check(
       "category_parent_not_self_check",
       sql`${table.parentId} is null or ${table.parentId} <> ${table.id}`,

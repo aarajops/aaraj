@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { API_V1_BASE_PATH } from "../platform/api-version.js";
+import { CATALOG_MEDIA_RENDITIONS } from "./media.js";
 
 export const CatalogCategorySlugSchema = z
   .string()
@@ -13,15 +15,28 @@ export const CatalogCategoryReferenceSchema = z.strictObject({
   slug: CatalogCategorySlugSchema,
   parentId: z.uuid().nullable(),
 });
+
+export const CatalogCategoryImageSchema = z.strictObject({
+  src: z
+    .string()
+    .regex(
+      new RegExp(
+        `^${API_V1_BASE_PATH}/catalog/categories/[0-9a-f-]{36}/image/[0-9a-f]{64}\\.webp$`,
+      ),
+    ),
+  width: z.number().int().positive().max(CATALOG_MEDIA_RENDITIONS.card.width),
+  height: z.number().int().positive().max(CATALOG_MEDIA_RENDITIONS.card.height),
+});
+export type CatalogCategoryImage = z.infer<typeof CatalogCategoryImageSchema>;
 export type CatalogCategoryReference = z.infer<
   typeof CatalogCategoryReferenceSchema
 >;
 
 export const CatalogCategoryOptionSchema =
   CatalogCategoryReferenceSchema.extend({
-    sortOrder: z.number().int().nonnegative(),
     path: z.string().min(1).max(50_000),
     isLeaf: z.boolean(),
+    image: CatalogCategoryImageSchema.nullable().optional(),
   });
 export type CatalogCategoryOption = z.infer<typeof CatalogCategoryOptionSchema>;
 
@@ -48,7 +63,6 @@ export const CatalogCategoryCreateSchema = z.strictObject({
   name: z.string().trim().min(1).max(80),
   slug: CatalogCategorySlugSchema,
   parentId: z.uuid().nullable().optional(),
-  sortOrder: z.number().int().min(0).max(10_000).optional(),
   reason: z.string().trim().min(3).max(500).optional(),
 });
 export type CatalogCategoryCreateInput = z.input<
@@ -60,7 +74,6 @@ export const CatalogCategoryUpdateSchema = z
     name: z.string().trim().min(1).max(80).optional(),
     slug: CatalogCategorySlugSchema.optional(),
     parentId: z.uuid().nullable().optional(),
-    sortOrder: z.number().int().min(0).max(10_000).optional(),
     isActive: z.boolean().optional(),
     reason: z.string().trim().min(3).max(500).optional(),
   })

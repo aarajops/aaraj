@@ -2,10 +2,13 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
 import type {
+  CatalogCategoryImage,
   CatalogCategory,
   CatalogCategoryCreateInput,
   CatalogCategoryList,
@@ -13,11 +16,17 @@ import type {
   CatalogCategoryUpdateInput,
   CatalogCategoryOption,
 } from "@aaraj/contracts";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import {
+  API_V1_BASE_PATH,
+  CatalogCategoryImageSchema,
+  MAX_CATALOG_MEDIA_DERIVATIVE_BYTES,
+} from "@aaraj/contracts";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AccessPrincipal } from "../platform/authorization/permissions.service.js";
+import { R2Storage } from "../platform/storage/r2-storage.js";
 import { invalidatePublishedFilterOptionsCache } from "./published-filter-cache.js";
 import {
   catalogProduct,
@@ -25,14 +34,156 @@ import {
   catalogCategory,
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
+import {
+  processCatalogImage,
+  InvalidCatalogImageError,
+} from "./media/catalog-image-processor.js";
+import {
+  validateCatalogImageUpload,
+  type CatalogMediaUploadFile,
+} from "./media/catalog-image-upload.js";
 
 @Injectable()
 export class CategoryService {
+  private readonly logger = new Logger(CategoryService.name);
+
   constructor(
     private readonly database: DatabaseService,
     private readonly authorization: AuthorizationService,
     private readonly audit: AuditService,
+    private readonly storage: R2Storage,
   ) {}
+
+  async uploadImage(
+    actor: AccessPrincipal,
+    categoryId: string,
+    file: CatalogMediaUploadFile | undefined,
+  ): Promise<void> {
+    await this.authorization.authorize(
+      CatalogPolicy,
+      "manageCategories",
+      actor,
+    );
+    const [category] = await this.database.db
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory)
+      .where(eq(catalogCategory.id, categoryId))
+      .limit(1);
+    if (!category) throw new NotFoundException("Category not found");
+    const image = await validateCatalogImageUpload(file);
+    let processed: Awaited<ReturnType<typeof processCatalogImage>>;
+    try {
+      processed = await processCatalogImage(image.buffer, image.contentType, [
+        "card",
+      ]);
+    } catch (error) {
+      if (error instanceof InvalidCatalogImageError) {
+        throw new BadRequestException(
+          "The uploaded category image could not be processed.",
+        );
+      }
+      throw error;
+    }
+    const card = processed.derivatives[0];
+    if (!card) throw new Error("Category image processing returned no image.");
+    const objectKey = categoryImageObjectKey(categoryId, card.metadata.sha256);
+
+    try {
+      await this.storage.putDerivativeObject({
+        key: objectKey,
+        body: card.body,
+        sha256: card.metadata.sha256,
+      });
+    } catch (error) {
+      this.logger.error("Category image storage request failed", {
+        event: "catalog.category_image_storage_failed",
+        operation: "put",
+        categoryId,
+        errorName: error instanceof Error ? error.name : "unknown",
+      });
+      throw categoryImageStorageUnavailable();
+    }
+
+    const result = await this.database.db.transaction(async (transaction) => {
+      await this.authorization.authorize(
+        CatalogPolicy,
+        "manageCategories",
+        actor,
+        transaction,
+      );
+      const [current] = await transaction
+        .select()
+        .from(catalogCategory)
+        .where(eq(catalogCategory.id, categoryId))
+        .for("update")
+        .limit(1);
+      if (!current) throw new NotFoundException("Category not found");
+      if (current.imageSha256 === card.metadata.sha256) {
+        return { changed: false };
+      }
+
+      const [next] = await transaction
+        .update(catalogCategory)
+        .set({
+          imageObjectKey: objectKey,
+          imageSha256: card.metadata.sha256,
+          imageSizeBytes: card.metadata.sizeBytes,
+          imageWidth: card.metadata.width,
+          imageHeight: card.metadata.height,
+          updatedAt: new Date(),
+        })
+        .where(eq(catalogCategory.id, categoryId))
+        .returning();
+      if (!next) throw new NotFoundException("Category not found");
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: actor.id,
+        eventType: "catalog.category_image_updated",
+        subjectType: "catalog_category",
+        subjectId: next.id,
+        metadata: { imageSha256: card.metadata.sha256 },
+      });
+      return { changed: true };
+    });
+
+    if (result.changed) {
+      // Keep older content-addressed objects so previously rendered immutable URLs remain valid.
+      await invalidatePublishedFilterOptionsCache();
+    }
+  }
+
+  async getPublicImage(
+    categoryId: string,
+    sha256: string,
+  ): Promise<{ body: Buffer; sizeBytes: number }> {
+    const [category] = await this.database.db
+      .select({ id: catalogCategory.id })
+      .from(catalogCategory)
+      .where(eq(catalogCategory.id, categoryId))
+      .limit(1);
+    if (!category) {
+      throw new NotFoundException("Category image not found.");
+    }
+    try {
+      const body = await this.storage.getPublishedObjectByHash({
+        key: categoryImageObjectKey(categoryId, sha256),
+        sha256,
+        maxSizeBytes: MAX_CATALOG_MEDIA_DERIVATIVE_BYTES,
+      });
+      return { body, sizeBytes: body.byteLength };
+    } catch (error) {
+      if (isMissingStorageObject(error)) {
+        throw new NotFoundException("Category image not found.");
+      }
+      this.logger.error("Category image storage request failed", {
+        event: "catalog.category_image_storage_failed",
+        operation: "get",
+        categoryId,
+        errorName: error instanceof Error ? error.name : "unknown",
+      });
+      throw categoryImageStorageUnavailable();
+    }
+  }
 
   async findActiveIds(
     categoryIds: readonly string[],
@@ -73,10 +224,7 @@ export class CategoryService {
   }
 
   async listPublic(): Promise<CatalogCategoryOptions> {
-    const rows = await this.database.db
-      .select()
-      .from(catalogCategory)
-      .orderBy(asc(catalogCategory.sortOrder), asc(catalogCategory.name));
+    const rows = await this.database.db.select().from(catalogCategory);
     return {
       categories: toOptions(
         rows.filter((category) => category.isActive),
@@ -93,10 +241,7 @@ export class CategoryService {
       "manageCategories",
       actor,
     );
-    const rows = await this.database.db
-      .select()
-      .from(catalogCategory)
-      .orderBy(asc(catalogCategory.sortOrder), asc(catalogCategory.name));
+    const rows = await this.database.db.select().from(catalogCategory);
     return { categories: toCategories(rows) };
   }
 
@@ -125,7 +270,6 @@ export class CategoryService {
             name: input.name,
             slug: input.slug,
             parentId,
-            sortOrder: input.sortOrder ?? 0,
           })
           .returning();
         if (!category) throw new Error("Category insert returned no row.");
@@ -188,7 +332,6 @@ export class CategoryService {
         name: input.name ?? current.name,
         slug: input.slug ?? current.slug,
         parentId,
-        sortOrder: input.sortOrder ?? current.sortOrder,
         isActive: input.isActive ?? current.isActive,
       };
       if (current.isActive && !next.isActive) {
@@ -202,7 +345,6 @@ export class CategoryService {
         next.name !== current.name ||
         next.slug !== current.slug ||
         next.parentId !== current.parentId ||
-        next.sortOrder !== current.sortOrder ||
         next.isActive !== current.isActive;
       if (!changed)
         return toCategories(categories).find(({ id }) => id === current.id);
@@ -268,25 +410,22 @@ function toOptions(
   rows: CategoryRow[],
   hierarchyRows: CategoryRow[] = rows,
 ): CatalogCategoryOption[] {
-  const byId = new Map(rows.map((category) => [category.id, category]));
+  const orderedRows = [...rows].sort(
+    (left, right) =>
+      left.name.localeCompare(right.name, "en") ||
+      left.id.localeCompare(right.id),
+  );
+  const byId = new Map(orderedRows.map((category) => [category.id, category]));
   const hasChildren = new Set(
     hierarchyRows.flatMap((category) =>
       category.parentId ? [category.parentId] : [],
     ),
   );
   const children = new Map<string | null, CategoryRow[]>();
-  for (const row of rows) {
+  for (const row of orderedRows) {
     const siblings = children.get(row.parentId) ?? [];
     siblings.push(row);
     children.set(row.parentId, siblings);
-  }
-  for (const siblings of children.values()) {
-    siblings.sort(
-      (left, right) =>
-        left.sortOrder - right.sortOrder ||
-        left.name.localeCompare(right.name, "en") ||
-        left.id.localeCompare(right.id),
-    );
   }
 
   const options: CatalogCategoryOption[] = [];
@@ -301,16 +440,15 @@ function toOptions(
         name: row.name,
         slug: row.slug,
         parentId: row.parentId,
-        sortOrder: row.sortOrder,
         path: path.join(" / "),
         isLeaf: !hasChildren.has(row.id),
+        image: toCategoryImage(row),
       });
       visit(row.id, path);
     }
   };
   visit(null, []);
-  // A corrupted legacy cycle should remain visible to operators rather than disappear.
-  for (const row of rows) {
+  for (const row of orderedRows) {
     if (visited.has(row.id)) continue;
     const ancestors: string[] = [];
     const seen = new Set<string>();
@@ -326,12 +464,43 @@ function toOptions(
       name: row.name,
       slug: row.slug,
       parentId: row.parentId,
-      sortOrder: row.sortOrder,
       path: ancestors.join(" / "),
       isLeaf: !hasChildren.has(row.id),
+      image: toCategoryImage(row),
     });
   }
   return options;
+}
+
+function toCategoryImage(row: CategoryRow): CatalogCategoryImage | null {
+  if (!row.imageSha256 || !row.imageWidth || !row.imageHeight) return null;
+  return CatalogCategoryImageSchema.parse({
+    src: `${API_V1_BASE_PATH}/catalog/categories/${row.id}/image/${row.imageSha256}.webp`,
+    width: row.imageWidth,
+    height: row.imageHeight,
+  });
+}
+
+function categoryImageObjectKey(categoryId: string, sha256: string): string {
+  return `published/catalog/categories/${categoryId}/${sha256}.webp`;
+}
+
+function categoryImageStorageUnavailable(): ServiceUnavailableException {
+  return new ServiceUnavailableException(
+    "Category image storage is temporarily unavailable.",
+  );
+}
+
+function isMissingStorageObject(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === "NoSuchKey" || error.name === "NotFound") return true;
+  if (!Object.hasOwn(error, "$metadata")) return false;
+  const metadata = (
+    error as Error & {
+      $metadata?: { httpStatusCode?: number };
+    }
+  ).$metadata;
+  return metadata?.httpStatusCode === 404;
 }
 
 async function requireActiveParent(

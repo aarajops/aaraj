@@ -12,7 +12,6 @@ export interface CategoryFormDraft {
   name: string;
   slug: string;
   parentId: string;
-  sortOrder: string;
   isActive: boolean;
 }
 
@@ -21,7 +20,6 @@ export const emptyCategoryForm: CategoryFormDraft = {
   name: "",
   slug: "",
   parentId: "",
-  sortOrder: "0",
   isActive: true,
 };
 
@@ -34,7 +32,6 @@ function toCategorySubmission(form: CategoryFormDraft): CategorySubmission {
     name: form.name.trim(),
     slug: form.slug.trim(),
     parentId: form.parentId || null,
-    sortOrder: Number(form.sortOrder),
   };
 
   if (form.id) {
@@ -59,9 +56,6 @@ export const categoryFormSchema = z
     name: z.string(),
     slug: z.string(),
     parentId: z.string(),
-    sortOrder: z.string().trim().regex(/^\d+$/, {
-      error: "Enter a whole display order.",
-    }),
     isActive: z.boolean(),
   })
   .superRefine((form, context) => {
@@ -90,7 +84,6 @@ export function toCategoryFormState(
     name: category.name,
     slug: category.slug,
     parentId: category.parentId ?? "",
-    sortOrder: String(category.sortOrder),
     isActive: category.isActive,
   };
 }

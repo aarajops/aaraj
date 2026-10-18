@@ -47,6 +47,22 @@ export function updateCatalogCategory(
   );
 }
 
+export function uploadCatalogCategoryImage(
+  categoryId: string,
+  file: File,
+): Promise<Response> {
+  const body = new FormData();
+  body.set("file", file);
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/categories/${encodeURIComponent(categoryId)}/image`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      body,
+    },
+  );
+}
+
 export function fetchManagedProducts(
   query: CatalogProductListQuery,
 ): Promise<Response> {

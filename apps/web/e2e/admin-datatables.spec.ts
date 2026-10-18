@@ -18,7 +18,6 @@ const routes = [
   {
     path: "/admin/catalog/categories",
     label: "Product categories",
-    rightAlignedHeader: "Order",
   },
   {
     path: "/admin/catalog/size-guides",
@@ -384,7 +383,7 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
           dimensions.regionClientWidth + 1,
         );
       }
-      if (width <= 768) {
+      if (width <= 768 && route.label !== "Product categories") {
         expect(dimensions.regionScrollWidth).toBeGreaterThan(
           dimensions.regionClientWidth,
         );

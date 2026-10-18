@@ -258,6 +258,13 @@ export const storefrontConfiguration = storefrontSchema.table(
       .$type<string[]>()
       .notNull()
       .default([]),
+    homepageCategoriesEnabled: boolean("homepage_categories_enabled")
+      .notNull()
+      .default(false),
+    homepageCategoryIds: jsonb("homepage_category_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     headerNavigation: jsonb("header_navigation")
       .$type<StorefrontHeaderNavigationItem[]>()
       .notNull()
@@ -333,6 +340,10 @@ export const storefrontConfiguration = storefrontSchema.table(
     check(
       "configuration_footer_category_ids_check",
       sql`jsonb_typeof(${table.footerCategoryIds}) = 'array'`,
+    ),
+    check(
+      "configuration_homepage_category_ids_check",
+      sql`jsonb_typeof(${table.homepageCategoryIds}) = 'array'`,
     ),
     check(
       "configuration_header_navigation_check",

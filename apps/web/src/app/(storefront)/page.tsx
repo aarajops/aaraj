@@ -15,6 +15,8 @@ import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-
 import { getPublicStorefrontBanners } from "@/features/storefront/storefront-banners";
 import { StorefrontBanner } from "@/features/storefront/storefront-banner";
 import { STOREFRONT_BANNER_PLACEMENT_HOME_HERO } from "@aaraj/contracts";
+import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
+import { HomepageCategorySection } from "@/features/storefront/homepage-category-section";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { settings, title, description, image } =
@@ -80,10 +82,21 @@ async function PublishedProductList({
     query.color ||
     query.size,
   );
+  const settings = await getPublicStorefrontSettings();
+  const homepageCategories =
+    settings.homepageCategoriesEnabled &&
+    !hasActiveFilters &&
+    query.offset === 0
+      ? (page?.filters.categories.filter(
+          ({ id, image }) =>
+            settings.homepageCategoryIds.includes(id) && Boolean(image),
+        ) ?? [])
+      : [];
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
       <div className="container mx-auto">
+        <HomepageCategorySection categories={homepageCategories} />
         <p className="text-sm font-semibold tracking-[0.18em] text-primary">
           THE AARAJ CATALOG
         </p>
