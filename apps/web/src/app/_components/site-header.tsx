@@ -8,6 +8,7 @@ import {
   NavigationMenuList,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { MobileStorefrontControls } from "./mobile-storefront-controls";
 import { getPublishedProductFilterOptions } from "@/features/catalog/catalog-queries";
 import { StorefrontSearchBar } from "@/features/catalog/storefront-search-bar";
@@ -69,9 +70,9 @@ export async function SiteHeader() {
 
             <Suspense
               fallback={
-                <div
+                <Skeleton
                   aria-hidden="true"
-                  className="hidden h-8 min-w-0 rounded-full bg-muted xl:col-start-2 xl:row-start-1 xl:flex xl:w-112 xl:justify-self-center 2xl:col-span-2 2xl:h-10 2xl:w-144"
+                  className="hidden h-8 min-w-0 rounded-full xl:col-start-2 xl:row-start-1 xl:flex xl:w-112 xl:justify-self-center 2xl:col-span-2 2xl:h-10 2xl:w-144"
                 />
               }
             >

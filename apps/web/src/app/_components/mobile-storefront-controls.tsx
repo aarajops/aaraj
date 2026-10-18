@@ -18,6 +18,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CartSheet } from "@/features/cart/cart-sheet";
 import { StorefrontSearchBar } from "@/features/catalog/storefront-search-bar";
 
@@ -129,7 +130,7 @@ export function MobileStorefrontControls({
       >
         <Suspense
           fallback={
-            <div aria-hidden="true" className="h-12 rounded-full bg-muted" />
+            <Skeleton aria-hidden="true" className="h-12 rounded-full" />
           }
         >
           <StorefrontSearchBar categories={categories} className="w-full" />
