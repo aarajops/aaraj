@@ -118,18 +118,11 @@ export function CategoryTable({
   );
   const nextOffset = query.offset + visibleCategories.length;
   const hasMore = nextOffset < filteredCategories.length;
-  const hasFilters = Boolean(query.search || query.status || query.kind);
-
   return (
     <AdminDataTable
       ariaLabel="Product categories"
       columns={columns}
       data={visibleCategories}
-      emptyMessage={
-        hasFilters
-          ? "No categories match the current search and filters."
-          : "No categories have been created yet."
-      }
       pathname="/admin/catalog/categories"
       query={query}
       itemName="categories"

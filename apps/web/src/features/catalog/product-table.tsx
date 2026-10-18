@@ -102,18 +102,11 @@ export function ProductTable({
     [],
   );
 
-  const hasFilters = Boolean(query.search || query.categoryId || query.status);
-
   return (
     <AdminDataTable
       ariaLabel="Products"
       columns={columns}
       data={products}
-      emptyMessage={
-        hasFilters
-          ? "No products match the current search and filters."
-          : "No products have been created yet."
-      }
       pathname="/admin/catalog"
       query={query}
       itemName="products"

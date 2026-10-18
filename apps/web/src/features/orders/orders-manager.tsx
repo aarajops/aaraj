@@ -87,9 +87,8 @@ export function OrdersManager({
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Orders</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Review COD Orders and verify delivery serviceability before dispatch
-          confirmation. Address details appear only on an authorized Order
-          detail page.
+          Verify delivery serviceability before dispatch. Address details are
+          restricted to authorized order views.
         </p>
         <PathaoIssuesPanel />
         <AdminDataTable
@@ -97,11 +96,6 @@ export function OrdersManager({
           ariaLabel="Orders"
           columns={columns}
           data={initialPage.rows}
-          emptyMessage={
-            query.search
-              ? "No orders match this reference search."
-              : "No orders yet."
-          }
           pathname="/admin/orders"
           query={query}
           itemName="orders"

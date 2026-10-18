@@ -141,8 +141,7 @@ export function CategoryManager({
               : "Product categories"}
         </h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Manage the reusable category tree used by products and size guides.
-          Assign products to active leaf categories.
+          Products and size guides use active leaf categories.
         </p>
 
         {errorMessage && (

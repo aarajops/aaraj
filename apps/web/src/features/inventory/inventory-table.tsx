@@ -123,14 +123,9 @@ export function InventoryTable({
       ariaLabel="Inventory by product variant"
       columns={columns}
       data={variants}
-      emptyMessage={
-        query.search
-          ? "No active variants match this search."
-          : "Create an active product variant before recording stock."
-      }
       pathname="/admin/inventory"
       query={query}
-      itemName="inventory variants"
+      itemName="active variants"
       searchPlaceholder="Product, SKU, color, or size"
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}

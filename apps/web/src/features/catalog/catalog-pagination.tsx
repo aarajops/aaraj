@@ -31,21 +31,19 @@ export function CatalogPagination({
   if (!hasPrevious && !hasNext && !hasMore) return null;
 
   const previousOffset = Math.max(0, offset - limit);
-  const pageNumber = Math.floor(offset / limit) + 1;
 
   return (
     <nav
       aria-label={`${label} pagination`}
       className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5"
     >
-      <p aria-live="polite" className="text-sm text-muted-foreground">
-        {productCount === 0
-          ? `No ${itemName} on this page`
-          : `Showing ${offset + 1}–${offset + productCount} ${itemName}`}
-        <span className="ml-2 text-muted-foreground/70">Page {pageNumber}</span>
-      </p>
-      <div className="flex items-center gap-3">
-        {hasPrevious ? (
+      {productCount > 0 && (
+        <p aria-live="polite" className="text-sm text-muted-foreground">
+          Showing {offset + 1}–{offset + productCount} {itemName}
+        </p>
+      )}
+      <div className="ml-auto flex items-center gap-3">
+        {hasPrevious && (
           <Link
             className="rounded-lg border border-input px-4 py-2 text-sm font-medium text-foreground hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             href={pageHref(pathname, limit, previousOffset, preservedParams)}
@@ -53,15 +51,8 @@ export function CatalogPagination({
           >
             Previous
           </Link>
-        ) : (
-          <span
-            aria-disabled="true"
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground/50"
-          >
-            Previous
-          </span>
         )}
-        {hasNext ? (
+        {hasNext && (
           <Link
             className="rounded-lg border border-input px-4 py-2 text-sm font-medium text-foreground hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             href={pageHref(pathname, limit, nextOffset, preservedParams)}
@@ -69,13 +60,6 @@ export function CatalogPagination({
           >
             Next
           </Link>
-        ) : (
-          <span
-            aria-disabled="true"
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground/50"
-          >
-            Next
-          </span>
         )}
       </div>
       {hasMore && !hasNext && (

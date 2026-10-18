@@ -76,7 +76,7 @@ test("Orders preserves direct query state, page size, search, empty, and error s
   ).toBeVisible();
   await expect(
     page.getByRole("navigation", { name: "Orders pagination" }),
-  ).toContainText("Page 2");
+  ).toContainText("Showing 26–50 orders");
 
   await chooseSelectOption(page, "Rows per page", "100");
   await expect(page).toHaveURL(/\/admin\/orders\?limit=100$/);
@@ -106,9 +106,7 @@ test("Orders preserves direct query state, page size, search, empty, and error s
 
   await search.fill("AA-FFFFFFFFFFFE");
   await page.getByRole("button", { name: "Apply orders search" }).click();
-  await expect(
-    table.getByText("No orders match this reference search."),
-  ).toBeVisible();
+  await expect(table.getByText("No matching orders.")).toBeVisible();
 
   await page.goto("/admin/orders?search=AA-FFFFFFFFFFFF");
   await expect(

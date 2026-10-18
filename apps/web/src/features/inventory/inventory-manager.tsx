@@ -28,9 +28,7 @@ export function InventoryManager({
           Inventory
         </h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Track on-hand units for each active product variant in the shared
-          stock pool. Checkout reservations will be connected when the payment
-          flow is defined.
+          Track stock for active product variants.
         </p>
 
         <InventoryTable

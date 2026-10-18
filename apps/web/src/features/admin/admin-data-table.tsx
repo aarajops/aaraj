@@ -42,7 +42,6 @@ type AdminDataTableProps<TData extends RowData & { id: string }> = {
   ariaLabel: string;
   columns: DataTableColumnDef<TData>[];
   data: TData[];
-  emptyMessage: string;
   pathname: string;
   query: TableQuery;
   itemName: string;
@@ -59,7 +58,6 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   ariaLabel,
   columns,
   data,
-  emptyMessage,
   pathname,
   query,
   itemName,
@@ -85,7 +83,6 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
       : searchValue;
   const limit = Number(query.limit) || 50;
   const offset = Number(query.offset) || 0;
-  const pageNumber = Math.floor(offset / limit) + 1;
   const previousOffset = Math.max(0, offset - limit);
   const hasPrevious = offset > 0;
   const pageSizes = [...new Set([25, 50, 100, limit])].sort(
@@ -246,99 +243,88 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
         ariaLabel={ariaLabel}
         columns={columns}
         data={data}
-        emptyMessage={emptyMessage}
+        emptyMessage={
+          hasActiveFilters ? `No matching ${itemName}.` : `No ${itemName} yet.`
+        }
       />
 
-      <nav
-        aria-label={`${ariaLabel} pagination`}
-        className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border px-4 py-4"
-      >
-        <p aria-live="polite" className="text-sm text-muted-foreground">
-          {data.length === 0
-            ? `No ${itemName} on this page`
-            : `Showing ${offset + 1}–${offset + data.length} ${itemName}`}
-          <span className="ml-2">Page {pageNumber}</span>
-        </p>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <label
-            className="text-sm text-muted-foreground"
-            htmlFor={`${ariaLabel.toLowerCase().replaceAll(" ", "-")}-page-size`}
-          >
-            Rows per page
-          </label>
-          <Select
-            value={String(limit)}
-            onValueChange={(value) => {
-              if (typeof value === "string") {
-                navigate({ limit: Number(value) });
-              }
-            }}
-          >
-            <SelectTrigger
-              className="h-9 w-20"
-              id={`${ariaLabel.toLowerCase().replaceAll(" ", "-")}-page-size`}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {pageSizes.map((pageSize) => (
-                <SelectItem key={pageSize} value={String(pageSize)}>
-                  {pageSize}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {hasPrevious ? (
-            <Link
-              aria-label={`Previous ${itemName} page`}
-              className={buttonVariants({ size: "lg", variant: "outline" })}
-              href={pageHref(previousOffset)}
-              rel="prev"
-              scroll={false}
-            >
-              Previous
-            </Link>
-          ) : (
-            <Button
-              aria-label={`Previous ${itemName} page`}
-              disabled
-              size="lg"
-              variant="outline"
-            >
-              Previous
-            </Button>
+      {(data.length > 0 || hasPrevious || (hasMore && nextOffset === null)) && (
+        <nav
+          aria-label={`${ariaLabel} pagination`}
+          className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border px-4 py-4"
+        >
+          {data.length > 0 && (
+            <p aria-live="polite" className="text-sm text-muted-foreground">
+              Showing {offset + 1}–{offset + data.length} {itemName}
+            </p>
           )}
-          {nextOffset !== null ? (
-            <Link
-              aria-label={`Next ${itemName} page`}
-              className={buttonVariants({ size: "lg", variant: "outline" })}
-              href={pageHref(nextOffset)}
-              rel="next"
-              scroll={false}
-            >
-              Next
-            </Link>
-          ) : (
-            <Button
-              aria-label={`Next ${itemName} page`}
-              disabled
-              size="lg"
-              variant="outline"
-            >
-              Next
-            </Button>
-          )}
-        </div>
 
-        {hasMore && nextOffset === null && (
-          <p className="basis-full text-sm text-warning" role="status">
-            More {itemName} exist, but this list has reached the maximum
-            supported offset.
-          </p>
-        )}
-      </nav>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {data.length > 0 && (hasPrevious || hasMore) && (
+              <>
+                <label
+                  className="text-sm text-muted-foreground"
+                  htmlFor={`${ariaLabel.toLowerCase().replaceAll(" ", "-")}-page-size`}
+                >
+                  Rows per page
+                </label>
+                <Select
+                  value={String(limit)}
+                  onValueChange={(value) => {
+                    if (typeof value === "string") {
+                      navigate({ limit: Number(value) });
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    className="h-9 w-20"
+                    id={`${ariaLabel.toLowerCase().replaceAll(" ", "-")}-page-size`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    {pageSizes.map((pageSize) => (
+                      <SelectItem key={pageSize} value={String(pageSize)}>
+                        {pageSize}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+
+            {hasPrevious && (
+              <Link
+                aria-label={`Previous ${itemName} page`}
+                className={buttonVariants({ size: "lg", variant: "outline" })}
+                href={pageHref(previousOffset)}
+                rel="prev"
+                scroll={false}
+              >
+                Previous
+              </Link>
+            )}
+            {nextOffset !== null && (
+              <Link
+                aria-label={`Next ${itemName} page`}
+                className={buttonVariants({ size: "lg", variant: "outline" })}
+                href={pageHref(nextOffset)}
+                rel="next"
+                scroll={false}
+              >
+                Next
+              </Link>
+            )}
+          </div>
+
+          {hasMore && nextOffset === null && (
+            <p className="basis-full text-sm text-warning" role="status">
+              More {itemName} exist, but this list has reached the maximum
+              supported offset.
+            </p>
+          )}
+        </nav>
+      )}
     </div>
   );
 }

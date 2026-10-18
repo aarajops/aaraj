@@ -113,10 +113,6 @@ export function StorefrontBannerTable({
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               Storefront banners
             </h1>
-            <p className="mt-2 max-w-2xl text-muted-foreground">
-              Create reusable artwork, keep unpublished versions as drafts, and
-              publish slides for the storefront hero carousel.
-            </p>
           </div>
           <Link
             className={buttonVariants({ size: "lg" })}
@@ -133,11 +129,6 @@ export function StorefrontBannerTable({
             ariaLabel="Storefront banners"
             columns={columns}
             data={page.banners}
-            emptyMessage={
-              query.search || query.status
-                ? "No banners match the current search and filters."
-                : "No banners have been created yet. Create a banner to start building the storefront banner library."
-            }
             pathname="/admin/storefront/banners"
             query={query}
             itemName="banners"

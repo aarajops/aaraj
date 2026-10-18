@@ -257,13 +257,13 @@ export function CatalogManager({
                   ? "Edit product"
                   : "Catalog management"}
             </h1>
-            <p className="mt-2 text-muted-foreground">
-              {view === "create"
-                ? "Create one product per style, then add its real color and size options."
-                : view === "edit"
-                  ? "Update the product details, sellable variants, and storefront visibility."
-                  : "Manage products, their color and size options, and storefront visibility."}
-            </p>
+            {view !== "list" && (
+              <p className="mt-2 text-muted-foreground">
+                {view === "create"
+                  ? "Create one product per style, then add its real color and size options."
+                  : "Update the product details, sellable variants, and storefront visibility."}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-4">
             {view !== "list" ? (

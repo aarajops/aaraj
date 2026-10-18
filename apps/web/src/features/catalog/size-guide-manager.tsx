@@ -174,8 +174,8 @@ export function SizeGuideManager({
                   : "Size guides"}
             </h1>
             <p className="mt-2 max-w-2xl text-muted-foreground">
-              Create a reusable chart for products with the same category, fit,
-              measurement basis, and sizes.
+              Guides match products by category, fit, measurement basis, and
+              size.
             </p>
           </div>
           {view === "list" ? (

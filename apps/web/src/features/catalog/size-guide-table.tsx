@@ -86,20 +86,11 @@ export function SizeGuideTable({
     [],
   );
 
-  const hasFilters = Boolean(
-    query.search || query.categoryId || query.fit || query.measurementBasis,
-  );
-
   return (
     <AdminDataTable
       ariaLabel="Size guides"
       columns={columns}
       data={guides}
-      emptyMessage={
-        hasFilters
-          ? "No size guides match the current search and filters."
-          : "No size guides have been created yet."
-      }
       pathname="/admin/catalog/size-guides"
       query={query}
       itemName="size guides"
