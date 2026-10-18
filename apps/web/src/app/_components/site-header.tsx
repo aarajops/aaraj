@@ -26,13 +26,13 @@ export async function SiteHeader() {
       {settings.announcementEnabled && settings.announcementText && (
         <aside
           aria-label="Store announcement"
-          className="bg-neutral-950 px-4 py-2.5 text-center text-xs font-semibold tracking-wide text-white"
+          className="bg-foreground px-4 py-2.5 text-center text-xs font-semibold tracking-wide text-white"
         >
           {settings.announcementText}
         </aside>
       )}
-      <header className="border-b border-border bg-background text-foreground">
-        <div className="container mx-auto px-3 lg:px-0">
+      <header>
+        <div className="container mx-auto px-2 lg:px-0">
           <nav
             aria-label="Store utility navigation"
             className="hidden h-10 items-center justify-end gap-5 text-xs text-muted-foreground xl:flex"
@@ -51,7 +51,7 @@ export async function SiteHeader() {
             )}
           </nav>
 
-          <div className="relative flex flex-wrap items-center justify-between gap-x-2 gap-y-2 py-2 xl:grid xl:grid-cols-3 xl:gap-0 2xl:grid-cols-4">
+          <div className="relative flex flex-wrap items-center justify-between gap-x-2 gap-y-2 xl:grid xl:grid-cols-3 xl:gap-0 2xl:grid-cols-4">
             <MobileStorefrontControls
               categories={productFilters?.categories ?? []}
               headerNavigation={settings.headerNavigation}
@@ -86,7 +86,7 @@ export async function SiteHeader() {
           {settings.headerNavigation.length > 0 && (
             <nav
               aria-label="Main navigation"
-              className="hidden overflow-x-auto pt-0 pb-2.5 xl:flex xl:justify-center"
+              className="border-t border-brand/10 hidden overflow-x-auto xl:flex xl:justify-center"
             >
               <NavigationMenu className="max-w-none flex-none">
                 <NavigationMenuList className="flex-none gap-4">
