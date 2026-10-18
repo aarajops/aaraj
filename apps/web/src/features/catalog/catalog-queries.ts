@@ -38,6 +38,7 @@ export type CatalogPageSearchParams = {
   category?: string | string[];
   color?: string | string[];
   size?: string | string[];
+  sort?: string | string[];
   search?: string | string[];
   status?: string | string[];
   categoryId?: string | string[];
@@ -78,6 +79,7 @@ export function parsePublishedCatalogPageQuery(
     searchParams.category,
     searchParams.color,
     searchParams.size,
+    searchParams.sort,
     searchParams.search,
   ];
   if (searchValues.some(Array.isArray)) return null;
@@ -87,6 +89,7 @@ export function parsePublishedCatalogPageQuery(
       typeof searchParams.limit === "string" ? searchParams.limit : undefined,
     offset:
       typeof searchParams.offset === "string" ? searchParams.offset : undefined,
+    sort: typeof searchParams.sort === "string" ? searchParams.sort : undefined,
     search:
       typeof searchParams.search === "string" ? searchParams.search : undefined,
     audience:
@@ -172,6 +175,7 @@ export async function getPublishedProducts(
       offset: String(query.offset),
     });
     if (query.search) search.set("search", query.search);
+    if (query.sort) search.set("sort", query.sort);
     if (query.audience) search.set("audience", query.audience);
     if (query.category) search.set("category", query.category);
     if (query.color) search.set("color", query.color);

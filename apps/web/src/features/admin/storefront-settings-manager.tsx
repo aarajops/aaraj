@@ -331,7 +331,7 @@ export function StorefrontSettingsManager({
   }
 
   function addHeaderCategory(categoryId: string) {
-    if (!categoryId || headerNavigation.length >= 8) return;
+    if (!categoryId) return;
     appendHeaderNavigationItem({ type: "category", categoryId });
   }
 
@@ -924,8 +924,8 @@ export function StorefrontSettingsManager({
                 Header navigation
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Arrange up to eight links and active catalog categories. A
-                category’s current name and URL come from catalog management.
+                Home and New are built into the storefront. Add active catalog
+                categories or secure external links here.
               </p>
             </div>
 
@@ -986,14 +986,18 @@ export function StorefrontSettingsManager({
                         </Field>
                         <Field>
                           <FieldLabel htmlFor={`header-link-${index}-href`}>
-                            Link URL
+                            External URL
                           </FieldLabel>
                           <Input
                             id={`header-link-${index}-href`}
                             maxLength={2048}
-                            placeholder="/ or https://example.com"
+                            placeholder="https://example.com"
+                            type="url"
                             {...register(`headerNavigation.${index}.href`)}
                           />
+                          <FieldDescription>
+                            Use the category selector for catalog categories.
+                          </FieldDescription>
                         </Field>
                       </div>
                     ) : (
@@ -1073,55 +1077,52 @@ export function StorefrontSettingsManager({
               })}
             </ol>
 
-            {headerNavigation.length < 8 && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Button
-                    disabled={headerNavigation.length >= 8}
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      appendHeaderNavigationItem({
-                        type: "link",
-                        label: "",
-                        href: "",
-                      })
-                    }
-                  >
-                    Add header link
-                  </Button>
-                </div>
-                <Field>
-                  <FieldLabel htmlFor="storefront-add-header-category">
-                    Add an active category
-                  </FieldLabel>
-                  <Select
-                    value={null}
-                    onValueChange={(categoryId) => {
-                      if (categoryId) addHeaderCategory(categoryId);
-                    }}
-                    disabled={availableCategories.length === 0}
-                  >
-                    <SelectTrigger id="storefront-add-header-category">
-                      <SelectValue
-                        placeholder={
-                          availableCategories.length > 0
-                            ? "Choose a category…"
-                            : "No additional active categories"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableCategories.map(({ id, path }) => (
-                        <SelectItem key={id} value={id}>
-                          {path}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    appendHeaderNavigationItem({
+                      type: "link",
+                      label: "",
+                      href: "",
+                    })
+                  }
+                >
+                  Add external link
+                </Button>
               </div>
-            )}
+              <Field>
+                <FieldLabel htmlFor="storefront-add-header-category">
+                  Add an active category
+                </FieldLabel>
+                <Select
+                  value={null}
+                  onValueChange={(categoryId) => {
+                    if (categoryId) addHeaderCategory(categoryId);
+                  }}
+                  disabled={availableCategories.length === 0}
+                >
+                  <SelectTrigger id="storefront-add-header-category">
+                    <SelectValue
+                      placeholder={
+                        availableCategories.length > 0
+                          ? "Choose a category…"
+                          : "No additional active categories"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCategories.map(({ id, path }) => (
+                      <SelectItem key={id} value={id}>
+                        {path}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
           </section>
 
           <HomepageCategorySettings

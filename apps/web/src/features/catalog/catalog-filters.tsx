@@ -21,6 +21,7 @@ import {
 interface CatalogFiltersProps {
   options: Pick<CatalogProductFilterOptions, "colors" | "sizes"> | null;
   query: CatalogPublishedProductListQuery;
+  pathname?: string;
 }
 
 interface FilterForm {
@@ -29,7 +30,11 @@ interface FilterForm {
   size: string;
 }
 
-export function CatalogFilters({ options, query }: CatalogFiltersProps) {
+export function CatalogFilters({
+  options,
+  query,
+  pathname = "/",
+}: CatalogFiltersProps) {
   const router = useRouter();
   const audience = query.audience ?? "";
   const color = selectedFilterValue(options?.colors ?? [], query.color);
@@ -59,18 +64,20 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
     }
     if (query.search) params.set("search", query.search);
     if (query.category) params.set("category", query.category);
-    router.push(`/?${params.toString()}`);
+    if (query.sort) params.set("sort", query.sort);
+    router.push(`${pathname}?${params.toString()}`);
   }
 
   return (
     <form
-      action="/"
+      action={pathname}
       aria-label="Filter products"
       className="mt-8 grid gap-4 rounded-2xl border border-border bg-card/50 p-5 sm:grid-cols-2 lg:grid-cols-4"
       method="get"
       onSubmit={handleSubmit(applyFilters)}
     >
       <input name="limit" type="hidden" value={query.limit} />
+      {query.sort && <input name="sort" type="hidden" value={query.sort} />}
       <FilterSelect
         control={control}
         id="filter-audience"
@@ -112,7 +119,7 @@ export function CatalogFilters({ options, query }: CatalogFiltersProps) {
         {hasActiveFilters && (
           <Link
             className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            href="/"
+            href={query.sort ? `${pathname}?sort=${query.sort}` : pathname}
           >
             Clear filters
           </Link>

@@ -20,6 +20,7 @@ export async function SiteHeader() {
     getPublicStorefrontSettings(),
     getPublishedProductFilterOptions(),
   ]);
+  const headerNavigation = settings.headerNavigation;
 
   return (
     <>
@@ -54,7 +55,7 @@ export async function SiteHeader() {
           <div className="relative flex flex-wrap items-center justify-between gap-x-2 gap-y-2 xl:grid xl:grid-cols-3 xl:gap-0 2xl:grid-cols-4">
             <MobileStorefrontControls
               categories={productFilters?.categories ?? []}
-              headerNavigation={settings.headerNavigation}
+              headerNavigation={headerNavigation}
               siteName={settings.siteName}
               supportPhone={settings.supportPhone}
             />
@@ -83,14 +84,14 @@ export async function SiteHeader() {
             </Suspense>
           </div>
 
-          {settings.headerNavigation.length > 0 && (
+          {headerNavigation.length > 0 && (
             <nav
               aria-label="Main navigation"
               className="border-t border-brand/10 hidden overflow-x-auto xl:flex xl:justify-center"
             >
               <NavigationMenu className="max-w-none flex-none">
                 <NavigationMenuList className="flex-none gap-4">
-                  {settings.headerNavigation.map(({ href, label }, index) => (
+                  {headerNavigation.map(({ href, label }, index) => (
                     <NavigationMenuItem
                       className="flex-none"
                       key={`link:${index}:${label}:${href}`}

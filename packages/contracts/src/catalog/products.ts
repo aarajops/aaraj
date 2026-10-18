@@ -201,6 +201,7 @@ export const CatalogPublishedProductListQuerySchema = z.strictObject({
     .max(MAX_PUBLIC_CATALOG_PAGE_SIZE)
     .default(DEFAULT_PUBLIC_CATALOG_PAGE_SIZE),
   offset: z.coerce.number().int().min(0).max(MAX_LIST_OFFSET).default(0),
+  sort: z.enum(["newest"]).optional(),
   search: OptionalCatalogSearchSchema,
   audience: OptionalCatalogAudienceQuerySchema,
   category: OptionalCatalogCategoryQuerySchema,

@@ -1,0 +1,3 @@
+ALTER TABLE "storefront"."configuration" DROP CONSTRAINT "configuration_header_navigation_check";--> statement-breakpoint
+ALTER TABLE "storefront"."configuration" ALTER COLUMN "header_navigation" SET DEFAULT '[]'::jsonb;--> statement-breakpoint
+ALTER TABLE "storefront"."configuration" ADD CONSTRAINT "configuration_header_navigation_check" CHECK (jsonb_typeof("storefront"."configuration"."header_navigation") = 'array');

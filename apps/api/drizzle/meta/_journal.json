@@ -288,6 +288,13 @@
       "when": 1792316992070,
       "tag": "0040_remove_category_manual_order",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792321105826,
+      "tag": "0041_storefront_header_navigation",
+      "breakpoints": true
     }
   ]
 }

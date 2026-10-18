@@ -177,12 +177,16 @@ export class CatalogService {
       );
     }
 
+    const productOrder =
+      query.sort === "newest"
+        ? [desc(catalogProduct.createdAt), desc(catalogProduct.id)]
+        : [desc(catalogProduct.updatedAt), desc(catalogProduct.id)];
     const [rows, filterOptions] = await Promise.all([
       this.database.db
         .select()
         .from(catalogProduct)
         .where(and(...conditions))
-        .orderBy(desc(catalogProduct.updatedAt), desc(catalogProduct.id))
+        .orderBy(...productOrder)
         .limit(query.limit + 1)
         .offset(query.offset),
       this.getPublishedProductFilterOptions(),

@@ -14,6 +14,7 @@ import {
   PublicStorefrontSettingsSchema,
   StorefrontBrandIconAssetSchema,
   StorefrontFooterLinkGroupsSchema,
+  StorefrontHeaderNavigationItemSchema,
   StorefrontSettingsSchema,
 } from "@aaraj/contracts";
 import { eq, inArray, sql } from "drizzle-orm";
@@ -276,7 +277,7 @@ export class StorefrontSettingsService {
     const publicFields = await this.publicSettingsFields(configuration);
     return StorefrontSettingsSchema.parse({
       ...publicFields,
-      headerNavigation: configuration.headerNavigation,
+      headerNavigation: this.validHeaderNavigation(configuration),
       version: configuration.version,
       updatedAt: configuration.updatedAt?.toISOString() ?? null,
     });
@@ -285,7 +286,8 @@ export class StorefrontSettingsService {
   private async toPublicSettings(
     configuration: typeof storefrontConfiguration.$inferSelect,
   ): Promise<PublicStorefrontSettings> {
-    const categoryIds = configuration.headerNavigation.flatMap((item) =>
+    const headerConfiguration = this.validHeaderNavigation(configuration);
+    const categoryIds = headerConfiguration.flatMap((item) =>
       item.type === "category" ? [item.categoryId] : [],
     );
     const [publicFields, categories] = await Promise.all([
@@ -295,7 +297,7 @@ export class StorefrontSettingsService {
     const categoriesById = new Map(
       categories.map((category) => [category.id, category]),
     );
-    const headerNavigation = configuration.headerNavigation.flatMap((item) => {
+    const headerNavigation = headerConfiguration.flatMap((item) => {
       if (item.type === "link") {
         return [{ label: item.label, href: item.href }];
       }
@@ -314,6 +316,15 @@ export class StorefrontSettingsService {
     return PublicStorefrontSettingsSchema.parse({
       ...publicFields,
       headerNavigation,
+    });
+  }
+
+  private validHeaderNavigation(
+    configuration: typeof storefrontConfiguration.$inferSelect,
+  ) {
+    return configuration.headerNavigation.flatMap((item) => {
+      const result = StorefrontHeaderNavigationItemSchema.safeParse(item);
+      return result.success ? [result.data] : [];
     });
   }
 

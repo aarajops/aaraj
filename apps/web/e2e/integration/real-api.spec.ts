@@ -269,7 +269,6 @@ test("admin updates public storefront settings through to the rendered header", 
       instagram: "https://instagram.com/aaraj",
     },
     headerNavigation: [
-      { label: "Products", href: "/" },
       {
         label: headerCategoryName,
         href: `/?category=${headerCategorySlug}`,

@@ -1,22 +1,14 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import Image from "next/image";
-import Link from "next/link";
-import { CatalogFilters } from "@/features/catalog/catalog-filters";
-import { CatalogPagination } from "@/features/catalog/catalog-pagination";
-import { formatCatalogPrice } from "@/features/catalog/price";
-import { ProductLinkStatus } from "@/features/catalog/product-link-status";
+import { STOREFRONT_BANNER_PLACEMENT_HOME_HERO } from "@aaraj/contracts";
 import {
-  getPublishedProducts,
-  parsePublishedCatalogPageQuery,
-  type CatalogPageSearchParams,
-} from "@/features/catalog/catalog-queries";
-import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
+  CatalogLoading,
+  PublishedProductListing,
+} from "./_components/published-product-listing";
 import { getPublicStorefrontBanners } from "@/features/storefront/storefront-banners";
 import { StorefrontBanner } from "@/features/storefront/storefront-banner";
-import { STOREFRONT_BANNER_PLACEMENT_HOME_HERO } from "@aaraj/contracts";
-import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
-import { HomepageCategorySection } from "@/features/storefront/homepage-category-section";
+import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
+import type { CatalogPageSearchParams } from "@/features/catalog/catalog-queries";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { settings, title, description, image } =
@@ -53,7 +45,13 @@ export default function Home({
         <StorefrontHero />
       </Suspense>
       <Suspense fallback={<CatalogLoading />}>
-        <PublishedProductList searchParams={searchParams} />
+        <PublishedProductListing
+          description="Explore products in the Aaraj catalog."
+          pathname="/"
+          searchParams={searchParams}
+          showHomepageCategories
+          title="Products"
+        />
       </Suspense>
     </>
   );
@@ -64,172 +62,4 @@ async function StorefrontHero() {
     STOREFRONT_BANNER_PLACEMENT_HOME_HERO,
   );
   return <StorefrontBanner banners={banners} />;
-}
-
-async function PublishedProductList({
-  searchParams,
-}: {
-  searchParams: Promise<CatalogPageSearchParams>;
-}) {
-  const query = parsePublishedCatalogPageQuery(await searchParams);
-  if (!query) return <InvalidCatalogQuery />;
-
-  const page = await getPublishedProducts(query);
-  const hasActiveFilters = Boolean(
-    query.search ||
-    query.audience ||
-    query.category ||
-    query.color ||
-    query.size,
-  );
-  const settings = await getPublicStorefrontSettings();
-  const homepageCategories =
-    settings.homepageCategoriesEnabled &&
-    !hasActiveFilters &&
-    query.offset === 0
-      ? (page?.filters.categories.filter(
-          ({ id, image }) =>
-            settings.homepageCategoryIds.includes(id) && Boolean(image),
-        ) ?? [])
-      : [];
-
-  return (
-    <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
-      <div className="container mx-auto">
-        <HomepageCategorySection categories={homepageCategories} />
-        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-          THE AARAJ CATALOG
-        </p>
-        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-              Products
-            </h1>
-            <p className="mt-3 max-w-2xl text-muted-foreground">
-              Explore products in the Aaraj catalog.
-            </p>
-          </div>
-          <Link
-            className="rounded-lg border border-input px-4 py-2.5 text-sm font-medium text-foreground hover:border-ring"
-            href="/account"
-          >
-            Your account
-          </Link>
-        </div>
-
-        <CatalogFilters options={page?.filters ?? null} query={query} />
-
-        {page === null ? (
-          <p
-            className="mt-10 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
-            role="alert"
-          >
-            The catalog is temporarily unavailable. Please try again shortly.
-          </p>
-        ) : page.products.length === 0 ? (
-          <p className="mt-10 rounded-xl border border-border bg-card/60 p-8 text-secondary-foreground">
-            {hasActiveFilters
-              ? "No products match this search and its filters. Try changing or clearing them."
-              : "No products are published yet. Please check back soon."}
-          </p>
-        ) : (
-          <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {page.products.map((product) => (
-              <li key={product.id}>
-                <Link
-                  className="group flex h-full flex-col rounded-2xl border border-border bg-card/70 p-6 transition hover:border-primary/50 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  href={`/products/${product.slug}`}
-                >
-                  {product.images[0] && (
-                    <div className="mb-5 aspect-[3/4] overflow-hidden rounded-xl bg-muted/30">
-                      <Image
-                        alt={product.images[0].altText}
-                        className="h-full w-full object-contain"
-                        height={product.images[0].card.height}
-                        unoptimized
-                        src={product.images[0].card.src}
-                        width={product.images[0].card.width}
-                      />
-                    </div>
-                  )}
-                  <h2 className="text-xl font-semibold text-foreground group-hover:text-accent-foreground">
-                    {product.name}
-                  </h2>
-                  {product.price && (
-                    <p className="mt-2 text-base font-semibold text-primary">
-                      {formatCatalogPrice(product.price)}
-                    </p>
-                  )}
-                  <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                    {product.description || "View product details."}
-                  </p>
-                  <span className="mt-6 text-sm font-medium text-primary">
-                    View details <span aria-hidden="true">→</span>
-                  </span>
-                  <ProductLinkStatus />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        {page && (
-          <CatalogPagination
-            label="Public catalog"
-            pathname="/"
-            limit={query.limit}
-            offset={query.offset}
-            productCount={page.products.length}
-            hasMore={page.hasMore}
-            nextOffset={page.nextOffset}
-            preservedParams={{
-              search: query.search,
-              audience: query.audience,
-              category: query.category,
-              color: query.color,
-              size: query.size,
-            }}
-          />
-        )}
-      </div>
-    </main>
-  );
-}
-
-function InvalidCatalogQuery() {
-  return (
-    <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
-      <div className="container mx-auto">
-        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-          THE AARAJ CATALOG
-        </p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
-          Products
-        </h1>
-        <p
-          className="mt-8 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
-          role="alert"
-        >
-          The search or filters in this URL are invalid. Clear them to load the
-          catalog.
-        </p>
-        <Link
-          className="mt-5 inline-block rounded-lg border border-input px-4 py-2.5 text-sm font-medium text-foreground hover:border-ring"
-          href="/"
-        >
-          Clear search and filters
-        </Link>
-      </div>
-    </main>
-  );
-}
-
-function CatalogLoading() {
-  return (
-    <main
-      className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-14 text-muted-foreground sm:py-20"
-      role="status"
-    >
-      <div className="container mx-auto">Loading Aaraj products…</div>
-    </main>
-  );
 }

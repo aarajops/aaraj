@@ -48,6 +48,10 @@ function isSafeStorefrontHref(value: string): boolean {
   }
 }
 
+function isSafeStorefrontExternalHref(value: string): boolean {
+  return /^https:\/\//i.test(value) && isSafeStorefrontHref(value);
+}
+
 function httpsUrlForHosts(hosts: readonly string[]) {
   return z
     .string()
@@ -97,6 +101,19 @@ const StorefrontLinkSchema = z.strictObject({
 });
 export type StorefrontLink = z.infer<typeof StorefrontLinkSchema>;
 export type StorefrontFooterLink = StorefrontLink;
+
+const StorefrontHeaderExternalLinkSchema = z.strictObject({
+  label: z.string().trim().min(1).max(40),
+  href: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2048)
+    .refine(
+      isSafeStorefrontExternalHref,
+      "Use a secure HTTPS URL. Use the category selector for catalog pages.",
+    ),
+});
 
 function compareStorefrontLinks(left: StorefrontLink, right: StorefrontLink) {
   const leftLabel = left.label.toLowerCase();
@@ -150,7 +167,7 @@ export const StorefrontHeaderNavigationItemSchema = z.discriminatedUnion(
   [
     z.strictObject({
       type: z.literal("link"),
-      ...StorefrontLinkSchema.shape,
+      ...StorefrontHeaderExternalLinkSchema.shape,
     }),
     z.strictObject({
       type: z.literal("category"),
@@ -162,18 +179,14 @@ export type StorefrontHeaderNavigationItem = z.infer<
   typeof StorefrontHeaderNavigationItemSchema
 >;
 
-export const DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG = [
-  { type: "link", label: "Products", href: "/" },
-] as const satisfies readonly StorefrontHeaderNavigationItem[];
+export const DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG: readonly StorefrontHeaderNavigationItem[] =
+  [];
 
-export const DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS =
-  DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG.flatMap((item) =>
-    item.type === "link" ? [{ label: item.label, href: item.href }] : [],
-  ) satisfies readonly StorefrontLink[];
+export const DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS: readonly StorefrontLink[] =
+  [];
 
 export const StorefrontHeaderNavigationSchema =
   StorefrontHeaderNavigationItemSchema.array()
-    .max(8)
     .refine(
       (items) => {
         const categoryIds = items.flatMap((item) =>
@@ -233,7 +246,7 @@ export const PublicStorefrontSettingsSchema = z.strictObject({
   socialImage: StorefrontBrandAssetSchema.nullable(),
   socialImageAlt: z.string().trim().min(1).max(250).nullable(),
   socialLinks: StorefrontSocialLinksSchema,
-  headerNavigation: StorefrontLinkSchema.array().max(8),
+  headerNavigation: StorefrontLinkSchema.array(),
   footerDescription: PublicTextSchema,
   footerLinks: StorefrontLinkSchema.array().max(8),
   footerLinkGroups: StorefrontFooterLinkGroupsSchema,

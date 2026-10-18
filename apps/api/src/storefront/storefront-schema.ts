@@ -347,7 +347,7 @@ export const storefrontConfiguration = storefrontSchema.table(
     ),
     check(
       "configuration_header_navigation_check",
-      sql`case when jsonb_typeof(${table.headerNavigation}) = 'array' then jsonb_array_length(${table.headerNavigation}) <= 8 else false end`,
+      sql`jsonb_typeof(${table.headerNavigation}) = 'array'`,
     ),
     check("configuration_version_check", sql`${table.version} > 0`),
     check(
