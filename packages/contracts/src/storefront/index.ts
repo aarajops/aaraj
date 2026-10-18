@@ -186,16 +186,15 @@ export const DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS: readonly StorefrontLink[] =
   [];
 
 export const StorefrontHeaderNavigationSchema =
-  StorefrontHeaderNavigationItemSchema.array()
-    .refine(
-      (items) => {
-        const categoryIds = items.flatMap((item) =>
-          item.type === "category" ? [item.categoryId] : [],
-        );
-        return new Set(categoryIds).size === categoryIds.length;
-      },
-      { message: "A category can appear only once in header navigation." },
-    );
+  StorefrontHeaderNavigationItemSchema.array().refine(
+    (items) => {
+      const categoryIds = items.flatMap((item) =>
+        item.type === "category" ? [item.categoryId] : [],
+      );
+      return new Set(categoryIds).size === categoryIds.length;
+    },
+    { message: "A category can appear only once in header navigation." },
+  );
 
 export const StorefrontBrandAssetKindSchema = z.enum([
   "logo",
