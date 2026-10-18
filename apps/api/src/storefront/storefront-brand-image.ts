@@ -1,13 +1,17 @@
 import { BadRequestException } from "@nestjs/common";
 import { fileTypeFromBuffer } from "file-type";
 import sharp from "sharp";
-import type { StorefrontBrandAssetKind } from "@aaraj/contracts";
+import {
+  MAX_STOREFRONT_ASSET_DERIVATIVE_BYTES,
+  MAX_STOREFRONT_ASSET_UPLOAD_BYTES,
+  type StorefrontBrandAssetKind,
+} from "@aaraj/contracts";
+import {
+  IMAGE_PROCESSING_TIMEOUT_SECONDS,
+  MAX_DECODED_IMAGE_PIXELS,
+  WEBP_EFFORT,
+} from "../platform/media/image-processing.config.js";
 
-export const MAX_STOREFRONT_BRAND_ASSET_BYTES = 5 * 1024 * 1024;
-export const MAX_STOREFRONT_BRAND_DERIVATIVE_BYTES = 3 * 1024 * 1024;
-
-const MAX_DECODED_PIXELS = 24_000_000;
-const PROCESS_TIMEOUT_SECONDS = 15;
 const LOGO_DIMENSIONS = { width: 1200, height: 400 } as const;
 const BRAND_ICON_DIMENSIONS = { width: 1024, height: 1024 } as const;
 const FAVICON_DIMENSIONS = { width: 64, height: 64 } as const;
@@ -17,8 +21,6 @@ const SUPPORTED_FORMATS = new Map([
   ["image/png", "png"],
   ["image/webp", "webp"],
 ]);
-
-sharp.concurrency(1);
 
 export interface StorefrontBrandUploadFile {
   buffer: Buffer;
@@ -51,10 +53,10 @@ export function processStorefrontBrandImage(
 export function processStorefrontBrandIcon(source: Buffer): Promise<Buffer> {
   return sharp(source, {
     failOn: "warning",
-    limitInputPixels: MAX_DECODED_PIXELS,
+    limitInputPixels: MAX_DECODED_IMAGE_PIXELS,
     pages: 1,
   })
-    .timeout({ seconds: PROCESS_TIMEOUT_SECONDS })
+    .timeout({ seconds: IMAGE_PROCESSING_TIMEOUT_SECONDS })
     .resize({
       width: 512,
       height: 512,
@@ -76,10 +78,10 @@ async function processStorefrontBrandImageWithinLimits(
     !Number.isSafeInteger(file.size) ||
     file.size !== file.buffer.byteLength ||
     file.size < 1 ||
-    file.size > MAX_STOREFRONT_BRAND_ASSET_BYTES
+    file.size > MAX_STOREFRONT_ASSET_UPLOAD_BYTES
   ) {
     throw new BadRequestException(
-      `Image files must be no larger than ${MAX_STOREFRONT_BRAND_ASSET_BYTES} bytes.`,
+      `Image files must be no larger than ${MAX_STOREFRONT_ASSET_UPLOAD_BYTES} bytes.`,
     );
   }
 
@@ -104,15 +106,15 @@ async function processStorefrontBrandImageWithinLimits(
   try {
     const source = sharp(file.buffer, {
       failOn: "warning",
-      limitInputPixels: MAX_DECODED_PIXELS,
+      limitInputPixels: MAX_DECODED_IMAGE_PIXELS,
       pages: 1,
-    }).timeout({ seconds: PROCESS_TIMEOUT_SECONDS });
+    }).timeout({ seconds: IMAGE_PROCESSING_TIMEOUT_SECONDS });
     const metadata = await source.metadata();
     if (
       metadata.format !== expectedFormat ||
       !metadata.width ||
       !metadata.height ||
-      metadata.width * metadata.height > MAX_DECODED_PIXELS ||
+      metadata.width * metadata.height > MAX_DECODED_IMAGE_PIXELS ||
       (metadata.pages ?? 1) > 1
     ) {
       throw new BadRequestException("The uploaded image is not supported.");
@@ -128,10 +130,10 @@ async function processStorefrontBrandImageWithinLimits(
             : SOCIAL_IMAGE_DIMENSIONS;
     const pipeline = sharp(file.buffer, {
       failOn: "warning",
-      limitInputPixels: MAX_DECODED_PIXELS,
+      limitInputPixels: MAX_DECODED_IMAGE_PIXELS,
       pages: 1,
     })
-      .timeout({ seconds: PROCESS_TIMEOUT_SECONDS })
+      .timeout({ seconds: IMAGE_PROCESSING_TIMEOUT_SECONDS })
       .rotate()
       .resize({
         width: dimensions.width,
@@ -152,7 +154,7 @@ async function processStorefrontBrandImageWithinLimits(
 
     const output =
       kind === "logo"
-        ? await pipeline.webp({ quality: 84, effort: 4 }).toBuffer({
+        ? await pipeline.webp({ quality: 84, effort: WEBP_EFFORT }).toBuffer({
             resolveWithObject: true,
           })
         : kind === "favicon" || kind === "brandIcon"
@@ -162,7 +164,7 @@ async function processStorefrontBrandImageWithinLimits(
           : await pipeline.jpeg({ quality: 84, mozjpeg: true }).toBuffer({
               resolveWithObject: true,
             });
-    if (output.data.byteLength > MAX_STOREFRONT_BRAND_DERIVATIVE_BYTES) {
+    if (output.data.byteLength > MAX_STOREFRONT_ASSET_DERIVATIVE_BYTES) {
       throw new BadRequestException("The optimized image is too large.");
     }
     return {

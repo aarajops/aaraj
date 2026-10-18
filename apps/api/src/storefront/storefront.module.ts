@@ -6,10 +6,12 @@ import { PlatformAuthorizationModule } from "../platform/authorization/authoriza
 import { StorageModule } from "../platform/storage/storage.module.js";
 import { StorefrontBrandAssetService } from "./storefront-brand-asset.service.js";
 import {
-  StorefrontBrandAssetManageGuard,
-  StorefrontBrandAssetUploadLifecycleInterceptor,
-} from "./storefront-brand-asset-upload.guard.js";
+  StorefrontAssetManageGuard,
+  StorefrontAssetUploadLifecycleInterceptor,
+} from "./storefront-asset-upload.guard.js";
 import { StorefrontController } from "./storefront.controller.js";
+import { StorefrontBannersController } from "./storefront-banners.controller.js";
+import { StorefrontBannersService } from "./storefront-banners.service.js";
 import { StorefrontPolicy } from "./storefront.policy.js";
 import { StorefrontSettingsService } from "./storefront.service.js";
 
@@ -21,12 +23,13 @@ import { StorefrontSettingsService } from "./storefront.service.js";
     PlatformAuthorizationModule,
     StorageModule,
   ],
-  controllers: [StorefrontController],
+  controllers: [StorefrontController, StorefrontBannersController],
   providers: [
     StorefrontSettingsService,
     StorefrontBrandAssetService,
-    StorefrontBrandAssetManageGuard,
-    StorefrontBrandAssetUploadLifecycleInterceptor,
+    StorefrontBannersService,
+    StorefrontAssetManageGuard,
+    StorefrontAssetUploadLifecycleInterceptor,
     StorefrontPolicy,
   ],
   exports: [StorefrontSettingsService],

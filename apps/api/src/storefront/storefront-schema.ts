@@ -1,13 +1,21 @@
 import { sql } from "drizzle-orm";
 import {
+  MAX_STOREFRONT_ASSET_DERIVATIVE_BYTES,
+  MAX_STOREFRONT_BANNER_HEIGHT,
+  MAX_STOREFRONT_BANNER_ALT_TEXT_LENGTH,
+  MAX_STOREFRONT_BANNER_HREF_LENGTH,
+  MAX_STOREFRONT_BANNER_NAME_LENGTH,
+  MAX_STOREFRONT_BANNER_WIDTH,
   DEFAULT_STOREFRONT_BACKGROUND_COLOR,
   DEFAULT_STOREFRONT_BRAND_COLOR,
   DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG,
+  STOREFRONT_BANNER_PLACEMENTS,
   type StorefrontHeaderNavigationItem,
 } from "@aaraj/contracts";
 import {
   check,
   boolean,
+  index,
   integer,
   jsonb,
   pgSchema,
@@ -19,6 +27,9 @@ import {
 import { user } from "../auth/auth-schema.js";
 
 export const storefrontSchema = pgSchema("storefront");
+const bannerPlacementSql = sql.raw(
+  STOREFRONT_BANNER_PLACEMENTS.map((placement) => `'${placement}'`).join(", "),
+);
 
 export const storefrontBrandAsset = storefrontSchema.table(
   "brand_asset",
@@ -62,11 +73,119 @@ export const storefrontBrandAsset = storefrontSchema.table(
     check("brand_asset_sha256_check", sql`${table.sha256} ~ '^[0-9a-f]{64}$'`),
     check(
       "brand_asset_size_check",
-      sql`${table.sizeBytes} between 1 and 3145728`,
+      sql`${table.sizeBytes} between 1 and ${sql.raw(String(MAX_STOREFRONT_ASSET_DERIVATIVE_BYTES))}`,
     ),
     check(
       "brand_asset_dimensions_check",
       sql`(${table.kind} = 'logo' and ${table.width} between 1 and 1200 and ${table.height} between 1 and 400) or (${table.kind} = 'brandIcon' and ${table.width} = 1024 and ${table.height} = 1024) or (${table.kind} = 'favicon' and ${table.width} = 64 and ${table.height} = 64) or (${table.kind} = 'socialImage' and ${table.width} = 1200 and ${table.height} = 630)`,
+    ),
+  ],
+);
+
+export const storefrontBannerAsset = storefrontSchema.table(
+  "banner_asset",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    commandId: uuid("command_id").notNull(),
+    objectKey: text("object_key").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sourceSha256: text("source_sha256").notNull(),
+    sha256: text("sha256").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    publiclyReleasedAt: timestamp("publicly_released_at", {
+      withTimezone: true,
+    }),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("banner_asset_created_at_id_idx").on(table.createdAt, table.id),
+    uniqueIndex("banner_asset_command_uidx").on(table.commandId),
+    uniqueIndex("banner_asset_object_key_uidx").on(table.objectKey),
+    check(
+      "banner_asset_object_key_check",
+      sql`${table.objectKey} ~ '^published/storefront/banner/[0-9a-f-]{36}/[0-9a-f]{64}\\.webp$'`,
+    ),
+    check(
+      "banner_asset_source_sha256_check",
+      sql`${table.sourceSha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check("banner_asset_sha256_check", sql`${table.sha256} ~ '^[0-9a-f]{64}$'`),
+    check(
+      "banner_asset_size_check",
+      sql`${table.sizeBytes} between 1 and ${sql.raw(String(MAX_STOREFRONT_ASSET_DERIVATIVE_BYTES))}`,
+    ),
+    check(
+      "banner_asset_dimensions_check",
+      sql`${table.width} between 1 and ${sql.raw(String(MAX_STOREFRONT_BANNER_WIDTH))} and ${table.height} between 1 and ${sql.raw(String(MAX_STOREFRONT_BANNER_HEIGHT))}`,
+    ),
+  ],
+);
+
+export const storefrontBanner = storefrontSchema.table(
+  "banner",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    placement: text("placement").notNull(),
+    active: boolean("active").notNull().default(false),
+    desktopAssetId: uuid("desktop_asset_id").references(
+      () => storefrontBannerAsset.id,
+      { onDelete: "restrict" },
+    ),
+    mobileAssetId: uuid("mobile_asset_id").references(
+      () => storefrontBannerAsset.id,
+      { onDelete: "restrict" },
+    ),
+    altText: text("alt_text").notNull().default(""),
+    href: text("href"),
+    version: integer("version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "restrict",
+    }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+    updatedBy: text("updated_by").references(() => user.id, {
+      onDelete: "restrict",
+    }),
+  },
+  (table) => [
+    index("banner_placement_created_at_id_idx").on(
+      table.placement,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "banner_name_check",
+      sql`${table.name} = btrim(${table.name}) and length(${table.name}) between 1 and ${sql.raw(String(MAX_STOREFRONT_BANNER_NAME_LENGTH))}`,
+    ),
+    check(
+      "banner_placement_check",
+      sql`${table.placement} in (${bannerPlacementSql})`,
+    ),
+    check(
+      "banner_assets_check",
+      sql`not ${table.active} or ${table.desktopAssetId} is not null`,
+    ),
+    check(
+      "banner_alt_text_check",
+      sql`${table.altText} = btrim(${table.altText}) and length(${table.altText}) <= ${sql.raw(String(MAX_STOREFRONT_BANNER_ALT_TEXT_LENGTH))}`,
+    ),
+    check(
+      "banner_href_check",
+      sql`${table.href} is null or (${table.href} = btrim(${table.href}) and length(${table.href}) between 1 and ${sql.raw(String(MAX_STOREFRONT_BANNER_HREF_LENGTH))} and ${table.href} !~ '[[:cntrl:]]' and position(E'\\\\' in ${table.href}) = 0 and ((left(${table.href}, 1) = '/' and left(${table.href}, 2) <> '//') or ${table.href} ~* '^https://[^/@?#]+(:[0-9]+)?([/?#].*)?$'))`,
+    ),
+    check("banner_version_check", sql`${table.version} > 0`),
+    check(
+      "banner_update_actor_check",
+      sql`(${table.updatedAt} is null and ${table.updatedBy} is null) or (${table.updatedAt} is not null and ${table.updatedBy} is not null)`,
     ),
   ],
 );

@@ -12,6 +12,9 @@ import {
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
 import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
+import { getPublicStorefrontBanners } from "@/features/storefront/storefront-banners";
+import { StorefrontBanner } from "@/features/storefront/storefront-banner";
+import { STOREFRONT_BANNER_PLACEMENT_HOME_HERO } from "@aaraj/contracts";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { settings, title, description, image } =
@@ -43,10 +46,22 @@ export default function Home({
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
   return (
-    <Suspense fallback={<CatalogLoading />}>
-      <PublishedProductList searchParams={searchParams} />
-    </Suspense>
+    <>
+      <Suspense fallback={null}>
+        <StorefrontHero />
+      </Suspense>
+      <Suspense fallback={<CatalogLoading />}>
+        <PublishedProductList searchParams={searchParams} />
+      </Suspense>
+    </>
   );
+}
+
+async function StorefrontHero() {
+  const banners = await getPublicStorefrontBanners(
+    STOREFRONT_BANNER_PLACEMENT_HOME_HERO,
+  );
+  return <StorefrontBanner banners={banners} />;
 }
 
 async function PublishedProductList({

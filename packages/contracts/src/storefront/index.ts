@@ -1,5 +1,11 @@
 import { z } from "zod";
 import { API_V1_BASE_PATH } from "../platform/api-version.js";
+import {
+  DEFAULT_LIST_PAGE_SIZE,
+  MAX_LIST_PAGE_SIZE,
+  OffsetPaginationMetadataSchema,
+  OffsetPaginationQuerySchema,
+} from "../common/pagination.js";
 
 export const STOREFRONT_SETTINGS_ID = "default" as const;
 export const DEFAULT_STOREFRONT_BACKGROUND_COLOR = "#fafafafa";
@@ -21,6 +27,27 @@ const StorefrontEmailSchema = z
   .pipe(z.email())
   .nullable();
 const PublicTextSchema = z.string().trim().min(1).max(500).nullable();
+
+function isSafeStorefrontHref(value: string): boolean {
+  if (
+    value.includes("\\") ||
+    [...value].some((character) => character.charCodeAt(0) < 0x20)
+  ) {
+    return false;
+  }
+  if (value.startsWith("/")) return !value.startsWith("//");
+  if (!/^https:\/\//i.test(value)) return false;
+  try {
+    const parsed = new URL(value);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.username.length === 0 &&
+      parsed.password.length === 0
+    );
+  } catch {
+    return false;
+  }
+}
 
 function httpsUrlForHosts(hosts: readonly string[]) {
   return z
@@ -63,20 +90,10 @@ const StorefrontLinkSchema = z.strictObject({
     .trim()
     .min(1)
     .max(2048)
-    .refine((value) => {
-      if (value.includes("\\") || /[\u0000-\u001f]/.test(value)) return false;
-      if (value.startsWith("/")) return !value.startsWith("//");
-      try {
-        const parsed = new URL(value);
-        return (
-          parsed.protocol === "https:" &&
-          parsed.username.length === 0 &&
-          parsed.password.length === 0
-        );
-      } catch {
-        return false;
-      }
-    }, "Use an internal path or a secure HTTPS link."),
+    .refine(
+      isSafeStorefrontHref,
+      "Use an internal path or a secure HTTPS link.",
+    ),
 });
 export type StorefrontLink = z.infer<typeof StorefrontLinkSchema>;
 export type StorefrontFooterLink = StorefrontLink;
@@ -242,4 +259,185 @@ export const StorefrontBrandAssetClearSchema = z.strictObject({
 });
 export type StorefrontBrandAssetClear = z.infer<
   typeof StorefrontBrandAssetClearSchema
+>;
+
+export const STOREFRONT_BANNER_PLACEMENT_HOME_HERO = "home_hero" as const;
+export const STOREFRONT_BANNER_PLACEMENTS = [
+  STOREFRONT_BANNER_PLACEMENT_HOME_HERO,
+] as const;
+export const StorefrontBannerPlacementSchema = z.enum(
+  STOREFRONT_BANNER_PLACEMENTS,
+);
+export type StorefrontBannerPlacement = z.infer<
+  typeof StorefrontBannerPlacementSchema
+>;
+
+export const MAX_STOREFRONT_ASSET_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const MAX_STOREFRONT_ASSET_DERIVATIVE_BYTES = 3 * 1024 * 1024;
+export const MAX_STOREFRONT_BANNER_WIDTH = 2560;
+export const MAX_STOREFRONT_BANNER_HEIGHT = 1080;
+export const MAX_STOREFRONT_BANNER_NAME_LENGTH = 100;
+export const MAX_STOREFRONT_BANNER_ALT_TEXT_LENGTH = 250;
+export const MAX_STOREFRONT_BANNER_HREF_LENGTH = 2048;
+export const STOREFRONT_BANNER_CACHE = {
+  revalidateSeconds: 60,
+  staleWhileRevalidateSeconds: 300,
+} as const;
+
+const StorefrontBannerHrefSchema = z
+  .string()
+  .trim()
+  .max(MAX_STOREFRONT_BANNER_HREF_LENGTH)
+  .nullable()
+  .refine((value) => {
+    return value === null || isSafeStorefrontHref(value);
+  }, "Use an internal path or a secure HTTPS URL.");
+
+const StorefrontBannerAssetFields = z.strictObject({
+  id: z.uuid(),
+  width: z.number().int().positive().max(MAX_STOREFRONT_BANNER_WIDTH),
+  height: z.number().int().positive().max(MAX_STOREFRONT_BANNER_HEIGHT),
+  createdAt: z.iso.datetime(),
+});
+
+export const PublicStorefrontBannerAssetSchema =
+  StorefrontBannerAssetFields.extend({
+    src: z
+      .string()
+      .regex(
+        new RegExp(
+          `^${API_V1_BASE_PATH}/storefront/banner-assets/[0-9a-f-]{36}/[0-9a-f]{64}\\.webp$`,
+        ),
+      ),
+  });
+export type PublicStorefrontBannerAsset = z.infer<
+  typeof PublicStorefrontBannerAssetSchema
+>;
+
+export const ManagedStorefrontBannerAssetSchema =
+  StorefrontBannerAssetFields.extend({
+    src: z
+      .string()
+      .regex(
+        new RegExp(
+          `^${API_V1_BASE_PATH}/storefront/manage/banner-assets/[0-9a-f-]{36}/[0-9a-f]{64}\\.webp$`,
+        ),
+      ),
+  });
+export type ManagedStorefrontBannerAsset = z.infer<
+  typeof ManagedStorefrontBannerAssetSchema
+>;
+
+export const PublicStorefrontBannerSchema = z.strictObject({
+  desktop: PublicStorefrontBannerAssetSchema,
+  mobile: PublicStorefrontBannerAssetSchema.nullable(),
+  altText: z.string().max(MAX_STOREFRONT_BANNER_ALT_TEXT_LENGTH),
+  href: StorefrontBannerHrefSchema,
+});
+export type PublicStorefrontBanner = z.infer<
+  typeof PublicStorefrontBannerSchema
+>;
+
+export const PublicStorefrontBannersSchema = z.strictObject({
+  placement: StorefrontBannerPlacementSchema,
+  banners: PublicStorefrontBannerSchema.array(),
+});
+export type PublicStorefrontBanners = z.infer<
+  typeof PublicStorefrontBannersSchema
+>;
+
+export const StorefrontBannerSchema = z.strictObject({
+  id: z.uuid(),
+  name: z.string().trim().min(1).max(MAX_STOREFRONT_BANNER_NAME_LENGTH),
+  placement: StorefrontBannerPlacementSchema,
+  active: z.boolean(),
+  desktop: ManagedStorefrontBannerAssetSchema.nullable(),
+  mobile: ManagedStorefrontBannerAssetSchema.nullable(),
+  altText: z.string().max(MAX_STOREFRONT_BANNER_ALT_TEXT_LENGTH),
+  href: StorefrontBannerHrefSchema,
+  version: z.number().int().positive(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime().nullable(),
+});
+export type StorefrontBanner = z.infer<typeof StorefrontBannerSchema>;
+
+export const StorefrontBannerListQuerySchema =
+  OffsetPaginationQuerySchema.extend({
+    search: z.preprocess(
+      (value) =>
+        typeof value === "string" && value.trim() === "" ? undefined : value,
+      z.string().trim().min(1).max(160).optional(),
+    ),
+    status: z.enum(["active", "draft"]).optional(),
+  });
+export type StorefrontBannerListQuery = z.infer<
+  typeof StorefrontBannerListQuerySchema
+>;
+
+export const StorefrontBannerPageSchema = z.strictObject({
+  banners: StorefrontBannerSchema.array().max(MAX_LIST_PAGE_SIZE),
+  ...OffsetPaginationMetadataSchema.shape,
+});
+export type StorefrontBannerPage = z.infer<typeof StorefrontBannerPageSchema>;
+
+const StorefrontBannerInputFields = z.strictObject({
+  name: z.string().trim().min(1).max(MAX_STOREFRONT_BANNER_NAME_LENGTH),
+  placement: StorefrontBannerPlacementSchema,
+  active: z.boolean(),
+  desktopAssetId: z.uuid().nullable(),
+  mobileAssetId: z.uuid().nullable(),
+  altText: z.string().trim().max(MAX_STOREFRONT_BANNER_ALT_TEXT_LENGTH),
+  href: StorefrontBannerHrefSchema,
+});
+
+function validateStorefrontBannerInput(
+  value: z.infer<typeof StorefrontBannerInputFields>,
+  context: z.RefinementCtx,
+) {
+  if (value.active && !value.desktopAssetId) {
+    context.addIssue({
+      code: "custom",
+      path: ["desktopAssetId"],
+      message: "Choose a desktop image before publishing the banner.",
+    });
+  }
+  if (value.href && !value.altText) {
+    context.addIssue({
+      code: "custom",
+      path: ["altText"],
+      message: "Add alternative text that describes the linked banner.",
+    });
+  }
+}
+
+export const StorefrontBannerCreateSchema =
+  StorefrontBannerInputFields.superRefine(validateStorefrontBannerInput);
+export type StorefrontBannerCreate = z.infer<
+  typeof StorefrontBannerCreateSchema
+>;
+
+export const StorefrontBannerUpdateSchema = StorefrontBannerInputFields.extend({
+  expectedVersion: z.number().int().positive(),
+}).superRefine(validateStorefrontBannerInput);
+export type StorefrontBannerUpdate = z.infer<
+  typeof StorefrontBannerUpdateSchema
+>;
+
+export const StorefrontBannerAssetPageSchema = z.strictObject({
+  assets: ManagedStorefrontBannerAssetSchema.array().max(
+    DEFAULT_LIST_PAGE_SIZE,
+  ),
+  nextCursor: z.uuid().nullable(),
+});
+export type StorefrontBannerAssetPage = z.infer<
+  typeof StorefrontBannerAssetPageSchema
+>;
+
+export const StorefrontBannerAssetCursorSchema = z.uuid();
+
+export const StorefrontBannerAssetUploadSchema = z.strictObject({
+  commandId: z.uuid(),
+});
+export type StorefrontBannerAssetUpload = z.infer<
+  typeof StorefrontBannerAssetUploadSchema
 >;

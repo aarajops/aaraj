@@ -8,14 +8,12 @@ import {
   type CatalogMediaRendition,
 } from "@aaraj/contracts";
 import { createHash } from "node:crypto";
-
-const MAX_DECODED_PIXELS = 24_000_000;
-const PROCESS_TIMEOUT_SECONDS = 15;
-const WEBP_QUALITY = 82;
-const WEBP_EFFORT = 4;
-
-// Keep each native libvips operation bounded on the API process.
-sharp.concurrency(1);
+import {
+  DEFAULT_WEBP_QUALITY,
+  IMAGE_PROCESSING_TIMEOUT_SECONDS,
+  MAX_DECODED_IMAGE_PIXELS,
+  WEBP_EFFORT,
+} from "../../platform/media/image-processing.config.js";
 
 export class InvalidCatalogImageError extends Error {
   constructor() {
@@ -54,17 +52,17 @@ async function processCatalogImageWithinLimits(
   try {
     const metadata = await sharp(source, {
       failOn: "warning",
-      limitInputPixels: MAX_DECODED_PIXELS,
+      limitInputPixels: MAX_DECODED_IMAGE_PIXELS,
       pages: 1,
     })
-      .timeout({ seconds: PROCESS_TIMEOUT_SECONDS })
+      .timeout({ seconds: IMAGE_PROCESSING_TIMEOUT_SECONDS })
       .metadata();
     const expectedFormat = contentTypeToFormat(expectedContentType);
     if (
       metadata.format !== expectedFormat ||
       !metadata.width ||
       !metadata.height ||
-      metadata.width * metadata.height > MAX_DECODED_PIXELS ||
+      metadata.width * metadata.height > MAX_DECODED_IMAGE_PIXELS ||
       (metadata.pages ?? 1) > 1
     ) {
       throw new InvalidCatalogImageError();
@@ -100,10 +98,10 @@ async function createRendition(
   const dimensions = CATALOG_MEDIA_RENDITIONS[rendition];
   return sharp(source, {
     failOn: "warning",
-    limitInputPixels: MAX_DECODED_PIXELS,
+    limitInputPixels: MAX_DECODED_IMAGE_PIXELS,
     pages: 1,
   })
-    .timeout({ seconds: PROCESS_TIMEOUT_SECONDS })
+    .timeout({ seconds: IMAGE_PROCESSING_TIMEOUT_SECONDS })
     .rotate()
     .resize({
       width: dimensions.width,
@@ -111,7 +109,7 @@ async function createRendition(
       fit: "inside",
       withoutEnlargement: true,
     })
-    .webp({ quality: WEBP_QUALITY, effort: WEBP_EFFORT })
+    .webp({ quality: DEFAULT_WEBP_QUALITY, effort: WEBP_EFFORT })
     .toBuffer({ resolveWithObject: true });
 }
 

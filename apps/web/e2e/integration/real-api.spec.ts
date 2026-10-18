@@ -467,6 +467,149 @@ test("admin updates public storefront settings through to the rendered header", 
   }
 });
 
+test("admin uploads and publishes a catalog banner through to the storefront", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  await page.goto("/account");
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill("catalog-e2e@example.test");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("CatalogE2E-Only-Password-2026!");
+  await page
+    .locator("form")
+    .getByRole("button", { name: "Sign in", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/admin$/);
+
+  await page.goto("/admin/storefront/banners");
+  await expect(
+    page.getByRole("heading", { name: "Storefront banners", level: 1 }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "New banner" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Create banner", level: 1 }),
+  ).toBeVisible();
+  await page.getByLabel("Internal name").fill("Seasonal banner");
+  await page.locator("#banner-desktop-file").setInputFiles({
+    name: "catalog-banner.png",
+    mimeType: "image/png",
+    buffer: brandPng,
+  });
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Desktop image uploaded. Save the banner to keep the change.",
+    }),
+  ).toBeVisible();
+  await page.locator("#banner-mobile-file").setInputFiles({
+    name: "catalog-banner-mobile.png",
+    mimeType: "image/png",
+    buffer: brandPng,
+  });
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Mobile image uploaded. Save the banner to keep the change.",
+    }),
+  ).toBeVisible();
+  await page.getByLabel("Link (optional)").fill("/products");
+  await page.getByRole("checkbox", { name: "Publish this banner" }).check();
+  await page.getByRole("button", { name: "Create banner" }).click();
+  await expect(
+    page.getByText("Add alternative text that describes the linked banner."),
+  ).toBeVisible();
+  await page.getByLabel("Alternative text").fill("AARAJ seasonal collection");
+  await page.getByRole("button", { name: "Create banner" }).click();
+  await expect(page).toHaveURL(/\/admin\/storefront\/banners$/);
+  await expect(
+    page.getByRole("row", { name: /Seasonal banner.*Published/ }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Edit Seasonal banner" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Edit banner", level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Internal name")).toHaveValue("Seasonal banner");
+  await expect(
+    page.getByRole("checkbox", { name: "Publish this banner" }),
+  ).toBeChecked();
+  await page.getByLabel("Internal name").fill("Seasonal banner revised");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page).toHaveURL(/\/admin\/storefront\/banners$/);
+  await expect(
+    page.getByRole("row", { name: /Seasonal banner revised.*Published/ }),
+  ).toBeVisible();
+
+  await page.getByRole("link", { name: "New banner" }).click();
+  await page.getByLabel("Internal name").fill("Second seasonal banner");
+  await page.locator("#banner-desktop-file").setInputFiles({
+    name: "catalog-banner-second.png",
+    mimeType: "image/png",
+    buffer: brandPng,
+  });
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Desktop image uploaded. Save the banner to keep the change.",
+    }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Alternative text")
+    .fill("AARAJ second seasonal collection");
+  await page.getByRole("checkbox", { name: "Publish this banner" }).check();
+  await page.getByRole("button", { name: "Create banner" }).click();
+  await expect(page).toHaveURL(/\/admin\/storefront\/banners$/);
+  await expect(
+    page.getByRole("row", { name: /Second seasonal banner.*Published/ }),
+  ).toBeVisible();
+
+  const publicBannerResponse = await page.request.get(
+    "/api/v1/storefront/banners/home_hero",
+  );
+  expect(publicBannerResponse.status()).toBe(200);
+  const publicBanner = await publicBannerResponse.json();
+  expect(publicBanner).toMatchObject({
+    placement: "home_hero",
+    banners: [
+      {
+        altText: "AARAJ second seasonal collection",
+      },
+      {
+        altText: "AARAJ seasonal collection",
+        href: "/products",
+        mobile: { id: expect.any(String) },
+      },
+    ],
+  });
+  const imageResponse = await page.request.get(
+    publicBanner.banners[0].desktop.src,
+  );
+  expect(imageResponse.status()).toBe(200);
+  expect(imageResponse.headers()["content-type"]).toContain("image/webp");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Next promotion" }).click();
+  await expect(
+    page.getByRole("img", { name: "AARAJ seasonal collection" }),
+  ).toBeVisible();
+  const mobileAssetId = publicBanner.banners[1].mobile.id as string;
+  await expect
+    .poll(() =>
+      page
+        .getByRole("img", { name: "AARAJ seasonal collection" })
+        .evaluate((image) => (image as HTMLImageElement).currentSrc),
+    )
+    .toContain(mobileAssetId);
+  await expect(
+    page.getByRole("link", { name: "AARAJ seasonal collection" }),
+  ).toHaveAttribute("href", "/products");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Next promotion" }).click();
+  await expect(page.locator('[aria-live="polite"]')).toHaveText("Slide 2 of 2");
+});
+
 test("catalog operator configures a product through to storefront visibility", async ({
   page,
 }) => {
@@ -629,7 +772,9 @@ test("catalog operator configures a product through to storefront visibility", a
 
   await page.goto("/");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
-  await page.getByLabel("Search products").fill("100% cotton");
+  await page
+    .getByRole("searchbox", { name: "Search products" })
+    .fill("100% cotton");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await chooseSelectOption(page, "Audience", "Unisex");
   await chooseSelectOption(page, "Color", "Black");
@@ -803,9 +948,9 @@ test("catalog operator configures a product through to storefront visibility", a
   const cartSheet = page.getByRole("dialog", { name: "Your cart" });
   await expect(cartSheet).toBeVisible();
   await expect(
-    cartSheet.getByRole("link", { name: productName }),
+    cartSheet.getByRole("button", { name: productName }),
   ).toBeVisible();
-  await cartSheet.getByRole("link", { name: "View cart" }).click();
+  await cartSheet.getByRole("button", { name: "View cart" }).click();
   await expect(page).toHaveURL(/\/cart$/);
   await expect(cartSheet).not.toBeVisible();
 

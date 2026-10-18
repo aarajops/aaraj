@@ -29,6 +29,7 @@ import {
   StorefrontBrandAssetKindSchema,
   StorefrontBrandAssetUploadSchema,
   StorefrontSettingsUpdateSchema,
+  MAX_STOREFRONT_ASSET_UPLOAD_BYTES,
   type StorefrontBrandAssetClear,
   type StorefrontBrandAssetKind,
   type StorefrontBrandAssetUpload,
@@ -37,14 +38,11 @@ import {
 import { z } from "zod";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
 import { StorefrontBrandAssetService } from "./storefront-brand-asset.service.js";
+import { type StorefrontBrandUploadFile } from "./storefront-brand-image.js";
 import {
-  MAX_STOREFRONT_BRAND_ASSET_BYTES,
-  type StorefrontBrandUploadFile,
-} from "./storefront-brand-image.js";
-import {
-  StorefrontBrandAssetManageGuard,
-  StorefrontBrandAssetUploadLifecycleInterceptor,
-} from "./storefront-brand-asset-upload.guard.js";
+  StorefrontAssetManageGuard,
+  StorefrontAssetUploadLifecycleInterceptor,
+} from "./storefront-asset-upload.guard.js";
 import { StorefrontSettingsService } from "./storefront.service.js";
 
 const BrandAssetIdSchema = z.uuid();
@@ -114,12 +112,12 @@ export class StorefrontController {
   @ApiCookieAuth()
   @ApiConsumes("multipart/form-data")
   @Header("Cache-Control", "no-store")
-  @UseGuards(StorefrontBrandAssetManageGuard)
+  @UseGuards(StorefrontAssetManageGuard)
   @UseInterceptors(
-    StorefrontBrandAssetUploadLifecycleInterceptor,
+    StorefrontAssetUploadLifecycleInterceptor,
     FileInterceptor("file", {
       limits: {
-        fileSize: MAX_STOREFRONT_BRAND_ASSET_BYTES,
+        fileSize: MAX_STOREFRONT_ASSET_UPLOAD_BYTES,
         files: 1,
         fields: 3,
         parts: 4,

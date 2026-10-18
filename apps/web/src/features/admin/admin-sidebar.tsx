@@ -12,6 +12,7 @@ import {
   Ruler,
   Store,
   Tags,
+  Images,
 } from "lucide-react";
 import {
   Sidebar,
@@ -75,6 +76,12 @@ const settingsLinks = [
     href: "/admin/settings/storefront",
     label: "Storefront",
     icon: Store,
+    permission: "storefront.settings.manage",
+  },
+  {
+    href: "/admin/storefront/banners",
+    label: "Banners",
+    icon: Images,
     permission: "storefront.settings.manage",
   },
   {

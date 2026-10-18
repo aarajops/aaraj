@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import {
   afterAll,
   afterEach,
@@ -34,6 +34,8 @@ import { DatabaseService } from "../src/platform/database/database.service.js";
 import { R2Storage } from "../src/platform/storage/r2-storage.js";
 import {
   storefrontBrandAsset,
+  storefrontBannerAsset,
+  storefrontBanner,
   storefrontConfiguration,
 } from "../src/storefront/storefront-schema.js";
 
@@ -180,6 +182,8 @@ describe("storefront settings", () => {
 
   beforeEach(async () => {
     storage.objects.clear();
+    await database.db.delete(storefrontBanner);
+    await database.db.delete(storefrontBannerAsset);
     await database.db.update(storefrontConfiguration).set({
       siteName: "AARAJ",
       brandColor: "#7b2220",
@@ -775,5 +779,322 @@ describe("storefront settings", () => {
     });
     const assets = await database.db.select().from(storefrontBrandAsset);
     expect(assets).toHaveLength(assetsBefore.length);
+  });
+
+  it("creates reusable banner records and publishes homepage carousel slides", async () => {
+    const emptyPublicBanners = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/banners/home_hero`)
+      .expect(200);
+    expect(emptyPublicBanners.headers["cache-control"]).toContain(
+      "s-maxage=60",
+    );
+    expect(emptyPublicBanners.body).toEqual({
+      placement: "home_hero",
+      banners: [],
+    });
+
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/manage/banners`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/manage/banners`)
+      .set("Cookie", customer.cookie)
+      .expect(403);
+
+    const initial = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/manage/banners`)
+      .set("Cookie", admin.cookie)
+      .expect(200);
+    expect(initial.body).toEqual({
+      banners: [],
+      hasMore: false,
+      nextOffset: null,
+    });
+
+    const upload = request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/storefront/manage/banner-assets`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .field("commandId", randomUUID())
+      .attach("file", png, {
+        filename: "catalog-banner.png",
+        contentType: "image/png",
+      });
+    const uploaded = await upload.expect(201);
+    const asset = uploaded.body as {
+      id: string;
+      src: string;
+      width: number;
+      height: number;
+    };
+    expect(asset.src).toMatch(
+      /^\/api\/v1\/storefront\/manage\/banner-assets\/[0-9a-f-]{36}\/[0-9a-f]{64}\.webp$/,
+    );
+    expect(asset.width).toBeGreaterThan(0);
+    expect(asset.height).toBeGreaterThan(0);
+    expect(storage.objects.size).toBe(1);
+
+    await request(app.getHttpServer()).get(asset.src).expect(401);
+    await request(app.getHttpServer())
+      .get(asset.src)
+      .set("Cookie", customer.cookie)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(asset.src)
+      .set("Cookie", admin.cookie)
+      .expect(200)
+      .expect("Content-Type", "image/webp")
+      .expect("Cache-Control", "no-store");
+    await request(app.getHttpServer())
+      .get(asset.src.replace("/manage/banner-assets/", "/banner-assets/"))
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/storefront/manage/banners`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Seasonal banner",
+        placement: "home_hero",
+        active: true,
+        desktopAssetId: asset.id,
+        mobileAssetId: asset.id,
+        altText: "",
+        href: "/products",
+      })
+      .expect(400);
+
+    const published = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/storefront/manage/banners`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Seasonal banner",
+        placement: "home_hero",
+        active: true,
+        desktopAssetId: asset.id,
+        mobileAssetId: asset.id,
+        altText: "AARAJ seasonal collection",
+        href: "/products",
+      })
+      .expect(201);
+    const bannerId = published.body.id as string;
+    expect(published.body).toMatchObject({
+      name: "Seasonal banner",
+      placement: "home_hero",
+      active: true,
+      desktop: { id: asset.id },
+      mobile: { id: asset.id },
+      altText: "AARAJ seasonal collection",
+      href: "/products",
+      version: 1,
+    });
+
+    const publicBanner = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/banners/home_hero`)
+      .expect(200);
+    expect(publicBanner.headers["cache-control"]).toContain("s-maxage=60");
+    expect(publicBanner.body).toMatchObject({
+      placement: "home_hero",
+      banners: [
+        {
+          desktop: { id: asset.id },
+          mobile: { id: asset.id },
+          altText: "AARAJ seasonal collection",
+          href: "/products",
+        },
+      ],
+    });
+    const [releasedAsset] = await database.db
+      .select()
+      .from(storefrontBannerAsset)
+      .where(eq(storefrontBannerAsset.id, asset.id));
+    expect(releasedAsset?.publiclyReleasedAt).toBeInstanceOf(Date);
+    const publicAsset = publicBanner.body.banners[0].desktop.src as string;
+    await request(app.getHttpServer())
+      .get(publicAsset)
+      .expect(200)
+      .expect("Content-Type", "image/webp")
+      .expect("Cache-Control", "public, max-age=31536000, immutable");
+
+    const updated = await request(app.getHttpServer())
+      .put(`${API_V1_BASE_PATH}/storefront/manage/banners/${bannerId}`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Seasonal banner revised",
+        placement: "home_hero",
+        active: true,
+        desktopAssetId: asset.id,
+        mobileAssetId: asset.id,
+        altText: "AARAJ seasonal collection",
+        href: "/products/summer",
+        expectedVersion: 1,
+      })
+      .expect(200);
+    expect(updated.body).toMatchObject({
+      name: "Seasonal banner revised",
+      href: "/products/summer",
+      version: 2,
+    });
+
+    await request(app.getHttpServer())
+      .put(`${API_V1_BASE_PATH}/storefront/manage/banners/${bannerId}`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Seasonal banner",
+        placement: "home_hero",
+        active: true,
+        desktopAssetId: asset.id,
+        mobileAssetId: null,
+        altText: "Invalid URL",
+        href: "javascript:alert(1)",
+        expectedVersion: 1,
+      })
+      .expect(400);
+    const stale = await request(app.getHttpServer())
+      .put(`${API_V1_BASE_PATH}/storefront/manage/banners/${bannerId}`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Seasonal banner",
+        placement: "home_hero",
+        active: false,
+        desktopAssetId: asset.id,
+        mobileAssetId: null,
+        altText: "AARAJ seasonal collection",
+        href: null,
+        expectedVersion: 1,
+      })
+      .expect(409);
+    expect(stale.body.errorCode).toBe("STOREFRONT_BANNER_STALE");
+
+    const secondUpload = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/storefront/manage/banner-assets`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .field("commandId", randomUUID())
+      .attach("file", png, {
+        filename: "second-catalog-banner.png",
+        contentType: "image/png",
+      })
+      .expect(201);
+    const secondAsset = secondUpload.body as { id: string };
+    const secondSlide = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/storefront/manage/banners`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Replacement banner",
+        placement: "home_hero",
+        active: true,
+        desktopAssetId: secondAsset.id,
+        mobileAssetId: null,
+        altText: "AARAJ new collection",
+        href: null,
+      })
+      .expect(201);
+    expect(secondSlide.body.active).toBe(true);
+    const carousel = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/banners/home_hero`)
+      .expect(200);
+    expect(carousel.body.banners).toHaveLength(2);
+    expect(
+      carousel.body.banners.map(
+        (banner: { altText: string }) => banner.altText,
+      ),
+    ).toEqual(["AARAJ new collection", "AARAJ seasonal collection"]);
+    const drafts = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/manage/banners?status=draft`)
+      .set("Cookie", admin.cookie)
+      .expect(200);
+    expect(drafts.body.banners).toEqual([]);
+
+    const uploadEvents = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.eventType, "storefront.banner_asset_uploaded"));
+    const bannerEvents = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.eventType, "storefront.banner_created"));
+    const updateEvents = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.eventType, "storefront.banner_updated"));
+    expect(uploadEvents).toHaveLength(2);
+    expect(bannerEvents).toHaveLength(2);
+    expect(updateEvents).toHaveLength(1);
+    expect(uploadEvents[0]?.reason).toBeNull();
+
+    await request(app.getHttpServer())
+      .put(`${API_V1_BASE_PATH}/storefront/manage/banners/${bannerId}`)
+      .set("Cookie", admin.cookie)
+      .set("Origin", origin)
+      .send({
+        name: "Seasonal banner revised",
+        placement: "home_hero",
+        active: false,
+        desktopAssetId: asset.id,
+        mobileAssetId: asset.id,
+        altText: "AARAJ seasonal collection",
+        href: "/products/summer",
+        expectedVersion: 2,
+      })
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(publicAsset)
+      .expect(200)
+      .expect("Cache-Control", "public, max-age=31536000, immutable");
+    expect(bannerEvents[0]?.reason).toBeNull();
+
+    const paginationFixtures = Array.from({ length: 51 }, (_, index) => {
+      const id = randomUUID();
+      const sha256 = "a".repeat(64);
+      return {
+        id,
+        commandId: randomUUID(),
+        objectKey: `published/storefront/banner/${id}/${sha256}.webp`,
+        sizeBytes: 1,
+        sourceSha256: sha256,
+        sha256,
+        width: 1,
+        height: 1,
+        createdBy: admin.id,
+        createdAt: new Date(Date.now() + (index + 1) * 1000),
+      };
+    });
+    await database.db.insert(storefrontBannerAsset).values(paginationFixtures);
+
+    const firstAssetPage = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/manage/banner-assets`)
+      .set("Cookie", admin.cookie)
+      .expect(200);
+    expect(firstAssetPage.body.assets).toHaveLength(50);
+    expect(firstAssetPage.body.nextCursor).toMatch(/^[0-9a-f-]{36}$/);
+
+    const secondAssetPage = await request(app.getHttpServer())
+      .get(
+        `${API_V1_BASE_PATH}/storefront/manage/banner-assets?cursor=${firstAssetPage.body.nextCursor}`,
+      )
+      .set("Cookie", admin.cookie);
+    expect(secondAssetPage.status, JSON.stringify(secondAssetPage.body)).toBe(
+      200,
+    );
+    expect(secondAssetPage.body.nextCursor).toBeNull();
+    const listedAssetIds = new Set([
+      ...firstAssetPage.body.assets.map((listed: { id: string }) => listed.id),
+      ...secondAssetPage.body.assets.map((listed: { id: string }) => listed.id),
+    ]);
+    expect(
+      paginationFixtures.every((fixture) => listedAssetIds.has(fixture.id)),
+    ).toBe(true);
+    await database.db.delete(storefrontBannerAsset).where(
+      inArray(
+        storefrontBannerAsset.id,
+        paginationFixtures.map((fixture) => fixture.id),
+      ),
+    );
   });
 });

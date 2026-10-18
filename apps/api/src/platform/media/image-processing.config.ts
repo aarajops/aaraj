@@ -1,0 +1,4 @@
+export const MAX_DECODED_IMAGE_PIXELS = 24_000_000;
+export const IMAGE_PROCESSING_TIMEOUT_SECONDS = 15;
+export const DEFAULT_WEBP_QUALITY = 82;
+export const WEBP_EFFORT = 4;

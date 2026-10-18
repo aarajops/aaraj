@@ -278,8 +278,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
 
   await page.goto("/");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
-  await page.getByLabel("Search products").fill("Aaraj E2E");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const storefrontSearch = page.locator("header form").last();
+  await storefrontSearch.getByRole("searchbox").fill("Aaraj E2E");
+  await storefrontSearch.getByRole("button", { name: "Search" }).click();
   await expect(page).toHaveURL(/category=t-shirts/);
   await expect(page).toHaveURL(/search=Aaraj\+E2E/);
   await chooseSelectOption(page, "Audience", "Unisex");

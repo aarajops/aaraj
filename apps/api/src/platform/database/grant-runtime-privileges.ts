@@ -51,12 +51,17 @@ const runtimeTableGrants = [
   ["tax", "profile", ["SELECT"]],
   ["tax", "configuration", ["SELECT", "UPDATE"]],
   ["storefront", "brand_asset", ["SELECT", "INSERT"]],
+  ["storefront", "banner_asset", ["SELECT", "INSERT"]],
+  ["storefront", "banner", ["SELECT", "INSERT", "UPDATE"]],
   ["storefront", "configuration", ["SELECT", "UPDATE"]],
   ["quote", "snapshot", ["SELECT", "INSERT"]],
   ["orders", "order_header", ["SELECT", "INSERT", "UPDATE"]],
   ["orders", "order_line", ["SELECT", "INSERT"]],
   ["orders", "idempotency", ["SELECT", "INSERT"]],
   ["orders", "pathao_booking_claim", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+] as const;
+const runtimeColumnGrants = [
+  ["storefront", "banner_asset", "publicly_released_at", ["UPDATE"]],
 ] as const;
 const runtimeTablePrivilegeMap: ReadonlyMap<string, readonly string[]> =
   new Map(
@@ -229,10 +234,6 @@ export async function grantRuntimePrivileges(
          AND CASE WHEN c.relkind = 'S'
            THEN has_sequence_privilege($1::oid, c.oid, p.privilege)
            ELSE has_table_privilege($1::oid, c.oid, p.privilege)
-             OR (
-               p.privilege IN ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
-               AND has_any_column_privilege($1::oid, c.oid, p.privilege)
-             )
          END`,
     [runtime.oid, [...applicationSchemas]],
   );
@@ -254,6 +255,59 @@ export async function grantRuntimePrivileges(
     );
   }
 
+  const columnPrivileges = await pool.query<{
+    schema_name: string;
+    object_name: string;
+    column_name: string;
+    privilege: string;
+    granted_to_runtime: boolean;
+  }>(
+    `SELECT n.nspname AS schema_name,
+            c.relname AS object_name,
+            a.attname AS column_name,
+            acl.privilege_type AS privilege,
+            acl.grantee = $1::oid AS granted_to_runtime
+       FROM pg_attribute a
+       JOIN pg_class c ON c.oid = a.attrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN LATERAL aclexplode(a.attacl) AS acl
+       WHERE n.nspname = ANY($2::text[])
+         AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+         AND a.attnum > 0
+         AND NOT a.attisdropped
+         AND acl.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+         AND acl.grantee IN ($1::oid, 0)`,
+    [runtime.oid, [...applicationSchemas]],
+  );
+  const unexpectedColumnPrivileges = columnPrivileges.rows.filter(
+    ({
+      schema_name,
+      object_name,
+      column_name,
+      privilege,
+      granted_to_runtime,
+    }) =>
+      !granted_to_runtime ||
+      !runtimeColumnGrants.some(
+        ([schema, table, column, privileges]) =>
+          schema === schema_name &&
+          table === object_name &&
+          column === column_name &&
+          privileges.some((allowed) => allowed === privilege),
+      ),
+  );
+  if (unexpectedColumnPrivileges.length) {
+    const details = unexpectedColumnPrivileges
+      .map(
+        ({ schema_name, object_name, column_name, privilege }) =>
+          `${schema_name}.${object_name}.${column_name}:${privilege}`,
+      )
+      .join(", ");
+    throw new Error(
+      `The runtime PostgreSQL role already has application column privileges outside the grant policy: ${details}. Use a clean runtime role or remove those grants.`,
+    );
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -268,6 +322,11 @@ export async function grantRuntimePrivileges(
     for (const [schema, table, privileges] of runtimeTableGrants) {
       await client.query(
         `GRANT ${privileges.join(", ")} ON TABLE ${quoteIdentifier(schema)}.${quoteIdentifier(table)} TO ${quotedRuntimeRole}`,
+      );
+    }
+    for (const [schema, table, column, privileges] of runtimeColumnGrants) {
+      await client.query(
+        `GRANT ${privileges.join(", ")} (${quoteIdentifier(column)}) ON TABLE ${quoteIdentifier(schema)}.${quoteIdentifier(table)} TO ${quotedRuntimeRole}`,
       );
     }
     await client.query(
@@ -345,6 +404,10 @@ async function main(): Promise<void> {
       'SELECT 1 FROM "storefront"."configuration" LIMIT 0',
     );
     await runtimePool.query('SELECT 1 FROM "storefront"."brand_asset" LIMIT 0');
+    await runtimePool.query(
+      'SELECT 1 FROM "storefront"."banner_asset" LIMIT 0',
+    );
+    await runtimePool.query('SELECT 1 FROM "storefront"."banner" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "quote"."snapshot" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "orders"."order_header" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "orders"."order_line" LIMIT 0');
@@ -389,6 +452,37 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         "Storefront brand asset manifests must be insertable and immutable to the runtime role.",
+      );
+    }
+    const bannerAssetPrivileges = await runtimePool.query<{
+      can_insert: boolean;
+      can_update: boolean;
+      can_delete: boolean;
+      can_truncate: boolean;
+    }>(
+      `SELECT has_table_privilege(current_user, 'storefront.banner_asset', 'INSERT') AS can_insert,
+              has_table_privilege(current_user, 'storefront.banner_asset', 'UPDATE') AS can_update,
+              has_table_privilege(current_user, 'storefront.banner_asset', 'DELETE') AS can_delete,
+              has_table_privilege(current_user, 'storefront.banner_asset', 'TRUNCATE') AS can_truncate`,
+    );
+    if (
+      !bannerAssetPrivileges.rows[0]?.can_insert ||
+      bannerAssetPrivileges.rows[0].can_update ||
+      bannerAssetPrivileges.rows[0].can_delete ||
+      bannerAssetPrivileges.rows[0].can_truncate
+    ) {
+      throw new Error(
+        "Storefront banner asset manifests must be insertable and immutable to the runtime role.",
+      );
+    }
+    const bannerReleasePrivilege = await runtimePool.query<{
+      can_update_release_timestamp: boolean;
+    }>(
+      `SELECT has_column_privilege(current_user, 'storefront.banner_asset', 'publicly_released_at', 'UPDATE') AS can_update_release_timestamp`,
+    );
+    if (!bannerReleasePrivilege.rows[0]?.can_update_release_timestamp) {
+      throw new Error(
+        "The runtime role must be able to set only the banner asset public release timestamp.",
       );
     }
     console.log("Runtime PostgreSQL privileges applied.");

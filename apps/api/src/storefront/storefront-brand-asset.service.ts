@@ -31,13 +31,6 @@ import {
   type StorefrontBrandUploadFile,
 } from "./storefront-brand-image.js";
 
-const BRAND_ASSET_UPLOAD_RELEASE = Symbol("BRAND_ASSET_UPLOAD_RELEASE");
-
-export interface BrandAssetUploadRequest {
-  session?: { user: AccessPrincipal };
-  [BRAND_ASSET_UPLOAD_RELEASE]?: () => void;
-}
-
 @Injectable()
 export class StorefrontBrandAssetService {
   private readonly logger = new Logger(StorefrontBrandAssetService.name);
@@ -381,19 +374,6 @@ function assetPointerFor(
     case "socialImage":
       return { socialImageAssetId: assetId };
   }
-}
-
-export function storefrontBrandAssetUploadRelease(
-  request: BrandAssetUploadRequest,
-): (() => void) | undefined {
-  return request[BRAND_ASSET_UPLOAD_RELEASE];
-}
-
-export function setStorefrontBrandAssetUploadRelease(
-  request: BrandAssetUploadRequest,
-  release: () => void,
-) {
-  request[BRAND_ASSET_UPLOAD_RELEASE] = release;
 }
 
 function storefrontConfigurationUnavailable(): ServiceUnavailableException {
