@@ -96,7 +96,10 @@ function StorefrontSearchForm({
           type="search"
           value={search}
         />
-        <InputGroupAddon align="inline-end" className="h-full gap-0 px-0">
+        <InputGroupAddon
+          align="inline-end"
+          className="h-full gap-0 px-0 [&>input]:sr-only"
+        >
           <Select
             items={[{ label: "Categories", value: null }, ...categoryItems]}
             name={category ? "category" : undefined}
