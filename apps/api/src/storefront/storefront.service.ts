@@ -287,9 +287,7 @@ export class StorefrontSettingsService {
     configuration: typeof storefrontConfiguration.$inferSelect,
   ): Promise<PublicStorefrontSettings> {
     const headerConfiguration = this.validHeaderNavigation(configuration);
-    const categoryIds = headerConfiguration.flatMap((item) =>
-      item.type === "category" ? [item.categoryId] : [],
-    );
+    const categoryIds = headerConfiguration.map(({ categoryId }) => categoryId);
     const [publicFields, categories] = await Promise.all([
       this.publicSettingsFields(configuration),
       this.categories.findActiveNavigationCategories(categoryIds),
@@ -297,12 +295,8 @@ export class StorefrontSettingsService {
     const categoriesById = new Map(
       categories.map((category) => [category.id, category]),
     );
-    const headerNavigation = headerConfiguration.flatMap((item) => {
-      if (item.type === "link") {
-        return [{ label: item.label, href: item.href }];
-      }
-
-      const category = categoriesById.get(item.categoryId);
+    const headerNavigation = headerConfiguration.flatMap(({ categoryId }) => {
+      const category = categoriesById.get(categoryId);
       return category
         ? [
             {

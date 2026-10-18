@@ -370,9 +370,7 @@ export function StorefrontSettingsManager({
   }
 
   const configuredCategoryIds = new Set(
-    headerNavigation.flatMap((item) =>
-      item.type === "category" ? [item.categoryId] : [],
-    ),
+    headerNavigation.map(({ categoryId }) => categoryId),
   );
   const availableCategories = categoryOptions.filter(
     ({ id }) => !configuredCategoryIds.has(id),
@@ -411,7 +409,7 @@ export function StorefrontSettingsManager({
         <form
           className="mt-6 grid gap-8"
           noValidate
-          onSubmit={handleSubmit(save)}
+          onSubmit={handleSubmit(save, () => setNotice(null))}
         >
           {Object.keys(errors).length > 0 && (
             <ul
@@ -924,122 +922,82 @@ export function StorefrontSettingsManager({
                 Header navigation
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Home and New are built into the storefront. Add active catalog
-                categories or secure external links here.
+                Select active catalog categories for the header.
               </p>
             </div>
 
             <ol className="grid gap-4">
               {headerNavigation.map((item, index) => {
                 const otherCategoryIds = new Set(
-                  headerNavigation.flatMap((candidate, candidateIndex) =>
-                    candidateIndex !== index && candidate.type === "category"
-                      ? [candidate.categoryId]
-                      : [],
-                  ),
+                  headerNavigation
+                    .filter((_, candidateIndex) => candidateIndex !== index)
+                    .map(({ categoryId }) => categoryId),
                 );
-                const selectedCategory =
-                  item.type === "category"
-                    ? categoryOptions.find(({ id }) => id === item.categoryId)
-                    : undefined;
-                const categoryOptionsForItem =
-                  item.type === "category"
-                    ? categoryOptions.filter(
-                        ({ id }) =>
-                          id === item.categoryId || !otherCategoryIds.has(id),
-                      )
-                    : [];
-                const categorySelectItems =
-                  item.type === "category"
+                const selectedCategory = categoryOptions.find(
+                  ({ id }) => id === item.categoryId,
+                );
+                const categoryOptionsForItem = categoryOptions.filter(
+                  ({ id }) =>
+                    id === item.categoryId || !otherCategoryIds.has(id),
+                );
+                const categorySelectItems = [
+                  ...(!selectedCategory
                     ? [
-                        ...(!selectedCategory
-                          ? [
-                              {
-                                value: item.categoryId,
-                                label: "Unavailable category",
-                              },
-                            ]
-                          : []),
-                        ...categoryOptionsForItem.map(({ id, path }) => ({
-                          label: path,
-                          value: id,
-                        })),
+                        {
+                          value: item.categoryId,
+                          label: "Unavailable category",
+                        },
                       ]
-                    : [];
+                    : []),
+                  ...categoryOptionsForItem.map(({ id, path }) => ({
+                    label: path,
+                    value: id,
+                  })),
+                ];
 
                 return (
                   <li
                     className="grid gap-3 rounded-lg border border-border p-4"
                     key={headerNavigationFields[index]?.id ?? index}
                   >
-                    {item.type === "link" ? (
-                      <div className="grid items-end gap-3 md:grid-cols-[1fr_2fr]">
-                        <Field>
-                          <FieldLabel htmlFor={`header-link-${index}-label`}>
-                            Link label
-                          </FieldLabel>
-                          <Input
-                            id={`header-link-${index}-label`}
-                            maxLength={40}
-                            {...register(`headerNavigation.${index}.label`)}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor={`header-link-${index}-href`}>
-                            External URL
-                          </FieldLabel>
-                          <Input
-                            id={`header-link-${index}-href`}
-                            maxLength={2048}
-                            placeholder="https://example.com"
-                            type="url"
-                            {...register(`headerNavigation.${index}.href`)}
-                          />
-                          <FieldDescription>
-                            Use the category selector for catalog categories.
-                          </FieldDescription>
-                        </Field>
-                      </div>
-                    ) : (
-                      <Field>
-                        <FieldLabel htmlFor={`header-category-${index}`}>
-                          Catalog category
-                        </FieldLabel>
-                        <Select
-                          items={categorySelectItems}
-                          value={item.categoryId}
-                          onValueChange={(categoryId) => {
-                            if (!categoryId) return;
-                            updateHeaderNavigationItem(index, {
-                              type: "category",
-                              categoryId,
-                            });
-                          }}
-                        >
-                          <SelectTrigger id={`header-category-${index}`}>
-                            <SelectValue placeholder="Choose a category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {!selectedCategory && (
-                              <SelectItem value={item.categoryId}>
-                                Unavailable category
-                              </SelectItem>
-                            )}
-                            {categoryOptionsForItem.map(({ id, path }) => (
-                              <SelectItem key={id} value={id}>
-                                {path}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {!selectedCategory && (
-                          <FieldDescription>
-                            This category is inactive or unavailable. Remove it,
-                            or choose an active category.
-                          </FieldDescription>
-                        )}
-                      </Field>
-                    )}
+                    <Field>
+                      <FieldLabel htmlFor={`header-category-${index}`}>
+                        Catalog category
+                      </FieldLabel>
+                      <Select
+                        items={categorySelectItems}
+                        value={item.categoryId}
+                        onValueChange={(categoryId) => {
+                          if (!categoryId) return;
+                          updateHeaderNavigationItem(index, {
+                            type: "category",
+                            categoryId,
+                          });
+                        }}
+                      >
+                        <SelectTrigger id={`header-category-${index}`}>
+                          <SelectValue placeholder="Choose a category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {!selectedCategory && (
+                            <SelectItem value={item.categoryId}>
+                              Unavailable category
+                            </SelectItem>
+                          )}
+                          {categoryOptionsForItem.map(({ id, path }) => (
+                            <SelectItem key={id} value={id}>
+                              {path}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!selectedCategory && (
+                        <FieldDescription>
+                          This category is inactive or unavailable. Remove it,
+                          or choose an active category.
+                        </FieldDescription>
+                      )}
+                    </Field>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         aria-label={`Move header item ${index + 1} up`}
@@ -1078,21 +1036,6 @@ export function StorefrontSettingsManager({
             </ol>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    appendHeaderNavigationItem({
-                      type: "link",
-                      label: "",
-                      href: "",
-                    })
-                  }
-                >
-                  Add external link
-                </Button>
-              </div>
               <Field>
                 <FieldLabel htmlFor="storefront-add-header-category">
                   Add an active category
@@ -1271,9 +1214,10 @@ function collectFieldErrorMessages(value: unknown): string[] {
   if (typeof value !== "object" || value === null) return [];
   const record = value as Record<string, unknown>;
   if (typeof record.message === "string") return [record.message];
-  return Object.entries(record)
+  const messages = Object.entries(record)
     .filter(([key]) => key !== "ref" && key !== "types")
     .flatMap(([, nested]) => collectFieldErrorMessages(nested));
+  return [...new Set(messages)];
 }
 
 type FooterLinkGroupName = keyof StorefrontSettingsDraft["footerLinkGroups"];

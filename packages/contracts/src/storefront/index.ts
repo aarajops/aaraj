@@ -48,10 +48,6 @@ function isSafeStorefrontHref(value: string): boolean {
   }
 }
 
-function isSafeStorefrontExternalHref(value: string): boolean {
-  return /^https:\/\//i.test(value) && isSafeStorefrontHref(value);
-}
-
 function httpsUrlForHosts(hosts: readonly string[]) {
   return z
     .string()
@@ -102,19 +98,6 @@ const StorefrontLinkSchema = z.strictObject({
 export type StorefrontLink = z.infer<typeof StorefrontLinkSchema>;
 export type StorefrontFooterLink = StorefrontLink;
 
-const StorefrontHeaderExternalLinkSchema = z.strictObject({
-  label: z.string().trim().min(1).max(40),
-  href: z
-    .string()
-    .trim()
-    .min(1)
-    .max(2048)
-    .refine(
-      isSafeStorefrontExternalHref,
-      "Use a secure HTTPS URL. Use the category selector for catalog pages.",
-    ),
-});
-
 function compareStorefrontLinks(left: StorefrontLink, right: StorefrontLink) {
   const leftLabel = left.label.toLowerCase();
   const rightLabel = right.label.toLowerCase();
@@ -162,19 +145,10 @@ export const StorefrontHomepageCategoryIdsSchema = z
     message: "A catalog category can appear only once in the homepage section.",
   });
 
-export const StorefrontHeaderNavigationItemSchema = z.discriminatedUnion(
-  "type",
-  [
-    z.strictObject({
-      type: z.literal("link"),
-      ...StorefrontHeaderExternalLinkSchema.shape,
-    }),
-    z.strictObject({
-      type: z.literal("category"),
-      categoryId: z.uuid(),
-    }),
-  ],
-);
+export const StorefrontHeaderNavigationItemSchema = z.strictObject({
+  type: z.literal("category"),
+  categoryId: z.uuid(),
+});
 export type StorefrontHeaderNavigationItem = z.infer<
   typeof StorefrontHeaderNavigationItemSchema
 >;
@@ -187,12 +161,8 @@ export const DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS: readonly StorefrontLink[] =
 
 export const StorefrontHeaderNavigationSchema =
   StorefrontHeaderNavigationItemSchema.array().refine(
-    (items) => {
-      const categoryIds = items.flatMap((item) =>
-        item.type === "category" ? [item.categoryId] : [],
-      );
-      return new Set(categoryIds).size === categoryIds.length;
-    },
+    (items) =>
+      new Set(items.map(({ categoryId }) => categoryId)).size === items.length,
     { message: "A category can appear only once in header navigation." },
   );
 

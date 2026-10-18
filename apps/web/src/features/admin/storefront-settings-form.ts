@@ -86,11 +86,7 @@ function toStorefrontSettingsUpdate(
     businessAddress: values.businessAddress.trim() || null,
     socialImageAlt: values.socialImageAlt.trim() || null,
     socialLinks,
-    headerNavigation: values.headerNavigation.map((item) =>
-      item.type === "link"
-        ? { ...item, label: item.label.trim(), href: item.href.trim() }
-        : item,
-    ),
+    headerNavigation: values.headerNavigation,
     footerDescription: values.footerDescription.trim() || null,
     footerLinkGroups,
     footerCategoryIds: values.footerCategoryIds,
