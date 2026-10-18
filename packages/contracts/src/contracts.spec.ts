@@ -44,10 +44,16 @@ describe("Contracts Schema Validation", () => {
         tiktok: null,
         youtube: null,
         x: null,
+        linkedin: null,
       },
       headerNavigation: [{ label: "Products", href: "/" }],
       footerDescription: "Thoughtful everyday clothing.",
       footerLinks: [{ label: "About", href: "/about" }],
+      footerLinkGroups: {
+        about: [{ label: "About", href: "/about" }],
+        policies: [],
+      },
+      footerCategoryIds: [],
     };
     const editableSettings = {
       ...Object.fromEntries(

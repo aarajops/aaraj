@@ -40,10 +40,13 @@ const publicStorefrontSettings = {
     tiktok: null,
     youtube: null,
     x: null,
+    linkedin: null,
   },
   headerNavigation: [...DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS],
   footerDescription: null,
   footerLinks: [],
+  footerLinkGroups: { about: [], policies: [] },
+  footerCategoryIds: [],
 };
 const clothingCategory = makeCategory("Clothing", "clothing");
 const tshirtCategory = makeCategory(
@@ -1195,12 +1198,17 @@ function sendPublishedProductPage(response, source, url) {
 
 function publicCategoryFilters(source) {
   const visible = new Set();
+  const publishedProductCounts = new Map();
   for (const product of source) {
     let current = product.category;
     const visited = new Set();
     while (current && !visited.has(current.id)) {
       visited.add(current.id);
       visible.add(current.id);
+      publishedProductCounts.set(
+        current.id,
+        (publishedProductCounts.get(current.id) ?? 0) + 1,
+      );
       current = current.parentId
         ? categories.find(({ id }) => id === current.parentId)
         : null;
@@ -1208,7 +1216,10 @@ function publicCategoryFilters(source) {
   }
   return refreshCategoryTree()
     .filter(({ id, isActive }) => isActive && visible.has(id))
-    .map(categoryOption);
+    .map((category) => ({
+      ...categoryOption(category),
+      publishedProductCount: publishedProductCounts.get(category.id) ?? 0,
+    }));
 }
 
 function sendPage(response, source, url, key) {

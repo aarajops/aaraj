@@ -35,6 +35,7 @@ import { MAX_LIST_OFFSET } from "@aaraj/contracts";
 import {
   and,
   asc,
+  count,
   desc,
   eq,
   exists,
@@ -339,10 +340,11 @@ export class CatalogService {
     const cached = await readPublishedFilterOptionsCache();
     if (cached) return cached;
 
-    const [productValues, variantValues, categoryOptions] = await Promise.all([
+    const [productCounts, variantValues, categoryOptions] = await Promise.all([
       this.database.db
-        .selectDistinct({
+        .select({
           categoryId: catalogProduct.categoryId,
+          publishedProductCount: count(),
         })
         .from(catalogProduct)
         .where(
@@ -350,7 +352,8 @@ export class CatalogService {
             ...this.publishedProductEligibilityConditions(),
             isNotNull(catalogProduct.categoryId),
           ),
-        ),
+        )
+        .groupBy(catalogProduct.categoryId),
       this.database.db
         .selectDistinct({
           color: catalogProductVariant.color,
@@ -375,18 +378,26 @@ export class CatalogService {
       categoryOptions.categories.map((category) => [category.id, category]),
     );
     const visibleCategoryIds = new Set<string>();
-    for (const { categoryId } of productValues) {
+    const publishedProductCounts = new Map<string, number>();
+    for (const { categoryId, publishedProductCount } of productCounts) {
       let currentId = categoryId;
-      while (currentId && !visibleCategoryIds.has(currentId)) {
+      while (currentId) {
         visibleCategoryIds.add(currentId);
+        publishedProductCounts.set(
+          currentId,
+          (publishedProductCounts.get(currentId) ?? 0) + publishedProductCount,
+        );
         currentId = categoriesById.get(currentId)?.parentId ?? null;
       }
     }
 
     const options = {
-      categories: categoryOptions.categories.filter(({ id }) =>
-        visibleCategoryIds.has(id),
-      ),
+      categories: categoryOptions.categories
+        .filter(({ id }) => visibleCategoryIds.has(id))
+        .map((category) => ({
+          ...category,
+          publishedProductCount: publishedProductCounts.get(category.id) ?? 0,
+        })),
       colors: uniqueFilterValues(variantValues.map(({ color }) => color)),
       sizes: uniqueFilterValues(variantValues.map(({ size }) => size)),
     };

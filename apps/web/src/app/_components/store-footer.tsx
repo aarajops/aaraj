@@ -1,5 +1,5 @@
-import { StorefrontBrandLogo } from "@/features/storefront/storefront-brand-logo";
 import { StorefrontLink } from "@/features/storefront/storefront-link";
+import { getPublishedProductFilterOptions } from "@/features/catalog/catalog-queries";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 
 const socialNames = {
@@ -8,12 +8,18 @@ const socialNames = {
   tiktok: "TikTok",
   youtube: "YouTube",
   x: "X",
+  linkedin: "LinkedIn",
 } as const;
 
+type FooterLink = { href: string; label: string };
+
 export async function StoreFooter() {
-  const settings = await getPublicStorefrontSettings();
-  const socialLinks = Object.entries(settings.socialLinks).flatMap(
-    ([platform, href]) =>
+  const [settings, productFilters] = await Promise.all([
+    getPublicStorefrontSettings(),
+    getPublishedProductFilterOptions(),
+  ]);
+  const socialLinks = Object.entries(settings.socialLinks)
+    .flatMap(([platform, href]) =>
       href
         ? [
             {
@@ -22,35 +28,49 @@ export async function StoreFooter() {
             },
           ]
         : [],
+    )
+    .sort(compareLabels);
+  const selectedCategoryIds = new Set(settings.footerCategoryIds);
+  const categories = (productFilters?.categories ?? [])
+    .filter(({ id }) => selectedCategoryIds.has(id))
+    .map(({ name, publishedProductCount, slug }) => ({
+      href: `/?category=${encodeURIComponent(slug)}`,
+      label: `${name} (${publishedProductCount})`,
+    }));
+  const contactDetails = Boolean(
+    settings.footerDescription ||
+    settings.supportEmail ||
+    settings.supportPhone ||
+    settings.businessAddress,
   );
 
   return (
     <footer className="mt-auto border-t border-border bg-neutral-950 text-white">
-      <div className="container mx-auto grid gap-8 px-5 py-10 sm:grid-cols-2 lg:grid-cols-4">
-        <section aria-label={`${settings.siteName} information`}>
-          <StorefrontBrandLogo
-            imageClassName="h-12 max-w-48"
-            inverseFallback
-            logo={settings.logo}
-            siteName={settings.siteName}
-          />
-          {settings.footerDescription && (
-            <p className="mt-4 max-w-sm whitespace-pre-line text-sm leading-6 text-neutral-300">
-              {settings.footerDescription}
-            </p>
-          )}
-        </section>
+      <div className="container mx-auto grid w-full gap-x-8 gap-y-10 px-5 py-10 sm:grid-cols-2 lg:grid-cols-3 lg:px-0 xl:grid-cols-5">
+        <FooterNavigation label="Social Media" links={socialLinks} />
+        <FooterNavigation label="Categories" links={categories} />
+        <FooterNavigation
+          label="About Us"
+          links={settings.footerLinkGroups.about}
+        />
+        <FooterNavigation
+          label="Policies"
+          links={settings.footerLinkGroups.policies}
+        />
 
-        {(settings.supportEmail ||
-          settings.supportPhone ||
-          settings.businessAddress) && (
-          <section aria-labelledby="store-footer-contact-heading">
+        {contactDetails && (
+          <section aria-labelledby="store-footer-contacts-heading">
             <h2
-              className="text-sm font-semibold uppercase tracking-wider"
-              id="store-footer-contact-heading"
+              className="text-sm font-semibold"
+              id="store-footer-contacts-heading"
             >
-              Contact
+              Contacts
             </h2>
+            {settings.footerDescription && (
+              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-neutral-300">
+                {settings.footerDescription}
+              </p>
+            )}
             <address className="mt-4 grid gap-3 text-sm not-italic text-neutral-300">
               {settings.supportEmail && (
                 <a
@@ -76,49 +96,43 @@ export async function StoreFooter() {
             </address>
           </section>
         )}
-
-        {settings.footerLinks.length > 0 && (
-          <nav aria-label="Footer links">
-            <h2 className="text-sm font-semibold uppercase tracking-wider">
-              Information
-            </h2>
-            <ul className="mt-4 grid gap-3 text-sm text-neutral-300">
-              {settings.footerLinks.map(({ href, label }) => (
-                <li key={`${label}:${href}`}>
-                  <StorefrontLink className="hover:text-white" href={href}>
-                    {label}
-                  </StorefrontLink>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
-
-        {socialLinks.length > 0 && (
-          <nav aria-label="Social media">
-            <h2 className="text-sm font-semibold uppercase tracking-wider">
-              Follow us
-            </h2>
-            <ul className="mt-4 grid gap-3 text-sm text-neutral-300">
-              {socialLinks.map(({ href, label }) => (
-                <li key={label}>
-                  <a
-                    className="hover:text-white"
-                    href={href}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    {label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
       </div>
       <div className="border-t border-white/15 px-5 py-4 text-center text-xs text-neutral-400">
         © {new Date().getFullYear()} {settings.siteName}
       </div>
     </footer>
   );
+}
+
+function FooterNavigation({
+  label,
+  links,
+}: {
+  label: string;
+  links: FooterLink[];
+}) {
+  if (links.length === 0) return null;
+
+  return (
+    <nav aria-label={label}>
+      <h2 className="text-sm font-semibold">{label}</h2>
+      <ul className="mt-4 grid gap-3 text-sm text-neutral-300">
+        {links.map(({ href, label: linkLabel }) => (
+          <li key={`${linkLabel}:${href}`}>
+            <StorefrontLink className="hover:text-white" href={href}>
+              {linkLabel}
+            </StorefrontLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+function compareLabels(left: FooterLink, right: FooterLink) {
+  const leftLabel = left.label.toLowerCase();
+  const rightLabel = right.label.toLowerCase();
+  if (leftLabel < rightLabel) return -1;
+  if (leftLabel > rightLabel) return 1;
+  return left.href < right.href ? -1 : left.href > right.href ? 1 : 0;
 }

@@ -10,7 +10,6 @@ import {
 export const STOREFRONT_SETTINGS_ID = "default" as const;
 export const DEFAULT_STOREFRONT_BACKGROUND_COLOR = "#fafafafa";
 export const DEFAULT_STOREFRONT_BRAND_COLOR = "#7b2220";
-
 const StoreNameSchema = z.string().trim().min(1).max(80);
 const StorefrontHexColorSchema = z
   .string()
@@ -80,6 +79,7 @@ export const StorefrontSocialLinksSchema = z.strictObject({
   tiktok: httpsUrlForHosts(["tiktok.com"]),
   youtube: httpsUrlForHosts(["youtube.com", "youtu.be"]),
   x: httpsUrlForHosts(["x.com", "twitter.com"]),
+  linkedin: httpsUrlForHosts(["linkedin.com"]).optional(),
 });
 export type StorefrontSocialLinks = z.infer<typeof StorefrontSocialLinksSchema>;
 
@@ -97,6 +97,46 @@ const StorefrontLinkSchema = z.strictObject({
 });
 export type StorefrontLink = z.infer<typeof StorefrontLinkSchema>;
 export type StorefrontFooterLink = StorefrontLink;
+
+function compareStorefrontLinks(left: StorefrontLink, right: StorefrontLink) {
+  const leftLabel = left.label.toLowerCase();
+  const rightLabel = right.label.toLowerCase();
+  if (leftLabel < rightLabel) return -1;
+  if (leftLabel > rightLabel) return 1;
+  return left.href < right.href ? -1 : left.href > right.href ? 1 : 0;
+}
+
+const StorefrontFooterLinkListSchema = StorefrontLinkSchema.array().transform(
+  (links) => [...links].sort(compareStorefrontLinks),
+);
+
+export const StorefrontFooterLinkGroupsSchema = z
+  .strictObject({
+    about: StorefrontFooterLinkListSchema,
+    policies: StorefrontFooterLinkListSchema,
+  })
+  .superRefine(({ about, policies }, context) => {
+    for (const [group, links] of Object.entries({ about, policies })) {
+      const labels = links.map(({ label }) => label.toLowerCase());
+      if (new Set(labels).size !== labels.length) {
+        context.addIssue({
+          code: "custom",
+          path: [group],
+          message: "Footer link labels must be unique within a section.",
+        });
+      }
+    }
+  });
+export type StorefrontFooterLinkGroups = z.infer<
+  typeof StorefrontFooterLinkGroupsSchema
+>;
+
+export const StorefrontFooterCategoryIdsSchema = z
+  .uuid()
+  .array()
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: "A catalog category can appear only once in the footer.",
+  });
 
 export const StorefrontHeaderNavigationItemSchema = z.discriminatedUnion(
   "type",
@@ -189,6 +229,8 @@ export const PublicStorefrontSettingsSchema = z.strictObject({
   headerNavigation: StorefrontLinkSchema.array().max(8),
   footerDescription: PublicTextSchema,
   footerLinks: StorefrontLinkSchema.array().max(8),
+  footerLinkGroups: StorefrontFooterLinkGroupsSchema,
+  footerCategoryIds: StorefrontFooterCategoryIdsSchema,
 });
 export type PublicStorefrontSettings = z.infer<
   typeof PublicStorefrontSettingsSchema
@@ -217,7 +259,9 @@ export const StorefrontSettingsUpdateSchema = z
     socialLinks: StorefrontSocialLinksSchema,
     headerNavigation: StorefrontHeaderNavigationSchema,
     footerDescription: PublicTextSchema,
-    footerLinks: StorefrontLinkSchema.array().max(8),
+    footerLinks: StorefrontLinkSchema.array().max(8).optional(),
+    footerLinkGroups: StorefrontFooterLinkGroupsSchema.optional(),
+    footerCategoryIds: StorefrontFooterCategoryIdsSchema.optional(),
     expectedVersion: z.number().int().positive(),
     reason: z.string().trim().min(3).max(500).optional(),
   })
@@ -230,9 +274,9 @@ export const StorefrontSettingsUpdateSchema = z
   )
   .refine(
     (settings) => {
-      const labels = settings.footerLinks.map(({ label }) =>
-        label.toLowerCase(),
-      );
+      if (settings.footerLinkGroups) return true;
+      const links = settings.footerLinks ?? [];
+      const labels = links.map(({ label }) => label.toLowerCase());
       return new Set(labels).size === labels.length;
     },
     {

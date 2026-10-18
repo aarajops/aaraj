@@ -1280,7 +1280,12 @@ describe("catalog and security audit", () => {
     ).toBe(true);
     expect(
       CatalogProductFilterOptionsSchema.safeParse({
-        categories: publicCategories.body.categories,
+        categories: publicCategories.body.categories.map(
+          (category: Record<string, unknown>) => ({
+            ...category,
+            publishedProductCount: 0,
+          }),
+        ),
         colors: [],
         sizes: [],
       }).success,

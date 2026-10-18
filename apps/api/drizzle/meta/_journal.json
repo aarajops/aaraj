@@ -267,6 +267,13 @@
       "when": 1792296811634,
       "tag": "0037_storefront_banners",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792303607495,
+      "tag": "0038_storefront_footer_configuration",
+      "breakpoints": true
     }
   ]
 }

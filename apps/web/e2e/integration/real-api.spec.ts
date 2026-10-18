@@ -110,7 +110,6 @@ test("admin updates public storefront settings through to the rendered header", 
     },
   );
   expect(categoryResponse.status()).toBe(201);
-  const headerCategory = await categoryResponse.json();
 
   const settingsNavigation = page.getByRole("navigation", {
     name: "Settings",
@@ -212,18 +211,16 @@ test("admin updates public storefront settings through to the rendered header", 
   await page.getByLabel("Customer support email").fill("help@aaraj.example");
   await page.getByLabel("Business address").fill("Dhaka, Bangladesh");
   await page.getByLabel("Instagram URL").fill("https://instagram.com/aaraj");
-  await page.getByRole("button", { name: "Add footer link" }).click();
-  await page.locator("#footer-link-0-label").fill("Contact us");
-  await page.locator("#footer-link-0-href").fill("/contact");
+  await page.getByRole("button", { name: "Add about us link" }).click();
+  await page.locator("#footer-about-0-label").fill("Contact us");
+  await page.locator("#footer-about-0-href").fill("/contact");
   await page
     .getByLabel("Footer description")
     .fill("Everyday style, thoughtfully selected.");
-  await page
-    .getByLabel("Add an active category")
-    .selectOption(headerCategory.id);
-  await expect(page.getByLabel("Catalog category")).toHaveValue(
-    headerCategory.id,
-  );
+  await chooseSelectOption(page, "Add an active category", headerCategoryName);
+  await expect(
+    page.getByRole("combobox", { name: "Catalog category" }),
+  ).toContainText(headerCategoryName);
   await page.getByRole("button", { name: "Save storefront settings" }).click();
   await expect(
     page.getByRole("status").filter({
@@ -280,6 +277,11 @@ test("admin updates public storefront settings through to the rendered header", 
     ],
     footerDescription: "Everyday style, thoughtfully selected.",
     footerLinks: [{ label: "Contact us", href: "/contact" }],
+    footerLinkGroups: {
+      about: [{ label: "Contact us", href: "/contact" }],
+      policies: [],
+    },
+    footerCategoryIds: [],
   });
   const brandIconResponse = await page.request.get(
     configuredSettings.brandIcon.src,

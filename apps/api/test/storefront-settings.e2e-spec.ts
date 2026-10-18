@@ -48,7 +48,9 @@ const emptySocialLinks = {
   tiktok: null,
   youtube: null,
   x: null,
+  linkedin: null,
 };
+const emptyFooterLinkGroups = { about: [], policies: [] };
 const defaultHeaderNavigationConfig: StorefrontHeaderNavigationItem[] = [
   ...DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG,
 ];
@@ -209,6 +211,8 @@ describe("storefront settings", () => {
       },
       footerDescription: null,
       footerLinks: [],
+      footerLinkGroups: emptyFooterLinkGroups,
+      footerCategoryIds: [],
       headerNavigation: defaultHeaderNavigationConfig,
       version: 1,
       updatedAt: null,
@@ -242,6 +246,8 @@ describe("storefront settings", () => {
       socialLinks: emptySocialLinks,
       footerDescription: null,
       footerLinks: [],
+      footerLinkGroups: emptyFooterLinkGroups,
+      footerCategoryIds: [],
       headerNavigation: DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
     });
 
@@ -268,6 +274,8 @@ describe("storefront settings", () => {
         socialLinks: emptySocialLinks,
         footerDescription: null,
         footerLinks: [],
+        footerLinkGroups: emptyFooterLinkGroups,
+        footerCategoryIds: [],
         headerNavigation: defaultHeaderNavigationConfig,
         expectedVersion: 1,
         reason: "Try to change the storefront",
@@ -298,6 +306,8 @@ describe("storefront settings", () => {
       socialLinks: emptySocialLinks,
       footerDescription: null,
       footerLinks: [],
+      footerLinkGroups: emptyFooterLinkGroups,
+      footerCategoryIds: [],
       headerNavigation: defaultHeaderNavigationConfig,
       version: 1,
       updatedAt: null,
@@ -359,6 +369,11 @@ describe("storefront settings", () => {
           },
           footerDescription: "Everyday style, thoughtfully selected.",
           footerLinks: [{ label: "Contact us", href: "/contact" }],
+          footerLinkGroups: {
+            about: [{ label: "Contact us", href: "/contact" }],
+            policies: [],
+          },
+          footerCategoryIds: [],
           headerNavigation: defaultHeaderNavigationConfig,
           version: 2,
         });
@@ -390,6 +405,11 @@ describe("storefront settings", () => {
       },
       footerDescription: "Everyday style, thoughtfully selected.",
       footerLinks: [{ label: "Contact us", href: "/contact" }],
+      footerLinkGroups: {
+        about: [{ label: "Contact us", href: "/contact" }],
+        policies: [],
+      },
+      footerCategoryIds: [],
       headerNavigation: DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
     });
     expect(updatedPublicSettings.body).not.toHaveProperty("version");
@@ -430,7 +450,7 @@ describe("storefront settings", () => {
           "socialLinks",
           "headerNavigation",
           "footerDescription",
-          "footerLinks",
+          "footerLinkGroups",
         ],
       },
     });

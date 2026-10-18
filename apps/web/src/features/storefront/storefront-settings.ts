@@ -32,10 +32,13 @@ const fallbackSettings: PublicStorefrontSettings = {
     tiktok: null,
     youtube: null,
     x: null,
+    linkedin: null,
   },
   headerNavigation: [...DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS],
   footerDescription: null,
   footerLinks: [],
+  footerLinkGroups: { about: [], policies: [] },
+  footerCategoryIds: [],
 };
 
 export const getPublicStorefrontSettings = cache(

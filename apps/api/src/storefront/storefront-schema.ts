@@ -10,6 +10,7 @@ import {
   DEFAULT_STOREFRONT_BRAND_COLOR,
   DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG,
   STOREFRONT_BANNER_PLACEMENTS,
+  type StorefrontFooterLinkGroups,
   type StorefrontHeaderNavigationItem,
 } from "@aaraj/contracts";
 import {
@@ -243,9 +244,18 @@ export const storefrontConfiguration = storefrontSchema.table(
         youtube: null,
         x: null,
       }),
+    linkedinUrl: text("linkedin_url"),
     footerDescription: text("footer_description"),
     footerLinks: jsonb("footer_links")
       .$type<Array<{ label: string; href: string }>>()
+      .notNull()
+      .default([]),
+    footerLinkGroups: jsonb("footer_link_groups")
+      .$type<StorefrontFooterLinkGroups>()
+      .notNull()
+      .default({ about: [], policies: [] }),
+    footerCategoryIds: jsonb("footer_category_ids")
+      .$type<string[]>()
       .notNull()
       .default([]),
     headerNavigation: jsonb("header_navigation")
@@ -315,6 +325,14 @@ export const storefrontConfiguration = storefrontSchema.table(
     check(
       "configuration_footer_links_check",
       sql`case when jsonb_typeof(${table.footerLinks}) = 'array' then jsonb_array_length(${table.footerLinks}) <= 8 else false end`,
+    ),
+    check(
+      "configuration_footer_link_groups_check",
+      sql`case when jsonb_typeof(${table.footerLinkGroups}) = 'object' then jsonb_typeof(${table.footerLinkGroups}->'about') = 'array' and jsonb_typeof(${table.footerLinkGroups}->'policies') = 'array' else false end`,
+    ),
+    check(
+      "configuration_footer_category_ids_check",
+      sql`jsonb_typeof(${table.footerCategoryIds}) = 'array'`,
     ),
     check(
       "configuration_header_navigation_check",

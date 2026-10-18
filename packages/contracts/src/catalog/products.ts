@@ -217,8 +217,16 @@ export const CatalogProductPageSchema = z.strictObject({
 });
 export type CatalogProductPage = z.infer<typeof CatalogProductPageSchema>;
 
+export const CatalogPublishedCategoryOptionSchema =
+  CatalogCategoryOptionSchema.extend({
+    publishedProductCount: z.number().int().nonnegative(),
+  });
+export type CatalogPublishedCategoryOption = z.infer<
+  typeof CatalogPublishedCategoryOptionSchema
+>;
+
 export const CatalogProductFilterOptionsSchema = z.strictObject({
-  categories: CatalogCategoryOptionSchema.array(),
+  categories: CatalogPublishedCategoryOptionSchema.array(),
   colors: z.string().min(1).max(80).array(),
   sizes: z.string().min(1).max(40).array(),
 });

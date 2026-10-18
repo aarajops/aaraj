@@ -13,6 +13,7 @@ import type {
 import {
   PublicStorefrontSettingsSchema,
   StorefrontBrandIconAssetSchema,
+  StorefrontFooterLinkGroupsSchema,
   StorefrontSettingsSchema,
 } from "@aaraj/contracts";
 import { eq, inArray, sql } from "drizzle-orm";
@@ -75,26 +76,66 @@ export class StorefrontSettingsService {
         );
       }
 
-      const previouslyConfiguredCategoryIds = new Set(
-        current.headerNavigation.flatMap((item) =>
+      const nextFooterLinkGroups = StorefrontFooterLinkGroupsSchema.parse(
+        input.footerLinkGroups ?? {
+          about: input.footerLinks ?? [],
+          policies: current.footerLinkGroups.policies,
+        },
+      );
+      const nextFooterCategoryIds =
+        input.footerCategoryIds ?? current.footerCategoryIds;
+      const nextLinkedinUrl =
+        input.socialLinks.linkedin === undefined
+          ? current.linkedinUrl
+          : input.socialLinks.linkedin;
+      const previouslyConfiguredCategoryIds = new Set([
+        ...current.headerNavigation.flatMap((item) =>
           item.type === "category" ? [item.categoryId] : [],
         ),
-      );
-      const newCategoryIds = input.headerNavigation.flatMap((item) =>
-        item.type === "category" &&
-        !previouslyConfiguredCategoryIds.has(item.categoryId)
-          ? [item.categoryId]
-          : [],
-      );
+        ...current.footerCategoryIds,
+      ]);
+      const requestedCategoryIds = [
+        ...input.headerNavigation.flatMap((item) =>
+          item.type === "category" ? [item.categoryId] : [],
+        ),
+        ...nextFooterCategoryIds,
+      ];
+      const newCategoryIds = [
+        ...new Set(
+          requestedCategoryIds.filter(
+            (categoryId) => !previouslyConfiguredCategoryIds.has(categoryId),
+          ),
+        ),
+      ];
       const activeCategoryIds = await this.categories.findActiveIds(
         newCategoryIds,
         transaction,
       );
       if (activeCategoryIds.size !== newCategoryIds.length) {
         throw new BadRequestException(
-          "Choose active catalog categories for header navigation.",
+          "Choose active catalog categories for storefront navigation.",
         );
       }
+
+      const storedSocialLinks = {
+        instagram: input.socialLinks.instagram,
+        facebook: input.socialLinks.facebook,
+        tiktok: input.socialLinks.tiktok,
+        youtube: input.socialLinks.youtube,
+        x: input.socialLinks.x,
+      };
+      const currentSocialLinks = {
+        ...current.socialLinks,
+        linkedin: current.linkedinUrl,
+      };
+      const nextSocialLinks = {
+        ...storedSocialLinks,
+        linkedin: nextLinkedinUrl,
+      };
+      const legacyFooterLinks = [
+        ...nextFooterLinkGroups.about,
+        ...nextFooterLinkGroups.policies,
+      ].slice(0, 8);
 
       const changedFields = [
         ...(current.siteName !== input.siteName ? ["siteName"] : []),
@@ -124,8 +165,8 @@ export class StorefrontSettingsService {
         ...(current.businessAddress !== input.businessAddress
           ? ["businessAddress"]
           : []),
-        ...(JSON.stringify(current.socialLinks) !==
-        JSON.stringify(input.socialLinks)
+        ...(JSON.stringify(currentSocialLinks) !==
+        JSON.stringify(nextSocialLinks)
           ? ["socialLinks"]
           : []),
         ...(JSON.stringify(current.headerNavigation) !==
@@ -135,9 +176,13 @@ export class StorefrontSettingsService {
         ...(current.footerDescription !== input.footerDescription
           ? ["footerDescription"]
           : []),
-        ...(JSON.stringify(current.footerLinks) !==
-        JSON.stringify(input.footerLinks)
-          ? ["footerLinks"]
+        ...(JSON.stringify(current.footerLinkGroups) !==
+        JSON.stringify(nextFooterLinkGroups)
+          ? ["footerLinkGroups"]
+          : []),
+        ...(JSON.stringify(current.footerCategoryIds) !==
+        JSON.stringify(nextFooterCategoryIds)
+          ? ["footerCategoryIds"]
           : []),
       ];
       if (changedFields.length === 0) return current;
@@ -156,10 +201,13 @@ export class StorefrontSettingsService {
           supportPhone: input.supportPhone,
           supportEmail: input.supportEmail,
           businessAddress: input.businessAddress,
-          socialLinks: input.socialLinks,
+          socialLinks: storedSocialLinks,
+          linkedinUrl: nextLinkedinUrl,
           headerNavigation: input.headerNavigation,
           footerDescription: input.footerDescription,
-          footerLinks: input.footerLinks,
+          footerLinks: legacyFooterLinks,
+          footerLinkGroups: nextFooterLinkGroups,
+          footerCategoryIds: nextFooterCategoryIds,
           version: current.version + 1,
           updatedAt: sql`now()`,
           updatedBy: actor.id,
@@ -298,9 +346,14 @@ export class StorefrontSettingsService {
       favicon: favicon ? toStorefrontBrandAsset(favicon) : null,
       socialImage: socialImage ? toStorefrontBrandAsset(socialImage) : null,
       socialImageAlt: configuration.socialImageAlt,
-      socialLinks: configuration.socialLinks,
+      socialLinks: {
+        ...configuration.socialLinks,
+        linkedin: configuration.linkedinUrl,
+      },
       footerDescription: configuration.footerDescription,
       footerLinks: configuration.footerLinks,
+      footerLinkGroups: configuration.footerLinkGroups,
+      footerCategoryIds: configuration.footerCategoryIds,
     };
   }
 }

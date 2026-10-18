@@ -1,5 +1,6 @@
 import {
   StorefrontHeaderNavigationItemSchema,
+  StorefrontFooterLinkGroupsSchema,
   StorefrontSettingsUpdateSchema,
   type StorefrontSettings,
   type StorefrontSettingsUpdate,
@@ -13,6 +14,7 @@ export const socialFields = [
   ["tiktok", "TikTok URL"],
   ["youtube", "YouTube URL"],
   ["x", "X URL"],
+  ["linkedin", "LinkedIn URL"],
 ] as const satisfies ReadonlyArray<
   readonly [keyof StorefrontSocialLinks, string]
 >;
@@ -35,9 +37,14 @@ const storefrontSettingsDraftSchema = z.strictObject({
     tiktok: z.string(),
     youtube: z.string(),
     x: z.string(),
+    linkedin: z.string(),
   }),
   footerDescription: z.string(),
-  footerLinks: z.array(z.strictObject({ label: z.string(), href: z.string() })),
+  footerLinkGroups: z.strictObject({
+    about: z.array(z.strictObject({ label: z.string(), href: z.string() })),
+    policies: z.array(z.strictObject({ label: z.string(), href: z.string() })),
+  }),
+  footerCategoryIds: z.array(z.uuid()),
   headerNavigation: StorefrontHeaderNavigationItemSchema.array(),
   expectedVersion: z.number().int().positive(),
 });
@@ -52,6 +59,17 @@ function toStorefrontSettingsUpdate(
   const socialLinks = Object.fromEntries(
     socialFields.map(([key]) => [key, values.socialLinks[key].trim() || null]),
   ) as StorefrontSocialLinks;
+
+  const footerLinkGroups = StorefrontFooterLinkGroupsSchema.parse({
+    about: values.footerLinkGroups.about.map(({ label, href }) => ({
+      label: label.trim(),
+      href: href.trim(),
+    })),
+    policies: values.footerLinkGroups.policies.map(({ label, href }) => ({
+      label: label.trim(),
+      href: href.trim(),
+    })),
+  });
 
   return {
     siteName: values.siteName,
@@ -72,10 +90,8 @@ function toStorefrontSettingsUpdate(
         : item,
     ),
     footerDescription: values.footerDescription.trim() || null,
-    footerLinks: values.footerLinks.map(({ label, href }) => ({
-      label: label.trim(),
-      href: href.trim(),
-    })),
+    footerLinkGroups,
+    footerCategoryIds: values.footerCategoryIds,
     expectedVersion: values.expectedVersion,
   };
 }
@@ -122,9 +138,11 @@ export function toStorefrontSettingsDraft(
       tiktok: settings.socialLinks.tiktok ?? "",
       youtube: settings.socialLinks.youtube ?? "",
       x: settings.socialLinks.x ?? "",
+      linkedin: settings.socialLinks.linkedin ?? "",
     },
     footerDescription: settings.footerDescription ?? "",
-    footerLinks: settings.footerLinks,
+    footerLinkGroups: settings.footerLinkGroups,
+    footerCategoryIds: settings.footerCategoryIds,
     headerNavigation: settings.headerNavigation,
     expectedVersion: settings.version,
   };

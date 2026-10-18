@@ -15,6 +15,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { hasDirtyFieldsExcept } from "@/lib/form-dirty-state";
 import {
@@ -24,7 +31,12 @@ import {
   type StorefrontSettingsDraft,
   type StorefrontSettingsFormValues,
 } from "./storefront-settings-form";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import {
+  useFieldArray,
+  useForm,
+  useWatch,
+  type UseFormRegister,
+} from "react-hook-form";
 const assetLabels: Record<StorefrontBrandAssetKind, string> = {
   logo: "Logo",
   brandIcon: "Brand icon",
@@ -79,19 +91,25 @@ export function StorefrontSettingsManager({
         tiktok: "",
         youtube: "",
         x: "",
+        linkedin: "",
       },
       footerDescription: "",
-      footerLinks: [],
+      footerLinkGroups: { about: [], policies: [] },
+      footerCategoryIds: [],
       headerNavigation: [],
       expectedVersion: 1,
     },
   });
   const {
-    fields: footerLinkFields,
-    append: appendFooterLink,
-    remove: removeFooterLink,
-    move: moveFooterLink,
-  } = useFieldArray({ control, name: "footerLinks" });
+    fields: aboutLinkFields,
+    append: appendAboutLink,
+    remove: removeAboutLink,
+  } = useFieldArray({ control, name: "footerLinkGroups.about" });
+  const {
+    fields: policyLinkFields,
+    append: appendPolicyLink,
+    remove: removePolicyLink,
+  } = useFieldArray({ control, name: "footerLinkGroups.policies" });
   const {
     fields: headerNavigationFields,
     append: appendHeaderNavigationItem,
@@ -99,7 +117,12 @@ export function StorefrontSettingsManager({
     move: moveHeaderNavigationItem,
     update: updateHeaderNavigationItem,
   } = useFieldArray({ control, name: "headerNavigation" });
-  const footerLinks = useWatch({ control, name: "footerLinks" }) ?? [];
+  const footerLinkGroups = useWatch({ control, name: "footerLinkGroups" }) ?? {
+    about: [],
+    policies: [],
+  };
+  const footerCategoryIds =
+    useWatch({ control, name: "footerCategoryIds" }) ?? [];
   const headerNavigation =
     useWatch({ control, name: "headerNavigation" }) ?? [];
   const announcementEnabled =
@@ -303,6 +326,24 @@ export function StorefrontSettingsManager({
   function addHeaderCategory(categoryId: string) {
     if (!categoryId || headerNavigation.length >= 8) return;
     appendHeaderNavigationItem({ type: "category", categoryId });
+  }
+
+  function addFooterCategory(categoryId: string) {
+    if (!categoryId || footerCategoryIds.includes(categoryId)) {
+      return;
+    }
+    setValue("footerCategoryIds", [...footerCategoryIds, categoryId], {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function removeFooterCategory(categoryId: string) {
+    setValue(
+      "footerCategoryIds",
+      footerCategoryIds.filter((configuredId) => configuredId !== categoryId),
+      { shouldDirty: true, shouldValidate: true },
+    );
   }
 
   const configuredCategoryIds = new Set(
@@ -878,6 +919,30 @@ export function StorefrontSettingsManager({
                   item.type === "category"
                     ? categoryOptions.find(({ id }) => id === item.categoryId)
                     : undefined;
+                const categoryOptionsForItem =
+                  item.type === "category"
+                    ? categoryOptions.filter(
+                        ({ id }) =>
+                          id === item.categoryId || !otherCategoryIds.has(id),
+                      )
+                    : [];
+                const categorySelectItems =
+                  item.type === "category"
+                    ? [
+                        ...(!selectedCategory
+                          ? [
+                              {
+                                value: item.categoryId,
+                                label: "Unavailable category",
+                              },
+                            ]
+                          : []),
+                        ...categoryOptionsForItem.map(({ id, path }) => ({
+                          label: path,
+                          value: id,
+                        })),
+                      ]
+                    : [];
 
                 return (
                   <li
@@ -913,35 +978,33 @@ export function StorefrontSettingsManager({
                         <FieldLabel htmlFor={`header-category-${index}`}>
                           Catalog category
                         </FieldLabel>
-                        <select
-                          className="min-h-10 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring"
-                          id={`header-category-${index}`}
+                        <Select
+                          items={categorySelectItems}
                           value={item.categoryId}
-                          onChange={(event) => {
-                            const categoryId = event.currentTarget.value;
+                          onValueChange={(categoryId) => {
+                            if (!categoryId) return;
                             updateHeaderNavigationItem(index, {
                               type: "category",
                               categoryId,
                             });
                           }}
                         >
-                          {!selectedCategory && (
-                            <option value={item.categoryId}>
-                              Unavailable category ({item.categoryId})
-                            </option>
-                          )}
-                          {categoryOptions
-                            .filter(
-                              ({ id }) =>
-                                id === item.categoryId ||
-                                !otherCategoryIds.has(id),
-                            )
-                            .map(({ id, path }) => (
-                              <option key={id} value={id}>
+                          <SelectTrigger id={`header-category-${index}`}>
+                            <SelectValue placeholder="Choose a category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {!selectedCategory && (
+                              <SelectItem value={item.categoryId}>
+                                Unavailable category
+                              </SelectItem>
+                            )}
+                            {categoryOptionsForItem.map(({ id, path }) => (
+                              <SelectItem key={id} value={id}>
                                 {path}
-                              </option>
+                              </SelectItem>
                             ))}
-                        </select>
+                          </SelectContent>
+                        </Select>
                         {!selectedCategory && (
                           <FieldDescription>
                             This category is inactive or unavailable. Remove it,
@@ -1009,26 +1072,30 @@ export function StorefrontSettingsManager({
                   <FieldLabel htmlFor="storefront-add-header-category">
                     Add an active category
                   </FieldLabel>
-                  <select
-                    className="min-h-10 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  <Select
+                    value={null}
+                    onValueChange={(categoryId) => {
+                      if (categoryId) addHeaderCategory(categoryId);
+                    }}
                     disabled={availableCategories.length === 0}
-                    id="storefront-add-header-category"
-                    value=""
-                    onChange={(event) =>
-                      addHeaderCategory(event.currentTarget.value)
-                    }
                   >
-                    <option value="">
-                      {availableCategories.length > 0
-                        ? "Choose a category…"
-                        : "No additional active categories"}
-                    </option>
-                    {availableCategories.map(({ id, path }) => (
-                      <option key={id} value={id}>
-                        {path}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="storefront-add-header-category">
+                      <SelectValue
+                        placeholder={
+                          availableCategories.length > 0
+                            ? "Choose a category…"
+                            : "No additional active categories"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCategories.map(({ id, path }) => (
+                        <SelectItem key={id} value={id}>
+                          {path}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
               </div>
             )}
@@ -1043,7 +1110,7 @@ export function StorefrontSettingsManager({
                 Footer content
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Add a short store description and up to eight information links.
+                Configure category links and the About Us and Policies columns.
               </p>
             </div>
             <Field>
@@ -1056,73 +1123,77 @@ export function StorefrontSettingsManager({
                 {...register("footerDescription")}
               />
             </Field>
-            <div className="grid gap-4">
-              {footerLinks.map((_, index) => (
-                <div
-                  className="grid items-end gap-3 rounded-lg border border-border p-4 md:grid-cols-[1fr_2fr_auto_auto_auto]"
-                  key={footerLinkFields[index]?.id ?? index}
-                >
-                  <Field>
-                    <FieldLabel htmlFor={`footer-link-${index}-label`}>
-                      Link label
-                    </FieldLabel>
-                    <Input
-                      id={`footer-link-${index}-label`}
-                      maxLength={40}
-                      {...register(`footerLinks.${index}.label`)}
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor={`footer-link-${index}-href`}>
-                      Link URL
-                    </FieldLabel>
-                    <Input
-                      id={`footer-link-${index}-href`}
-                      maxLength={2048}
-                      placeholder="/about or https://example.com"
-                      {...register(`footerLinks.${index}.href`)}
-                    />
-                  </Field>
-                  <Button
-                    aria-label={`Move footer link ${index + 1} up`}
-                    disabled={index === 0}
-                    type="button"
-                    variant="outline"
-                    onClick={() => moveFooterLink(index, index - 1)}
-                  >
-                    Move up
-                  </Button>
-                  <Button
-                    aria-label={`Move footer link ${index + 1} down`}
-                    disabled={index === footerLinks.length - 1}
-                    type="button"
-                    variant="outline"
-                    onClick={() => moveFooterLink(index, index + 1)}
-                  >
-                    Move down
-                  </Button>
-                  <Button
-                    aria-label={`Remove footer link ${index + 1}`}
-                    type="button"
-                    variant="outline"
-                    onClick={() => removeFooterLink(index)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-              {footerLinks.length < 8 && (
-                <div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => appendFooterLink({ label: "", href: "" })}
-                  >
-                    Add footer link
-                  </Button>
-                </div>
+            <Field>
+              <FieldLabel htmlFor="storefront-footer-category">
+                Footer categories
+              </FieldLabel>
+              <Select
+                value={null}
+                onValueChange={(categoryId) => {
+                  if (categoryId) addFooterCategory(categoryId);
+                }}
+              >
+                <SelectTrigger id="storefront-footer-category">
+                  <SelectValue placeholder="Add a catalog category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryOptions
+                    .filter(({ id }) => !footerCategoryIds.includes(id))
+                    .map(({ id, path }) => (
+                      <SelectItem key={id} value={id}>
+                        {path}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                Categories follow catalog order and show published product
+                counts.
+              </FieldDescription>
+              {footerCategoryIds.length > 0 && (
+                <ul className="flex flex-wrap gap-2">
+                  {footerCategoryIds.map((categoryId) => {
+                    const category = categoryOptions.find(
+                      ({ id }) => id === categoryId,
+                    );
+                    return (
+                      <li
+                        className="inline-flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm"
+                        key={categoryId}
+                      >
+                        <span>{category?.path ?? "Unavailable category"}</span>
+                        <Button
+                          aria-label={`Remove ${category?.path ?? "unavailable category"} from footer`}
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeFooterCategory(categoryId)}
+                        >
+                          Remove
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-            </div>
+            </Field>
+
+            <FooterLinkGroupFields
+              append={appendAboutLink}
+              fields={aboutLinkFields}
+              group="about"
+              links={footerLinkGroups.about}
+              register={register}
+              remove={removeAboutLink}
+            />
+            <FooterLinkGroupFields
+              append={appendPolicyLink}
+              fields={policyLinkFields}
+              group="policies"
+              links={footerLinkGroups.policies}
+              register={register}
+              remove={removePolicyLink}
+            />
           </section>
 
           <section className="grid gap-4 border-t border-border pt-6">
@@ -1165,4 +1236,88 @@ function collectFieldErrorMessages(value: unknown): string[] {
   return Object.entries(record)
     .filter(([key]) => key !== "ref" && key !== "types")
     .flatMap(([, nested]) => collectFieldErrorMessages(nested));
+}
+
+type FooterLinkGroupName = keyof StorefrontSettingsDraft["footerLinkGroups"];
+type FooterLink = StorefrontSettingsDraft["footerLinkGroups"]["about"][number];
+
+function FooterLinkGroupFields({
+  append,
+  fields,
+  group,
+  links,
+  register,
+  remove,
+}: {
+  append: (link: FooterLink) => void;
+  fields: Array<{ id: string }>;
+  group: FooterLinkGroupName;
+  links: FooterLink[];
+  register: UseFormRegister<StorefrontSettingsDraft>;
+  remove: (index: number) => void;
+}) {
+  const title = group === "about" ? "About Us" : "Policies";
+
+  return (
+    <section aria-labelledby={`footer-${group}-heading`} className="grid gap-4">
+      <div>
+        <h4 className="font-medium" id={`footer-${group}-heading`}>
+          {title}
+        </h4>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Links are displayed alphabetically.
+        </p>
+      </div>
+      <div className="grid gap-4">
+        {links.map((_, index) => {
+          const fieldName = `footerLinkGroups.${group}.${index}` as const;
+          return (
+            <div
+              className="grid items-end gap-3 rounded-lg border border-border p-4 md:grid-cols-[1fr_2fr_auto]"
+              key={fields[index]?.id ?? index}
+            >
+              <Field>
+                <FieldLabel htmlFor={`footer-${group}-${index}-label`}>
+                  Link label
+                </FieldLabel>
+                <Input
+                  id={`footer-${group}-${index}-label`}
+                  maxLength={40}
+                  {...register(`${fieldName}.label`)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`footer-${group}-${index}-href`}>
+                  Link URL
+                </FieldLabel>
+                <Input
+                  id={`footer-${group}-${index}-href`}
+                  maxLength={2048}
+                  placeholder="/about or https://example.com"
+                  {...register(`${fieldName}.href`)}
+                />
+              </Field>
+              <Button
+                aria-label={`Remove ${title} link ${index + 1}`}
+                type="button"
+                variant="outline"
+                onClick={() => remove(index)}
+              >
+                Remove
+              </Button>
+            </div>
+          );
+        })}
+        <div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => append({ label: "", href: "" })}
+          >
+            Add {title.toLowerCase()} link
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
 }
