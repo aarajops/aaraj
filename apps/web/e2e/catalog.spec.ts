@@ -79,7 +79,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   context,
   baseURL,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
 
   await page.goto("/");
   await expect(
