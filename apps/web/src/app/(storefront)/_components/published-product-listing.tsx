@@ -20,6 +20,7 @@ type PublishedProductListingProps = {
   description: string;
   sort?: CatalogPublishedProductListQuery["sort"];
   showHomepageCategories?: boolean;
+  categorySlug?: string;
 };
 
 export async function PublishedProductListing({
@@ -29,13 +30,18 @@ export async function PublishedProductListing({
   description,
   sort,
   showHomepageCategories = false,
+  categorySlug,
 }: PublishedProductListingProps) {
   const parsedQuery = parsePublishedCatalogPageQuery(await searchParams);
   if (!parsedQuery) {
     return <InvalidCatalogQuery pathname={pathname} title={title} />;
   }
 
-  const query = { ...parsedQuery, ...(sort ? { sort } : {}) };
+  const query = {
+    ...parsedQuery,
+    ...(categorySlug ? { category: categorySlug } : {}),
+    ...(sort ? { sort } : {}),
+  };
   const page = await getPublishedProducts(query);
   const hasActiveFilters = Boolean(
     query.search ||
@@ -67,6 +73,14 @@ export async function PublishedProductListing({
         <p className="text-sm font-semibold tracking-[0.18em] text-primary">
           THE AARAJ CATALOG
         </p>
+        {categorySlug && (
+          <Link
+            className="mt-5 inline-flex text-sm font-medium text-primary hover:text-primary/80"
+            href="/"
+          >
+            ← All products
+          </Link>
+        )}
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
@@ -87,6 +101,7 @@ export async function PublishedProductListing({
         <CatalogFilters
           options={page?.filters ?? null}
           pathname={pathname}
+          categoryInPath={Boolean(categorySlug)}
           query={query}
         />
 
@@ -155,7 +170,7 @@ export async function PublishedProductListing({
             preservedParams={{
               search: query.search,
               audience: query.audience,
-              category: query.category,
+              category: categorySlug ? undefined : query.category,
               color: query.color,
               size: query.size,
               sort: query.sort,

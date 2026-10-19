@@ -34,11 +34,13 @@ export function StorefrontSearchBar({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const isCatalogPage = pathname === "/";
-  const currentSearch = isCatalogPage ? (searchParams.get("search") ?? "") : "";
-  const currentCategory = isCatalogPage
-    ? (searchParams.get("category") ?? "")
+  const categoryPath = pathname.startsWith("/categories/")
+    ? pathname.slice("/categories/".length).split("/")[0]
     : "";
+  const isCatalogPage = pathname === "/" || Boolean(categoryPath);
+  const currentSearch = isCatalogPage ? (searchParams.get("search") ?? "") : "";
+  const currentCategory =
+    categoryPath || (isCatalogPage ? (searchParams.get("category") ?? "") : "");
 
   return (
     <StorefrontSearchForm

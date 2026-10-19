@@ -212,6 +212,33 @@ export async function getPublishedProductFilterOptions(): Promise<CatalogProduct
   }
 }
 
+export async function getStorefrontCategoryBySlug(slug: string) {
+  const filters = await getPublishedProductFilterOptions();
+  if (!filters) return { kind: "unavailable" as const };
+
+  const publishedCategory = filters.categories.find(
+    (category) => category.slug === slug,
+  );
+  if (publishedCategory) {
+    return {
+      kind: "found" as const,
+      category: publishedCategory,
+      publishedProductCount: publishedCategory.publishedProductCount,
+    };
+  }
+
+  const activeCategory = (await getPublicCatalogCategories()).find(
+    (category) => category.slug === slug,
+  );
+  return activeCategory
+    ? {
+        kind: "found" as const,
+        category: activeCategory,
+        publishedProductCount: 0,
+      }
+    : { kind: "not-found" as const };
+}
+
 export async function getPublishedProduct(
   slug: string,
 ): Promise<

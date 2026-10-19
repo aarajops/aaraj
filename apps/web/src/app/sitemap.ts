@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { getStorefrontCategoryHref } from "@aaraj/contracts";
 import { getPublishedProducts } from "@/features/catalog/catalog-queries";
 import { getStorefrontOrigin } from "@/lib/storefront-origin";
 
@@ -12,6 +13,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [
     { url: new URL("/", origin).toString() },
   ];
+  const seenCategorySlugs = new Set<string>();
   const seenSlugs = new Set<string>();
   let offset = 0;
 
@@ -23,11 +25,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       );
     }
 
+    if (offset === 0) {
+      for (const category of page.filters.categories) {
+        if (seenCategorySlugs.has(category.slug)) continue;
+        if (entries.length >= MAX_SITEMAP_URLS) {
+          throw new Error(
+            "The storefront sitemap exceeded 50,000 URLs and must be split into multiple sitemap files.",
+          );
+        }
+        seenCategorySlugs.add(category.slug);
+        entries.push({
+          url: new URL(
+            getStorefrontCategoryHref(category.slug),
+            origin,
+          ).toString(),
+        });
+      }
+    }
+
     for (const product of page.products) {
       if (seenSlugs.has(product.slug)) continue;
-      if (entries.length === MAX_SITEMAP_URLS) {
+      if (entries.length >= MAX_SITEMAP_URLS) {
         throw new Error(
-          "The product sitemap exceeded 50,000 URLs and must be split into multiple sitemap files.",
+          "The storefront sitemap exceeded 50,000 URLs and must be split into multiple sitemap files.",
         );
       }
       seenSlugs.add(product.slug);

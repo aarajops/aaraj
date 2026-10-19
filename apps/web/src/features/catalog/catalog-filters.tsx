@@ -22,6 +22,7 @@ interface CatalogFiltersProps {
   options: Pick<CatalogProductFilterOptions, "colors" | "sizes"> | null;
   query: CatalogPublishedProductListQuery;
   pathname?: string;
+  categoryInPath?: boolean;
 }
 
 interface FilterForm {
@@ -34,6 +35,7 @@ export function CatalogFilters({
   options,
   query,
   pathname = "/",
+  categoryInPath = false,
 }: CatalogFiltersProps) {
   const router = useRouter();
   const audience = query.audience ?? "";
@@ -52,7 +54,7 @@ export function CatalogFilters({
   const hasActiveFilters = Boolean(
     query.search ||
     query.audience ||
-    query.category ||
+    (!categoryInPath && query.category) ||
     query.color ||
     query.size,
   );
@@ -63,7 +65,9 @@ export function CatalogFilters({
       if (value) params.set(key, value);
     }
     if (query.search) params.set("search", query.search);
-    if (query.category) params.set("category", query.category);
+    if (query.category && !categoryInPath) {
+      params.set("category", query.category);
+    }
     if (query.sort) params.set("sort", query.sort);
     router.push(`${pathname}?${params.toString()}`);
   }

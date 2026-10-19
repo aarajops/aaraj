@@ -513,7 +513,7 @@ describe("storefront settings", () => {
       .get(`${API_V1_BASE_PATH}/storefront/settings`)
       .expect(200);
     expect(publicResponse.body.headerNavigation).toEqual([
-      { label: "Header category", href: `/?category=${slug}` },
+      { label: "Header category", href: `/categories/${slug}` },
     ]);
     expect(JSON.stringify(publicResponse.body.headerNavigation)).not.toContain(
       category!.id,

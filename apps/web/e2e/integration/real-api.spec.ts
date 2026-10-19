@@ -271,7 +271,7 @@ test("admin updates public storefront settings through to the rendered header", 
     headerNavigation: [
       {
         label: headerCategoryName,
-        href: `/?category=${headerCategorySlug}`,
+        href: `/categories/${headerCategorySlug}`,
       },
     ],
     footerDescription: "Everyday style, thoughtfully selected.",
@@ -369,7 +369,7 @@ test("admin updates public storefront settings through to the rendered header", 
   ).toHaveAttribute("href", "tel:+8801712345678");
   await expect(
     page.getByRole("link", { name: headerCategoryName, exact: true }),
-  ).toHaveAttribute("href", `/?category=${headerCategorySlug}`);
+  ).toHaveAttribute("href", `/categories/${headerCategorySlug}`);
   await expect(
     page.locator('header img[alt="AARAJ Festive Edit logo"]'),
   ).toBeVisible();

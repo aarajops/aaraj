@@ -281,7 +281,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   const storefrontSearch = page.locator("header form").last();
   await storefrontSearch.getByRole("searchbox").fill("Aaraj E2E");
   await storefrontSearch.getByRole("button", { name: "Search" }).click();
-  await expect(page).toHaveURL(/category=t-shirts/);
+  await expect(page).toHaveURL(/\/categories\/t-shirts/);
   await expect(page).toHaveURL(/search=Aaraj\+E2E/);
   await chooseSelectOption(page, "Audience", "Unisex");
   await chooseSelectOption(page, "Color", "Black");
@@ -291,13 +291,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   );
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/audience=unisex/);
-  await expect(page).toHaveURL(/category=t-shirts/);
+  await expect(page).toHaveURL(/\/categories\/t-shirts/);
   await expect(page).toHaveURL(/color=Black/);
   await expect(page).toHaveURL(/size=M/);
   await expect(page).toHaveURL(/search=Aaraj\+E2E/);
   await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
   await page.getByRole("link", { name: "Clear filters" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/categories\/t-shirts$/);
   await page.goto("/admin/catalog/create");
 
   await page.getByLabel("Name", { exact: true }).fill("Duplicate slug item");
@@ -364,12 +364,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByRole("link", { name: "Previous" })).toBeVisible();
 
   await page.goto("/?limit=1&offset=0&category=t-shirts");
+  await expect(page).toHaveURL(/\/categories\/t-shirts\?limit=1&offset=0/);
   const publicProductName = page.locator("main ul li h2");
   await expect(publicProductName).toHaveCount(1);
   const firstPageProduct = await publicProductName.textContent();
   await page.getByRole("link", { name: "Next" }).click();
+  await expect(page).toHaveURL(/\/categories\/t-shirts\?limit=1&offset=1/);
   await expect(page).toHaveURL(/offset=1/);
-  await expect(page).toHaveURL(/category=t-shirts/);
   await expect(publicProductName).toHaveCount(1);
   await expect(publicProductName).not.toHaveText(firstPageProduct ?? "");
   await page.getByRole("link", { name: "Previous" }).click();

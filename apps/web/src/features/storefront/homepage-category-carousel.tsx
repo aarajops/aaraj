@@ -9,7 +9,10 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-import type { CatalogPublishedCategoryOption } from "@aaraj/contracts";
+import {
+  getStorefrontCategoryHref,
+  type CatalogPublishedCategoryOption,
+} from "@aaraj/contracts";
 
 export function HomepageCategoryCarousel({
   categories,
@@ -28,7 +31,7 @@ export function HomepageCategoryCarousel({
             >
               <Link
                 className="group relative block aspect-[3/4] overflow-hidden rounded-xl bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                href={`/?category=${encodeURIComponent(category.slug)}`}
+                href={getStorefrontCategoryHref(category.slug)}
               >
                 <Image
                   alt=""
