@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -226,18 +227,30 @@ export function CartSheet() {
         </div>
 
         {isReady && cart.lines.length > 0 && (
-          <SheetFooter className="border-t border-border p-6">
-            <div className="flex items-center justify-between gap-4 text-base font-medium">
+          <SheetFooter className="mt-auto w-full gap-0 border-t border-border p-0">
+            <div className="flex items-center justify-between gap-4 px-6 py-5 text-base font-medium">
               <span>Subtotal</span>
               <span>{formatCatalogPrice({ amountBdt: subtotal })}</span>
             </div>
-            <Link
-              className={buttonVariants({ className: "w-full" })}
-              href="/cart"
-              onNavigate={() => setOpen(false)}
-            >
-              Review cart
-            </Link>
+            <div className="grid w-full grid-cols-2 gap-0">
+              <SheetClose
+                render={
+                  <Button className="w-full" size="lg" variant="outline" />
+                }
+              >
+                Cancel
+              </SheetClose>
+              <Link
+                className={buttonVariants({
+                  className: "w-full",
+                  size: "lg",
+                })}
+                href="/cart"
+                onNavigate={() => setOpen(false)}
+              >
+                Checkout
+              </Link>
+            </div>
           </SheetFooter>
         )}
       </SheetContent>

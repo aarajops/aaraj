@@ -975,7 +975,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     cartSheet.getByRole("link", { name: productName }),
   ).toBeVisible();
-  await cartSheet.getByRole("link", { name: "Review cart" }).click();
+  await cartSheet.getByRole("link", { name: "Checkout" }).click();
   await expect(page).toHaveURL(/\/cart$/);
   await expect(cartSheet).not.toBeVisible();
 
