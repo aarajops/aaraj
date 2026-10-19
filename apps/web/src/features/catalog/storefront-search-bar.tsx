@@ -34,13 +34,11 @@ export function StorefrontSearchBar({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const categoryPath = pathname.startsWith("/categories/")
-    ? pathname.slice("/categories/".length).split("/")[0]
+  const categoryPath = pathname.startsWith("/shop/categories/")
+    ? pathname.slice("/shop/categories/".length).split("/")[0]
     : "";
-  const isCatalogPage = pathname === "/" || Boolean(categoryPath);
-  const currentSearch = isCatalogPage ? (searchParams.get("search") ?? "") : "";
-  const currentCategory =
-    categoryPath || (isCatalogPage ? (searchParams.get("category") ?? "") : "");
+  const currentSearch = searchParams.get("search") ?? "";
+  const currentCategory = categoryPath || (searchParams.get("category") ?? "");
 
   return (
     <StorefrontSearchForm
@@ -49,14 +47,19 @@ export function StorefrontSearchBar({
       className={className}
       currentCategory={currentCategory}
       currentSearch={currentSearch}
-      preservedFilters={
-        isCatalogPage
-          ? (["audience", "color", "size"] as const).flatMap((name) => {
-              const value = searchParams.get(name);
-              return value ? [{ name, value }] : [];
-            })
-          : []
-      }
+      preservedFilters={[
+        ...(["audience", "color", "size"] as const).flatMap((name) => {
+          const values =
+            name === "audience"
+              ? [searchParams.get(name)]
+              : searchParams.getAll(name);
+          return values.flatMap((value) => (value ? [{ name, value }] : []));
+        }),
+        ...(["minPriceBdt", "maxPriceBdt", "sort"] as const).flatMap((name) => {
+          const value = searchParams.get(name);
+          return value ? [{ name, value }] : [];
+        }),
+      ]}
     />
   );
 }
@@ -73,7 +76,8 @@ function StorefrontSearchForm({
   currentCategory: string;
   currentSearch: string;
   preservedFilters: Array<{
-    name: "audience" | "color" | "size";
+    name:
+      "audience" | "color" | "size" | "minPriceBdt" | "maxPriceBdt" | "sort";
     value: string;
   }>;
 }) {
@@ -86,7 +90,7 @@ function StorefrontSearchForm({
   }));
 
   return (
-    <Form action="/" className={cn("flex min-w-0 flex-1", className)}>
+    <Form action="/shop" className={cn("flex min-w-0 flex-1", className)}>
       <InputGroup className="h-12 rounded-full !border-0 bg-muted !outline-none !ring-0 shadow-none focus-within:!border-0 focus-within:!outline-none focus-within:!ring-0 md:h-15 xl:h-8 2xl:h-10">
         <InputGroupInput
           aria-label="Search products"
@@ -129,7 +133,12 @@ function StorefrontSearchForm({
         </InputGroupAddon>
       </InputGroup>
       {preservedFilters.map(({ name, value }) => (
-        <input key={name} name={name} type="hidden" value={value} />
+        <input
+          key={`${name}:${value}`}
+          name={name}
+          type="hidden"
+          value={value}
+        />
       ))}
     </Form>
   );

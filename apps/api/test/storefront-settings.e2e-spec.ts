@@ -513,7 +513,7 @@ describe("storefront settings", () => {
       .get(`${API_V1_BASE_PATH}/storefront/settings`)
       .expect(200);
     expect(publicResponse.body.headerNavigation).toEqual([
-      { label: "Header category", href: `/categories/${slug}` },
+      { label: "Header category", href: `/shop/categories/${slug}` },
     ]);
     expect(JSON.stringify(publicResponse.body.headerNavigation)).not.toContain(
       category!.id,
@@ -887,7 +887,7 @@ describe("storefront settings", () => {
         desktopAssetId: asset.id,
         mobileAssetId: asset.id,
         altText: "",
-        href: "/products",
+        href: "/shop",
       })
       .expect(400);
 
@@ -902,7 +902,7 @@ describe("storefront settings", () => {
         desktopAssetId: asset.id,
         mobileAssetId: asset.id,
         altText: "AARAJ seasonal collection",
-        href: "/products",
+        href: "/shop",
       })
       .expect(201);
     const bannerId = published.body.id as string;
@@ -913,7 +913,7 @@ describe("storefront settings", () => {
       desktop: { id: asset.id },
       mobile: { id: asset.id },
       altText: "AARAJ seasonal collection",
-      href: "/products",
+      href: "/shop",
       version: 1,
     });
 
@@ -928,7 +928,7 @@ describe("storefront settings", () => {
           desktop: { id: asset.id },
           mobile: { id: asset.id },
           altText: "AARAJ seasonal collection",
-          href: "/products",
+          href: "/shop",
         },
       ],
     });
@@ -955,13 +955,13 @@ describe("storefront settings", () => {
         desktopAssetId: asset.id,
         mobileAssetId: asset.id,
         altText: "AARAJ seasonal collection",
-        href: "/products/summer",
+        href: "/shop/products/summer",
         expectedVersion: 1,
       })
       .expect(200);
     expect(updated.body).toMatchObject({
       name: "Seasonal banner revised",
-      href: "/products/summer",
+      href: "/shop/products/summer",
       version: 2,
     });
 
@@ -1066,7 +1066,7 @@ describe("storefront settings", () => {
         desktopAssetId: asset.id,
         mobileAssetId: asset.id,
         altText: "AARAJ seasonal collection",
-        href: "/products/summer",
+        href: "/shop/products/summer",
         expectedVersion: 2,
       })
       .expect(200);

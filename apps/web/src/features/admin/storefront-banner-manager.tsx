@@ -411,7 +411,7 @@ export function StorefrontBannerManager({
                   <FieldLabel htmlFor="banner-href">Link (optional)</FieldLabel>
                   <Input
                     id="banner-href"
-                    placeholder="/products or https://example.com"
+                    placeholder="/shop or https://example.com"
                     type="text"
                     maxLength={MAX_STOREFRONT_BANNER_HREF_LENGTH}
                     {...register("href", {

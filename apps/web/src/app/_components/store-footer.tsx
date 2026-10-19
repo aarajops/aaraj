@@ -1,5 +1,4 @@
 import { getPublishedProductFilterOptions } from "@/features/catalog/catalog-queries";
-import { getStorefrontCategoryHref } from "@aaraj/contracts";
 import { StorefrontBrandLogo } from "@/features/storefront/storefront-brand-logo";
 import { StorefrontLink } from "@/features/storefront/storefront-link";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
@@ -40,7 +39,7 @@ export async function StoreFooter() {
   const categories = (productFilters?.categories ?? [])
     .filter(({ id }) => selectedCategoryIds.has(id))
     .map(({ name, publishedProductCount, slug }) => ({
-      href: getStorefrontCategoryHref(slug),
+      href: `/shop/categories/${slug}`,
       label: `${name} (${publishedProductCount})`,
     }));
   const contactDetails = Boolean(

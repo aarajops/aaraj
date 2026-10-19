@@ -1,10 +1,20 @@
-import {
-  CatalogProductFilterOptionsSchema,
-  type CatalogProductFilterOptions,
-} from "@aaraj/contracts";
+import { z } from "zod";
+import { CatalogProductFilterOptionsSchema } from "@aaraj/contracts";
 import { getRedisClient } from "../platform/redis/redis-client.js";
 
 const FILTER_OPTIONS_TTL_SECONDS = 15;
+const CategoryFilterOptionsSchema = CatalogProductFilterOptionsSchema.pick({
+  colors: true,
+  sizes: true,
+  priceRange: true,
+});
+const PublishedFilterOptionsCacheSchema = z.strictObject({
+  options: CatalogProductFilterOptionsSchema,
+  categories: z.record(z.string(), CategoryFilterOptionsSchema),
+});
+export type PublishedFilterOptionsCache = z.infer<
+  typeof PublishedFilterOptionsCacheSchema
+>;
 
 function cacheKey(): string {
   const prefix = process.env.CATALOG_CACHE_KEY_PREFIX ?? "aaraj:catalog:";
@@ -12,12 +22,12 @@ function cacheKey(): string {
 }
 
 export async function readPublishedFilterOptionsCache(): Promise<
-  CatalogProductFilterOptions | undefined
+  PublishedFilterOptionsCache | undefined
 > {
   try {
     const cached = await getRedisClient().get(cacheKey());
     if (!cached) return undefined;
-    const parsed = CatalogProductFilterOptionsSchema.safeParse(
+    const parsed = PublishedFilterOptionsCacheSchema.safeParse(
       JSON.parse(cached),
     );
     return parsed.success ? parsed.data : undefined;
@@ -27,7 +37,7 @@ export async function readPublishedFilterOptionsCache(): Promise<
 }
 
 export async function writePublishedFilterOptionsCache(
-  options: CatalogProductFilterOptions,
+  options: PublishedFilterOptionsCache,
 ): Promise<void> {
   try {
     await getRedisClient().set(

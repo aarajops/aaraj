@@ -648,6 +648,7 @@ const server = createServer(async (request, response) => {
       sizes: uniqueFilterValues(
         purchasableVariants.map(({ sizeLabel }) => sizeLabel),
       ),
+      priceRange: getPublishedPriceRange(publishedProducts),
     });
     return;
   }
@@ -1038,27 +1039,18 @@ function productDetail(product, management = false) {
 function summary(product) {
   const fields = { ...product };
   delete fields.variants;
-  const activeVariants = product.variants.filter(({ isActive }) => isActive);
-  const guide = sizeGuides.find(({ id }) => id === product.sizeGuideId);
-  const sizeOrder = new Map(
-    guide?.rows.map((row, index) => [normalize(row.sizeLabel), index]) ?? [],
-  );
-  const firstVariant = [...activeVariants].sort((left, right) => {
-    const colorOrder = left.color.localeCompare(right.color);
-    if (colorOrder !== 0) return colorOrder;
-    const leftOrder = sizeOrder.get(normalize(left.sizeLabel));
-    const rightOrder = sizeOrder.get(normalize(right.sizeLabel));
-    if (leftOrder !== undefined && rightOrder !== undefined) {
-      return leftOrder - rightOrder;
-    }
-    if (leftOrder !== undefined) return -1;
-    if (rightOrder !== undefined) return 1;
-    return left.sizeLabel.localeCompare(right.sizeLabel);
-  })[0];
+  const price = startingPrice(product);
   return {
     ...fields,
-    price: firstVariant?.price ?? null,
+    price: price === null ? null : { amountBdt: price },
   };
+}
+
+function startingPrice(product) {
+  const prices = product.variants.flatMap((variant) =>
+    variant.isActive && variant.price !== null ? [variant.price.amountBdt] : [],
+  );
+  return prices.length ? Math.min(...prices) : null;
 }
 
 function isPublishable(product, variants, guide) {
@@ -1121,6 +1113,11 @@ function sendPublishedProductPage(response, source, url) {
   }
 
   const query = parsed.data;
+  const facetSource = query.category
+    ? source.filter((product) =>
+        categoryMatches(product.category?.id, query.category),
+      )
+    : source;
   const matching = source.filter((product) => {
     if (
       query.search &&
@@ -1143,21 +1140,39 @@ function sendPublishedProductPage(response, source, url) {
     ) {
       return false;
     }
-    if (query.color || query.size) {
+    const colors = (query.color ?? []).map(normalize);
+    const sizes = (query.size ?? []).map(normalize);
+    if (
+      colors.length ||
+      sizes.length ||
+      query.minPriceBdt !== undefined ||
+      query.maxPriceBdt !== undefined
+    ) {
       return product.variants.some(
         (variant) =>
           variant.isActive &&
-          (!query.color ||
-            normalize(variant.color) === normalize(query.color)) &&
-          (!query.size ||
-            normalize(variant.sizeLabel) === normalize(query.size)),
+          (!colors.length || colors.includes(normalize(variant.color))) &&
+          (!sizes.length || sizes.includes(normalize(variant.sizeLabel))) &&
+          variant.price !== null &&
+          (query.minPriceBdt === undefined ||
+            variant.price.amountBdt >= query.minPriceBdt) &&
+          (query.maxPriceBdt === undefined ||
+            variant.price.amountBdt <= query.maxPriceBdt),
       );
     }
     return true;
   });
   const ordered = [...matching].sort((left, right) => {
-    const byUpdatedAt = right.updatedAt.localeCompare(left.updatedAt);
-    return byUpdatedAt || right.id.localeCompare(left.id);
+    if (query.sort === "price-ascending") {
+      const byPrice = startingPrice(left) - startingPrice(right);
+      if (byPrice !== 0) return byPrice;
+    }
+    if (query.sort === "price-descending") {
+      const byPrice = startingPrice(right) - startingPrice(left);
+      if (byPrice !== 0) return byPrice;
+    }
+    const byCreatedAt = right.createdAt.localeCompare(left.createdAt);
+    return byCreatedAt || right.id.localeCompare(left.id);
   });
   const rows = ordered.slice(query.offset, query.offset + query.limit + 1);
   const hasMore = rows.length > query.limit;
@@ -1176,19 +1191,20 @@ function sendPublishedProductPage(response, source, url) {
     filters: {
       categories: publicCategoryFilters(source),
       colors: uniqueFilterValues(
-        source.flatMap((product) =>
+        facetSource.flatMap((product) =>
           product.variants
             .filter(({ isActive }) => isActive)
             .map(({ color }) => color),
         ),
       ),
       sizes: uniqueFilterValues(
-        source.flatMap((product) =>
+        facetSource.flatMap((product) =>
           product.variants
             .filter(({ isActive }) => isActive)
             .map(({ sizeLabel }) => sizeLabel),
         ),
       ),
+      priceRange: getPublishedPriceRange(facetSource),
     },
   });
 }
@@ -1275,6 +1291,23 @@ function uniqueFilterValues(values) {
   return [...unique.values()].sort((left, right) =>
     left.localeCompare(right, "en", { sensitivity: "base" }),
   );
+}
+
+function getPublishedPriceRange(products) {
+  let priceRange = null;
+  for (const product of products) {
+    for (const variant of product.variants) {
+      if (!variant.isActive || !variant.price) continue;
+      const amountBdt = variant.price.amountBdt;
+      priceRange = priceRange
+        ? {
+            minPriceBdt: Math.min(priceRange.minPriceBdt, amountBdt),
+            maxPriceBdt: Math.max(priceRange.maxPriceBdt, amountBdt),
+          }
+        : { minPriceBdt: amountBdt, maxPriceBdt: amountBdt };
+    }
+  }
+  return priceRange;
 }
 
 server.listen(port, host);

@@ -20,6 +20,7 @@ import type {
   CatalogProductVariantInput,
   CatalogCategoryReference,
   CatalogPrice,
+  CatalogPriceRange,
 } from "@aaraj/contracts";
 import {
   API_V1_BASE_PATH,
@@ -30,6 +31,7 @@ import {
   invalidatePublishedFilterOptionsCache,
   readPublishedFilterOptionsCache,
   writePublishedFilterOptionsCache,
+  type PublishedFilterOptionsCache,
 } from "./published-filter-cache.js";
 import { MAX_LIST_OFFSET } from "@aaraj/contracts";
 import {
@@ -39,8 +41,10 @@ import {
   desc,
   eq,
   exists,
+  gte,
   inArray,
   ilike,
+  lte,
   isNotNull,
   isNull,
   not,
@@ -146,25 +150,40 @@ export class CatalogService {
       );
     }
 
-    if (query.color || query.size) {
+    if (
+      query.color?.length ||
+      query.size?.length ||
+      query.minPriceBdt !== undefined ||
+      query.maxPriceBdt !== undefined
+    ) {
       const variantConditions = [
         eq(catalogProductVariant.productId, catalogProduct.id),
         eq(catalogProductVariant.isActive, true),
       ];
-      if (query.color) {
+      if (query.color?.length) {
         variantConditions.push(
-          eq(
+          inArray(
             sql<string>`lower(btrim(${catalogProductVariant.color}))`,
-            normalize(query.color),
+            query.color.map(normalize),
           ),
         );
       }
-      if (query.size) {
+      if (query.size?.length) {
         variantConditions.push(
-          eq(
+          inArray(
             sql<string>`lower(btrim(${catalogProductVariant.sizeLabel}))`,
-            normalize(query.size),
+            query.size.map(normalize),
           ),
+        );
+      }
+      if (query.minPriceBdt !== undefined) {
+        variantConditions.push(
+          gte(catalogProductVariant.priceBdt, query.minPriceBdt),
+        );
+      }
+      if (query.maxPriceBdt !== undefined) {
+        variantConditions.push(
+          lte(catalogProductVariant.priceBdt, query.maxPriceBdt),
         );
       }
       conditions.push(
@@ -177,10 +196,26 @@ export class CatalogService {
       );
     }
 
+    const lowestVariantPrice = sql<number>`(
+      select min(${catalogProductVariant.priceBdt})
+      from ${catalogProductVariant}
+      where ${catalogProductVariant.productId} = ${catalogProduct.id}
+        and ${catalogProductVariant.isActive} = true
+    )`;
     const productOrder =
-      query.sort === "newest"
-        ? [desc(catalogProduct.createdAt), desc(catalogProduct.id)]
-        : [desc(catalogProduct.updatedAt), desc(catalogProduct.id)];
+      query.sort === "price-ascending"
+        ? [
+            asc(lowestVariantPrice),
+            desc(catalogProduct.createdAt),
+            desc(catalogProduct.id),
+          ]
+        : query.sort === "price-descending"
+          ? [
+              desc(lowestVariantPrice),
+              desc(catalogProduct.createdAt),
+              desc(catalogProduct.id),
+            ]
+          : [desc(catalogProduct.createdAt), desc(catalogProduct.id)];
     const [rows, filterOptions] = await Promise.all([
       this.database.db
         .select()
@@ -189,16 +224,16 @@ export class CatalogService {
         .orderBy(...productOrder)
         .limit(query.limit + 1)
         .offset(query.offset),
-      this.getPublishedProductFilterOptions(),
+      this.getPublishedProductFilterOptions(query.category),
     ]);
 
     const selectedRows = rows.slice(0, query.limit);
-    const [categoryReferences, firstVariantPrices] = await Promise.all([
+    const [categoryReferences, lowestVariantPrices] = await Promise.all([
       loadCategoryReferences(
         this.database.db,
         selectedRows.map(({ categoryId }) => categoryId),
       ),
-      loadFirstVariantPrices(
+      loadLowestVariantPrices(
         this.database.db,
         selectedRows.map(({ id }) => id),
       ),
@@ -210,7 +245,7 @@ export class CatalogService {
       rows,
       query,
       categoryReferences,
-      firstVariantPrices,
+      lowestVariantPrices,
     );
     return {
       ...page,
@@ -340,9 +375,11 @@ export class CatalogService {
     return [...ids];
   }
 
-  async getPublishedProductFilterOptions(): Promise<CatalogProductFilterOptions> {
+  async getPublishedProductFilterOptions(
+    categorySlug?: string,
+  ): Promise<CatalogProductFilterOptions> {
     const cached = await readPublishedFilterOptionsCache();
-    if (cached) return cached;
+    if (cached) return filterOptionsForCategory(cached, categorySlug);
 
     const [productCounts, variantValues, categoryOptions] = await Promise.all([
       this.database.db
@@ -359,9 +396,12 @@ export class CatalogService {
         )
         .groupBy(catalogProduct.categoryId),
       this.database.db
-        .selectDistinct({
+        .select({
+          categoryId: catalogProduct.categoryId,
           color: catalogProductVariant.color,
           size: catalogProductVariant.sizeLabel,
+          minPriceBdt: sql<number>`min(${catalogProductVariant.priceBdt})`,
+          maxPriceBdt: sql<number>`max(${catalogProductVariant.priceBdt})`,
         })
         .from(catalogProductVariant)
         .innerJoin(
@@ -374,6 +414,11 @@ export class CatalogService {
             eq(catalogProductVariant.isActive, true),
             isNotNull(catalogProductVariant.priceBdt),
           ),
+        )
+        .groupBy(
+          catalogProduct.categoryId,
+          catalogProductVariant.color,
+          catalogProductVariant.sizeLabel,
         ),
       this.categories.listPublic(),
     ]);
@@ -381,6 +426,40 @@ export class CatalogService {
     const categoriesById = new Map(
       categoryOptions.categories.map((category) => [category.id, category]),
     );
+    const categoryFacetValues = new Map<
+      string,
+      {
+        colors: Set<string>;
+        sizes: Set<string>;
+        priceRange: CatalogPriceRange | null;
+      }
+    >();
+    let priceRange: CatalogPriceRange | null = null;
+    for (const row of variantValues) {
+      const range = {
+        minPriceBdt: row.minPriceBdt,
+        maxPriceBdt: row.maxPriceBdt,
+      };
+      priceRange = mergePriceRanges(priceRange, range);
+
+      let currentId: string | null = row.categoryId;
+      const visited = new Set<string>();
+      while (currentId && !visited.has(currentId)) {
+        visited.add(currentId);
+        const category = categoriesById.get(currentId);
+        if (!category) break;
+        let values = categoryFacetValues.get(category.slug);
+        if (!values) {
+          values = { colors: new Set(), sizes: new Set(), priceRange: null };
+          categoryFacetValues.set(category.slug, values);
+        }
+        values.priceRange = mergePriceRanges(values.priceRange, range);
+        values.colors.add(row.color);
+        values.sizes.add(row.size);
+        currentId = category.parentId;
+      }
+    }
+
     const visibleCategoryIds = new Set<string>();
     const publishedProductCounts = new Map<string, number>();
     for (const { categoryId, publishedProductCount } of productCounts) {
@@ -395,7 +474,7 @@ export class CatalogService {
       }
     }
 
-    const options = {
+    const options: CatalogProductFilterOptions = {
       categories: categoryOptions.categories
         .filter(({ id }) => visibleCategoryIds.has(id))
         .map((category) => ({
@@ -404,9 +483,23 @@ export class CatalogService {
         })),
       colors: uniqueFilterValues(variantValues.map(({ color }) => color)),
       sizes: uniqueFilterValues(variantValues.map(({ size }) => size)),
+      priceRange,
     };
-    await writePublishedFilterOptionsCache(options);
-    return options;
+    const cache: PublishedFilterOptionsCache = {
+      options,
+      categories: Object.fromEntries(
+        [...categoryFacetValues].map(([slug, values]) => [
+          slug,
+          {
+            colors: uniqueFilterValues([...values.colors]),
+            sizes: uniqueFilterValues([...values.sizes]),
+            priceRange: values.priceRange,
+          },
+        ]),
+      ),
+    };
+    await writePublishedFilterOptionsCache(cache);
+    return filterOptionsForCategory(cache, categorySlug);
   }
 
   async findPublished(slug: string): Promise<CatalogProductDetail> {
@@ -486,17 +579,17 @@ export class CatalogService {
       .limit(query.limit + 1)
       .offset(query.offset);
     const selectedRows = rows.slice(0, query.limit);
-    const [categoryReferences, firstVariantPrices] = await Promise.all([
+    const [categoryReferences, lowestVariantPrices] = await Promise.all([
       loadCategoryReferences(
         this.database.db,
         selectedRows.map(({ categoryId }) => categoryId),
       ),
-      loadFirstVariantPrices(
+      loadLowestVariantPrices(
         this.database.db,
         selectedRows.map(({ id }) => id),
       ),
     ]);
-    return toProductPage(rows, query, categoryReferences, firstVariantPrices);
+    return toProductPage(rows, query, categoryReferences, lowestVariantPrices);
   }
 
   async findForManagement(
@@ -572,11 +665,11 @@ export class CatalogService {
         const category = product.categoryId
           ? await loadCategoryReference(transaction, product.categoryId)
           : null;
-        const firstVariantPrice = await loadFirstVariantPrice(
+        const lowestVariantPrice = await loadLowestVariantPrice(
           transaction,
           product.id,
         );
-        return toCatalogProduct(product, category, firstVariantPrice);
+        return toCatalogProduct(product, category, lowestVariantPrice);
       } catch (error) {
         if (isUniqueViolation(error)) throw uniqueConflict(error);
         throw error;
@@ -717,11 +810,11 @@ export class CatalogService {
         const category = product.categoryId
           ? await loadCategoryReference(transaction, product.categoryId)
           : null;
-        const firstVariantPrice = await loadFirstVariantPrice(
+        const lowestVariantPrice = await loadLowestVariantPrice(
           transaction,
           product.id,
         );
-        return toCatalogProduct(product, category, firstVariantPrice);
+        return toCatalogProduct(product, category, lowestVariantPrice);
       } catch (error) {
         if (isUniqueViolation(error)) throw uniqueConflict(error);
         throw error;
@@ -730,6 +823,32 @@ export class CatalogService {
     await invalidatePublishedFilterOptionsCache();
     return updated;
   }
+}
+
+function filterOptionsForCategory(
+  cache: PublishedFilterOptionsCache,
+  categorySlug?: string,
+): CatalogProductFilterOptions {
+  if (!categorySlug) return cache.options;
+  const facets = cache.categories[categorySlug];
+  return {
+    ...cache.options,
+    colors: facets?.colors ?? [],
+    sizes: facets?.sizes ?? [],
+    priceRange: facets?.priceRange ?? null,
+  };
+}
+
+function mergePriceRanges(
+  current: CatalogPriceRange | null,
+  next: CatalogPriceRange,
+): CatalogPriceRange {
+  return current
+    ? {
+        minPriceBdt: Math.min(current.minPriceBdt, next.minPriceBdt),
+        maxPriceBdt: Math.max(current.maxPriceBdt, next.maxPriceBdt),
+      }
+    : next;
 }
 
 async function validatePublishability(
@@ -960,6 +1079,7 @@ async function loadProductDetail(
     ? await loadSizeGuideDetail(transaction, product.sizeGuideId)
     : null;
   const variants = loadedVariants;
+  const startingPrice = lowestActiveVariantPrice(variants);
 
   return {
     ...toCatalogProduct(
@@ -967,9 +1087,7 @@ async function loadProductDetail(
       product.categoryId
         ? await loadCategoryReference(transaction, product.categoryId)
         : null,
-      variants[0]?.priceBdt === null || variants[0] === undefined
-        ? null
-        : toCatalogPrice(variants[0].priceBdt),
+      startingPrice,
     ),
     variants: variants.map((variant) => ({
       id: variant.id,
@@ -985,39 +1103,26 @@ async function loadProductDetail(
   };
 }
 
-async function loadFirstVariantPrices(
+async function loadLowestVariantPrices(
   database: DatabaseService["db"],
   productIds: string[],
 ): Promise<Map<string, CatalogPrice | null>> {
   if (!productIds.length) return new Map();
 
   const rows = await database
-    .selectDistinctOn([catalogProductVariant.productId], {
+    .select({
       productId: catalogProductVariant.productId,
-      priceBdt: catalogProductVariant.priceBdt,
+      priceBdt: sql<number | null>`min(${catalogProductVariant.priceBdt})`,
     })
     .from(catalogProductVariant)
-    .innerJoin(
-      catalogProduct,
-      eq(catalogProduct.id, catalogProductVariant.productId),
-    )
-    .leftJoin(
-      catalogSizeGuideRow,
-      and(
-        eq(catalogSizeGuideRow.guideId, catalogProduct.sizeGuideId),
-        eq(
-          sql<string>`lower(btrim(${catalogSizeGuideRow.sizeLabel}))`,
-          sql<string>`lower(btrim(${catalogProductVariant.sizeLabel}))`,
-        ),
-      ),
-    )
     .where(
       and(
         inArray(catalogProductVariant.productId, productIds),
         eq(catalogProductVariant.isActive, true),
+        isNotNull(catalogProductVariant.priceBdt),
       ),
     )
-    .orderBy(asc(catalogProductVariant.productId), ...variantDisplayOrder());
+    .groupBy(catalogProductVariant.productId);
 
   return new Map(
     rows.map(({ productId, priceBdt }) => [
@@ -1027,35 +1132,22 @@ async function loadFirstVariantPrices(
   );
 }
 
-async function loadFirstVariantPrice(
+async function loadLowestVariantPrice(
   database: AuditTransaction,
   productId: string,
 ): Promise<CatalogPrice | null> {
   const [variant] = await database
-    .select({ priceBdt: catalogProductVariant.priceBdt })
+    .select({
+      priceBdt: sql<number | null>`min(${catalogProductVariant.priceBdt})`,
+    })
     .from(catalogProductVariant)
-    .innerJoin(
-      catalogProduct,
-      eq(catalogProduct.id, catalogProductVariant.productId),
-    )
-    .leftJoin(
-      catalogSizeGuideRow,
-      and(
-        eq(catalogSizeGuideRow.guideId, catalogProduct.sizeGuideId),
-        eq(
-          sql<string>`lower(btrim(${catalogSizeGuideRow.sizeLabel}))`,
-          sql<string>`lower(btrim(${catalogProductVariant.sizeLabel}))`,
-        ),
-      ),
-    )
     .where(
       and(
         eq(catalogProductVariant.productId, productId),
         eq(catalogProductVariant.isActive, true),
+        isNotNull(catalogProductVariant.priceBdt),
       ),
-    )
-    .orderBy(...variantDisplayOrder())
-    .limit(1);
+    );
   return variant?.priceBdt == null ? null : toCatalogPrice(variant.priceBdt);
 }
 
@@ -1151,7 +1243,7 @@ function toProductPage(
   rows: (typeof catalogProduct.$inferSelect)[],
   query: CatalogProductListQuery,
   categories: Map<string, CatalogCategoryReference>,
-  firstVariantPrices: Map<string, CatalogPrice | null>,
+  lowestVariantPrices: Map<string, CatalogPrice | null>,
 ): CatalogProductPage {
   const hasMore = rows.length > query.limit;
   const products = rows
@@ -1162,7 +1254,7 @@ function toProductPage(
         product.categoryId
           ? (categories.get(product.categoryId) ?? null)
           : null,
-        firstVariantPrices.get(product.id) ?? null,
+        lowestVariantPrices.get(product.id) ?? null,
       ),
     );
   const candidateNextOffset = query.offset + products.length;
@@ -1197,6 +1289,19 @@ function toCatalogProduct(
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
   };
+}
+
+function lowestActiveVariantPrice(
+  variants: readonly (typeof catalogProductVariant.$inferSelect)[],
+): CatalogPrice | null {
+  const amountBdt = variants.reduce<number | null>((lowest, variant) => {
+    if (variant.priceBdt === null) return lowest;
+    return lowest === null
+      ? variant.priceBdt
+      : Math.min(lowest, variant.priceBdt);
+  }, null);
+
+  return amountBdt === null ? null : toCatalogPrice(amountBdt);
 }
 
 function toProductPersistenceValues(input: CatalogProductCreateInput): {

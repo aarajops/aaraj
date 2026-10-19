@@ -11,7 +11,9 @@ interface CatalogPaginationProps {
   itemName?: string;
   hasMore: boolean;
   nextOffset: number | null;
-  preservedParams?: Readonly<Record<string, string | undefined>>;
+  preservedParams?: Readonly<
+    Record<string, string | readonly string[] | undefined>
+  >;
 }
 
 export function CatalogPagination({
@@ -76,14 +78,22 @@ function pageHref(
   pathname: string,
   limit: number,
   offset: number,
-  preservedParams?: Readonly<Record<string, string | undefined>>,
+  preservedParams?: Readonly<
+    Record<string, string | readonly string[] | undefined>
+  >,
 ): string {
   const search = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
   });
   for (const [key, value] of Object.entries(preservedParams ?? {})) {
-    if (value !== undefined && value !== "") search.set(key, value);
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (entry) search.append(key, entry);
+      }
+    } else if (typeof value === "string" && value) {
+      search.set(key, value);
+    }
   }
   return `${pathname}?${search}`;
 }

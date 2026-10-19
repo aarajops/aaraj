@@ -295,7 +295,7 @@ export function CatalogManager({
             </Link>
             <Link
               className="text-sm text-primary hover:text-primary/80"
-              href="/"
+              href="/shop"
             >
               View public catalog
             </Link>

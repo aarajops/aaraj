@@ -1,19 +1,20 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { permanentRedirect } from "next/navigation";
 import {
   CatalogCategorySlugSchema,
-  getStorefrontCategoryHref,
   STOREFRONT_BANNER_PLACEMENT_HOME_HERO,
 } from "@aaraj/contracts";
 import {
-  CatalogLoading,
-  PublishedProductListing,
-} from "./_components/published-product-listing";
+  getPublishedProductFilterOptions,
+  type CatalogPageSearchParams,
+} from "@/features/catalog/catalog-queries";
+import { HomepageCategorySection } from "@/features/storefront/homepage-category-section";
 import { getPublicStorefrontBanners } from "@/features/storefront/storefront-banners";
 import { StorefrontBanner } from "@/features/storefront/storefront-banner";
 import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
-import type { CatalogPageSearchParams } from "@/features/catalog/catalog-queries";
+import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { settings, title, description, image } =
@@ -55,24 +56,39 @@ export default async function Home({
       }
     }
     const search = filters.toString();
-    const href = getStorefrontCategoryHref(categorySlug.data);
+    const href = `/shop/categories/${categorySlug.data}`;
     permanentRedirect(search ? `${href}?${search}` : href);
   }
+
+  const [settings, productFilters] = await Promise.all([
+    getPublicStorefrontSettings(),
+    getPublishedProductFilterOptions(),
+  ]);
+  const homepageCategories = settings.homepageCategoriesEnabled
+    ? (productFilters?.categories.filter(
+        ({ id, image }) =>
+          settings.homepageCategoryIds.includes(id) && Boolean(image),
+      ) ?? [])
+    : [];
 
   return (
     <>
       <Suspense fallback={null}>
         <StorefrontHero />
       </Suspense>
-      <Suspense fallback={<CatalogLoading />}>
-        <PublishedProductListing
-          description="Explore products in the Aaraj catalog."
-          pathname="/"
-          searchParams={searchParams}
-          showHomepageCategories
-          title="Products"
-        />
-      </Suspense>
+      <main className="bg-background px-5 py-14 text-foreground sm:py-20">
+        <div className="container mx-auto">
+          <HomepageCategorySection categories={homepageCategories} />
+          <div className="flex justify-center">
+            <Link
+              className="rounded-lg border border-input px-4 py-2.5 text-sm font-medium text-foreground hover:border-ring"
+              href="/shop"
+            >
+              View all products
+            </Link>
+          </div>
+        </div>
+      </main>
     </>
   );
 }

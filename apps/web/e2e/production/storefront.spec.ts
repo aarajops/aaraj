@@ -134,8 +134,16 @@ test("production storefront serves routes, rewrites, and the strict CSP", async 
   ).toBeVisible();
   await expect(page).toHaveTitle("Aaraj | Your account");
 
-  const invalidProductResponse = await page.goto("/products/INVALID-SLUG");
+  const invalidProductResponse = await page.goto("/shop/products/INVALID-SLUG");
   expect(invalidProductResponse?.status()).toBe(404);
+  await expect(
+    page.getByRole("heading", { name: "Page not found", level: 1 }),
+  ).toBeVisible();
+
+  const unknownCategoryResponse = await page.goto(
+    "/shop/categories/nonexistent-category",
+  );
+  expect(unknownCategoryResponse?.status()).toBe(404);
   await expect(
     page.getByRole("heading", { name: "Page not found", level: 1 }),
   ).toBeVisible();
@@ -154,7 +162,7 @@ test("production storefront renders processed media through the same-origin API 
     const url = new URL(response.url());
     return url.pathname.startsWith("/api/v1/catalog/media/");
   });
-  const productResponse = await page.goto("/products/media-e2e-fixture");
+  const productResponse = await page.goto("/shop/products/media-e2e-fixture");
   expect(productResponse?.status()).toBe(200);
   await expect(
     page.getByRole("heading", { name: "Media E2E fixture", level: 1 }),
@@ -171,7 +179,7 @@ test("production storefront renders processed media through the same-origin API 
     .toBe(1);
 
   const productCrawlerResponse = await page.request.get(
-    "/products/media-e2e-fixture",
+    "/shop/products/media-e2e-fixture",
     { headers: { "User-Agent": "facebookexternalhit/1.1" } },
   );
   expect(productCrawlerResponse.status()).toBe(200);
@@ -183,7 +191,7 @@ test("production storefront renders processed media through the same-origin API 
     '<meta property="og:title" content="Media E2E fixture"',
   );
   expect(productHead).toContain(
-    'href="https://aaraj.invalid/products/media-e2e-fixture"',
+    'href="https://aaraj.invalid/shop/products/media-e2e-fixture"',
   );
   expect(productHead).toContain(
     'property="og:image" content="https://aaraj.invalid/api/v1/catalog/media/',

@@ -1,12 +1,11 @@
 import type { MetadataRoute } from "next";
-import { getStorefrontCategoryHref } from "@aaraj/contracts";
+import { MAX_PUBLIC_CATALOG_PAGE_SIZE } from "@aaraj/contracts";
 import { getPublishedProducts } from "@/features/catalog/catalog-queries";
 import { getStorefrontOrigin } from "@/lib/storefront-origin";
 
-export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 48;
 const MAX_SITEMAP_URLS = 50_000;
+
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const origin = getStorefrontOrigin();
@@ -18,7 +17,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let offset = 0;
 
   while (true) {
-    const page = await getPublishedProducts({ limit: PAGE_SIZE, offset });
+    const page = await getPublishedProducts({
+      limit: MAX_PUBLIC_CATALOG_PAGE_SIZE,
+      offset,
+    });
     if (!page) {
       throw new Error(
         "Published products could not be loaded for the sitemap.",
@@ -35,10 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         }
         seenCategorySlugs.add(category.slug);
         entries.push({
-          url: new URL(
-            getStorefrontCategoryHref(category.slug),
-            origin,
-          ).toString(),
+          url: new URL(`/shop/categories/${category.slug}`, origin).toString(),
         });
       }
     }
@@ -52,10 +51,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }
       seenSlugs.add(product.slug);
       entries.push({
-        url: new URL(
-          `/products/${encodeURIComponent(product.slug)}`,
-          origin,
-        ).toString(),
+        url: new URL(`/shop/products/${product.slug}`, origin).toString(),
         lastModified: new Date(product.updatedAt),
         ...(product.images[0]
           ? {

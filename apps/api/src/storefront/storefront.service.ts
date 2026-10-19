@@ -16,7 +16,6 @@ import {
   StorefrontFooterLinkGroupsSchema,
   StorefrontHeaderNavigationItemSchema,
   StorefrontSettingsSchema,
-  getStorefrontCategoryHref,
 } from "@aaraj/contracts";
 import { eq, inArray, sql } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
@@ -302,7 +301,7 @@ export class StorefrontSettingsService {
         ? [
             {
               label: category.name,
-              href: getStorefrontCategoryHref(category.slug),
+              href: `/shop/categories/${category.slug}`,
             },
           ]
         : [];

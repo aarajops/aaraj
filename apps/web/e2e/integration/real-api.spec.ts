@@ -271,7 +271,7 @@ test("admin updates public storefront settings through to the rendered header", 
     headerNavigation: [
       {
         label: headerCategoryName,
-        href: `/categories/${headerCategorySlug}`,
+        href: `/shop/categories/${headerCategorySlug}`,
       },
     ],
     footerDescription: "Everyday style, thoughtfully selected.",
@@ -369,7 +369,7 @@ test("admin updates public storefront settings through to the rendered header", 
   ).toHaveAttribute("href", "tel:+8801712345678");
   await expect(
     page.getByRole("link", { name: headerCategoryName, exact: true }),
-  ).toHaveAttribute("href", `/categories/${headerCategorySlug}`);
+  ).toHaveAttribute("href", `/shop/categories/${headerCategorySlug}`);
   await expect(
     page.locator('header img[alt="AARAJ Festive Edit logo"]'),
   ).toBeVisible();
@@ -515,7 +515,7 @@ test("admin uploads and publishes a catalog banner through to the storefront", a
       hasText: "Mobile image uploaded. Save the banner to keep the change.",
     }),
   ).toBeVisible();
-  await page.getByLabel("Link (optional)").fill("/products");
+  await page.getByLabel("Link (optional)").fill("/shop");
   await page.getByRole("checkbox", { name: "Publish this banner" }).check();
   await page.getByRole("button", { name: "Create banner" }).click();
   await expect(
@@ -577,7 +577,7 @@ test("admin uploads and publishes a catalog banner through to the storefront", a
       },
       {
         altText: "AARAJ seasonal collection",
-        href: "/products",
+        href: "/shop",
         mobile: { id: expect.any(String) },
       },
     ],
@@ -604,7 +604,7 @@ test("admin uploads and publishes a catalog banner through to the storefront", a
     .toContain(mobileAssetId);
   await expect(
     page.getByRole("link", { name: "AARAJ seasonal collection" }),
-  ).toHaveAttribute("href", "/products");
+  ).toHaveAttribute("href", "/shop");
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.getByRole("button", { name: "Next promotion" }).click();
@@ -745,8 +745,8 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(
     (await page.request.get(`/api/v1/catalog/products/${slug}`)).status(),
   ).toBe(404);
-  expect((await page.goto(`/products/${slug}`))?.status()).toBe(404);
-  await page.goto("/");
+  expect((await page.goto(`/shop/products/${slug}`))?.status()).toBe(404);
+  await page.goto("/shop");
   await expect(page.getByRole("link", { name: productName })).toHaveCount(0);
 
   await page.goto("/admin/catalog");
@@ -771,20 +771,41 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
-  await page.goto("/");
+  await page.goto("/shop");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
+  const productFilters = page.locator('aside[aria-label="Product filters"]');
   await page
     .getByRole("searchbox", { name: "Search products" })
     .fill("100% cotton");
   await page.getByRole("button", { name: "Search", exact: true }).click();
-  await chooseSelectOption(page, "Audience", "Unisex");
-  await chooseSelectOption(page, "Color", "Black");
-  await chooseSelectOption(page, "Size", "S");
-  await page.getByRole("button", { name: "Apply filters" }).click();
+  await productFilters.getByRole("radio", { name: "Unisex" }).check();
+  await expect(page).toHaveURL(/audience=unisex/);
+  await productFilters.getByRole("checkbox", { name: "Black" }).check();
+  await expect(page).toHaveURL(/color=Black/);
+  await productFilters.getByRole("checkbox", { name: "S" }).check();
+  await expect(page).toHaveURL(/size=S/);
   await expect(page).toHaveURL(/audience=unisex/);
   expect(new URL(page.url()).searchParams.get("search")).toBe("100% cotton");
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
-  await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
+  await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
+
+  const minimumPrice = productFilters.getByLabel("Minimum (৳)");
+  await minimumPrice.fill("2450");
+  await expect(page).toHaveURL(/minPriceBdt=2450/);
+  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+
+  const minimumPriceSlider = productFilters.getByRole("slider", {
+    name: "Minimum price",
+  });
+  await minimumPriceSlider.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(minimumPrice).toHaveValue("2451");
+  await expect(page).toHaveURL(/minPriceBdt=2451/);
+  await expect(page.getByRole("link", { name: productName })).toHaveCount(0);
+
+  await minimumPrice.fill("2450");
+  await expect(page).toHaveURL(/minPriceBdt=2450/);
+  await expect(page.getByRole("link", { name: productName })).toBeVisible();
 
   const filteredProducts = await page.request.get(
     "/api/v1/catalog/products?audience=unisex&category=t-shirts&color=Black&size=S",
@@ -805,7 +826,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("heading", { name: productName, level: 1 }),
   ).toBeVisible();
-  const productSeoResponse = await page.request.get(`/products/${slug}`, {
+  const productSeoResponse = await page.request.get(`/shop/products/${slug}`, {
     headers: { "User-Agent": "facebookexternalhit/1.1" },
   });
   expect(productSeoResponse.status()).toBe(200);
@@ -834,7 +855,7 @@ test("catalog operator configures a product through to storefront visibility", a
     '<meta property="og:description" content="A product configured in a real browser and database flow."',
   );
   expect(productHead).toContain(
-    `rel="canonical" href="http://127.0.0.1:3180/products/${slug}"`,
+    `rel="canonical" href="http://127.0.0.1:3180/shop/products/${slug}"`,
   );
   expect(productHead).toContain(
     `property="og:image" content="http://127.0.0.1:3180${productShareImageSrc}"`,
@@ -856,7 +877,7 @@ test("catalog operator configures a product through to storefront visibility", a
   const sitemapBody = await sitemapResponse.text();
   expect(sitemapBody).toContain("<loc>http://127.0.0.1:3180/</loc>");
   expect(sitemapBody).toContain(
-    `<loc>http://127.0.0.1:3180/products/${slug}</loc>`,
+    `<loc>http://127.0.0.1:3180/shop/products/${slug}</loc>`,
   );
   expect(sitemapBody).not.toContain("/account");
   expect(sitemapBody).not.toContain("/admin");
@@ -880,8 +901,8 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("row").filter({ has: smallVariantAdjustmentLink }),
   ).toContainText("12");
-  await page.goto(`/products/${slug}`);
-  await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
+  await page.goto(`/shop/products/${slug}`);
+  await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
   await expect(
     page.getByText("A product configured in a real browser and database flow."),
   ).toBeVisible();
@@ -923,7 +944,7 @@ test("catalog operator configures a product through to storefront visibility", a
     if (route.request().method() === "DELETE") cartReadIsCorrupt = false;
     await route.continue();
   });
-  await page.goto(`/products/${slug}`);
+  await page.goto(`/shop/products/${slug}`);
   await page.getByLabel("Choose a color and size").selectOption({
     label: "Black · S",
   });
@@ -1022,7 +1043,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Remove" }).click();
   await expect(page.getByText("Your cart is empty.")).toBeVisible();
 
-  await page.goto(`/products/${slug}`);
+  await page.goto(`/shop/products/${slug}`);
   await page.getByLabel("Choose a color and size").selectOption({
     label: "Black · S",
   });
@@ -1306,7 +1327,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.locator("summary[aria-label^='Account menu for']").click();
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/\/account$/);
-  await page.goto(`/products/${slug}`);
+  await page.goto(`/shop/products/${slug}`);
   await page.getByLabel("Choose a color and size").selectOption({
     label: "Black · S",
   });
@@ -1418,7 +1439,7 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(
     (await page.request.get(`/api/v1/catalog/products/${slug}`)).status(),
   ).toBe(404);
-  expect((await page.goto(`/products/${slug}`))?.status()).toBe(404);
+  expect((await page.goto(`/shop/products/${slug}`))?.status()).toBe(404);
   await page.goto("/");
   await expect(page.getByRole("link", { name: productName })).toHaveCount(0);
 });

@@ -1,9 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import {
-  CatalogLoading,
-  PublishedProductListing,
-} from "../_components/published-product-listing";
+import { CatalogLoading } from "@/app/(storefront)/_components/catalog-loading";
+import { PublishedProductListing } from "@/app/(storefront)/_components/published-product-listing";
 import type { CatalogPageSearchParams } from "@/features/catalog/catalog-queries";
 import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
 
@@ -15,13 +13,13 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { absolute: title },
     description,
-    alternates: { canonical: "/new" },
+    alternates: { canonical: "/shop/new" },
     openGraph: {
       type: "website",
       siteName: settings.siteName,
       title,
       description,
-      url: "/new",
+      url: "/shop/new",
       images: [image],
     },
     twitter: {
@@ -41,8 +39,7 @@ export default function NewArrivals({
   return (
     <Suspense fallback={<CatalogLoading />}>
       <PublishedProductListing
-        description="Discover the latest additions to the Aaraj catalog."
-        pathname="/new"
+        pathname="/shop/new"
         searchParams={searchParams}
         sort="newest"
         title="New arrivals"

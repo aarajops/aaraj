@@ -81,20 +81,22 @@ test("staff manages reusable size guides and apparel products safely", async ({
 }) => {
   test.setTimeout(120_000);
 
-  await page.goto("/");
+  await page.goto("/shop");
   await expect(
     page.getByRole("heading", { name: "Products", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText("No products are published yet.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "No products are available yet" }),
+  ).toBeVisible();
 
-  await page.goto(`/?search=${"x".repeat(161)}&audience=unisex`);
+  await page.goto(`/shop?search=${"x".repeat(161)}&audience=unisex`);
   await expect(page.getByRole("alert")).toContainText(
     "The search or filters in this URL are invalid.",
   );
   await expect(page.getByRole("link", { name: /Aaraj E2E/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Clear search and filters" }).click();
 
-  const malformedSlug = await page.goto("/products/INVALID-SLUG");
+  const malformedSlug = await page.goto("/shop/products/INVALID-SLUG");
   expect(malformedSlug?.status()).toBe(404);
   await expect(
     page.getByRole("heading", { name: "Page not found", level: 1 }),
@@ -278,26 +280,50 @@ test("staff manages reusable size guides and apparel products safely", async ({
 
   await page.goto("/");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
+  const productFilters = page.locator('aside[aria-label="Product filters"]');
   const storefrontSearch = page.locator("header form").last();
   await storefrontSearch.getByRole("searchbox").fill("Aaraj E2E");
   await storefrontSearch.getByRole("button", { name: "Search" }).click();
-  await expect(page).toHaveURL(/\/categories\/t-shirts/);
+  await expect(page).toHaveURL(/\/shop\/categories\/t-shirts/);
   await expect(page).toHaveURL(/search=Aaraj\+E2E/);
-  await chooseSelectOption(page, "Audience", "Unisex");
-  await chooseSelectOption(page, "Color", "Black");
-  await chooseSelectOption(page, "Size", "M");
-  await expect(page.getByRole("combobox", { name: "Audience" })).toHaveText(
-    "Unisex",
-  );
-  await page.getByRole("button", { name: "Apply filters" }).click();
+  await productFilters.getByRole("radio", { name: "Unisex" }).check();
   await expect(page).toHaveURL(/audience=unisex/);
-  await expect(page).toHaveURL(/\/categories\/t-shirts/);
+  await productFilters.getByRole("checkbox", { name: "Black" }).check();
   await expect(page).toHaveURL(/color=Black/);
+  await productFilters.getByRole("checkbox", { name: "M" }).check();
   await expect(page).toHaveURL(/size=M/);
+  await expect(
+    productFilters.getByRole("radio", { name: "Unisex" }),
+  ).toBeChecked();
+  await productFilters.getByRole("checkbox", { name: "S" }).check();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.getAll("size"))
+    .toEqual(expect.arrayContaining(["M", "S"]));
+  await expect(page).toHaveURL(/audience=unisex/);
+  await expect(page).toHaveURL(/\/shop\/categories\/t-shirts/);
+  await expect(page).toHaveURL(/color=Black/);
+  const selectedSizes = new URL(page.url()).searchParams.getAll("size");
+  expect(selectedSizes).toEqual(expect.arrayContaining(["M", "S"]));
   await expect(page).toHaveURL(/search=Aaraj\+E2E/);
   await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
   await page.getByRole("link", { name: "Clear filters" }).click();
-  await expect(page).toHaveURL(/\/categories\/t-shirts$/);
+  await expect(page).toHaveURL(
+    /\/shop\/categories\/t-shirts\?search=Aaraj\+E2E/,
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/shop/categories/t-shirts?search=Aaraj+E2E");
+  await page.getByRole("button", { name: /Filters/ }).click();
+  const mobileFilterSheet = page.getByRole("dialog", { name: "Filters" });
+  await expect(mobileFilterSheet).toBeVisible();
+  await mobileFilterSheet.getByRole("radio", { name: "Unisex" }).check();
+  await expect(page).toHaveURL(/audience=unisex/);
+  await mobileFilterSheet.getByRole("checkbox", { name: "Black" }).check();
+  await expect(page).toHaveURL(/color=Black/);
+  await mobileFilterSheet.getByRole("checkbox", { name: "S" }).check();
+  await expect(page).toHaveURL(/size=S/);
+  await mobileFilterSheet.getByRole("button", { name: "Close" }).click();
+  await expect(mobileFilterSheet).not.toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/admin/catalog/create");
 
   await page.getByLabel("Name", { exact: true }).fill("Duplicate slug item");
@@ -309,13 +335,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
     page.getByText("A product with this slug already exists"),
   ).toBeVisible();
 
-  await page.goto("/");
+  await page.goto("/shop");
   await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
   await page.getByRole("link", { name: /Aaraj E2E Tee/ }).click();
   await expect(
     page.getByRole("heading", { name: "Aaraj E2E Tee", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
+  await expect(page.getByText("From ৳1,999", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
       "A test product used to verify the clothing catalog workflow.",
@@ -364,12 +390,16 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByRole("link", { name: "Previous" })).toBeVisible();
 
   await page.goto("/?limit=1&offset=0&category=t-shirts");
-  await expect(page).toHaveURL(/\/categories\/t-shirts\?limit=1&offset=0/);
+  await expect(page).toHaveURL(
+    /\/shop\/categories\/t-shirts\?limit=1&offset=0/,
+  );
   const publicProductName = page.locator("main ul li h2");
   await expect(publicProductName).toHaveCount(1);
   const firstPageProduct = await publicProductName.textContent();
   await page.getByRole("link", { name: "Next" }).click();
-  await expect(page).toHaveURL(/\/categories\/t-shirts\?limit=1&offset=1/);
+  await expect(page).toHaveURL(
+    /\/shop\/categories\/t-shirts\?limit=1&offset=1/,
+  );
   await expect(page).toHaveURL(/offset=1/);
   await expect(publicProductName).toHaveCount(1);
   await expect(publicProductName).not.toHaveText(firstPageProduct ?? "");
@@ -503,9 +533,11 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByLabel("Published on the storefront").uncheck();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
-  await page.goto("/");
-  await expect(page.getByText("No products are published yet.")).toBeVisible();
-  const unpublishedResponse = await page.goto("/products/aaraj-e2e-tee");
+  await page.goto("/shop");
+  await expect(
+    page.getByRole("heading", { name: "No products are available yet" }),
+  ).toBeVisible();
+  const unpublishedResponse = await page.goto("/shop/products/aaraj-e2e-tee");
   expect(unpublishedResponse?.status()).toBe(404);
 
   await page.goto("/admin/catalog/categories/create");

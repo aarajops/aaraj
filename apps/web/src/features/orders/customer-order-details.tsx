@@ -62,7 +62,10 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
         {error ? (
           <section className="mt-7 rounded-2xl border border-border p-6">
             <p role="alert">{error}</p>
-            <Link className="mt-5 inline-block text-primary underline" href="/">
+            <Link
+              className="mt-5 inline-block text-primary underline"
+              href="/shop"
+            >
               Continue shopping
             </Link>
           </section>
@@ -239,7 +242,10 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                 expired access cannot be restored automatically.
               </p>
             )}
-            <Link className="mt-6 inline-block text-primary underline" href="/">
+            <Link
+              className="mt-6 inline-block text-primary underline"
+              href="/shop"
+            >
               Continue shopping
             </Link>
           </section>

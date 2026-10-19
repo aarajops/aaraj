@@ -97,7 +97,12 @@ describe("catalog and security audit", () => {
         products: [],
         hasMore: false,
         nextOffset: null,
-        filters: { categories: [], colors: [], sizes: [] },
+        filters: {
+          categories: [],
+          colors: [],
+          sizes: [],
+          priceRange: null,
+        },
       });
     expect(
       await getRedisClient().get(getPublishedFilterOptionsCacheKey()),
@@ -120,7 +125,7 @@ describe("catalog and security audit", () => {
       .expect(400);
     await request(app.getHttpServer())
       .get("/api/v1/catalog/products?color=Black&color=White")
-      .expect(400);
+      .expect(200);
     await request(app.getHttpServer())
       .get(`/api/v1/catalog/products?search=${"x".repeat(161)}`)
       .expect(400);
@@ -464,7 +469,12 @@ describe("catalog and security audit", () => {
         products: [],
         hasMore: false,
         nextOffset: null,
-        filters: { categories: [], colors: [], sizes: [] },
+        filters: {
+          categories: [],
+          colors: [],
+          sizes: [],
+          priceRange: null,
+        },
       });
     await request(app.getHttpServer())
       .get("/api/v1/catalog/products/aaraj-draft-tee")
@@ -733,7 +743,7 @@ describe("catalog and security audit", () => {
     );
 
     const matchingVariant = await request(app.getHttpServer())
-      .get("/api/v1/catalog/products?color=black&size=m")
+      .get("/api/v1/catalog/products?color=black&color=red&size=m")
       .expect(200);
     expect(
       matchingVariant.body.products.map(
@@ -751,6 +761,41 @@ describe("catalog and security audit", () => {
         (product: { slug: string }) => product.slug,
       ),
     ).toContain("variant-filter-probe");
+
+    const matchingPriceVariants = await request(app.getHttpServer())
+      .get(
+        "/api/v1/catalog/products?category=t-shirts&minPriceBdt=2200&maxPriceBdt=2400",
+      )
+      .expect(200);
+    expect(
+      matchingPriceVariants.body.products.map(
+        (product: { slug: string }) => product.slug,
+      ),
+    ).toEqual(["variant-filter-probe"]);
+
+    const ascendingPrices = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products?category=t-shirts&sort=price-ascending")
+      .expect(200);
+    const ascendingPriceValues = ascendingPrices.body.products.map(
+      (product: { price: { amountBdt: number } }) => product.price.amountBdt,
+    );
+    expect(ascendingPriceValues).toEqual(
+      [...ascendingPriceValues].sort((left, right) => left - right),
+    );
+
+    const descendingPrices = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products?category=t-shirts&sort=price-descending")
+      .expect(200);
+    const descendingPriceValues = descendingPrices.body.products.map(
+      (product: { price: { amountBdt: number } }) => product.price.amountBdt,
+    );
+    expect(descendingPriceValues).toEqual(
+      [...descendingPriceValues].sort((left, right) => right - left),
+    );
+
+    await request(app.getHttpServer())
+      .get("/api/v1/catalog/products?minPriceBdt=2400&maxPriceBdt=2200")
+      .expect(400);
 
     for (const query of ["color=white&size=m"]) {
       const noMatchingVariant = await request(app.getHttpServer())
@@ -777,6 +822,10 @@ describe("catalog and security audit", () => {
         color.toLowerCase(),
       ),
     ).toEqual(["black", "red", "white"]);
+    expect(filterOptions.body.filters.priceRange).toEqual({
+      minPriceBdt: 1999,
+      maxPriceBdt: 2499,
+    });
     const listedProbe = filterOptions.body.products.find(
       (product: { slug: string }) => product.slug === "variant-filter-probe",
     );

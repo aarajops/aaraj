@@ -9,10 +9,6 @@ export const CatalogCategorySlugSchema = z
   .max(100)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
-export function getStorefrontCategoryHref(slug: string): string {
-  return `/categories/${encodeURIComponent(slug)}`;
-}
-
 export const CatalogCategoryReferenceSchema = z.strictObject({
   id: z.uuid(),
   name: z.string().min(1).max(80),

@@ -43,7 +43,7 @@ export async function generateMetadata({
         ...(defaults.settings.socialImage ? [defaults.image] : []),
       ]
     : [getStorefrontShareImage(defaults.settings)];
-  const canonical = `/products/${encodeURIComponent(slug)}`;
+  const canonical = `/shop/products/${result.product.slug}`;
 
   return {
     title: result.product.name,
@@ -78,7 +78,6 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  // Resolve before rendering so notFound() can preserve the HTTP 404 response.
   const result = await getPublishedProduct(slug);
 
   if ("kind" in result && result.kind === "not-found") notFound();
@@ -95,7 +94,7 @@ export default async function ProductPage({
           </p>
           <Link
             className="mt-6 inline-block text-primary hover:text-primary/80"
-            href="/"
+            href="/shop"
           >
             ← Back to products
           </Link>
@@ -160,7 +159,10 @@ export default async function ProductPage({
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
       <article className="mx-auto max-w-3xl">
-        <Link className="text-sm text-primary hover:text-primary/80" href="/">
+        <Link
+          className="text-sm text-primary hover:text-primary/80"
+          href="/shop"
+        >
           ← All products
         </Link>
         <div className="mt-8 rounded-2xl border border-border bg-card/70 p-7 sm:p-10">
@@ -202,7 +204,7 @@ export default async function ProductPage({
           </h1>
           {product.price && (
             <p className="mt-3 text-xl font-semibold text-primary">
-              {formatCatalogPrice(product.price)}
+              From {formatCatalogPrice(product.price)}
             </p>
           )}
           {(product.audience || product.category) && (

@@ -438,8 +438,8 @@ describe("Contracts Schema Validation", () => {
       offset: 24,
       audience: "unisex",
       category: "t-shirts",
-      color: "Black",
-      size: "M",
+      color: ["Black"],
+      size: ["M"],
     });
     expect(
       CatalogPublishedProductListQuerySchema.parse({ category: "" }),
@@ -464,7 +464,7 @@ describe("Contracts Schema Validation", () => {
       CatalogPublishedProductListQuerySchema.safeParse({
         color: ["Black", "White"],
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       CatalogPublishedProductListQuerySchema.safeParse({ unexpected: "value" })
         .success,

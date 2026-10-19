@@ -38,6 +38,8 @@ export type CatalogPageSearchParams = {
   category?: string | string[];
   color?: string | string[];
   size?: string | string[];
+  minPriceBdt?: string | string[];
+  maxPriceBdt?: string | string[];
   sort?: string | string[];
   search?: string | string[];
   status?: string | string[];
@@ -77,10 +79,10 @@ export function parsePublishedCatalogPageQuery(
     searchParams.offset,
     searchParams.audience,
     searchParams.category,
-    searchParams.color,
-    searchParams.size,
     searchParams.sort,
     searchParams.search,
+    searchParams.minPriceBdt,
+    searchParams.maxPriceBdt,
   ];
   if (searchValues.some(Array.isArray)) return null;
 
@@ -100,9 +102,16 @@ export function parsePublishedCatalogPageQuery(
       typeof searchParams.category === "string"
         ? searchParams.category
         : undefined,
-    color:
-      typeof searchParams.color === "string" ? searchParams.color : undefined,
-    size: typeof searchParams.size === "string" ? searchParams.size : undefined,
+    color: searchParams.color,
+    size: searchParams.size,
+    minPriceBdt:
+      typeof searchParams.minPriceBdt === "string"
+        ? searchParams.minPriceBdt
+        : undefined,
+    maxPriceBdt:
+      typeof searchParams.maxPriceBdt === "string"
+        ? searchParams.maxPriceBdt
+        : undefined,
   });
   return result.success ? result.data : null;
 }
@@ -178,8 +187,14 @@ export async function getPublishedProducts(
     if (query.sort) search.set("sort", query.sort);
     if (query.audience) search.set("audience", query.audience);
     if (query.category) search.set("category", query.category);
-    if (query.color) search.set("color", query.color);
-    if (query.size) search.set("size", query.size);
+    if (query.minPriceBdt !== undefined) {
+      search.set("minPriceBdt", String(query.minPriceBdt));
+    }
+    if (query.maxPriceBdt !== undefined) {
+      search.set("maxPriceBdt", String(query.maxPriceBdt));
+    }
+    for (const color of query.color ?? []) search.append("color", color);
+    for (const size of query.size ?? []) search.append("size", size);
     const response = await fetch(
       `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/products?${search}`,
       { cache: "no-store" },
@@ -212,11 +227,18 @@ export async function getPublishedProductFilterOptions(): Promise<CatalogProduct
   }
 }
 
-export async function getStorefrontCategoryBySlug(slug: string) {
-  const filters = await getPublishedProductFilterOptions();
-  if (!filters) return { kind: "unavailable" as const };
+export async function getStorefrontCategoryBySlug(
+  slug: string,
+  publishedCategories?: CatalogProductFilterOptions["categories"],
+) {
+  const filters = publishedCategories
+    ? null
+    : await getPublishedProductFilterOptions();
+  if (!publishedCategories && !filters) {
+    return { kind: "unavailable" as const };
+  }
 
-  const publishedCategory = filters.categories.find(
+  const publishedCategory = (publishedCategories ?? filters?.categories)?.find(
     (category) => category.slug === slug,
   );
   if (publishedCategory) {

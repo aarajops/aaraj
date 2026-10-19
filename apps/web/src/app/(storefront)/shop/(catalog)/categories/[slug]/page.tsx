@@ -1,17 +1,13 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
   CatalogCategorySlugSchema,
   DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
-  getStorefrontCategoryHref,
 } from "@aaraj/contracts";
-import {
-  CatalogLoading,
-  PublishedProductListing,
-} from "../../_components/published-product-listing";
+import { PublishedProductListing } from "@/app/(storefront)/_components/published-product-listing";
 import {
   getStorefrontCategoryBySlug,
+  getPublishedProducts,
   parsePublishedCatalogPageQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
@@ -33,10 +29,17 @@ export async function generateMetadata({
   const parsedSlug = CatalogCategorySlugSchema.safeParse(slug);
   if (!parsedSlug.success) notFound();
 
-  const [result, defaults] = await Promise.all([
-    getStorefrontCategoryBySlug(parsedSlug.data),
+  const parsedQuery = parsePublishedCatalogPageQuery(query);
+  const [page, defaults] = await Promise.all([
+    parsedQuery
+      ? getPublishedProducts({ ...parsedQuery, category: parsedSlug.data })
+      : Promise.resolve(null),
     getStorefrontMetadataDefaults(),
   ]);
+  const result = await getStorefrontCategoryBySlug(
+    parsedSlug.data,
+    page?.filters.categories,
+  );
   if (result.kind === "not-found") notFound();
 
   const category = result.kind === "found" ? result.category : null;
@@ -62,6 +65,8 @@ export async function generateMetadata({
     "size",
     "sort",
     "search",
+    "minPriceBdt",
+    "maxPriceBdt",
   ].some((key) => {
     const value = query[key as keyof CatalogPageSearchParams];
     return Array.isArray(value) ? value.some(Boolean) : Boolean(value);
@@ -103,22 +108,15 @@ export default async function StorefrontCategoryPage({
   const parsedSlug = CatalogCategorySlugSchema.safeParse(slug);
   if (!parsedSlug.success) notFound();
 
-  const result = await getStorefrontCategoryBySlug(parsedSlug.data);
-  if (result.kind === "not-found") notFound();
-
-  const name =
-    result.kind === "found" ? result.category.name : slug.replaceAll("-", " ");
+  const name = slug.replaceAll("-", " ");
 
   return (
-    <Suspense fallback={<CatalogLoading />}>
-      <PublishedProductListing
-        categorySlug={parsedSlug.data}
-        description={`Browse ${name} products from the catalog.`}
-        pathname={getStorefrontCategoryHref(parsedSlug.data)}
-        searchParams={searchParams}
-        title={name}
-      />
-    </Suspense>
+    <PublishedProductListing
+      categorySlug={parsedSlug.data}
+      pathname={`/shop/categories/${parsedSlug.data}`}
+      searchParams={searchParams}
+      title={name}
+    />
   );
 }
 
@@ -126,7 +124,7 @@ function getCategoryCanonical(
   slug: string,
   searchParams: CatalogPageSearchParams,
 ): string {
-  const pathname = getStorefrontCategoryHref(slug);
+  const pathname = `/shop/categories/${slug}`;
   const offset =
     typeof searchParams.offset === "string" ? Number(searchParams.offset) : 0;
   if (!Number.isSafeInteger(offset) || offset <= 0) return pathname;

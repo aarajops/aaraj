@@ -104,7 +104,7 @@ export function CartSheet() {
                   variant: "outline",
                 })}
                 nativeButton={false}
-                render={<Link href="/" />}
+                render={<Link href="/shop" />}
               >
                 Continue shopping
               </SheetClose>
@@ -124,9 +124,7 @@ export function CartSheet() {
                       className="font-medium hover:underline"
                       nativeButton={false}
                       render={
-                        <Link
-                          href={`/products/${encodeURIComponent(line.product.slug)}`}
-                        />
+                        <Link href={`/shop/products/${line.product.slug}`} />
                       }
                     >
                       {line.product.name}

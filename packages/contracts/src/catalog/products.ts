@@ -15,11 +15,28 @@ import { CatalogProductImageSchema } from "./media.js";
 export const CatalogAudienceSchema = z.enum(["men", "women", "unisex"]);
 export type CatalogAudience = z.infer<typeof CatalogAudienceSchema>;
 
+export const CatalogPublishedProductSortSchema = z.enum([
+  "newest",
+  "price-ascending",
+  "price-descending",
+]);
+export type CatalogPublishedProductSort = z.infer<
+  typeof CatalogPublishedProductSortSchema
+>;
+
 /** Aaraj launch prices are whole amounts in BDT. */
 export const CatalogPriceSchema = z.strictObject({
   amountBdt: z.number().int().nonnegative().max(2_147_483_647),
 });
 export type CatalogPrice = z.infer<typeof CatalogPriceSchema>;
+
+export const CatalogPriceRangeSchema = z
+  .strictObject({
+    minPriceBdt: CatalogPriceSchema.shape.amountBdt,
+    maxPriceBdt: CatalogPriceSchema.shape.amountBdt,
+  })
+  .refine(({ minPriceBdt, maxPriceBdt }) => minPriceBdt <= maxPriceBdt);
+export type CatalogPriceRange = z.infer<typeof CatalogPriceRangeSchema>;
 
 export const CatalogProductSlugSchema = z
   .string()
@@ -71,6 +88,7 @@ export const CatalogProductSchema = z.strictObject({
   fabricComposition: z.string().max(1000).nullable(),
   careInstructions: z.string().max(2000).nullable(),
   sizeGuideId: z.uuid().nullable(),
+  /** Lowest active variant price, shown as the product's starting price. */
   price: CatalogPriceSchema.nullable(),
   isPublished: z.boolean(),
   createdAt: z.iso.datetime(),
@@ -183,31 +201,69 @@ const OptionalCatalogCategoryQuerySchema = z.preprocess(
   (value) => (value === "" ? undefined : value),
   CatalogCategorySlugSchema.optional(),
 );
-const OptionalCatalogColorQuerySchema = z.preprocess(
+function optionalRepeatedQueryValueSchema(maxLength: number) {
+  return z.preprocess(
+    (value) => {
+      if (value === undefined || value === "") return undefined;
+      if (Array.isArray(value) && value.length === 0) return undefined;
+      return Array.isArray(value) ? value : [value];
+    },
+    z
+      .array(z.string().trim().min(1).max(maxLength))
+      .transform((values) => {
+        const uniqueValues = new Map<string, string>();
+        for (const value of values) {
+          const normalizedValue = value.toLocaleLowerCase("en-US");
+          if (!uniqueValues.has(normalizedValue)) {
+            uniqueValues.set(normalizedValue, value);
+          }
+        }
+        return [...uniqueValues.values()];
+      })
+      .optional(),
+  );
+}
+
+const OptionalCatalogColorQuerySchema = optionalRepeatedQueryValueSchema(80);
+const OptionalCatalogSizeQuerySchema = optionalRepeatedQueryValueSchema(40);
+const OptionalCatalogPriceQuerySchema = z.preprocess(
   (value) => (value === "" ? undefined : value),
-  z.string().trim().min(1).max(80).optional(),
-);
-const OptionalCatalogSizeQuerySchema = z.preprocess(
-  (value) => (value === "" ? undefined : value),
-  z.string().trim().min(1).max(40).optional(),
+  z.coerce.number().pipe(CatalogPriceSchema.shape.amountBdt).optional(),
 );
 
-/** Public storefront pagination is deliberately smaller than staff list pages. */
-export const CatalogPublishedProductListQuerySchema = z.strictObject({
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(MAX_PUBLIC_CATALOG_PAGE_SIZE)
-    .default(DEFAULT_PUBLIC_CATALOG_PAGE_SIZE),
-  offset: z.coerce.number().int().min(0).max(MAX_LIST_OFFSET).default(0),
-  sort: z.enum(["newest"]).optional(),
-  search: OptionalCatalogSearchSchema,
-  audience: OptionalCatalogAudienceQuerySchema,
-  category: OptionalCatalogCategoryQuerySchema,
-  color: OptionalCatalogColorQuerySchema,
-  size: OptionalCatalogSizeQuerySchema,
-});
+export const CatalogPublishedProductListQuerySchema = z
+  .strictObject({
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_PUBLIC_CATALOG_PAGE_SIZE)
+      .default(DEFAULT_PUBLIC_CATALOG_PAGE_SIZE),
+    offset: z.coerce.number().int().min(0).max(MAX_LIST_OFFSET).default(0),
+    sort: CatalogPublishedProductSortSchema.optional(),
+    search: OptionalCatalogSearchSchema,
+    audience: OptionalCatalogAudienceQuerySchema,
+    category: OptionalCatalogCategoryQuerySchema,
+    color: OptionalCatalogColorQuerySchema,
+    size: OptionalCatalogSizeQuerySchema,
+    minPriceBdt: OptionalCatalogPriceQuerySchema,
+    maxPriceBdt: OptionalCatalogPriceQuerySchema,
+  })
+  .check(({ value, issues }) => {
+    if (
+      value.minPriceBdt !== undefined &&
+      value.maxPriceBdt !== undefined &&
+      value.minPriceBdt > value.maxPriceBdt
+    ) {
+      issues.push({
+        code: "custom",
+        path: ["maxPriceBdt"],
+        message:
+          "Maximum price must be greater than or equal to minimum price.",
+        input: value,
+      });
+    }
+  });
 export type CatalogPublishedProductListQuery = z.infer<
   typeof CatalogPublishedProductListQuerySchema
 >;
@@ -230,6 +286,7 @@ export const CatalogProductFilterOptionsSchema = z.strictObject({
   categories: CatalogPublishedCategoryOptionSchema.array(),
   colors: z.string().min(1).max(80).array(),
   sizes: z.string().min(1).max(40).array(),
+  priceRange: CatalogPriceRangeSchema.nullable().default(null),
 });
 export type CatalogProductFilterOptions = z.infer<
   typeof CatalogProductFilterOptionsSchema

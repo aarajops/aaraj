@@ -206,7 +206,10 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
         ) : cart.lines.length === 0 ? (
           <section className="mt-8 rounded-2xl border border-border p-7">
             <p>Your cart is empty.</p>
-            <Link className="mt-4 inline-block text-primary underline" href="/">
+            <Link
+              className="mt-4 inline-block text-primary underline"
+              href="/shop"
+            >
               Browse products
             </Link>
           </section>
@@ -225,7 +228,7 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                     <div>
                       <Link
                         className="font-medium hover:underline"
-                        href={`/products/${encodeURIComponent(line.product.slug)}`}
+                        href={`/shop/products/${line.product.slug}`}
                       >
                         {line.product.name}
                       </Link>
