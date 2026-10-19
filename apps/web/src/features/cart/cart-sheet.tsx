@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ShoppingBag } from "lucide-react";
-import { useEffect } from "react";
+import { Minus, Plus, ShoppingBag } from "lucide-react";
+import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
+import { useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
-  SheetClose,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -18,12 +18,14 @@ import { formatCatalogPrice } from "@/features/catalog/price";
 import { useCartStore } from "./cart-provider";
 
 export function CartSheet() {
+  const [open, setOpen] = useState(false);
   const cart = useCartStore((state) => state.cart);
   const isReady = useCartStore((state) => state.isReady);
   const isLoading = useCartStore((state) => state.isLoading);
   const isMutating = useCartStore((state) => state.isMutating);
   const error = useCartStore((state) => state.error);
   const refresh = useCartStore((state) => state.refresh);
+  const setLine = useCartStore((state) => state.setLine);
   const removeLine = useCartStore((state) => state.removeLine);
   const totalQuantity = cart.lines.reduce(
     (total, line) => total + line.quantity,
@@ -39,7 +41,7 @@ export function CartSheet() {
   }, [refresh]);
 
   return (
-    <Sheet>
+    <Sheet onOpenChange={setOpen} open={open}>
       <SheetTrigger
         aria-label={`Open cart, ${totalQuantity} ${totalQuantity === 1 ? "item" : "items"}`}
         className="relative inline-flex size-10 items-center justify-center text-foreground hover:text-primary"
@@ -98,16 +100,16 @@ export function CartSheet() {
               <p className="text-sm text-muted-foreground">
                 Browse the collection to find something you love.
               </p>
-              <SheetClose
+              <Link
                 className={buttonVariants({
                   className: "mt-2",
                   variant: "outline",
                 })}
-                nativeButton={false}
-                render={<Link href="/shop" />}
+                href="/shop"
+                onNavigate={() => setOpen(false)}
               >
                 Continue shopping
-              </SheetClose>
+              </Link>
             </div>
           ) : (
             <ul
@@ -120,21 +122,72 @@ export function CartSheet() {
                   key={line.variantId}
                 >
                   <div className="min-w-0">
-                    <SheetClose
-                      className="font-medium hover:underline"
-                      nativeButton={false}
-                      render={
-                        <Link href={`/shop/products/${line.product.slug}`} />
-                      }
+                    <Link
+                      className="text-base font-semibold hover:underline"
+                      href={`/shop/products/${line.product.slug}`}
+                      onNavigate={() => setOpen(false)}
                     >
                       {line.product.name}
-                    </SheetClose>
+                    </Link>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {line.product.color} · {line.product.sizeLabel}
                     </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Quantity: {line.quantity}
-                    </p>
+                    <div className="mt-3 flex items-center gap-2">
+                      <div
+                        aria-label={`Quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                        className="inline-flex h-10 items-center gap-1 rounded-lg border border-input px-1"
+                        role="group"
+                      >
+                        <Button
+                          aria-label={`Decrease quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                          className="rounded-md"
+                          disabled={
+                            isMutating ||
+                            line.availability === "unavailable" ||
+                            line.quantity <= 1
+                          }
+                          onClick={() =>
+                            void setLine(line.variantId, line.quantity - 1)
+                          }
+                          size="icon-lg"
+                          variant="ghost"
+                        >
+                          <Minus aria-hidden="true" />
+                        </Button>
+                        <span
+                          aria-live="polite"
+                          className="min-w-5 text-center text-sm tabular-nums"
+                        >
+                          {line.quantity}
+                        </span>
+                        <Button
+                          aria-label={`Increase quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                          className="rounded-md"
+                          disabled={
+                            isMutating ||
+                            line.availability === "unavailable" ||
+                            line.quantity >= MAX_CART_QUANTITY_PER_VARIANT
+                          }
+                          onClick={() =>
+                            void setLine(line.variantId, line.quantity + 1)
+                          }
+                          size="icon-lg"
+                          variant="ghost"
+                        >
+                          <Plus aria-hidden="true" />
+                        </Button>
+                      </div>
+                      <Button
+                        aria-label={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                        className="text-muted-foreground hover:text-destructive"
+                        disabled={isMutating}
+                        onClick={() => void removeLine(line.variantId)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        Remove
+                      </Button>
+                    </div>
                     {line.availability === "unavailable" && (
                       <p
                         className="mt-2 text-sm text-destructive"
@@ -146,20 +199,25 @@ export function CartSheet() {
                   </div>
 
                   <div className="shrink-0 text-right">
-                    <p className="font-medium">
+                    {line.quantity > 1 && (
+                      <p className="text-sm text-muted-foreground">
+                        {formatCatalogPrice({
+                          amountBdt: line.product.unitPriceBdt,
+                        })}{" "}
+                        each
+                      </p>
+                    )}
+                    <p
+                      className={
+                        line.quantity > 1
+                          ? "mt-1 font-semibold"
+                          : "font-semibold"
+                      }
+                    >
                       {formatCatalogPrice({
                         amountBdt: line.product.unitPriceBdt * line.quantity,
                       })}
                     </p>
-                    <Button
-                      className="mt-2"
-                      disabled={isMutating}
-                      onClick={() => void removeLine(line.variantId)}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      Remove
-                    </Button>
                   </div>
                 </li>
               ))}
@@ -170,20 +228,16 @@ export function CartSheet() {
         {isReady && cart.lines.length > 0 && (
           <SheetFooter className="border-t border-border p-6">
             <div className="flex items-center justify-between gap-4 text-base font-medium">
-              <span>Estimated subtotal</span>
+              <span>Subtotal</span>
               <span>{formatCatalogPrice({ amountBdt: subtotal })}</span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Saved prices are estimates. Delivery and the final total are
-              calculated in your cart.
-            </p>
-            <SheetClose
+            <Link
               className={buttonVariants({ className: "w-full" })}
-              nativeButton={false}
-              render={<Link href="/cart" />}
+              href="/cart"
+              onNavigate={() => setOpen(false)}
             >
-              View cart
-            </SheetClose>
+              Review cart
+            </Link>
           </SheetFooter>
         )}
       </SheetContent>

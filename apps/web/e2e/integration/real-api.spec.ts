@@ -778,6 +778,9 @@ test("catalog operator configures a product through to storefront visibility", a
     .getByRole("searchbox", { name: "Search products" })
     .fill("100% cotton");
   await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page).toHaveURL(
+    (url) => url.searchParams.get("search") === "100% cotton",
+  );
   await productFilters.getByRole("radio", { name: "Unisex" }).check();
   await expect(page).toHaveURL(/audience=unisex/);
   await productFilters.getByRole("checkbox", { name: "Black" }).check();
@@ -970,9 +973,9 @@ test("catalog operator configures a product through to storefront visibility", a
   const cartSheet = page.getByRole("dialog", { name: "Your cart" });
   await expect(cartSheet).toBeVisible();
   await expect(
-    cartSheet.getByRole("button", { name: productName }),
+    cartSheet.getByRole("link", { name: productName }),
   ).toBeVisible();
-  await cartSheet.getByRole("button", { name: "View cart" }).click();
+  await cartSheet.getByRole("link", { name: "Review cart" }).click();
   await expect(page).toHaveURL(/\/cart$/);
   await expect(cartSheet).not.toBeVisible();
 
