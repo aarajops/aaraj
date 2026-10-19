@@ -52,7 +52,7 @@ export async function SiteHeader() {
             )}
           </nav>
 
-          <div className="relative flex flex-wrap items-center justify-between gap-x-2 gap-y-2 xl:grid xl:grid-cols-3 xl:gap-0 2xl:grid-cols-4">
+          <div className="grid grid-cols-3 items-center gap-x-2 xl:gap-0 2xl:grid-cols-4">
             <MobileStorefrontControls
               categories={productFilters?.categories ?? []}
               headerNavigation={headerNavigation}
@@ -60,7 +60,7 @@ export async function SiteHeader() {
               supportPhone={settings.supportPhone}
             />
 
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 xl:static xl:col-start-1 xl:row-start-1 xl:translate-x-0 xl:justify-self-start">
+            <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-center justify-self-center xl:col-start-1 xl:justify-self-start">
               <StorefrontBrandLogo
                 imageClassName="h-10 max-w-44 xl:h-14 xl:max-w-64"
                 logo={settings.logo}

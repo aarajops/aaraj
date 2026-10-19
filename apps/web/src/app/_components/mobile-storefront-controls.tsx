@@ -124,7 +124,7 @@ export function MobileStorefrontControls({
       </div>
 
       <div
-        className="order-last basis-full min-w-0 pb-2 xl:hidden"
+        className="col-span-3 row-start-2 min-w-0 pb-2 xl:hidden"
         hidden={!searchOpen}
         id="mobile-storefront-search"
       >

@@ -51,7 +51,7 @@ export function CartSheet() {
         {totalQuantity > 0 && (
           <span
             aria-hidden="true"
-            className="absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs leading-4 text-primary-foreground"
+            className="absolute -top-1 right-0 inline-flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs leading-4 text-primary-foreground"
           >
             {totalQuantity}
           </span>
