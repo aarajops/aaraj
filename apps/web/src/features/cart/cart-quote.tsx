@@ -181,6 +181,7 @@ export function CartQuote({ cart }: { cart: Cart }) {
     <section
       aria-label="Delivery and quote"
       className="mt-8 rounded-2xl border border-border p-5 sm:p-7"
+      id="delivery-and-order-total"
     >
       <h2 className="text-xl font-semibold">Delivery and order total</h2>
       <p className="mt-2 text-sm text-muted-foreground">

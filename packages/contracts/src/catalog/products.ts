@@ -10,7 +10,10 @@ import {
   CatalogCategorySlugSchema,
 } from "./categories.js";
 import { CatalogSizeGuideSchema } from "./size-guides.js";
-import { CatalogProductImageSchema } from "./media.js";
+import {
+  CatalogProductDetailImageSchema,
+  CatalogProductImageSchema,
+} from "./media.js";
 
 export const CatalogAudienceSchema = z.enum(["men", "women", "unisex"]);
 export type CatalogAudience = z.infer<typeof CatalogAudienceSchema>;
@@ -65,6 +68,7 @@ export const CatalogProductVariantSchema = z.strictObject({
   id: z.uuid(),
   color: z.string(),
   sizeLabel: z.string(),
+  price: CatalogPriceSchema,
 });
 
 export const CatalogManagedProductVariantSchema = z.strictObject({
@@ -112,6 +116,7 @@ export type CatalogPublishedProductListItem = z.infer<
 >;
 
 export const CatalogProductDetailSchema = CatalogPublishedProductSchema.extend({
+  images: CatalogProductDetailImageSchema.array().max(12),
   variants: CatalogProductVariantSchema.array(),
   sizeGuide: CatalogSizeGuideSchema.nullable(),
 });

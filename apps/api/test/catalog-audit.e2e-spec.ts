@@ -585,7 +585,7 @@ describe("catalog and security audit", () => {
     expect(publicProduct.body.name).toBe("Aaraj City Tee");
     expect(publicProduct.body.variants).toHaveLength(1);
     expect(publicProduct.body.price).toEqual({ amountBdt: 1999 });
-    expect(publicProduct.body.variants[0]).not.toHaveProperty("price");
+    expect(publicProduct.body.variants[0].price).toEqual({ amountBdt: 1999 });
     expect(publicProduct.body.variants[0]).not.toHaveProperty("sku");
     expect(publicProduct.body.sizeGuide.rows).toHaveLength(2);
     expect(publicProduct.body.fabricComposition).toBe("100% cotton");

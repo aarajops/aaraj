@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import {
+  convertCatalogMeasurementValue,
   CatalogProductCreateSchema,
   CatalogPublishedProductListQuerySchema,
   CatalogProductUpdateSchema,
@@ -164,6 +165,7 @@ const mediaFixtureProduct = {
   images: [
     {
       id: mediaFixtureId,
+      variantId: null,
       altText: "A one-pixel product image used to verify media delivery.",
       card: {
         src: mediaFixtureCardPath,
@@ -914,20 +916,16 @@ function makeGuide(input, createdAt) {
       sortOrder,
       measurements: row.measurements.map((measurement) => ({
         key: measurement.key,
-        valueCm: toCentimeters(input.inputUnit, measurement.value),
+        valueCm: convertCatalogMeasurementValue(
+          measurement.value,
+          input.inputUnit,
+          "cm",
+        ),
       })),
     })),
     createdAt: createdAt ?? now,
     updatedAt: now,
   };
-}
-
-function toCentimeters(unit, value) {
-  const [whole, fraction = ""] = value.split(".");
-  const thousandths = BigInt(whole) * 1000n + BigInt(fraction.padEnd(3, "0"));
-  const centimeters =
-    unit === "cm" ? thousandths : (thousandths * 254n + 50n) / 100n;
-  return `${centimeters / 1000n}.${String(centimeters % 1000n).padStart(3, "0")}`;
 }
 
 function sizeGuideSummary(guide) {
@@ -1020,7 +1018,14 @@ function categoryMatches(categoryId, slug) {
 function productDetail(product, management = false) {
   return {
     ...summary(product),
-    ...(management ? {} : { images: product.images ?? [] }),
+    ...(management
+      ? {}
+      : {
+          images: (product.images ?? []).map((image) => ({
+            ...image,
+            variantId: image.variantId ?? null,
+          })),
+        }),
     variants: product.variants
       .filter(({ isActive }) => isActive)
       .map((variant) =>
@@ -1030,6 +1035,7 @@ function productDetail(product, management = false) {
               id: variant.id,
               color: variant.color,
               sizeLabel: variant.sizeLabel,
+              price: variant.price,
             },
       ),
     sizeGuide: sizeGuides.find(({ id }) => id === product.sizeGuideId) ?? null,

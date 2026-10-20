@@ -342,22 +342,34 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("heading", { name: "Aaraj E2E Tee", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText("From ৳1,999", { exact: true })).toBeVisible();
+  await expect(page.getByText("৳1,999–৳2,200", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
       "A test product used to verify the clothing catalog workflow.",
     ),
   ).toBeVisible();
-  await expect(page.getByText("Available colors and sizes")).toBeVisible();
-  const publicVariants = page.locator(
-    'section[aria-labelledby="available-variants-heading"]',
-  );
-  await expect(publicVariants.getByText("S", { exact: true })).toBeVisible();
-  await expect(publicVariants.getByText("M", { exact: true })).toBeVisible();
-  await expect(publicVariants).not.toContainText("৳");
-  await expect(page.getByText("Size guide: Aaraj Classic Tee")).toBeVisible();
-  await expect(page.getByText("50.8 / 20.0", { exact: true })).toBeVisible();
-  await expect(page.getByText("71.1 / 28.0", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "S", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "M", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Black", exact: true }).click();
+  await page.getByRole("button", { name: "S", exact: true }).click();
+  await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/color=Black/);
+  await expect(page).toHaveURL(/size=S/);
+  await expect(page.getByRole("heading", { name: "Size guide" })).toBeVisible();
+  const measurementUnit = page.getByRole("switch", {
+    name: "Use centimeters",
+  });
+  await expect(measurementUnit).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByText("20", { exact: true })).toBeVisible();
+  await expect(page.getByText("28", { exact: true })).toBeVisible();
+  await measurementUnit.click();
+  await expect(measurementUnit).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("50.8", { exact: true })).toBeVisible();
+  await expect(page.getByText("71.1", { exact: true })).toBeVisible();
 
   await page.goto("/admin/catalog/create");
   await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E T-shirt");

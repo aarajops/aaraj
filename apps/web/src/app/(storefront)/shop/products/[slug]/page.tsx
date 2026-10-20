@@ -1,14 +1,18 @@
 import Link from "next/link";
-import Image from "next/image";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPublishedProduct } from "@/features/catalog/catalog-queries";
-import { formatCatalogPrice } from "@/features/catalog/price";
-import { AddToCart } from "@/features/cart/add-to-cart";
 import {
   getStorefrontMetadataDefaults,
   getStorefrontShareImage,
 } from "@/features/storefront/storefront-metadata";
+import { ProductGallery } from "./product-gallery";
+import { ProductPurchase } from "./product-purchase";
+
+type ProductPageSearchParams = {
+  color?: string | string[];
+  size?: string | string[];
+};
 
 export async function generateMetadata({
   params,
@@ -74,17 +78,19 @@ export async function generateMetadata({
 
 export default async function ProductPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<ProductPageSearchParams>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, query] = await Promise.all([params, searchParams]);
   const result = await getPublishedProduct(slug);
 
   if ("kind" in result && result.kind === "not-found") notFound();
   if ("kind" in result) {
     return (
-      <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
-        <div className="mx-auto max-w-3xl">
+      <main className="container mx-auto flex-1 px-5 py-10 text-foreground sm:py-14">
+        <div className="max-w-3xl">
           <p
             className="rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
             role="alert"
@@ -96,7 +102,7 @@ export default async function ProductPage({
             className="mt-6 inline-block text-primary hover:text-primary/80"
             href="/shop"
           >
-            ← Back to products
+            Back to products
           </Link>
         </div>
       </main>
@@ -104,236 +110,117 @@ export default async function ProductPage({
   }
 
   const { product } = result;
-  const variantsByColor = new Map<
-    string,
-    {
-      color: string;
-      sizes: string[];
-    }
-  >();
-  for (const variant of product.variants) {
-    const colorKey = variant.color.trim().toLowerCase();
-    const group = variantsByColor.get(colorKey) ?? {
-      color: variant.color,
-      sizes: [],
-    };
-    const guideLabel = product.sizeGuide?.rows.find(
-      (row) =>
-        row.sizeLabel.trim().toLowerCase() ===
-        variant.sizeLabel.trim().toLowerCase(),
-    )?.sizeLabel;
-    group.sizes.push(guideLabel ?? variant.sizeLabel);
-    variantsByColor.set(colorKey, group);
-  }
-  const sizeOrder = new Map(
-    product.sizeGuide?.rows.map((row, index) => [
-      row.sizeLabel.trim().toLowerCase(),
-      index,
-    ]) ?? [],
-  );
-  for (const group of variantsByColor.values()) {
-    group.sizes.sort((left, right) => {
-      const leftOrder = sizeOrder.get(left.trim().toLowerCase());
-      const rightOrder = sizeOrder.get(right.trim().toLowerCase());
-      if (leftOrder !== undefined && rightOrder !== undefined) {
-        return leftOrder - rightOrder;
-      }
-      if (leftOrder !== undefined) return -1;
-      if (rightOrder !== undefined) return 1;
-      return left.localeCompare(right);
-    });
-  }
-  const measurementLabels: Record<string, string> = {
-    chest_width: "Chest width",
-    body_length: "Body length",
-    shoulder_width: "Shoulder width",
-    sleeve_length: "Sleeve length",
-    waist: "Waist",
-    hip: "Hip",
-    inseam: "Inseam",
-    outseam: "Outseam",
-    rise: "Rise",
-    thigh: "Thigh",
-    hem: "Hem",
-  };
+  const initialColor = singleQueryValue(query.color);
+  const initialSize = singleQueryValue(query.size);
+
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-14 text-foreground sm:py-20">
-      <article className="mx-auto max-w-3xl">
-        <Link
-          className="text-sm text-primary hover:text-primary/80"
-          href="/shop"
-        >
-          ← All products
-        </Link>
-        <div className="mt-8 rounded-2xl border border-border bg-card/70 p-7 sm:p-10">
-          {product.images.length > 0 && (
-            <ul
-              aria-label={`${product.name} product images`}
-              className="mb-8 grid gap-3 sm:grid-cols-2"
-            >
-              {product.images.map((image, index) => (
-                <li
-                  className="aspect-[3/4] overflow-hidden rounded-xl bg-muted/30"
-                  key={image.id}
-                >
-                  <picture>
-                    <source
-                      media="(max-width: 640px)"
-                      srcSet={image.card.src}
-                    />
-                    <Image
-                      alt={image.altText}
-                      className="h-full w-full object-contain"
-                      height={image.detail.height}
-                      fetchPriority={index === 0 ? "high" : "auto"}
-                      loading={index === 0 ? "eager" : "lazy"}
-                      src={image.detail.src}
-                      unoptimized
-                      width={image.detail.width}
-                    />
-                  </picture>
+    <main className="container mx-auto flex-1 px-5 py-10 text-foreground sm:py-14">
+      <article className="space-y-8 sm:space-y-10">
+        <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
+          <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <li>
+              <Link className="hover:text-foreground" href="/shop">
+                Shop
+              </Link>
+            </li>
+            {product.category && (
+              <>
+                <li aria-hidden="true">/</li>
+                <li>
+                  <Link
+                    className="hover:text-foreground"
+                    href={`/shop/categories/${encodeURIComponent(product.category.slug)}`}
+                  >
+                    {product.category.name}
+                  </Link>
                 </li>
-              ))}
-            </ul>
-          )}
-          <p className="text-sm font-semibold tracking-[0.16em] text-primary">
-            AARAJ PRODUCT
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            {product.name}
-          </h1>
-          {product.price && (
-            <p className="mt-3 text-xl font-semibold text-primary">
-              From {formatCatalogPrice(product.price)}
-            </p>
-          )}
-          {(product.audience || product.category) && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              {[product.audience, product.category?.name]
-                .filter(Boolean)
-                .join(" · ")}
-              {product.fit ? ` · ${product.fit} fit` : ""}
-            </p>
-          )}
-          {product.description ? (
-            <p className="mt-6 whitespace-pre-wrap text-base leading-7 text-secondary-foreground">
-              {product.description}
-            </p>
-          ) : (
-            <p className="mt-6 text-muted-foreground">
-              More product details coming soon.
-            </p>
-          )}
-          {product.fabricComposition && (
-            <p className="mt-5 text-sm text-secondary-foreground">
-              <strong>Fabric:</strong> {product.fabricComposition}
-            </p>
-          )}
-          {product.careInstructions && (
-            <p className="mt-2 whitespace-pre-wrap text-sm text-secondary-foreground">
-              <strong>Care:</strong> {product.careInstructions}
-            </p>
-          )}
-          {variantsByColor.size > 0 && (
-            <section
-              aria-labelledby="available-variants-heading"
-              className="mt-8 border-t border-border pt-6"
+              </>
+            )}
+            <li aria-hidden="true">/</li>
+            <li aria-current="page" className="text-foreground">
+              {product.name}
+            </li>
+          </ol>
+        </nav>
+
+        <div
+          className={`grid items-start gap-8 lg:gap-10 ${
+            product.images.length > 0 ? "lg:grid-cols-2" : ""
+          }`}
+        >
+          <ProductGallery
+            images={product.images}
+            productName={product.name}
+            variants={product.variants}
+          />
+          <section aria-labelledby="product-title" className="min-w-0">
+            <h1
+              className="text-2xl font-semibold tracking-tight sm:text-3xl"
+              id="product-title"
             >
-              <h2
-                className="text-lg font-semibold"
-                id="available-variants-heading"
-              >
-                Available colors and sizes
-              </h2>
-              <ul className="mt-3 space-y-3">
-                {[...variantsByColor.values()].map(({ color, sizes }) => (
-                  <li className="flex flex-wrap gap-2 text-sm" key={color}>
-                    <span className="mr-2 font-medium">{color}</span>
-                    {sizes.map((sizeLabel) => (
-                      <span
-                        className="rounded-full border border-border px-2.5 py-1 text-muted-foreground"
-                        key={`${color}:${sizeLabel}`}
-                      >
-                        {sizeLabel}
-                      </span>
-                    ))}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-          <AddToCart productName={product.name} variants={product.variants} />
-          {product.sizeGuide && (
-            <section
-              aria-labelledby="size-guide-heading"
-              className="mt-8 border-t border-border pt-6"
-            >
-              <h2 className="text-lg font-semibold" id="size-guide-heading">
-                Size guide: {product.sizeGuide.name}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {product.sizeGuide.measurementBasis === "garment"
-                  ? "Garment"
-                  : "Body"}{" "}
-                measurements · values shown in cm / in
+              {product.name}
+            </h1>
+            {product.fit && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {product.fit} fit
               </p>
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-max border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="px-3 py-2 font-semibold">Size</th>
-                      {(product.sizeGuide.rows[0]?.measurements ?? []).map(
-                        ({ key }) => (
-                          <th className="px-3 py-2 font-semibold" key={key}>
-                            {measurementLabels[key] ?? key} (cm / in)
-                          </th>
-                        ),
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {product.sizeGuide.rows.map((row) => (
-                      <tr className="border-b border-border/70" key={row.id}>
-                        <th className="px-3 py-2 font-medium">
-                          {row.sizeLabel}
-                        </th>
-                        {(product.sizeGuide?.rows[0]?.measurements ?? []).map(
-                          ({ key }) => {
-                            const measurement = row.measurements.find(
-                              (item) => item.key === key,
-                            );
-                            return (
-                              <td
-                                className="px-3 py-2 text-muted-foreground"
-                                key={key}
-                              >
-                                {measurement
-                                  ? `${formatMeasurement(measurement.valueCm, "cm")} / ${formatMeasurement(measurement.valueCm, "in")}`
-                                  : "—"}
-                              </td>
-                            );
-                          },
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+            )}
+            <ProductPurchase
+              initialColor={initialColor}
+              initialSize={initialSize}
+              sizeGuide={product.sizeGuide}
+              variants={product.variants}
+            />
+          </section>
         </div>
+
+        {(product.description ||
+          product.fabricComposition ||
+          product.careInstructions) && (
+          <section
+            aria-labelledby="product-details-heading"
+            className="max-w-4xl border-t border-border pt-8"
+          >
+            <h2
+              className="text-lg font-semibold tracking-tight"
+              id="product-details-heading"
+            >
+              Product details
+            </h2>
+            {product.description && (
+              <p className="mt-3 whitespace-pre-wrap leading-7 text-secondary-foreground">
+                {product.description}
+              </p>
+            )}
+            {(product.fabricComposition || product.careInstructions) && (
+              <dl className="mt-6 grid gap-5 sm:grid-cols-2">
+                {product.fabricComposition && (
+                  <div className="space-y-1">
+                    <dt className="text-sm font-medium">Fabric</dt>
+                    <dd className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                      {product.fabricComposition}
+                    </dd>
+                  </div>
+                )}
+                {product.careInstructions && (
+                  <div className="space-y-1">
+                    <dt className="text-sm font-medium">Care</dt>
+                    <dd className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                      {product.careInstructions}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </section>
+        )}
       </article>
     </main>
   );
 }
 
-function formatMeasurement(valueCm: string, unit: "cm" | "in"): string {
-  const [whole, fraction = "000"] = valueCm.split(".");
-  const thousandthsOfCentimeter =
-    Number(whole ?? "0") * 1000 + Number(fraction);
-  const tenths =
-    unit === "cm"
-      ? Math.floor((thousandthsOfCentimeter + 50) / 100)
-      : Math.floor((thousandthsOfCentimeter + 127) / 254);
-  return `${Math.floor(tenths / 10)}.${tenths % 10}`;
+function singleQueryValue(
+  value: string | string[] | undefined,
+): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }

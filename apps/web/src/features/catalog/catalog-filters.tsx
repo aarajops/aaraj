@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Form from "next/form";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,6 +80,7 @@ export function CatalogFilters({
   categoryInPath = false,
   children,
 }: CatalogFiltersProps) {
+  const currentQuery = useCurrentCatalogQuery(query);
   const showFilters = hasAvailableCatalogFilters(options);
 
   return (
@@ -99,7 +101,7 @@ export function CatalogFilters({
             categoryInPath={categoryInPath}
             options={options}
             pathname={pathname}
-            query={query}
+            query={currentQuery}
           />
         </aside>
       )}
@@ -120,7 +122,8 @@ export function CatalogResultsToolbar({
   categoryInPath = false,
   allowSort = true,
 }: Omit<CatalogFiltersProps, "children">) {
-  const activeFilters = getActiveFilters(query);
+  const currentQuery = useCurrentCatalogQuery(query);
+  const activeFilters = getActiveFilters(currentQuery);
   const showFilters =
     hasAvailableCatalogFilters(options) || activeFilters.length > 0;
 
@@ -133,7 +136,7 @@ export function CatalogResultsToolbar({
             categoryInPath={categoryInPath}
             options={options}
             pathname={pathname}
-            query={query}
+            query={currentQuery}
           />
         </div>
       )}
@@ -142,18 +145,46 @@ export function CatalogResultsToolbar({
           activeFilters={activeFilters}
           categoryInPath={categoryInPath}
           pathname={pathname}
-          query={query}
+          query={currentQuery}
         />
       )}
       {allowSort && (
         <SortControl
           categoryInPath={categoryInPath}
           pathname={pathname}
-          query={query}
+          query={currentQuery}
         />
       )}
     </div>
   );
+}
+
+function useCurrentCatalogQuery(
+  query: CatalogPublishedProductListQuery,
+): CatalogPublishedProductListQuery {
+  const searchParams = useSearchParams();
+  return {
+    ...query,
+    search: searchParams.get("search") ?? undefined,
+  };
+}
+
+function syncSearchParam(form: HTMLFormElement) {
+  const currentSearch = new URLSearchParams(window.location.search).get(
+    "search",
+  );
+  const input = form.querySelector<HTMLInputElement>('input[name="search"]');
+
+  if (!currentSearch) {
+    input?.remove();
+    return;
+  }
+
+  const searchInput = input ?? document.createElement("input");
+  searchInput.type = "hidden";
+  searchInput.name = "search";
+  searchInput.value = currentSearch;
+  if (!input) form.append(searchInput);
 }
 
 function MobileCatalogFilters({
@@ -241,6 +272,7 @@ function FilterForm({
     if (submitTimer.current !== null) clearTimeout(submitTimer.current);
     submitTimer.current = setTimeout(() => {
       submitTimer.current = null;
+      syncSearchParam(form);
       form.requestSubmit();
     }, 300);
   }
@@ -249,7 +281,10 @@ function FilterForm({
     if (submitTimer.current !== null) clearTimeout(submitTimer.current);
     submitTimer.current = setTimeout(() => {
       submitTimer.current = null;
-      formRef.current?.requestSubmit();
+      const form = formRef.current;
+      if (!form) return;
+      syncSearchParam(form);
+      form.requestSubmit();
     }, 0);
   }
 
@@ -285,6 +320,7 @@ function FilterForm({
             clearTimeout(submitTimer.current);
             submitTimer.current = null;
           }
+          syncSearchParam(event.currentTarget);
           event.currentTarget.requestSubmit();
         }
       }}
@@ -457,7 +493,10 @@ function SortControl({
     if (submitTimer.current !== null) clearTimeout(submitTimer.current);
     submitTimer.current = setTimeout(() => {
       submitTimer.current = null;
-      formRef.current?.requestSubmit();
+      const form = formRef.current;
+      if (!form) return;
+      syncSearchParam(form);
+      form.requestSubmit();
     }, 0);
   }
 

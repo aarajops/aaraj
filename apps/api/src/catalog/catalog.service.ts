@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
 import type {
-  CatalogProductImage,
+  CatalogProductDetailImage,
   CatalogProduct,
   CatalogProductCreateInput,
   CatalogProductDetail,
@@ -61,7 +61,6 @@ import {
   catalogProductMedia,
   catalogCategory,
   catalogSizeGuide,
-  catalogSizeGuideMeasurement,
   catalogSizeGuideRow,
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
@@ -72,6 +71,7 @@ import {
   loadCategoryReferences,
   requireActiveLeafCategory,
 } from "./catalog-category.helpers.js";
+import { loadCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
 
 @Injectable()
 export class CatalogService {
@@ -253,7 +253,9 @@ export class CatalogService {
       ...page,
       products: page.products.map((product) => ({
         ...product,
-        images: imagesByProduct.get(product.id) ?? [],
+        images: (imagesByProduct.get(product.id) ?? []).map(
+          ({ id, altText, card, detail }) => ({ id, altText, card, detail }),
+        ),
         priceVaries:
           variantSummariesByProduct.get(product.id)?.priceVaries ?? false,
       })),
@@ -300,14 +302,15 @@ export class CatalogService {
 
   private async loadPublishedProductImages(
     productIds: string[],
-  ): Promise<Map<string, CatalogProductImage[]>> {
-    const imagesByProduct = new Map<string, CatalogProductImage[]>();
+  ): Promise<Map<string, CatalogProductDetailImage[]>> {
+    const imagesByProduct = new Map<string, CatalogProductDetailImage[]>();
     if (!productIds.length) return imagesByProduct;
 
     const rows = await this.database.db
       .select({
         id: catalogProductMedia.id,
         productId: catalogProductMedia.productId,
+        variantId: catalogProductMedia.variantId,
         altText: catalogProductMedia.altText,
         derivatives: catalogProductMedia.derivatives,
       })
@@ -341,6 +344,7 @@ export class CatalogService {
       if (images.length >= MAX_CATALOG_PRODUCT_MEDIA) continue;
       images.push({
         id: row.id,
+        variantId: row.variantId,
         altText: row.altText,
         card: {
           src: publicDerivativePath(row.id, "card", card.sha256),
@@ -557,13 +561,17 @@ export class CatalogService {
         .limit(1);
       if (!product) throw new NotFoundException("Product not found");
       const detail = await loadProductDetail(transaction, product);
+      const variants = detail.variants.map(
+        ({ id, color, sizeLabel, price }) => {
+          if (!price) {
+            throw new Error("Published product variant is missing its price.");
+          }
+          return { id, color, sizeLabel, price };
+        },
+      );
       return {
         ...detail,
-        variants: detail.variants.map(({ id, color, sizeLabel }) => ({
-          id,
-          color,
-          sizeLabel,
-        })),
+        variants,
         sizeGuide: detail.sizeGuide,
       };
     });
@@ -1236,48 +1244,7 @@ async function loadSizeGuideDetail(
     .where(eq(catalogSizeGuide.id, guideId))
     .limit(1);
   if (!guide) return null;
-  const category = await loadCategoryReference(transaction, guide.categoryId);
-  const rows = await transaction
-    .select()
-    .from(catalogSizeGuideRow)
-    .where(eq(catalogSizeGuideRow.guideId, guideId))
-    .orderBy(asc(catalogSizeGuideRow.sortOrder));
-  const measurements = rows.length
-    ? await transaction
-        .select()
-        .from(catalogSizeGuideMeasurement)
-        .where(
-          inArray(
-            catalogSizeGuideMeasurement.rowId,
-            rows.map(({ id }) => id),
-          ),
-        )
-        .orderBy(asc(catalogSizeGuideMeasurement.key))
-    : [];
-  const measurementsByRow = new Map<
-    string,
-    Array<{ key: (typeof measurements)[number]["key"]; valueCm: string }>
-  >();
-  for (const measurement of measurements) {
-    const values = measurementsByRow.get(measurement.rowId) ?? [];
-    values.push({ key: measurement.key, valueCm: measurement.valueCm });
-    measurementsByRow.set(measurement.rowId, values);
-  }
-  return {
-    id: guide.id,
-    name: guide.name,
-    category,
-    fit: guide.fit,
-    measurementBasis: guide.measurementBasis,
-    rows: rows.map((row) => ({
-      id: row.id,
-      sizeLabel: row.sizeLabel,
-      sortOrder: row.sortOrder,
-      measurements: measurementsByRow.get(row.id) ?? [],
-    })),
-    createdAt: guide.createdAt.toISOString(),
-    updatedAt: guide.updatedAt.toISOString(),
-  };
+  return loadCatalogSizeGuide(transaction, guide);
 }
 
 function toProductPage(

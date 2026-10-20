@@ -1,20 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import {
-  MAX_CART_QUANTITY_PER_VARIANT,
-  type CatalogProductDetail,
-} from "@aaraj/contracts";
+import { useRouter } from "next/navigation";
+import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
-import { useCartStore } from "./cart-provider";
+import { useCartSheet, useCartStore } from "./cart-provider";
 
-export function AddToCart({
-  productName,
-  variants,
-}: {
-  productName: string;
-  variants: CatalogProductDetail["variants"];
-}) {
+export function AddToCart({ variantId }: { variantId: string | null }) {
+  const router = useRouter();
+  const { setOpen: setCartSheetOpen } = useCartSheet();
   const setLine = useCartStore((state) => state.setLine);
   const refresh = useCartStore((state) => state.refresh);
   const clearCart = useCartStore((state) => state.clear);
@@ -24,20 +18,16 @@ export function AddToCart({
   const cart = useCartStore((state) => state.cart);
   const error = useCartStore((state) => state.error);
   const errorCode = useCartStore((state) => state.errorCode);
-  const [variantId, setVariantId] = useState(variants[0]?.id ?? "");
   const [status, setStatus] = useState<string | null>(null);
-
-  if (variants.length === 0) return null;
+  const [isBuyingNow, setIsBuyingNow] = useState(false);
 
   async function addSelectedVariant() {
+    if (!variantId) return;
+    setStatus(null);
     const existingQuantity =
       cart.lines.find((line) => line.variantId === variantId)?.quantity ?? 0;
     const added = await setLine(variantId, existingQuantity + 1);
-    setStatus(
-      added
-        ? `${productName} added to your cart.`
-        : "The item could not be added. Review the message and retry.",
-    );
+    if (added) setCartSheetOpen(true);
   }
 
   async function clearUnreadableCart() {
@@ -46,67 +36,85 @@ export function AddToCart({
     }
   }
 
+  async function buyNow() {
+    if (!variantId || !isReady || error || isMutating || isLoading) return;
+
+    const existingQuantity =
+      cart.lines.find((line) => line.variantId === variantId)?.quantity ?? 0;
+    if (existingQuantity === 0) {
+      setIsBuyingNow(true);
+      const added = await setLine(variantId, 1);
+      setIsBuyingNow(false);
+      if (!added) return;
+    }
+    router.push("/cart#delivery-and-order-total");
+  }
+
   const selectedQuantity =
     cart.lines.find((line) => line.variantId === variantId)?.quantity ?? 0;
   const quantityLimitReached =
-    selectedQuantity >= MAX_CART_QUANTITY_PER_VARIANT;
+    Boolean(variantId) && selectedQuantity >= MAX_CART_QUANTITY_PER_VARIANT;
+  const disabled =
+    isMutating ||
+    isBuyingNow ||
+    isLoading ||
+    (!isReady && !error) ||
+    (isReady && (!variantId || quantityLimitReached));
+  const buyNowDisabled =
+    isMutating ||
+    isBuyingNow ||
+    isLoading ||
+    !isReady ||
+    Boolean(error) ||
+    !variantId;
 
   return (
-    <section
-      aria-label="Add product to cart"
-      className="mt-8 border-t border-border pt-6"
-    >
-      <label className="block text-sm font-medium" htmlFor="cart-variant">
-        Choose a color and size
-      </label>
-      <select
-        className="mt-2 h-11 w-full rounded-lg border border-input bg-background px-3 text-foreground"
-        id="cart-variant"
-        value={variantId}
-        onChange={(event) => setVariantId(event.currentTarget.value)}
-      >
-        {variants.map((variant) => (
-          <option key={variant.id} value={variant.id}>
-            {variant.color} · {variant.sizeLabel}
-          </option>
-        ))}
-      </select>
-      <Button
-        className="mt-4 w-full sm:w-auto"
-        disabled={
-          isMutating ||
-          isLoading ||
-          (!isReady && !error) ||
-          !variantId ||
-          quantityLimitReached
-        }
-        onClick={() => {
-          if (isReady) void addSelectedVariant();
-          else if (errorCode === "CART_DATA_INVALID") {
-            void clearUnreadableCart();
-          } else void refresh();
-        }}
-        type="button"
-      >
-        {isMutating
-          ? "Updating cart…"
-          : !isReady
-            ? errorCode === "CART_DATA_INVALID"
-              ? "Clear unreadable cart"
-              : error
-                ? "Retry cart"
-                : "Loading cart…"
-            : quantityLimitReached
-              ? "Maximum quantity reached"
-              : "Add to cart"}
-      </Button>
+    <section aria-label="Product purchase actions" className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          className="w-full"
+          disabled={disabled}
+          onClick={() => {
+            if (isReady) void addSelectedVariant();
+            else if (errorCode === "CART_DATA_INVALID") {
+              void clearUnreadableCart();
+            } else void refresh();
+          }}
+          size="lg"
+          type="button"
+        >
+          {isMutating
+            ? "Updating cart…"
+            : !isReady
+              ? errorCode === "CART_DATA_INVALID"
+                ? "Clear cart"
+                : error
+                  ? "Retry cart"
+                  : "Loading cart…"
+              : !variantId
+                ? "Choose options"
+                : quantityLimitReached
+                  ? "Limit reached"
+                  : "Add to Cart"}
+        </Button>
+        <Button
+          className="w-full"
+          disabled={buyNowDisabled}
+          onClick={() => void buyNow()}
+          size="lg"
+          type="button"
+          variant="outline"
+        >
+          {isBuyingNow ? "Continuing…" : "Buy Now"}
+        </Button>
+      </div>
       {status && (
-        <p className="mt-3 text-sm" role="status">
+        <p className="text-sm" role="status">
           {status}
         </p>
       )}
       {error && (
-        <p className="mt-3 text-sm text-destructive" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {error}
         </p>
       )}

@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
+import {
+  convertCatalogMeasurementValue,
+  MAX_LIST_OFFSET,
+} from "@aaraj/contracts";
 import type {
   CatalogMeasurementKey,
   CatalogMeasurementUnit,
@@ -14,7 +18,6 @@ import type {
   CatalogSizeGuidePage,
   CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
-import { MAX_LIST_OFFSET } from "@aaraj/contracts";
 import {
   and,
   asc,
@@ -40,10 +43,10 @@ import {
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
 import {
-  loadCategoryReference,
   loadCategoryReferences,
   requireActiveLeafCategory,
 } from "./catalog-category.helpers.js";
+import { loadCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
 
 @Injectable()
 export class SizeGuideService {
@@ -163,12 +166,12 @@ export class SizeGuideService {
         .where(eq(catalogSizeGuide.id, guideId))
         .limit(1);
       if (!guide) throw new NotFoundException("Size guide not found");
-      return loadSizeGuide(transaction, guide);
+      return loadCatalogSizeGuide(transaction, guide);
     });
   }
 
   async create(actor: AccessPrincipal, input: CatalogSizeGuideCreateInput) {
-    const measurements = normalizeMeasurements(input.inputUnit, input.rows);
+    const rows = normalizeMeasurements(input.inputUnit, input.rows);
     return this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
@@ -188,12 +191,7 @@ export class SizeGuideService {
           })
           .returning();
         if (!guide) throw new Error("Size guide insert returned no row.");
-        await replaceSizeGuideRows(
-          transaction,
-          guide.id,
-          input.rows,
-          measurements,
-        );
+        await replaceSizeGuideRows(transaction, guide.id, rows);
         await this.audit.append(transaction, {
           actorType: "user",
           actorId: actor.id,
@@ -207,7 +205,7 @@ export class SizeGuideService {
             sizeCount: input.rows.length,
           },
         });
-        return loadSizeGuide(transaction, guide);
+        return loadCatalogSizeGuide(transaction, guide);
       } catch (error) {
         if (isUniqueViolation(error)) {
           throw new ConflictException(
@@ -224,7 +222,7 @@ export class SizeGuideService {
     guideId: string,
     input: CatalogSizeGuideUpdateInput,
   ) {
-    const measurements = normalizeMeasurements(input.inputUnit, input.rows);
+    const rows = normalizeMeasurements(input.inputUnit, input.rows);
     return this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
@@ -255,12 +253,7 @@ export class SizeGuideService {
       if (!updated) throw new NotFoundException("Size guide not found");
 
       try {
-        await replaceSizeGuideRows(
-          transaction,
-          guideId,
-          input.rows,
-          measurements,
-        );
+        await replaceSizeGuideRows(transaction, guideId, rows);
         await ensurePublishedProductsRemainValid(
           transaction,
           updated,
@@ -279,7 +272,7 @@ export class SizeGuideService {
             sizeCount: input.rows.length,
           },
         });
-        return loadSizeGuide(transaction, updated);
+        return loadCatalogSizeGuide(transaction, updated);
       } catch (error) {
         if (isUniqueViolation(error)) {
           throw new ConflictException(
@@ -295,8 +288,7 @@ export class SizeGuideService {
 async function replaceSizeGuideRows(
   transaction: AuditTransaction,
   guideId: string,
-  inputRows: CatalogSizeGuideCreateInput["rows"],
-  values: string[][],
+  rows: NormalizedSizeGuideRow[],
 ) {
   await transaction
     .delete(catalogSizeGuideRow)
@@ -304,7 +296,7 @@ async function replaceSizeGuideRows(
   const insertedRows = await transaction
     .insert(catalogSizeGuideRow)
     .values(
-      inputRows.map((row, sortOrder) => ({
+      rows.map((row, sortOrder) => ({
         guideId,
         sizeLabel: row.sizeLabel,
         sortOrder,
@@ -314,68 +306,24 @@ async function replaceSizeGuideRows(
       id: catalogSizeGuideRow.id,
       sortOrder: catalogSizeGuideRow.sortOrder,
     });
-  if (insertedRows.length !== inputRows.length) {
+  if (insertedRows.length !== rows.length) {
     throw new Error("Size guide rows did not all insert.");
   }
-  const measurements = insertedRows.flatMap(({ id, sortOrder }) =>
-    (inputRows[sortOrder]?.measurements ?? []).map((measurement, index) => ({
-      rowId: id,
-      key: measurement.key,
-      valueCm: values[sortOrder]?.[index] ?? "0.000",
-    })),
+  const rowIdsByOrder = new Map(
+    insertedRows.map(({ id, sortOrder }) => [sortOrder, id]),
   );
+  const measurements = rows.flatMap((row, sortOrder) => {
+    const rowId = rowIdsByOrder.get(sortOrder);
+    if (!rowId) throw new Error("A size guide row did not receive an ID.");
+    return row.measurements.map(({ key, valueCm }) => ({
+      rowId,
+      key,
+      valueCm,
+    }));
+  });
   if (measurements.length) {
     await transaction.insert(catalogSizeGuideMeasurement).values(measurements);
   }
-}
-
-async function loadSizeGuide(
-  database: AuditTransaction,
-  guide: typeof catalogSizeGuide.$inferSelect,
-): Promise<CatalogSizeGuide> {
-  const rows = await database
-    .select()
-    .from(catalogSizeGuideRow)
-    .where(eq(catalogSizeGuideRow.guideId, guide.id))
-    .orderBy(asc(catalogSizeGuideRow.sortOrder));
-  const measurements = rows.length
-    ? await database
-        .select()
-        .from(catalogSizeGuideMeasurement)
-        .where(
-          inArray(
-            catalogSizeGuideMeasurement.rowId,
-            rows.map(({ id }) => id),
-          ),
-        )
-        .orderBy(asc(catalogSizeGuideMeasurement.key))
-    : [];
-  const measurementsByRow = new Map<
-    string,
-    Array<{ key: CatalogMeasurementKey; valueCm: string }>
-  >();
-  for (const measurement of measurements) {
-    const values = measurementsByRow.get(measurement.rowId) ?? [];
-    values.push({ key: measurement.key, valueCm: measurement.valueCm });
-    measurementsByRow.set(measurement.rowId, values);
-  }
-  const category = await loadCategoryReference(database, guide.categoryId);
-
-  return {
-    id: guide.id,
-    name: guide.name,
-    category,
-    fit: guide.fit,
-    measurementBasis: guide.measurementBasis,
-    rows: rows.map((row) => ({
-      id: row.id,
-      sizeLabel: row.sizeLabel,
-      sortOrder: row.sortOrder,
-      measurements: measurementsByRow.get(row.id) ?? [],
-    })),
-    createdAt: guide.createdAt.toISOString(),
-    updatedAt: guide.updatedAt.toISOString(),
-  };
 }
 
 async function ensurePublishedProductsRemainValid(
@@ -384,8 +332,20 @@ async function ensurePublishedProductsRemainValid(
   guideRows: CatalogSizeGuideCreateInput["rows"],
 ) {
   const products = await transaction
-    .select()
+    .select({
+      slug: catalogProduct.slug,
+      categoryId: catalogProduct.categoryId,
+      fit: catalogProduct.fit,
+      sizeLabel: catalogProductVariant.sizeLabel,
+    })
     .from(catalogProduct)
+    .leftJoin(
+      catalogProductVariant,
+      and(
+        eq(catalogProductVariant.productId, catalogProduct.id),
+        eq(catalogProductVariant.isActive, true),
+      ),
+    )
     .where(
       and(
         eq(catalogProduct.sizeGuideId, guide.id),
@@ -404,17 +364,9 @@ async function ensurePublishedProductsRemainValid(
         `The updated guide no longer matches published product ${product.slug}.`,
       );
     }
-    const variants = await transaction
-      .select({ sizeLabel: catalogProductVariant.sizeLabel })
-      .from(catalogProductVariant)
-      .where(
-        and(
-          eq(catalogProductVariant.productId, product.id),
-          eq(catalogProductVariant.isActive, true),
-        ),
-      );
     if (
-      variants.some(({ sizeLabel }) => !allowedSizes.has(normalize(sizeLabel)))
+      product.sizeLabel !== null &&
+      !allowedSizes.has(normalize(product.sizeLabel))
     ) {
       throw new BadRequestException(
         `The updated guide must include every active size on published product ${product.slug}.`,
@@ -426,26 +378,35 @@ async function ensurePublishedProductsRemainValid(
 function normalizeMeasurements(
   unit: CatalogMeasurementUnit,
   rows: CatalogSizeGuideCreateInput["rows"],
-): string[][] {
-  return rows.map((row) =>
-    row.measurements.map(({ value }) => toCentimeters(unit, value)),
-  );
+): NormalizedSizeGuideRow[] {
+  return rows.map((row) => ({
+    sizeLabel: row.sizeLabel,
+    measurements: row.measurements.map(({ key, value }) => ({
+      key,
+      valueCm: toCentimeters(unit, value),
+    })),
+  }));
 }
 
 function toCentimeters(unit: CatalogMeasurementUnit, value: string): string {
-  const [wholePart, fractionPart = ""] = value.split(".");
-  const valueThousandths =
-    BigInt(wholePart ?? "0") * 1000n + BigInt(fractionPart.padEnd(3, "0"));
+  const centimeters = convertCatalogMeasurementValue(value, unit, "cm");
+  const [wholePart, fractionPart = ""] = centimeters.split(".");
   const centimeterThousandths =
-    unit === "cm" ? valueThousandths : (valueThousandths * 254n + 50n) / 100n;
+    BigInt(wholePart ?? "0") * 1000n + BigInt(fractionPart.padEnd(3, "0"));
   if (centimeterThousandths <= 0n || centimeterThousandths > 99_999_999n) {
     throw new BadRequestException(
       "Measurements must fit a positive numeric(8,3) centimetre value.",
     );
   }
-  const whole = centimeterThousandths / 1000n;
-  const fraction = String(centimeterThousandths % 1000n).padStart(3, "0");
-  return `${whole}.${fraction}`;
+  return centimeters;
+}
+
+interface NormalizedSizeGuideRow {
+  sizeLabel: string;
+  measurements: Array<{
+    key: CatalogMeasurementKey;
+    valueCm: string;
+  }>;
 }
 
 function normalize(value: string): string {

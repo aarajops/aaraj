@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import {
   CatalogCategorySlugSchema,
   DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
@@ -7,10 +8,10 @@ import {
 import { PublishedProductListing } from "@/app/(storefront)/_components/published-product-listing";
 import {
   getStorefrontCategoryBySlug,
-  getPublishedProducts,
   parsePublishedCatalogPageQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
+import { CatalogLoading } from "@/app/(storefront)/_components/catalog-loading";
 import {
   getStorefrontMetadataDefaults,
   getStorefrontShareImage,
@@ -29,17 +30,10 @@ export async function generateMetadata({
   const parsedSlug = CatalogCategorySlugSchema.safeParse(slug);
   if (!parsedSlug.success) notFound();
 
-  const parsedQuery = parsePublishedCatalogPageQuery(query);
-  const [page, defaults] = await Promise.all([
-    parsedQuery
-      ? getPublishedProducts({ ...parsedQuery, category: parsedSlug.data })
-      : Promise.resolve(null),
+  const [result, defaults] = await Promise.all([
+    getStorefrontCategoryBySlug(parsedSlug.data),
     getStorefrontMetadataDefaults(),
   ]);
-  const result = await getStorefrontCategoryBySlug(
-    parsedSlug.data,
-    page?.filters.categories,
-  );
   if (result.kind === "not-found") notFound();
 
   const category = result.kind === "found" ? result.category : null;
@@ -107,16 +101,21 @@ export default async function StorefrontCategoryPage({
   const { slug } = await params;
   const parsedSlug = CatalogCategorySlugSchema.safeParse(slug);
   if (!parsedSlug.success) notFound();
+  const category = await getStorefrontCategoryBySlug(parsedSlug.data);
+  if (category.kind === "not-found") notFound();
 
   const name = slug.replaceAll("-", " ");
 
   return (
-    <PublishedProductListing
-      categorySlug={parsedSlug.data}
-      pathname={`/shop/categories/${parsedSlug.data}`}
-      searchParams={searchParams}
-      title={name}
-    />
+    <Suspense fallback={<CatalogLoading />}>
+      <PublishedProductListing
+        categorySlug={parsedSlug.data}
+        pathname={`/shop/categories/${parsedSlug.data}`}
+        resolvedCategory={category}
+        searchParams={searchParams}
+        title={name}
+      />
+    </Suspense>
   );
 }
 

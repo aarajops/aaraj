@@ -128,19 +128,6 @@ export const guideFormSchema = z
       }
     }
 
-    form.rows.forEach((row, rowIndex) => {
-      for (const key of form.keys) {
-        const value = row.values[key]?.trim() ?? "";
-        if (value && Number.isFinite(Number(value)) && Number(value) <= 0) {
-          context.addIssue({
-            code: "custom",
-            path: ["rows", rowIndex, "values", key],
-            message: "Measurements must be greater than zero.",
-          });
-        }
-      }
-    });
-
     if (form.keys.length === 0) {
       context.addIssue({
         code: "custom",
@@ -167,19 +154,4 @@ export function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
       ),
     })),
   };
-}
-
-export function convertMeasurementUnit(
-  value: string,
-  from: GuideForm["inputUnit"],
-  to: GuideForm["inputUnit"],
-): string {
-  if (!value || from === to) return value;
-  const [whole, fraction = ""] = value.split(".");
-  const thousandths = Number(whole) * 1000 + Number(fraction.padEnd(3, "0"));
-  const converted =
-    from === "cm"
-      ? Math.floor((thousandths * 100 + 127) / 254)
-      : Math.floor((thousandths * 254 + 50) / 100);
-  return `${Math.floor(converted / 1000)}.${String(converted % 1000).padStart(3, "0")}`;
 }

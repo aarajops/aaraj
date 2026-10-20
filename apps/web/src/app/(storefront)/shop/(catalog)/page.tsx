@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { permanentRedirect } from "next/navigation";
+import { Suspense } from "react";
 import { CatalogCategorySlugSchema } from "@aaraj/contracts";
 import {
   parsePublishedCatalogPageQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
 import { PublishedProductListing } from "@/app/(storefront)/_components/published-product-listing";
+import { CatalogLoading } from "@/app/(storefront)/_components/catalog-loading";
 import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -57,10 +59,12 @@ export default async function Products({
   }
 
   return (
-    <PublishedProductListing
-      pathname="/shop"
-      searchParams={searchParams}
-      title="Products"
-    />
+    <Suspense fallback={<CatalogLoading />}>
+      <PublishedProductListing
+        pathname="/shop"
+        searchParams={searchParams}
+        title="Products"
+      />
+    </Suspense>
   );
 }

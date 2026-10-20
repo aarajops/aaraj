@@ -22,6 +22,7 @@ type PublishedProductListingProps = {
   title: string;
   sort?: CatalogPublishedProductListQuery["sort"];
   categorySlug?: string;
+  resolvedCategory?: Awaited<ReturnType<typeof getStorefrontCategoryBySlug>>;
 };
 
 export async function PublishedProductListing({
@@ -30,11 +31,12 @@ export async function PublishedProductListing({
   title,
   sort,
   categorySlug,
+  resolvedCategory,
 }: PublishedProductListingProps) {
   const parsedQuery = parsePublishedCatalogPageQuery(await searchParams);
   if (!parsedQuery) {
     const category = categorySlug
-      ? await getStorefrontCategoryBySlug(categorySlug)
+      ? (resolvedCategory ?? (await getStorefrontCategoryBySlug(categorySlug)))
       : null;
     if (category?.kind === "not-found") notFound();
     const listingTitle =
@@ -50,7 +52,11 @@ export async function PublishedProductListing({
   };
   const page = await getPublishedProducts(query);
   const category = categorySlug
-    ? await getStorefrontCategoryBySlug(categorySlug, page?.filters.categories)
+    ? (resolvedCategory ??
+      (await getStorefrontCategoryBySlug(
+        categorySlug,
+        page?.filters.categories,
+      )))
     : null;
   if (category?.kind === "not-found") notFound();
   const listingTitle =

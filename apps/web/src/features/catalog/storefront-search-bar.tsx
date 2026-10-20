@@ -34,11 +34,20 @@ export function StorefrontSearchBar({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const categoryPath = pathname.startsWith("/shop/categories/")
-    ? pathname.slice("/shop/categories/".length).split("/")[0]
+  const preservesCatalogState =
+    pathname === "/shop" ||
+    pathname === "/shop/new" ||
+    pathname.startsWith("/shop/categories/");
+  const categoryPath =
+    preservesCatalogState && pathname.startsWith("/shop/categories/")
+      ? pathname.slice("/shop/categories/".length).split("/")[0]
+      : "";
+  const currentSearch = preservesCatalogState
+    ? (searchParams.get("search") ?? "")
     : "";
-  const currentSearch = searchParams.get("search") ?? "";
-  const currentCategory = categoryPath || (searchParams.get("category") ?? "");
+  const currentCategory = preservesCatalogState
+    ? categoryPath || (searchParams.get("category") ?? "")
+    : "";
 
   return (
     <StorefrontSearchForm
@@ -47,19 +56,27 @@ export function StorefrontSearchBar({
       className={className}
       currentCategory={currentCategory}
       currentSearch={currentSearch}
-      preservedFilters={[
-        ...(["audience", "color", "size"] as const).flatMap((name) => {
-          const values =
-            name === "audience"
-              ? [searchParams.get(name)]
-              : searchParams.getAll(name);
-          return values.flatMap((value) => (value ? [{ name, value }] : []));
-        }),
-        ...(["minPriceBdt", "maxPriceBdt", "sort"] as const).flatMap((name) => {
-          const value = searchParams.get(name);
-          return value ? [{ name, value }] : [];
-        }),
-      ]}
+      preservedFilters={
+        preservesCatalogState
+          ? [
+              ...(["audience", "color", "size"] as const).flatMap((name) => {
+                const values =
+                  name === "audience"
+                    ? [searchParams.get(name)]
+                    : searchParams.getAll(name);
+                return values.flatMap((value) =>
+                  value ? [{ name, value }] : [],
+                );
+              }),
+              ...(["minPriceBdt", "maxPriceBdt", "sort"] as const).flatMap(
+                (name) => {
+                  const value = searchParams.get(name);
+                  return value ? [{ name, value }] : [];
+                },
+              ),
+            ]
+          : []
+      }
     />
   );
 }

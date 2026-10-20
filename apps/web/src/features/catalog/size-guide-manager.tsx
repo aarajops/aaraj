@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  convertCatalogMeasurementValue,
   CatalogMeasurementKeySchema,
   CatalogSizeGuideSchema,
   type CatalogMeasurementKey,
@@ -18,9 +19,9 @@ import {
   updateCatalogSizeGuide,
 } from "@/features/catalog/catalog-client";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
+import { catalogMeasurementLabels } from "@/features/catalog/size-guide-labels";
 import {
   blankGuideForm,
-  convertMeasurementUnit,
   guideFormSchema,
   toSizeGuideFormState,
   type GuideForm,
@@ -46,19 +47,6 @@ import {
 } from "@/components/ui/select";
 
 const keys = CatalogMeasurementKeySchema.options;
-const labels: Record<CatalogMeasurementKey, string> = {
-  chest_width: "Chest width",
-  body_length: "Body length",
-  shoulder_width: "Shoulder width",
-  sleeve_length: "Sleeve length",
-  waist: "Waist",
-  hip: "Hip",
-  inseam: "Inseam",
-  outseam: "Outseam",
-  rise: "Rise",
-  thigh: "Thigh",
-  hem: "Hem",
-};
 const inputClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
 export function SizeGuideManager({
@@ -119,7 +107,7 @@ export function SizeGuideManager({
       current.keys.forEach((key) => {
         setValue(
           `rows.${index}.values.${key}`,
-          convertMeasurementUnit(
+          convertCatalogMeasurementValue(
             row.values[key] ?? "",
             current.inputUnit,
             inputUnit,
@@ -431,7 +419,7 @@ export function SizeGuideManager({
                             onChange: () => clearKeyValues(key),
                           })}
                         />
-                        {labels[key]}
+                        {catalogMeasurementLabels[key]}
                       </label>
                     ))}
                   </div>
@@ -505,7 +493,7 @@ export function SizeGuideManager({
                         {selectedKeys.map((key) => (
                           <div className="space-y-1 text-sm" key={key}>
                             <label htmlFor={`size-${index}-${key}`}>
-                              {labels[key]} ({inputUnit})
+                              {catalogMeasurementLabels[key]} ({inputUnit})
                             </label>
                             <Input
                               aria-describedby={

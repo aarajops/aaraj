@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Minus, Plus, ShoppingBag } from "lucide-react";
 import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
@@ -16,10 +16,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { formatCatalogPrice } from "@/features/catalog/price";
-import { useCartStore } from "./cart-provider";
+import { useCartSheet, useCartStore } from "./cart-provider";
 
 export function CartSheet() {
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useCartSheet();
   const cart = useCartStore((state) => state.cart);
   const isReady = useCartStore((state) => state.isReady);
   const isLoading = useCartStore((state) => state.isLoading);

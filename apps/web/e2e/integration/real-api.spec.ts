@@ -907,22 +907,40 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("row").filter({ has: smallVariantAdjustmentLink }),
   ).toContainText("12");
   await page.goto(`/shop/products/${slug}`);
-  await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
+  await expect(page.getByText("৳2,450–৳2,490", { exact: true })).toBeVisible();
   await expect(
     page.getByText("A product configured in a real browser and database flow."),
   ).toBeVisible();
   await expect(page.getByText("100% cotton")).toBeVisible();
   await expect(page.getByText("Machine wash cold")).toBeVisible();
-  await expect(page.getByText("Available colors and sizes")).toBeVisible();
-  const publicVariants = page.locator(
-    'section[aria-labelledby="available-variants-heading"]',
-  );
-  await expect(publicVariants.getByText("S", { exact: true })).toBeVisible();
-  await expect(publicVariants.getByText("M", { exact: true })).toBeVisible();
-  await expect(publicVariants).not.toContainText("৳");
-  await expect(page.getByText("Size guide: " + guideName)).toBeVisible();
-  await expect(page.getByText("50.8 / 20.0", { exact: true })).toBeVisible();
-  await expect(page.getByText("71.1 / 28.0", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "S", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "M", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Black", exact: true }).click();
+  await page.getByRole("button", { name: "S", exact: true }).click();
+  await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/color=Black/);
+  await expect(page).toHaveURL(/size=S/);
+  await expect(
+    page.locator('header form[action="/shop"] input[name="color"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('header form[action="/shop"] input[name="size"]'),
+  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Size guide" })).toBeVisible();
+  const measurementUnit = page.getByRole("switch", {
+    name: "Use centimeters",
+  });
+  await expect(measurementUnit).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByText("20", { exact: true })).toBeVisible();
+  await expect(page.getByText("28", { exact: true })).toBeVisible();
+  await measurementUnit.click();
+  await expect(measurementUnit).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("50.8", { exact: true })).toBeVisible();
+  await expect(page.getByText("71.1", { exact: true })).toBeVisible();
   await expect(page.getByText(skuSmall)).toHaveCount(0);
   await expect(page.getByText(skuMedium)).toHaveCount(0);
 
@@ -950,10 +968,9 @@ test("catalog operator configures a product through to storefront visibility", a
     await route.continue();
   });
   await page.goto(`/shop/products/${slug}`);
-  await page.getByLabel("Choose a color and size").selectOption({
-    label: "Black · S",
-  });
-  await page.getByRole("button", { name: "Clear unreadable cart" }).click();
+  await page.getByRole("button", { name: "Black", exact: true }).click();
+  await page.getByRole("button", { name: "S", exact: true }).click();
+  await page.getByRole("button", { name: "Clear cart" }).click();
   await expect(
     page.getByRole("status").filter({
       hasText: "Your unreadable saved cart was cleared. Add this item again.",
@@ -962,16 +979,6 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(cartReadIsCorrupt).toBe(false);
   await page.unroute("**/api/v1/cart");
   await page.getByRole("button", { name: "Add to cart" }).click();
-  await expect(
-    page
-      .getByRole("status")
-      .filter({ hasText: `${productName} added to your cart.` }),
-  ).toBeVisible();
-  const cartButton = page.getByRole("button", {
-    name: "Open cart, 1 item",
-  });
-  await expect(cartButton).toBeVisible();
-  await cartButton.click();
   const cartSheet = page.getByRole("dialog", { name: "Your cart" });
   await expect(cartSheet).toBeVisible();
   await expect(
@@ -1049,12 +1056,15 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByText("Your cart is empty.")).toBeVisible();
 
   await page.goto(`/shop/products/${slug}`);
-  await page.getByLabel("Choose a color and size").selectOption({
-    label: "Black · S",
-  });
-  await page.getByRole("button", { name: "Add to cart" }).click();
+  await page.getByRole("button", { name: "Black", exact: true }).click();
+  await page.getByRole("button", { name: "S", exact: true }).click();
+  await page.getByRole("button", { name: "Buy Now" }).click();
+  await expect(page).toHaveURL(/\/cart#delivery-and-order-total$/);
+  await expect(page.locator("#delivery-and-order-total")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open cart, 1 item" }),
+    page
+      .getByRole("region", { name: "Cart items" })
+      .getByRole("link", { name: productName }),
   ).toBeVisible();
   const browserStorage = await page.evaluate(() =>
     JSON.stringify({
@@ -1333,12 +1343,13 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/\/account$/);
   await page.goto(`/shop/products/${slug}`);
-  await page.getByLabel("Choose a color and size").selectOption({
-    label: "Black · S",
-  });
+  await page.getByRole("button", { name: "Black", exact: true }).click();
+  await page.getByRole("button", { name: "S", exact: true }).click();
   await page.getByRole("button", { name: "Add to cart" }).click();
+  const guestCartSheet = page.getByRole("dialog", { name: "Your cart" });
+  await expect(guestCartSheet).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open cart, 1 item" }),
+    guestCartSheet.getByRole("link", { name: productName }),
   ).toBeVisible();
   await page.goto("/cart");
   const guestQuoteSection = page.getByRole("region", {
@@ -1426,13 +1437,20 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(publicProduct.price).toEqual({ amountBdt: 2450 });
   expect(publicProduct.variants).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ color: "Black", sizeLabel: "S" }),
-      expect.objectContaining({ color: "Red", sizeLabel: "M" }),
+      expect.objectContaining({
+        color: "Black",
+        sizeLabel: "S",
+        price: { amountBdt: 2450 },
+      }),
+      expect.objectContaining({
+        color: "Red",
+        sizeLabel: "M",
+        price: { amountBdt: 2490 },
+      }),
     ]),
   );
   for (const variant of publicProduct.variants) {
     expect(variant).not.toHaveProperty("sku");
-    expect(variant).not.toHaveProperty("price");
   }
 
   await page.goto("/admin/catalog");

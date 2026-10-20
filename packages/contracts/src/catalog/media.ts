@@ -65,6 +65,15 @@ export const CatalogProductImageSchema = z.strictObject({
 });
 export type CatalogProductImage = z.infer<typeof CatalogProductImageSchema>;
 
+export const CatalogProductDetailImageSchema = CatalogProductImageSchema.extend(
+  {
+    variantId: z.uuid().nullable(),
+  },
+);
+export type CatalogProductDetailImage = z.infer<
+  typeof CatalogProductDetailImageSchema
+>;
+
 export const CatalogMediaContentTypeSchema = z.enum([
   "image/jpeg",
   "image/png",
