@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { type CatalogPublishedProductListQuery } from "@aaraj/contracts";
@@ -8,8 +7,8 @@ import {
   CatalogResultsToolbar,
 } from "@/features/catalog/catalog-filters";
 import { CatalogPagination } from "@/features/catalog/catalog-pagination";
-import { formatCatalogPrice } from "@/features/catalog/price";
-import { ProductLinkStatus } from "@/features/catalog/product-link-status";
+import { ProductCard } from "./product-card";
+import { CatalogProductGrid } from "./catalog-product-grid";
 import {
   getPublishedProducts,
   getStorefrontCategoryBySlug,
@@ -70,6 +69,15 @@ export async function PublishedProductListing({
   const showCategoryEmptyState = Boolean(
     categorySlug && categoryHasNoProducts && !hasActiveCriteria,
   );
+  const resultsToolbar = (
+    <CatalogResultsToolbar
+      options={page?.filters ?? null}
+      pathname={pathname}
+      categoryInPath={Boolean(categorySlug)}
+      query={query}
+      allowSort={!sort && page !== null && page.products.length > 0}
+    />
+  );
   return (
     <>
       <header className="mb-3 flex items-start justify-between gap-6">
@@ -92,96 +100,70 @@ export async function PublishedProductListing({
         categoryInPath={Boolean(categorySlug)}
         query={query}
       >
-        <CatalogResultsToolbar
-          options={page?.filters ?? null}
-          pathname={pathname}
-          categoryInPath={Boolean(categorySlug)}
-          query={query}
-          allowSort={!sort && page !== null && page.products.length > 0}
-        />
         {page === null ? (
-          <p
-            className="mt-5 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
-            role="alert"
-          >
-            The catalog is temporarily unavailable. Please try again shortly.
-          </p>
+          <>
+            {resultsToolbar}
+            <p
+              className="mt-5 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
+              role="alert"
+            >
+              The catalog is temporarily unavailable. Please try again shortly.
+            </p>
+          </>
         ) : page.products.length === 0 ? (
-          showCategoryEmptyState ? (
-            <div className="mt-6 flex flex-col items-center gap-4 text-center">
-              <div className="space-y-2" role="status">
-                <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                  No products in this category yet
-                </h2>
-                <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
-                  See what’s available across the full catalog.
-                </p>
-              </div>
-              <Link className={buttonVariants({ size: "lg" })} href="/shop">
-                Browse all products
-              </Link>
-            </div>
-          ) : (
-            <div className="mt-6 flex flex-col items-center gap-4 px-4 py-8 text-center sm:py-10">
-              <div className="space-y-2" role="status">
-                <h2 className="text-lg font-semibold text-foreground">
-                  {hasActiveCriteria
-                    ? "No matching products"
-                    : "No products are available yet"}
-                </h2>
-                {hasActiveCriteria && (
-                  <p className="mx-auto max-w-md text-sm leading-6 text-muted-foreground">
-                    {query.search && hasActiveFilters
-                      ? "Try a different search or clear the search and filters."
-                      : query.search
-                        ? "Try a different search or clear it."
-                        : "Try adjusting or clearing the selected filters."}
-                  </p>
-                )}
-              </div>
-              {query.search && (
-                <Link
-                  className={buttonVariants({ variant: "outline" })}
-                  href={pathname}
-                >
-                  Clear search{hasActiveFilters ? " and filters" : ""}
-                </Link>
-              )}
-            </div>
-          )
-        ) : (
-          <ul className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {page.products.map((product) => (
-              <li key={product.id}>
-                <Link
-                  className="group flex h-full flex-col rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  href={`/shop/products/${product.slug}`}
-                >
-                  {product.images[0] && (
-                    <div className="mb-3 aspect-[3/4] overflow-hidden rounded-xl bg-muted/30">
-                      <Image
-                        alt={product.images[0].altText}
-                        className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
-                        height={product.images[0].card.height}
-                        unoptimized
-                        src={product.images[0].card.src}
-                        width={product.images[0].card.width}
-                      />
-                    </div>
-                  )}
-                  <h2 className="text-base font-medium text-foreground group-hover:text-primary">
-                    {product.name}
+          <>
+            {resultsToolbar}
+            {showCategoryEmptyState ? (
+              <div className="mt-6 flex flex-col items-center gap-4 text-center">
+                <div className="space-y-2" role="status">
+                  <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                    No products in this category yet
                   </h2>
-                  {product.price && (
-                    <p className="mt-1 text-sm font-semibold text-foreground">
-                      From {formatCatalogPrice(product.price)}
+                  <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
+                    See what’s available across the full catalog.
+                  </p>
+                </div>
+                <Link className={buttonVariants({ size: "lg" })} href="/shop">
+                  Browse all products
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-6 flex flex-col items-center gap-4 px-4 py-8 text-center sm:py-10">
+                <div className="space-y-2" role="status">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    {hasActiveCriteria
+                      ? "No matching products"
+                      : "No products are available yet"}
+                  </h2>
+                  {hasActiveCriteria && (
+                    <p className="mx-auto max-w-md text-sm leading-6 text-muted-foreground">
+                      {query.search && hasActiveFilters
+                        ? "Try a different search or clear the search and filters."
+                        : query.search
+                          ? "Try a different search or clear it."
+                          : "Try adjusting or clearing the selected filters."}
                     </p>
                   )}
-                  <ProductLinkStatus />
-                </Link>
+                </div>
+                {query.search && (
+                  <Link
+                    className={buttonVariants({ variant: "outline" })}
+                    href={pathname}
+                  >
+                    Clear search{hasActiveFilters ? " and filters" : ""}
+                  </Link>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <CatalogProductGrid toolbar={resultsToolbar}>
+            {page.products.map((product) => (
+              <li key={product.id}>
+                <ProductCard product={product} />
               </li>
             ))}
-          </ul>
+          </CatalogProductGrid>
         )}
         {page && (
           <CatalogPagination

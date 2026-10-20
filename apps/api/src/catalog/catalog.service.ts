@@ -238,9 +238,11 @@ export class CatalogService {
         selectedRows.map(({ id }) => id),
       ),
     ]);
-    const imagesByProduct = await this.loadPublishedProductImages(
-      selectedRows.map(({ id }) => id),
-    );
+    const productIds = selectedRows.map(({ id }) => id);
+    const [imagesByProduct, variantSummariesByProduct] = await Promise.all([
+      this.loadPublishedProductImages(productIds),
+      this.loadPublishedProductVariantSummaries(productIds),
+    ]);
     const page = toProductPage(
       rows,
       query,
@@ -252,9 +254,48 @@ export class CatalogService {
       products: page.products.map((product) => ({
         ...product,
         images: imagesByProduct.get(product.id) ?? [],
+        priceVaries:
+          variantSummariesByProduct.get(product.id)?.priceVaries ?? false,
       })),
       filters: filterOptions,
     };
+  }
+
+  private async loadPublishedProductVariantSummaries(
+    productIds: string[],
+  ): Promise<Map<string, { priceVaries: boolean }>> {
+    const summariesByProduct = new Map<string, Set<number>>();
+    if (!productIds.length) return new Map();
+
+    const rows = await this.database.db
+      .select({
+        productId: catalogProductVariant.productId,
+        priceBdt: catalogProductVariant.priceBdt,
+      })
+      .from(catalogProductVariant)
+      .where(
+        and(
+          inArray(catalogProductVariant.productId, productIds),
+          eq(catalogProductVariant.isActive, true),
+          isNotNull(catalogProductVariant.priceBdt),
+        ),
+      );
+
+    for (const { productId, priceBdt } of rows) {
+      if (priceBdt === null) continue;
+      const prices = summariesByProduct.get(productId) ?? new Set<number>();
+      prices.add(priceBdt);
+      summariesByProduct.set(productId, prices);
+    }
+
+    return new Map(
+      [...summariesByProduct].map(([productId, prices]) => [
+        productId,
+        {
+          priceVaries: prices.size > 1,
+        },
+      ]),
+    );
   }
 
   private async loadPublishedProductImages(

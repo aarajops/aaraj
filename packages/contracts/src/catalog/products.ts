@@ -103,6 +103,14 @@ export type CatalogPublishedProduct = z.infer<
   typeof CatalogPublishedProductSchema
 >;
 
+export const CatalogPublishedProductListItemSchema =
+  CatalogPublishedProductSchema.extend({
+    priceVaries: z.boolean(),
+  });
+export type CatalogPublishedProductListItem = z.infer<
+  typeof CatalogPublishedProductListItemSchema
+>;
+
 export const CatalogProductDetailSchema = CatalogPublishedProductSchema.extend({
   variants: CatalogProductVariantSchema.array(),
   sizeGuide: CatalogSizeGuideSchema.nullable(),
@@ -293,7 +301,7 @@ export type CatalogProductFilterOptions = z.infer<
 >;
 
 export const CatalogPublishedProductPageSchema = z.strictObject({
-  products: CatalogPublishedProductSchema.array(),
+  products: CatalogPublishedProductListItemSchema.array(),
   hasMore: OffsetPaginationMetadataSchema.shape.hasMore,
   nextOffset: OffsetPaginationMetadataSchema.shape.nextOffset,
   filters: CatalogProductFilterOptionsSchema,

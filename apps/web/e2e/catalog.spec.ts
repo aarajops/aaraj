@@ -286,6 +286,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await storefrontSearch.getByRole("button", { name: "Search" }).click();
   await expect(page).toHaveURL(/\/shop\/categories\/t-shirts/);
   await expect(page).toHaveURL(/search=Aaraj\+E2E/);
+  await expect(page.getByText("From ৳1,999", { exact: true })).toBeVisible();
   await productFilters.getByRole("radio", { name: "Unisex" }).check();
   await expect(page).toHaveURL(/audience=unisex/);
   await productFilters.getByRole("checkbox", { name: "Black" }).check();

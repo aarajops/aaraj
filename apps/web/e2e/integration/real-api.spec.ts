@@ -736,7 +736,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await variantField(page, 1, "Price (BDT)").fill("2450");
   await page.getByRole("button", { name: "Add variant" }).click();
   await variantField(page, 2, "SKU").fill(skuMedium);
-  await variantField(page, 2, "Color").fill("Black");
+  await variantField(page, 2, "Color").fill("Red");
   await variantField(page, 2, "Size").fill("M");
   await variantField(page, 2, "Price (BDT)").fill("2490");
   await page.getByRole("button", { name: "Create draft" }).click();
@@ -791,7 +791,9 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(new URL(page.url()).searchParams.get("search")).toBe("100% cotton");
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
   await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
-
+  await expect(
+    page.getByRole("img", { name: `${productName}: image unavailable` }),
+  ).toBeVisible();
   const minimumPrice = productFilters.getByLabel("Minimum (৳)");
   await minimumPrice.fill("2450");
   await expect(page).toHaveURL(/minPriceBdt=2450/);
@@ -1425,7 +1427,7 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(publicProduct.variants).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ color: "Black", sizeLabel: "S" }),
-      expect.objectContaining({ color: "Black", sizeLabel: "M" }),
+      expect.objectContaining({ color: "Red", sizeLabel: "M" }),
     ]),
   );
   for (const variant of publicProduct.variants) {

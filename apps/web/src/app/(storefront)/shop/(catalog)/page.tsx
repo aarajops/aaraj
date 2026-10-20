@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import { permanentRedirect } from "next/navigation";
 import { CatalogCategorySlugSchema } from "@aaraj/contracts";
@@ -6,7 +5,6 @@ import {
   parsePublishedCatalogPageQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
-import { CatalogLoading } from "@/app/(storefront)/_components/catalog-loading";
 import { PublishedProductListing } from "@/app/(storefront)/_components/published-product-listing";
 import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
 
@@ -59,12 +57,10 @@ export default async function Products({
   }
 
   return (
-    <Suspense fallback={<CatalogLoading />}>
-      <PublishedProductListing
-        pathname="/shop"
-        searchParams={searchParams}
-        title="Products"
-      />
-    </Suspense>
+    <PublishedProductListing
+      pathname="/shop"
+      searchParams={searchParams}
+      title="Products"
+    />
   );
 }

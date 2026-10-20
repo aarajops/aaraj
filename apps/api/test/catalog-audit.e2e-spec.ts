@@ -829,6 +829,11 @@ describe("catalog and security audit", () => {
     const listedProbe = filterOptions.body.products.find(
       (product: { slug: string }) => product.slug === "variant-filter-probe",
     );
+    expect(listedProbe.priceVaries).toBe(true);
+    const singlePriceProduct = filterOptions.body.products.find(
+      (product: { slug: string }) => product.slug === "aaraj-draft-tee",
+    );
+    expect(singlePriceProduct.priceVaries).toBe(false);
     const probeDetail = await request(app.getHttpServer())
       .get("/api/v1/catalog/products/variant-filter-probe")
       .expect(200);

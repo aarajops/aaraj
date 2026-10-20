@@ -1179,10 +1179,18 @@ function sendPublishedProductPage(response, source, url) {
   const pageRows = rows.slice(0, query.limit);
   const candidateNextOffset = query.offset + pageRows.length;
   send(response, 200, {
-    products: pageRows.map((product) => ({
-      ...summary(product),
-      images: product.images ?? [],
-    })),
+    products: pageRows.map((product) => {
+      const purchasableVariants = product.variants.filter(
+        ({ isActive, price }) => isActive && price !== null,
+      );
+      return {
+        ...summary(product),
+        images: product.images ?? [],
+        priceVaries:
+          new Set(purchasableVariants.map(({ price }) => price.amountBdt))
+            .size > 1,
+      };
+    }),
     hasMore,
     nextOffset:
       hasMore && candidateNextOffset <= MAX_LIST_OFFSET

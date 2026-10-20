@@ -1,6 +1,4 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
-import { CatalogLoading } from "@/app/(storefront)/_components/catalog-loading";
 import { PublishedProductListing } from "@/app/(storefront)/_components/published-product-listing";
 import type { CatalogPageSearchParams } from "@/features/catalog/catalog-queries";
 import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
@@ -37,13 +35,11 @@ export default function NewArrivals({
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
   return (
-    <Suspense fallback={<CatalogLoading />}>
-      <PublishedProductListing
-        pathname="/shop/new"
-        searchParams={searchParams}
-        sort="newest"
-        title="New arrivals"
-      />
-    </Suspense>
+    <PublishedProductListing
+      pathname="/shop/new"
+      searchParams={searchParams}
+      sort="newest"
+      title="New arrivals"
+    />
   );
 }
