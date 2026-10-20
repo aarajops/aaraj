@@ -84,12 +84,14 @@ export class CatalogService {
 
   async findPurchasableVariants(
     variantIds: readonly string[],
+    options: { includeImages?: boolean } = {},
   ): Promise<CatalogCartVariant[]> {
     if (variantIds.length === 0) return [];
 
     const rows = await this.database.db
       .select({
         variantId: catalogProductVariant.id,
+        productId: catalogProduct.id,
         slug: catalogProduct.slug,
         name: catalogProduct.name,
         color: catalogProductVariant.color,
@@ -110,17 +112,31 @@ export class CatalogService {
         ),
       );
 
-    return rows.flatMap((row) =>
-      row.unitPriceBdt === null
-        ? []
-        : [
-            {
-              ...row,
-              unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
-              currency: "BDT" as const,
-            },
-          ],
-    );
+    const imagesByProduct = options.includeImages
+      ? await this.loadPublishedProductImages([
+          ...new Set(rows.map(({ productId }) => productId)),
+        ])
+      : new Map<string, CatalogProductDetailImage[]>();
+
+    return rows.flatMap((row) => {
+      if (row.unitPriceBdt === null) return [];
+      const productImages = imagesByProduct.get(row.productId) ?? [];
+      const image =
+        productImages.find(({ variantId }) => variantId === row.variantId) ??
+        productImages.find(({ variantId }) => variantId === null);
+      return [
+        {
+          variantId: row.variantId,
+          slug: row.slug,
+          name: row.name,
+          color: row.color,
+          sizeLabel: row.sizeLabel,
+          unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
+          currency: "BDT" as const,
+          image: image ? { ...image.card, altText: image.altText } : null,
+        },
+      ];
+    });
   }
 
   async listPublished(

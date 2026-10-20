@@ -254,6 +254,7 @@ export class OrdersService implements OrdersPathaoPort {
             deliverySnapshot: {
               tariffVersion: quote.delivery.tariffVersion,
               effectiveFrom: quote.delivery.effectiveFrom,
+              zone: quote.delivery.zone,
               geographyVersion: quote.destination.geographyVersion,
               divisionId: quote.destination.divisionId,
               districtId: quote.destination.districtId,
@@ -1160,7 +1161,7 @@ export class OrdersService implements OrdersPathaoPort {
     input: CheckoutAddressInput,
   ): Promise<NormalizedAddress> {
     const phone = normalizeBangladeshMobile(input.phone);
-    const destination = await this.geography.resolveDestination({
+    const destination = await this.geography.resolveStoredDestination({
       geographyVersion: input.geographyVersion,
       divisionId: input.divisionId,
       districtId: input.districtId,
@@ -1269,6 +1270,12 @@ export class OrdersService implements OrdersPathaoPort {
           .tariffVersion,
         effectiveFrom: (row.deliverySnapshot as { effectiveFrom: string })
           .effectiveFrom,
+        zone:
+          (
+            row.deliverySnapshot as {
+              zone?: "inside_dhaka" | "suburban" | "outside_dhaka" | null;
+            }
+          ).zone ?? null,
         grossAmountBdt: row.deliveryAmountBdt,
       },
       totalBdt: row.totalBdt,

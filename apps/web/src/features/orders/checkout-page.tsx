@@ -1,24 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import { Minus, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  MAX_CART_QUANTITY_PER_VARIANT,
   type AuthoritativeQuote,
-  type BangladeshGeography,
+  type Cart,
   CheckoutAddressInputSchema,
   type CreateOrderInput,
 } from "@aaraj/contracts";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { CartQuote } from "@/features/cart/cart-quote";
+import { useCartStore } from "@/features/cart/cart-provider";
 import { formatCatalogPrice } from "@/features/catalog/price";
-import {
-  fetchBangladeshGeography,
-  fetchCurrentQuote,
-} from "@/features/cart/quote-client";
 import {
   createCodOrder,
   OrderRequestError,
@@ -27,131 +33,123 @@ import {
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
-const checkoutAddressFormSchema = CheckoutAddressInputSchema.omit({
+const checkoutFormSchema = CheckoutAddressInputSchema.omit({
   geographyVersion: true,
   divisionId: true,
   districtId: true,
   upazilaId: true,
-})
-  .required()
-  .extend({ requestIdempotencyKey: z.uuid().optional() });
+  street: true,
+  house: true,
+  postalCode: true,
+  instructions: true,
+});
 
-type CheckoutAddressFormDraft = z.input<typeof checkoutAddressFormSchema>;
-type CheckoutAddressFormValues = z.output<typeof checkoutAddressFormSchema>;
+type CheckoutFormDraft = z.input<typeof checkoutFormSchema>;
+type CheckoutFormValues = z.output<typeof checkoutFormSchema>;
 
-const initialForm: CheckoutAddressFormDraft = {
+const initialForm: CheckoutFormDraft = {
   recipientName: "",
   phone: "",
   locality: "",
   doorstepDetails: "",
-  street: "",
-  house: "",
-  postalCode: "",
-  instructions: "",
 };
 
 export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
+  return <SinglePageCheckout initialQuoteId={quoteId} />;
+}
+
+function SinglePageCheckout({
+  initialQuoteId,
+}: {
+  initialQuoteId: string | null;
+}) {
   const router = useRouter();
+  const cart = useCartStore((state) => state.cart);
+  const ready = useCartStore((state) => state.isReady);
+  const cartLoading = useCartStore((state) => state.isLoading);
+  const cartError = useCartStore((state) => state.error);
+  const refreshCart = useCartStore((state) => state.refresh);
   const [quote, setQuote] = useState<AuthoritativeQuote | null>(null);
-  const [geography, setGeography] = useState<BangladeshGeography | null>(null);
-  const [loading, setLoading] = useState(Boolean(quoteId));
-  const [error, setError] = useState<string | null>(null);
+  const [quotePending, setQuotePending] = useState(Boolean(initialQuoteId));
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors, isSubmitting },
-  } = useForm<CheckoutAddressFormDraft, unknown, CheckoutAddressFormValues>({
-    resolver: zodResolver(checkoutAddressFormSchema),
+  } = useForm<CheckoutFormDraft, unknown, CheckoutFormValues>({
+    resolver: zodResolver(checkoutFormSchema),
     defaultValues: initialForm,
   });
 
-  useEffect(() => {
-    if (!quoteId) return;
-    let active = true;
-    const storageKey = `aaraj.checkout.idempotency:${quoteId}`;
-    let key: string;
-    try {
-      const storedKey = window.sessionStorage.getItem(storageKey);
-      key =
-        storedKey && /^[0-9a-f-]{36}$/i.test(storedKey)
-          ? storedKey
-          : crypto.randomUUID();
-      window.sessionStorage.setItem(storageKey, key);
-    } catch {
-      key = crypto.randomUUID();
-    }
-    setValue("requestIdempotencyKey", key, { shouldValidate: false });
+  const receiveCurrentQuote = useCallback((next: AuthoritativeQuote | null) => {
+    setQuote(next);
+    if (!next || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("quote") === next.id) return;
+    url.searchParams.set("quote", next.id);
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, []);
 
-    void resumeCodOrder(key)
-      .then((order) => {
-        if (active) router.replace(`/orders/${order.id}`);
-      })
-      .catch((reason: unknown) => {
-        if (!active) return;
-        if (
-          reason instanceof OrderRequestError &&
-          !["CHECKOUT_NOT_FOUND", "ORDER_NOT_FOUND"].includes(
-            reason.errorCode ?? "",
-          )
-        ) {
-          setError(reason.message);
-          setLoading(false);
-          return;
-        }
-        void Promise.all([
-          fetchCurrentQuote(quoteId),
-          fetchBangladeshGeography(),
-        ])
-          .then(([currentQuote, currentGeography]) => {
-            if (!active) return;
-            setQuote(currentQuote);
-            setGeography(currentGeography);
-          })
-          .catch((quoteError: unknown) => {
-            if (active) {
-              setError(
-                quoteError instanceof Error
-                  ? quoteError.message
-                  : "The quote could not be verified. Return to your cart for an updated quote.",
-              );
-            }
-          })
-          .finally(() => {
-            if (active) setLoading(false);
-          });
-      });
+  useEffect(() => {
+    if (!initialQuoteId) return;
+    let active = true;
+    const storageKey = `aaraj.checkout.idempotency:${initialQuoteId}`;
+    try {
+      const key = window.sessionStorage.getItem(storageKey);
+      if (!key) return;
+      void resumeCodOrder(key)
+        .then((order) => {
+          if (active) router.replace(`/orders/${order.id}`);
+        })
+        .catch((reason: unknown) => {
+          if (!active) return;
+          if (
+            reason instanceof OrderRequestError &&
+            ["CHECKOUT_NOT_FOUND", "ORDER_NOT_FOUND"].includes(
+              reason.errorCode ?? "",
+            )
+          ) {
+            return;
+          }
+          setCheckoutError(
+            reason instanceof Error
+              ? reason.message
+              : "The previous order attempt could not be checked.",
+          );
+        });
+    } catch {
+      return;
+    }
     return () => {
       active = false;
     };
-  }, [quoteId, router, setValue]);
+  }, [initialQuoteId, router]);
 
-  const division = geography?.locations.find(
-    ({ id }) => id === quote?.destination.divisionId,
-  );
-  const district = geography?.locations.find(
-    ({ id }) => id === quote?.destination.districtId,
-  );
-  const upazila = quote?.destination.upazilaId
-    ? geography?.locations.find(({ id }) => id === quote.destination.upazilaId)
-    : undefined;
-
-  async function submit(values: CheckoutAddressFormValues) {
-    const { requestIdempotencyKey, ...addressValues } = values;
-    if (!quote || !division || !district || !requestIdempotencyKey) return;
-    setError(null);
+  async function submit(values: CheckoutFormValues) {
+    if (!quote) {
+      setCheckoutError("Choose a delivery location to confirm the total.");
+      return;
+    }
+    const key = getOrCreateIdempotencyKey(quote.id);
+    if (!key) {
+      setCheckoutError("Checkout could not be prepared. Please try again.");
+      return;
+    }
+    setCheckoutError(null);
     const input: CreateOrderInput = {
       quoteId: quote.id,
       address: {
-        ...addressValues,
+        ...values,
         geographyVersion: quote.destination.geographyVersion,
-        divisionId: division.id,
-        districtId: district.id,
-        ...(upazila ? { upazilaId: upazila.id } : {}),
+        divisionId: quote.destination.divisionId,
+        districtId: quote.destination.districtId,
+        ...(quote.destination.upazilaId
+          ? { upazilaId: quote.destination.upazilaId }
+          : {}),
       },
     };
     try {
-      const order = await createCodOrder(input, requestIdempotencyKey);
+      const order = await createCodOrder(input, key);
       router.push(`/orders/${order.id}`);
     } catch (reason) {
       if (
@@ -161,7 +159,7 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
         )
       ) {
         try {
-          const existing = await resumeCodOrder(requestIdempotencyKey);
+          const existing = await resumeCodOrder(key);
           router.push(`/orders/${existing.id}`);
           return;
         } catch (resumeError) {
@@ -169,12 +167,12 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
             resumeError instanceof OrderRequestError &&
             resumeError.errorCode === "ORDER_ACCESS_UNAVAILABLE"
           ) {
-            setError(resumeError.message);
+            setCheckoutError(resumeError.message);
             return;
           }
         }
       }
-      setError(
+      setCheckoutError(
         reason instanceof OrderRequestError || reason instanceof Error
           ? reason.message
           : "The Order could not be placed. Retry with the same details.",
@@ -183,281 +181,403 @@ export function CheckoutPage({ quoteId }: { quoteId: string | null }) {
   }
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-12 text-foreground sm:py-16">
-      <div className="mx-auto max-w-3xl">
-        <Link
-          className="text-sm text-primary hover:text-primary/80"
-          href="/cart"
-        >
-          ← Back to cart
-        </Link>
-        <p className="mt-8 text-sm font-semibold tracking-[0.16em] text-primary">
-          AARAJ CHECKOUT
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Place your order
-        </h1>
+    <main className="bg-background px-5 py-8 text-foreground sm:py-12">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="text-3xl font-semibold tracking-tight">Checkout</h1>
+          <Link className="text-sm text-primary hover:underline" href="/shop">
+            Continue shopping
+          </Link>
+        </div>
 
-        {loading ? (
-          <p className="mt-8" role="status">
-            Checking your quote…
+        {cartError && (
+          <div
+            className="mt-6 flex flex-wrap items-center justify-between gap-3 border-y border-destructive/30 py-4 text-sm"
+            role="alert"
+          >
+            <p className="text-destructive">{cartError}</p>
+            <Button
+              disabled={cartLoading}
+              onClick={() => void refreshCart()}
+              variant="outline"
+            >
+              {cartLoading ? "Loading…" : "Retry"}
+            </Button>
+          </div>
+        )}
+
+        {!ready && !cartError && (
+          <p className="mt-8 text-sm text-muted-foreground" role="status">
+            Loading your cart…
           </p>
-        ) : !quote || !division || !district ? (
-          <section className="mt-7 rounded-2xl border border-border p-6">
-            <p role="alert">
-              {error ?? "A current quote is required before checkout."}
+        )}
+
+        {ready && cart.lines.length === 0 && (
+          <section className="mt-8 border-t border-border py-6">
+            <h2 className="font-semibold">Your cart is empty</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Add an item to continue to checkout.
             </p>
             <Link
-              className="mt-4 inline-block text-primary underline"
-              href="/cart"
+              className={buttonVariants({ className: "mt-5", size: "lg" })}
+              href="/shop"
             >
-              Return to cart and request a quote
+              Browse products
             </Link>
           </section>
-        ) : (
-          <>
-            <section
-              className="mt-6 rounded-2xl border border-border p-5 sm:p-7"
-              aria-label="Order summary"
-            >
-              <h2 className="text-xl font-semibold">Order summary</h2>
-              <ul className="mt-4 divide-y divide-border">
-                {quote.lines.map((line) => (
-                  <li
-                    className="flex justify-between gap-4 py-3"
-                    key={line.variantId}
-                  >
-                    <span>
-                      <span className="block font-medium">
-                        {line.productName}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {line.color} · {line.sizeLabel} · {line.quantity} ×{" "}
-                        {formatCatalogPrice({ amountBdt: line.unitPriceBdt })}
-                      </span>
-                    </span>
-                    <span className="shrink-0 font-medium">
-                      {formatCatalogPrice({ amountBdt: line.grossAmountBdt })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <dl className="mt-4 grid gap-2 border-t border-border pt-4 text-sm">
-                <MoneyRow
-                  label="Merchandise subtotal"
-                  amount={quote.merchandiseGrossBdt}
-                />
-                {quote.tax.mode !== "disabled" && (
-                  <MoneyRow
-                    label="Tax included in merchandise"
-                    amount={quote.tax.merchandise.taxAmountBdt}
-                  />
-                )}
-                {quote.tax.mode !== "disabled" &&
-                  quote.delivery.tax.taxAmountBdt > 0 && (
-                    <MoneyRow
-                      label="Tax included in delivery"
-                      amount={quote.delivery.tax.taxAmountBdt}
-                    />
-                  )}
-                <MoneyRow
-                  label="Delivery charge"
-                  amount={quote.delivery.grossAmountBdt}
-                />
-              </dl>
-              <div className="mt-4 flex justify-between border-t border-border pt-4 text-lg font-semibold">
-                <span>Total · COD due on delivery</span>
-                <span>{formatCatalogPrice({ amountBdt: quote.totalBdt })}</span>
-              </div>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Payment method: Cash on Delivery. No payment is collected now.
-                AARAJ will manually verify delivery serviceability before
-                confirming dispatch.
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Delivery destination:{" "}
-                {[division.name, district.name, upazila?.name]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </section>
+        )}
 
-            <form
-              className="mt-6 grid gap-4 rounded-2xl border border-border p-5 sm:p-7"
-              noValidate
-              onSubmit={handleSubmit(submit)}
-            >
-              <h2 className="text-xl font-semibold">Delivery address</h2>
-              <p className="text-sm text-muted-foreground">
-                Your address is encrypted in the Order record and shown only to
-                you and authorized staff.
-              </p>
-              {error && (
-                <p
-                  className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-                  role="alert"
-                >
-                  {error}
-                </p>
-              )}
-              <Field>
-                <FieldLabel htmlFor="checkout-recipient-name">
-                  Recipient name
-                </FieldLabel>
-                <Input
-                  id="checkout-recipient-name"
-                  autoComplete="name"
-                  maxLength={120}
-                  aria-invalid={Boolean(errors.recipientName)}
-                  aria-describedby={
-                    errors.recipientName
-                      ? "checkout-recipient-name-error"
-                      : undefined
-                  }
-                  {...register("recipientName")}
-                />
-                {errors.recipientName?.message && (
-                  <FieldError id="checkout-recipient-name-error">
-                    {errors.recipientName.message}
-                  </FieldError>
-                )}
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="checkout-phone">
-                  Bangladesh mobile number
-                </FieldLabel>
-                <Input
-                  id="checkout-phone"
-                  autoComplete="tel"
-                  inputMode="tel"
-                  maxLength={32}
-                  placeholder="01XXXXXXXXX or +8801XXXXXXXXX"
-                  aria-invalid={Boolean(errors.phone)}
-                  aria-describedby={
-                    errors.phone ? "checkout-phone-error" : undefined
-                  }
-                  {...register("phone")}
-                />
-                {errors.phone?.message && (
-                  <FieldError id="checkout-phone-error">
-                    {errors.phone.message}
-                  </FieldError>
-                )}
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="checkout-locality">
-                  Locality / area
-                </FieldLabel>
-                <Input
-                  id="checkout-locality"
-                  autoComplete="address-level3"
-                  maxLength={160}
-                  aria-invalid={Boolean(errors.locality)}
-                  aria-describedby={
-                    errors.locality ? "checkout-locality-error" : undefined
-                  }
-                  {...register("locality")}
-                />
-                {errors.locality?.message && (
-                  <FieldError id="checkout-locality-error">
-                    {errors.locality.message}
-                  </FieldError>
-                )}
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="checkout-doorstep-details">
-                  Doorstep delivery details
-                </FieldLabel>
-                <Textarea
-                  id="checkout-doorstep-details"
-                  autoComplete="street-address"
-                  maxLength={400}
-                  aria-invalid={Boolean(errors.doorstepDetails)}
-                  aria-describedby={
-                    errors.doorstepDetails
-                      ? "checkout-doorstep-details-error"
-                      : undefined
-                  }
-                  {...register("doorstepDetails")}
-                />
-                {errors.doorstepDetails?.message && (
-                  <FieldError id="checkout-doorstep-details-error">
-                    {errors.doorstepDetails.message}
-                  </FieldError>
-                )}
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {(
-                  [
-                    ["house", "House / building"],
-                    ["street", "Street"],
-                    ["postalCode", "Postal code"],
-                  ] as const
-                ).map(([name, label]) => {
-                  const fieldError = errors[name]?.message;
-                  const errorId = `checkout-${name}-error`;
-                  return (
-                    <Field key={name}>
-                      <FieldLabel htmlFor={`checkout-${name}`}>
-                        {label}
-                      </FieldLabel>
-                      <Input
-                        id={`checkout-${name}`}
-                        maxLength={
-                          name === "house" ? 120 : name === "street" ? 160 : 20
-                        }
-                        aria-invalid={Boolean(fieldError)}
-                        aria-describedby={fieldError ? errorId : undefined}
-                        {...register(name)}
-                      />
-                      {fieldError && (
-                        <FieldError id={errorId}>{fieldError}</FieldError>
-                      )}
-                    </Field>
-                  );
-                })}
-              </div>
-              <Field>
-                <FieldLabel htmlFor="checkout-instructions">
-                  Delivery instructions (optional)
-                </FieldLabel>
-                <Textarea
-                  id="checkout-instructions"
-                  maxLength={400}
-                  aria-invalid={Boolean(errors.instructions)}
-                  aria-describedby={
-                    errors.instructions
-                      ? "checkout-instructions-error"
-                      : undefined
-                  }
-                  {...register("instructions")}
-                />
-                {errors.instructions?.message && (
-                  <FieldError id="checkout-instructions-error">
-                    {errors.instructions.message}
-                  </FieldError>
-                )}
-              </Field>
-              <Button
-                className="mt-2 w-fit"
-                disabled={isSubmitting}
-                type="submit"
+        {ready && cart.lines.length > 0 && (
+          <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)] lg:gap-12">
+            <div className="grid content-start gap-8">
+              <CartQuote
+                cart={cart}
+                initialQuoteId={initialQuoteId}
+                mode="checkout"
+                onCurrentQuoteChange={receiveCurrentQuote}
+                onQuotePendingChange={setQuotePending}
+              />
+              <form
+                className="grid content-start gap-5"
+                id="checkout-address-form"
+                noValidate
+                onSubmit={handleSubmit(submit)}
               >
-                {isSubmitting ? "Placing COD order…" : "Place COD order"}
-              </Button>
-            </form>
-          </>
+                <div>
+                  <h2 className="text-xl font-semibold">Delivery details</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Required fields are marked *.
+                  </p>
+                </div>
+                {checkoutError && (
+                  <p
+                    className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                    role="alert"
+                  >
+                    {checkoutError}
+                  </p>
+                )}
+                <Field>
+                  <FieldLabel htmlFor="checkout-recipient-name">
+                    Recipient name
+                    <span aria-hidden="true" className="text-muted-foreground">
+                      {" "}
+                      *
+                    </span>
+                  </FieldLabel>
+                  <Input
+                    id="checkout-recipient-name"
+                    autoComplete="name"
+                    maxLength={120}
+                    required
+                    aria-invalid={Boolean(errors.recipientName)}
+                    aria-describedby={
+                      errors.recipientName
+                        ? "checkout-recipient-name-error"
+                        : undefined
+                    }
+                    {...register("recipientName")}
+                  />
+                  {errors.recipientName?.message && (
+                    <FieldError id="checkout-recipient-name-error">
+                      {errors.recipientName.message}
+                    </FieldError>
+                  )}
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="checkout-phone">
+                    Bangladesh mobile number
+                    <span aria-hidden="true" className="text-muted-foreground">
+                      {" "}
+                      *
+                    </span>
+                  </FieldLabel>
+                  <Input
+                    id="checkout-phone"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    maxLength={32}
+                    required
+                    aria-invalid={Boolean(errors.phone)}
+                    aria-describedby={`checkout-phone-description${
+                      errors.phone ? " checkout-phone-error" : ""
+                    }`}
+                    {...register("phone")}
+                  />
+                  <FieldDescription id="checkout-phone-description">
+                    Used by the courier to arrange delivery. Enter 01XXXXXXXXX
+                    or +8801XXXXXXXXX.
+                  </FieldDescription>
+                  {errors.phone?.message && (
+                    <FieldError id="checkout-phone-error">
+                      {errors.phone.message}
+                    </FieldError>
+                  )}
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="checkout-locality">
+                    Area / locality
+                    <span aria-hidden="true" className="text-muted-foreground">
+                      {" "}
+                      *
+                    </span>
+                  </FieldLabel>
+                  <Input
+                    id="checkout-locality"
+                    autoComplete="address-level3"
+                    maxLength={160}
+                    required
+                    aria-invalid={Boolean(errors.locality)}
+                    aria-describedby={
+                      errors.locality ? "checkout-locality-error" : undefined
+                    }
+                    {...register("locality")}
+                  />
+                  {errors.locality?.message && (
+                    <FieldError id="checkout-locality-error">
+                      {errors.locality.message}
+                    </FieldError>
+                  )}
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="checkout-doorstep-details">
+                    Street address and directions
+                    <span aria-hidden="true" className="text-muted-foreground">
+                      {" "}
+                      *
+                    </span>
+                  </FieldLabel>
+                  <Textarea
+                    id="checkout-doorstep-details"
+                    autoComplete="street-address"
+                    maxLength={400}
+                    required
+                    aria-invalid={Boolean(errors.doorstepDetails)}
+                    aria-describedby={`checkout-doorstep-details-description${
+                      errors.doorstepDetails
+                        ? " checkout-doorstep-details-error"
+                        : ""
+                    }`}
+                    {...register("doorstepDetails")}
+                  />
+                  <FieldDescription id="checkout-doorstep-details-description">
+                    Include your house or building, street, and a nearby
+                    landmark.
+                  </FieldDescription>
+                  {errors.doorstepDetails?.message && (
+                    <FieldError id="checkout-doorstep-details-error">
+                      {errors.doorstepDetails.message}
+                    </FieldError>
+                  )}
+                </Field>
+              </form>
+            </div>
+            <CheckoutOrderSummary
+              cart={cart}
+              isSubmitting={isSubmitting}
+              quotePending={quotePending}
+              quote={quote}
+            />
+          </div>
         )}
       </div>
     </main>
   );
 }
 
-function MoneyRow({ label, amount }: { label: string; amount: number }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd>{formatCatalogPrice({ amountBdt: amount })}</dd>
-    </div>
+function CheckoutOrderSummary({
+  cart,
+  isSubmitting,
+  quotePending,
+  quote,
+}: {
+  cart: Cart;
+  isSubmitting: boolean;
+  quotePending: boolean;
+  quote: AuthoritativeQuote | null;
+}) {
+  const isCartMutating = useCartStore((state) => state.isMutating);
+  const setCartLine = useCartStore((state) => state.setLine);
+  const removeCartLine = useCartStore((state) => state.removeLine);
+  const hasUnavailableLines = cart.lines.some(
+    (line) => line.availability === "unavailable",
   );
+  const subtotal =
+    quote?.merchandiseGrossBdt ??
+    cart.lines.reduce(
+      (total, line) => total + line.product.unitPriceBdt * line.quantity,
+      0,
+    );
+
+  return (
+    <aside
+      aria-label="Order summary"
+      className="border-t border-border pt-6 lg:sticky lg:top-6 lg:self-start lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0"
+    >
+      <h2 className="text-xl font-semibold">Order summary</h2>
+      <ul className="mt-4 divide-y divide-border">
+        {cart.lines.map((line) => {
+          const quotedLine = quote?.lines.find(
+            ({ variantId }) => variantId === line.variantId,
+          );
+          const productName = quotedLine?.productName ?? line.product.name;
+          const color = quotedLine?.color ?? line.product.color;
+          const sizeLabel = quotedLine?.sizeLabel ?? line.product.sizeLabel;
+
+          return (
+            <li
+              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-4 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
+              key={line.variantId}
+            >
+              <Button
+                aria-label={`Remove ${productName}, ${color}, ${sizeLabel}`}
+                className="row-span-2 text-muted-foreground sm:row-span-1"
+                disabled={isCartMutating || isSubmitting}
+                onClick={() => void removeCartLine(line.variantId)}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <X aria-hidden="true" />
+              </Button>
+              <div className="col-start-2 row-span-2 flex min-w-0 items-center gap-3 sm:row-span-1">
+                {line.image && (
+                  <Image
+                    alt={line.image.altText}
+                    className="size-16 shrink-0 rounded-md object-cover"
+                    height={line.image.height}
+                    sizes="4rem"
+                    src={line.image.src}
+                    unoptimized
+                    width={line.image.width}
+                  />
+                )}
+                <div className="min-w-0">
+                  <p className="font-medium">{productName}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {color} · {sizeLabel}
+                  </p>
+                  {line.availability === "unavailable" && (
+                    <p className="mt-1 text-sm text-destructive">
+                      No longer available
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div
+                aria-label={`Quantity for ${productName}, ${color}, ${sizeLabel}`}
+                className="col-start-3 row-start-2 inline-flex h-8 items-center justify-self-end rounded-lg border border-input px-0.5 sm:row-start-1"
+                role="group"
+              >
+                <Button
+                  aria-label={`Decrease quantity for ${productName}, ${color}, ${sizeLabel}`}
+                  disabled={
+                    isCartMutating ||
+                    isSubmitting ||
+                    line.availability === "unavailable" ||
+                    line.quantity <= 1
+                  }
+                  onClick={() =>
+                    void setCartLine(line.variantId, line.quantity - 1)
+                  }
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Minus aria-hidden="true" />
+                </Button>
+                <span
+                  aria-live="polite"
+                  className="min-w-7 text-center text-sm tabular-nums"
+                >
+                  {line.quantity}
+                </span>
+                <Button
+                  aria-label={`Increase quantity for ${productName}, ${color}, ${sizeLabel}`}
+                  disabled={
+                    isCartMutating ||
+                    isSubmitting ||
+                    line.availability === "unavailable" ||
+                    line.quantity >= MAX_CART_QUANTITY_PER_VARIANT
+                  }
+                  onClick={() =>
+                    void setCartLine(line.variantId, line.quantity + 1)
+                  }
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Plus aria-hidden="true" />
+                </Button>
+              </div>
+              <p className="col-start-3 row-start-1 shrink-0 text-right font-medium tabular-nums sm:col-start-4">
+                {formatCatalogPrice({
+                  amountBdt:
+                    quotedLine?.grossAmountBdt ??
+                    line.product.unitPriceBdt * line.quantity,
+                })}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+      <dl className="grid gap-3 border-t border-border pt-4 text-sm">
+        <div className="flex justify-between gap-4">
+          <dt className="text-muted-foreground">Subtotal</dt>
+          <dd>{formatCatalogPrice({ amountBdt: subtotal })}</dd>
+        </div>
+        <div className="flex justify-between gap-4">
+          <dt className="text-muted-foreground">Delivery</dt>
+          <dd>
+            {quote ? (
+              formatCatalogPrice({ amountBdt: quote.delivery.grossAmountBdt })
+            ) : (
+              <span className="text-muted-foreground">
+                {quotePending ? "Calculating…" : "Select location"}
+              </span>
+            )}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-4 border-t border-border pt-4 text-base font-semibold">
+          <dt>Total due on delivery</dt>
+          <dd aria-live="polite">
+            {quote
+              ? formatCatalogPrice({ amountBdt: quote.totalBdt })
+              : quotePending
+                ? "Calculating…"
+                : "—"}
+          </dd>
+        </div>
+      </dl>
+      {quote && quote.tax.mode !== "disabled" && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Applicable tax is included in the displayed prices.
+        </p>
+      )}
+      <Button
+        className="mt-5 w-full"
+        disabled={
+          !quote || isSubmitting || isCartMutating || hasUnavailableLines
+        }
+        form="checkout-address-form"
+        size="lg"
+        type="submit"
+      >
+        {isSubmitting ? "Placing COD order…" : "Place COD order"}
+      </Button>
+    </aside>
+  );
+}
+
+function getOrCreateIdempotencyKey(quoteId: string): string | null {
+  const storageKey = `aaraj.checkout.idempotency:${quoteId}`;
+  try {
+    const storedKey = window.sessionStorage.getItem(storageKey);
+    if (storedKey && /^[0-9a-f-]{36}$/i.test(storedKey)) return storedKey;
+    const key = crypto.randomUUID();
+    window.sessionStorage.setItem(storageKey, key);
+    return key;
+  } catch {
+    return crypto.randomUUID();
+  }
 }

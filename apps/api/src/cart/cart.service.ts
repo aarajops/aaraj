@@ -144,7 +144,10 @@ export class CartService {
   ): Promise<CartQuoteContext> {
     if (customerId) {
       return {
-        cart: await this.getCustomerCart(customerId),
+        cart: await this.toCart(
+          await this.getCustomerCartState(customerId),
+          false,
+        ),
         owner: { kind: "customer", customerId },
       };
     }
@@ -152,7 +155,7 @@ export class CartService {
     if (!id) return { cart: await this.toCart(EMPTY_CART), owner: null };
     const state = await this.readGuestState(id);
     return {
-      cart: await this.toCart(state ?? EMPTY_CART),
+      cart: await this.toCart(state ?? EMPTY_CART, false),
       owner: {
         kind: "guest",
         guestCartHash: createHash("sha256").update(id).digest("hex"),
@@ -772,22 +775,27 @@ export class CartService {
     return `${prefix}${id}`;
   }
 
-  private async toCart(state: CartStoredState): Promise<Cart> {
-    const available = new Set(
-      (
-        await this.catalog.findPurchasableVariants(
-          state.lines.map(({ variantId }) => variantId),
-        )
-      ).map(({ variantId }) => variantId),
+  private async toCart(
+    state: CartStoredState,
+    includeImages = true,
+  ): Promise<Cart> {
+    const variants = await this.catalog.findPurchasableVariants(
+      state.lines.map(({ variantId }) => variantId),
+      { includeImages },
+    );
+    const variantsById = new Map(
+      variants.map((variant) => [variant.variantId, variant]),
     );
     return CartSchema.parse({
       ...state,
-      lines: state.lines.map((line) => ({
-        ...line,
-        availability: available.has(line.variantId)
-          ? "available"
-          : "unavailable",
-      })),
+      lines: state.lines.map((line) => {
+        const variant = variantsById.get(line.variantId);
+        return {
+          ...line,
+          ...(variant?.image ? { image: variant.image } : {}),
+          availability: variant ? "available" : "unavailable",
+        };
+      }),
     });
   }
 }

@@ -47,7 +47,7 @@ export function AddToCart({ variantId }: { variantId: string | null }) {
       setIsBuyingNow(false);
       if (!added) return;
     }
-    router.push("/cart#delivery-and-order-total");
+    router.push("/checkout");
   }
 
   const selectedQuantity =

@@ -47,6 +47,7 @@ export const quoteSnapshot = quoteSchema.table(
     deliveryTariffEffectiveFrom: date("delivery_tariff_effective_from", {
       mode: "string",
     }).notNull(),
+    deliveryZone: text("delivery_zone"),
     deliveryAmountBdt: bigint("delivery_amount_bdt", {
       mode: "number",
     }).notNull(),
@@ -110,6 +111,10 @@ export const quoteSnapshot = quoteSchema.table(
     check(
       "snapshot_amount_check",
       sql`${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.totalTaxAmountBdt} between 0 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt}`,
+    ),
+    check(
+      "snapshot_delivery_zone_check",
+      sql`${table.deliveryZone} is null or ${table.deliveryZone} in ('inside_dhaka', 'suburban', 'outside_dhaka')`,
     ),
     check(
       "snapshot_expiry_check",

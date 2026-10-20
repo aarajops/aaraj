@@ -4,7 +4,7 @@ import { QuoteIdSchema } from "@aaraj/contracts";
 
 export const metadata: Metadata = {
   title: "Checkout",
-  description: "Review your Bangladesh delivery address and place a COD order.",
+  description: "Choose delivery and complete your Cash on Delivery order.",
   robots: { index: false, follow: false },
 };
 
@@ -19,5 +19,5 @@ export default async function StorefrontCheckoutPage({
     QuoteIdSchema.safeParse(params.quote).success
       ? params.quote
       : null;
-  return <CheckoutPage key={quoteId ?? "missing-quote"} quoteId={quoteId} />;
+  return <CheckoutPage quoteId={quoteId} />;
 }

@@ -245,7 +245,7 @@ export function CartSheet() {
                   className: "w-full",
                   size: "lg",
                 })}
-                href="/cart"
+                href="/checkout"
                 onNavigate={() => setOpen(false)}
               >
                 Checkout

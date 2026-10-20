@@ -68,9 +68,10 @@ export class QuoteService {
     }
 
     const destination = await this.geography.resolveDestination(input);
-    const tariff = await this.delivery.resolveDistrictFee(
+    const tariff = await this.delivery.resolveDeliveryFee(
       input.geographyVersion,
       destination.district.id,
+      destination.upazila?.id,
     );
     const taxState = await this.tax.getCurrentQuoteState();
     const variants = await this.catalog.findPurchasableVariants(
@@ -135,6 +136,7 @@ export class QuoteService {
         upazilaName: destination.upazila?.name ?? null,
         deliveryTariffVersion: tariff.version,
         deliveryTariffEffectiveFrom: tariff.effectiveFrom,
+        deliveryZone: tariff.zone,
         deliveryAmountBdt: tariff.feeBdt,
         taxProfileVersion: taxState.profile?.version ?? null,
         taxSourceReference: taxState.profile?.sourceReference ?? null,
@@ -204,13 +206,38 @@ export class QuoteService {
     if (!sameCatalogLines(row.lines, variants))
       return stale(row.id, "catalog_changed");
 
-    const [currentTariff, currentTaxState] = await Promise.all([
-      this.delivery.resolveDistrictFee(row.geographyVersion, row.districtId),
+    const [currentTariffVersion, currentTaxState] = await Promise.all([
+      this.delivery.getCurrentVersion(),
       this.tax.getCurrentQuoteState(),
     ]);
+    if (currentTariffVersion !== row.deliveryTariffVersion) {
+      return stale(row.id, "delivery_tariff_changed");
+    }
+
+    let currentTariff: Awaited<
+      ReturnType<DeliveryService["resolveDeliveryFee"]>
+    >;
+    try {
+      currentTariff = await this.delivery.resolveDeliveryFee(
+        row.geographyVersion,
+        row.districtId,
+        row.upazilaId ?? undefined,
+      );
+    } catch (error) {
+      if (
+        error instanceof UnprocessableEntityException &&
+        ["DELIVERY_UPAZILA_REQUIRED", "DELIVERY_UNAVAILABLE"].includes(
+          exceptionErrorCode(error) ?? "",
+        )
+      ) {
+        return stale(row.id, "delivery_tariff_changed");
+      }
+      throw error;
+    }
     if (
       currentTariff.version !== row.deliveryTariffVersion ||
       currentTariff.effectiveFrom !== row.deliveryTariffEffectiveFrom ||
+      currentTariff.zone !== row.deliveryZone ||
       currentTariff.feeBdt !== row.deliveryAmountBdt
     ) {
       return stale(row.id, "delivery_tariff_changed");
@@ -307,6 +334,7 @@ export class QuoteService {
       delivery: {
         tariffVersion: row.deliveryTariffVersion,
         effectiveFrom: row.deliveryTariffEffectiveFrom,
+        zone: row.deliveryZone as AuthoritativeQuote["delivery"]["zone"],
         grossAmountBdt: row.deliveryAmountBdt,
         tax: row.deliveryTaxSnapshot,
       },
@@ -454,6 +482,21 @@ function stale(
   reason: Extract<QuoteLookup, { status: "stale" }>["reason"],
 ): QuoteLookup {
   return QuoteLookupSchema.parse({ status: "stale", quoteId, reason });
+}
+
+function exceptionErrorCode(
+  error: UnprocessableEntityException,
+): string | null {
+  const response = error.getResponse();
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "errorCode" in response &&
+    typeof response.errorCode === "string"
+  ) {
+    return response.errorCode;
+  }
+  return null;
 }
 
 function quoteNotFound(): NotFoundException {

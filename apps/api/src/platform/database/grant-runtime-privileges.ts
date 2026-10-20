@@ -42,8 +42,9 @@ const runtimeTableGrants = [
   ["cart", "merge_receipt", ["SELECT", "INSERT"]],
   ["geography", "snapshot", ["SELECT"]],
   ["geography", "location", ["SELECT"]],
-  ["delivery", "tariff", ["SELECT"]],
+  ["delivery", "tariff", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
   ["delivery", "tariff_district", ["SELECT"]],
+  ["delivery", "tariff_area", ["SELECT", "INSERT", "DELETE"]],
   ["delivery", "pathao_api_token", ["SELECT", "INSERT", "UPDATE"]],
   ["delivery", "pathao_booking", ["SELECT", "INSERT", "UPDATE"]],
   ["delivery", "pathao_webhook_inbox", ["SELECT", "INSERT", "UPDATE"]],
@@ -398,6 +399,7 @@ async function main(): Promise<void> {
     await runtimePool.query(
       'SELECT 1 FROM "delivery"."tariff_district" LIMIT 0',
     );
+    await runtimePool.query('SELECT 1 FROM "delivery"."tariff_area" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "tax"."profile" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "tax"."configuration" LIMIT 0');
     await runtimePool.query(

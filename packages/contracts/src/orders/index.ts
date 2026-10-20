@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { QuoteIdSchema, type AuthoritativeQuote } from "../quote/index.js";
+import { DeliveryZoneSchema } from "../delivery/index.js";
 import {
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
@@ -159,6 +160,7 @@ export const OrderSchema = z.strictObject({
   delivery: z.strictObject({
     tariffVersion: z.string().min(1).max(80),
     effectiveFrom: z.iso.date(),
+    zone: DeliveryZoneSchema.nullable().default(null),
     grossAmountBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   }),
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),

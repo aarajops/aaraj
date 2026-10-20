@@ -61,6 +61,20 @@ export class GeographyService {
       );
     }
 
+    return this.resolveDestinationInSnapshot(input);
+  }
+
+  async resolveStoredDestination(input: QuoteDestinationRef) {
+    const [snapshot] = await this.database.db
+      .select({ version: geographySnapshot.version })
+      .from(geographySnapshot)
+      .where(eq(geographySnapshot.version, input.geographyVersion))
+      .limit(1);
+    if (!snapshot) throw geographyUnavailable();
+    return this.resolveDestinationInSnapshot(input);
+  }
+
+  private async resolveDestinationInSnapshot(input: QuoteDestinationRef) {
     const ids = [input.divisionId, input.districtId];
     if (input.upazilaId) ids.push(input.upazilaId);
     const rows = await this.database.db

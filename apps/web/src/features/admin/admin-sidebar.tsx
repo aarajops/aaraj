@@ -6,6 +6,7 @@ import type { Permission } from "@aaraj/contracts";
 import {
   Boxes,
   ClipboardList,
+  Truck,
   LayoutDashboard,
   Package,
   ReceiptText,
@@ -89,6 +90,12 @@ const settingsLinks = [
     label: "Tax",
     icon: ReceiptText,
     permission: "tax.manage",
+  },
+  {
+    href: "/admin/settings/delivery",
+    label: "Delivery rates",
+    icon: Truck,
+    permission: "delivery.tariff.manage",
   },
 ] as const;
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CatalogProductImageVariantSchema } from "../catalog/media.js";
 
 /** Approved AARAJ cart policy; these values are product decisions. */
 export const MAX_CART_LINES = 50;
@@ -19,10 +20,16 @@ export const CartProductSnapshotSchema = z.strictObject({
 });
 export type CartProductSnapshot = z.infer<typeof CartProductSnapshotSchema>;
 
+export const CartLineImageSchema = CatalogProductImageVariantSchema.extend({
+  altText: z.string().min(1).max(500),
+});
+export type CartLineImage = z.infer<typeof CartLineImageSchema>;
+
 export const CartLineSchema = z.strictObject({
   variantId: z.uuid(),
   quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
   availability: z.enum(["available", "unavailable"]),
+  image: CartLineImageSchema.nullable().optional(),
   product: CartProductSnapshotSchema,
 });
 export type CartLine = z.infer<typeof CartLineSchema>;

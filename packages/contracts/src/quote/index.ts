@@ -3,6 +3,7 @@ import {
   MAX_CART_LINES,
   MAX_CART_QUANTITY_PER_VARIANT,
 } from "../cart/index.js";
+import { DeliveryZoneSchema } from "../delivery/index.js";
 
 export const QUOTE_SCHEMA_VERSION = 1 as const;
 export const QUOTE_CURRENCY = "BDT" as const;
@@ -61,6 +62,7 @@ export const AuthoritativeQuoteSchema = z.strictObject({
   delivery: z.strictObject({
     tariffVersion: z.string().min(1).max(80),
     effectiveFrom: z.iso.date(),
+    zone: DeliveryZoneSchema.nullable().default(null),
     grossAmountBdt: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
     tax: QuoteTaxComponentSchema,
   }),

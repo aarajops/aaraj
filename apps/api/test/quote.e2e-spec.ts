@@ -15,6 +15,7 @@ import { configureApp } from "../src/configure-app.js";
 import { bangladeshBusinessDate } from "../src/delivery/delivery.service.js";
 import {
   deliveryTariff,
+  deliveryTariffArea,
   deliveryTariffDistrict,
 } from "../src/delivery/delivery-schema.js";
 import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
@@ -237,8 +238,20 @@ describe("authoritative Bangladesh quotes", () => {
       .set({ priceBdt: variantPrice, isActive: true })
       .where(eq(catalogProductVariant.id, variantId));
     await database.db
+      .delete(deliveryTariffArea)
+      .where(
+        eq(deliveryTariffArea.tariffVersion, "AARAJ_DELIVERY_2026_10_07_V1"),
+      );
+    await database.db
       .update(deliveryTariff)
-      .set({ effectiveFrom: "2026-10-07", effectiveTo: null })
+      .set({
+        effectiveFrom: "2026-10-07",
+        effectiveTo: null,
+        geographyVersion: null,
+        insideDhakaFeeBdt: null,
+        suburbanFeeBdt: null,
+        outsideDhakaFeeBdt: null,
+      })
       .where(eq(deliveryTariff.version, "AARAJ_DELIVERY_2026_10_07_V1"));
     await database.db
       .update(deliveryTariff)
@@ -388,6 +401,78 @@ describe("authoritative Bangladesh quotes", () => {
         ...quoteBody(dhakaDivision.id, dhaka.id, chattogramUpazila.id),
       })
       .expect(400);
+  });
+
+  it("only requires an upazila when its rate differs from the district default", async () => {
+    const upazilas = geography.locations.filter(
+      (location) =>
+        location.level === "upazila" && location.parentId === dhaka.id,
+    );
+    const upazila = upazilas[0];
+    if (!upazila) throw new Error("The Dhaka district requires upazilas.");
+
+    const tariffVersion = "AARAJ_DELIVERY_2026_10_07_V1";
+    await database.db
+      .update(deliveryTariff)
+      .set({
+        geographyVersion: geography.datasetVersion,
+        insideDhakaFeeBdt: 80,
+        suburbanFeeBdt: 110,
+        outsideDhakaFeeBdt: 130,
+      })
+      .where(eq(deliveryTariff.version, tariffVersion));
+    await database.db.insert(deliveryTariffArea).values([
+      {
+        tariffVersion,
+        geographyVersion: geography.datasetVersion,
+        locationId: dhaka.id,
+        zone: "inside_dhaka",
+      },
+      {
+        tariffVersion,
+        geographyVersion: geography.datasetVersion,
+        locationId: upazila.id,
+        zone: "inside_dhaka",
+      },
+    ]);
+
+    const guest = await newGuestCart();
+    const districtQuote = await createQuote(guest.cookie);
+    expect(districtQuote.body.delivery).toMatchObject({
+      zone: "inside_dhaka",
+      grossAmountBdt: 80,
+    });
+
+    await database.db
+      .update(deliveryTariffArea)
+      .set({ zone: "suburban" })
+      .where(
+        and(
+          eq(deliveryTariffArea.tariffVersion, tariffVersion),
+          eq(deliveryTariffArea.locationId, upazila.id),
+        ),
+      );
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/quotes`)
+      .set("Origin", origin)
+      .set("Cookie", guest.cookie)
+      .send(quoteBody())
+      .expect(422)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          errorCode: "DELIVERY_UPAZILA_REQUIRED",
+        }),
+      );
+
+    const upazilaQuote = await createQuote(
+      guest.cookie,
+      quoteBody(dhakaDivision.id, dhaka.id, upazila.id),
+    );
+    expect(upazilaQuote.body.delivery).toMatchObject({
+      zone: "suburban",
+      grossAmountBdt: 110,
+    });
   });
 
   it("keeps an unexpired V1 quote reproducible after V2 becomes active", async () => {

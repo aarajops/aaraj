@@ -1,45 +1,127 @@
 "use client";
 
-import { useEffect, useMemo, useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   type AuthoritativeQuote,
   type BangladeshGeography,
   type QuoteLookup,
 } from "@aaraj/contracts";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { formatCatalogPrice } from "@/features/catalog/price";
+import { useForm, useWatch } from "react-hook-form";
+import { z } from "zod";
 import {
   fetchBangladeshGeography,
+  fetchCurrentQuote,
   lookupQuote,
+  QuoteRequestError,
   requestQuote,
 } from "./quote-client";
 import type { Cart } from "@aaraj/contracts";
 
 type LookupState = QuoteLookup["status"] | "unchecked";
 
-export function CartQuote({ cart }: { cart: Cart }) {
+const quoteLocationFormSchema = z.object({
+  divisionId: z.string().min(1, "Choose a division."),
+  districtId: z.string().min(1, "Choose a district."),
+  upazilaId: z.string(),
+});
+
+type QuoteLocationFormValues = z.infer<typeof quoteLocationFormSchema>;
+
+export function CartQuote({
+  cart,
+  mode = "cart",
+  initialQuoteId = null,
+  onCurrentQuoteChange,
+  onQuotePendingChange,
+}: {
+  cart: Cart;
+  mode?: "cart" | "checkout";
+  initialQuoteId?: string | null;
+  onCurrentQuoteChange?: (quote: AuthoritativeQuote | null) => void;
+  onQuotePendingChange?: (pending: boolean) => void;
+}) {
+  const [bootstrapQuoteId] = useState(initialQuoteId);
   const [geography, setGeography] = useState<BangladeshGeography | null>(null);
-  const [divisionId, setDivisionId] = useState("");
-  const [districtId, setDistrictId] = useState("");
-  const [upazilaId, setUpazilaId] = useState("");
   const [quote, setQuote] = useState<AuthoritativeQuote | null>(null);
   const [lookupState, setLookupState] = useState<LookupState>("unchecked");
   const [loadingLocations, setLoadingLocations] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [loadingInitialQuote, setLoadingInitialQuote] = useState(
+    Boolean(bootstrapQuoteId),
+  );
+  const [quoting, setQuoting] = useState(false);
+  const automaticQuoteAttemptKey = useRef<string | null>(null);
   const [statusRefresh, setStatusRefresh] = useState(0);
   const [lastCheckedRefresh, setLastCheckedRefresh] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [upazilaRequiredForDistrict, setUpazilaRequiredForDistrict] = useState<
+    string | null
+  >(null);
+  const {
+    clearErrors,
+    control,
+    handleSubmit,
+    register,
+    setError: setFormError,
+    setValue,
+    formState: { errors: locationErrors, isSubmitting },
+  } = useForm<QuoteLocationFormValues>({
+    resolver: zodResolver(quoteLocationFormSchema),
+    defaultValues: { divisionId: "", districtId: "", upazilaId: "" },
+  });
+  const divisionId = useWatch({ control, name: "divisionId" });
+  const districtId = useWatch({ control, name: "districtId" });
+  const upazilaId = useWatch({ control, name: "upazilaId" });
+  const upazilaRequired =
+    Boolean(districtId) && upazilaRequiredForDistrict === districtId;
+  const divisionRegistration = register("divisionId");
+  const districtRegistration = register("districtId");
+  const upazilaRegistration = register("upazilaId");
 
   useEffect(() => {
     let active = true;
     void fetchBangladeshGeography()
       .then((data) => {
-        if (active) setGeography(data);
+        if (!active) return;
+        setGeography(data);
+        if (bootstrapQuoteId) {
+          void fetchCurrentQuote(bootstrapQuoteId)
+            .then((initialQuote) => {
+              if (!active) return;
+              setQuote(initialQuote);
+              setLookupState("current");
+              setValue("divisionId", initialQuote.destination.divisionId);
+              setValue("districtId", initialQuote.destination.districtId);
+              setValue("upazilaId", initialQuote.destination.upazilaId ?? "");
+              setStatusRefresh((value) => value + 1);
+            })
+            .catch((reason: unknown) => {
+              if (active) {
+                setError(
+                  reason instanceof Error
+                    ? reason.message
+                    : "The saved delivery total could not be verified. Choose your location again.",
+                );
+              }
+            })
+            .finally(() => {
+              if (active) setLoadingInitialQuote(false);
+            });
+        }
       })
       .catch((reason: unknown) => {
         if (active) {
           setLookupState("unchecked");
+          setLoadingInitialQuote(false);
           setError(
             reason instanceof Error
               ? reason.message
@@ -53,7 +135,7 @@ export function CartQuote({ cart }: { cart: Cart }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [bootstrapQuoteId, setValue]);
 
   const divisions = useMemo(
     () =>
@@ -94,6 +176,7 @@ export function CartQuote({ cart }: { cart: Cart }) {
       })
       .catch((reason: unknown) => {
         if (active) {
+          setLookupState("unchecked");
           setError(
             reason instanceof Error
               ? reason.message
@@ -131,31 +214,63 @@ export function CartQuote({ cart }: { cart: Cart }) {
     };
   }, [quote]);
 
-  async function submitQuote(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!geography || !divisionId || !districtId) return;
-    setSubmitting(true);
+  async function submitQuote(values: QuoteLocationFormValues) {
+    if (!geography) return;
+    if (upazilaRequired && !values.upazilaId) {
+      setFormError("upazilaId", {
+        type: "required",
+        message: "Choose an upazila to calculate delivery for this district.",
+      });
+      return;
+    }
+    setQuoting(true);
     setError(null);
     try {
       const next = await requestQuote({
         geographyVersion: geography.datasetVersion,
-        divisionId,
-        districtId,
-        ...(upazilaId ? { upazilaId } : {}),
+        divisionId: values.divisionId,
+        districtId: values.districtId,
+        ...(values.upazilaId ? { upazilaId: values.upazilaId } : {}),
       });
       setQuote(next);
       setLookupState("current");
+      if (!values.upazilaId) {
+        setUpazilaRequiredForDistrict((requiredDistrictId) =>
+          requiredDistrictId === values.districtId ? null : requiredDistrictId,
+        );
+      }
       setStatusRefresh((value) => value + 1);
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "The quote could not be created.",
+      setLookupState("unchecked");
+      handleQuoteFailure(
+        reason,
+        values.districtId,
+        "The quote could not be created.",
       );
     } finally {
-      setSubmitting(false);
+      setQuoting(false);
     }
   }
+
+  const handleQuoteFailure = useCallback(
+    (reason: unknown, forDistrictId: string, fallbackMessage: string) => {
+      if (
+        reason instanceof QuoteRequestError &&
+        reason.errorCode === "DELIVERY_UPAZILA_REQUIRED"
+      ) {
+        setUpazilaRequiredForDistrict(forDistrictId);
+        setFormError("upazilaId", {
+          type: "required",
+          message: "Choose an upazila to calculate delivery for this district.",
+        });
+        setQuote(null);
+        setError(null);
+        return;
+      }
+      setError(reason instanceof Error ? reason.message : fallbackMessage);
+    },
+    [setFormError],
+  );
 
   const destinationChanged = Boolean(
     quote &&
@@ -171,51 +286,176 @@ export function CartQuote({ cart }: { cart: Cart }) {
       : lookupState;
   const checking =
     Boolean(quote) &&
+    Boolean(divisionId && districtId) &&
     (statusRefresh !== lastCheckedRefresh ||
       (cart.revision !== quote?.cartRevision && lookupState === "current") ||
       (destinationChanged &&
         lookupState !== "stale" &&
         lookupState !== "expired"));
+  const isCurrent = Boolean(quote && quoteStatus === "current" && !checking);
+  const currentQuote = isCurrent ? quote : null;
+  const quotePending =
+    loadingInitialQuote || quoting || (Boolean(quote) && checking);
+  useEffect(() => {
+    if (isCurrent) automaticQuoteAttemptKey.current = null;
+  }, [isCurrent]);
+  useEffect(() => {
+    if (mode === "checkout") onCurrentQuoteChange?.(currentQuote);
+  }, [currentQuote, mode, onCurrentQuoteChange]);
+  useEffect(() => {
+    if (mode === "checkout") onQuotePendingChange?.(quotePending);
+  }, [mode, onQuotePendingChange, quotePending]);
 
-  return (
+  useEffect(() => {
+    if (mode !== "checkout" || !geography || !divisionId || !districtId) {
+      return;
+    }
+    const matchesCurrentQuote = Boolean(
+      quote &&
+      quote.cartRevision === cart.revision &&
+      quote.destination.geographyVersion === geography.datasetVersion &&
+      quote.destination.divisionId === divisionId &&
+      quote.destination.districtId === districtId &&
+      quote.destination.upazilaId === (upazilaId || null),
+    );
+    if (matchesCurrentQuote && lookupState === "current") return;
+    const attemptKey = JSON.stringify([
+      cart.revision,
+      geography.datasetVersion,
+      divisionId,
+      districtId,
+      upazilaId || "",
+    ]);
+    if (automaticQuoteAttemptKey.current === attemptKey) return;
+
+    automaticQuoteAttemptKey.current = attemptKey;
+    setQuoting(true);
+    let active = true;
+    void requestQuote({
+      geographyVersion: geography.datasetVersion,
+      divisionId,
+      districtId,
+      ...(upazilaId ? { upazilaId } : {}),
+    })
+      .then((next) => {
+        if (!active) return;
+        if (!upazilaId) {
+          setUpazilaRequiredForDistrict((requiredDistrictId) =>
+            requiredDistrictId === districtId ? null : requiredDistrictId,
+          );
+        }
+        setError(null);
+        setQuote(next);
+        setLookupState("current");
+        setStatusRefresh((value) => value + 1);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        setLookupState("unchecked");
+        handleQuoteFailure(
+          reason,
+          districtId,
+          "The delivery total could not be calculated.",
+        );
+      })
+      .finally(() => {
+        if (active) setQuoting(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    cart.revision,
+    districtId,
+    divisionId,
+    geography,
+    handleQuoteFailure,
+    lookupState,
+    mode,
+    quote,
+    upazilaId,
+  ]);
+  const hasUnavailableLines = cart.lines.some(
+    (line) => line.availability === "unavailable",
+  );
+
+  const deliveryLocation = (
     <section
-      aria-label="Delivery and quote"
-      className="mt-8 rounded-2xl border border-border p-5 sm:p-7"
+      aria-label={
+        mode === "checkout" ? "Delivery location" : "Delivery and quote"
+      }
+      className={
+        mode === "checkout"
+          ? "min-w-0"
+          : "mt-8 rounded-2xl border border-border p-5 sm:p-7"
+      }
       id="delivery-and-order-total"
     >
-      <h2 className="text-xl font-semibold">Delivery and order total</h2>
+      <h2 className="text-xl font-semibold">
+        {mode === "checkout" ? "Delivery location" : "Delivery and order total"}
+      </h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        Choose a Bangladesh delivery district. The server checks the destination
-        and calculates the current price. Recipient and full delivery-address
-        details will be collected during checkout.
+        {mode === "checkout"
+          ? "Choose your delivery location. The delivery charge and total update automatically."
+          : "Choose a Bangladesh delivery district. The server checks the destination and calculates the current price. Recipient and full delivery-address details will be collected during checkout."}
       </p>
-      {error && (
-        <p
-          className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {error}
+      {hasUnavailableLines && (
+        <p className="mt-4 text-sm text-destructive" role="status">
+          Remove unavailable items from your cart before continuing.
         </p>
       )}
-      {loadingLocations ? (
+      {error && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
+          <p className="text-destructive" role="alert">
+            {error}
+          </p>
+          {mode === "checkout" && divisionId && districtId && (
+            <Button
+              disabled={quoting || isSubmitting}
+              onClick={() => {
+                automaticQuoteAttemptKey.current = null;
+                void handleSubmit(submitQuote)();
+              }}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Retry
+            </Button>
+          )}
+        </div>
+      )}
+      {loadingLocations || loadingInitialQuote ? (
         <p className="mt-5" role="status">
           Loading delivery locations…
         </p>
       ) : geography ? (
         <form
           className="mt-5 grid gap-4 sm:grid-cols-2"
-          onSubmit={(event) => void submitQuote(event)}
+          noValidate
+          onSubmit={handleSubmit(submitQuote)}
         >
-          <label className="grid gap-2 text-sm font-medium">
-            Division
+          <Field>
+            <FieldLabel htmlFor="quote-division">Division</FieldLabel>
             <select
+              id="quote-division"
+              aria-invalid={Boolean(locationErrors.divisionId)}
+              aria-describedby={
+                locationErrors.divisionId ? "quote-division-error" : undefined
+              }
               className="h-10 rounded-lg border border-input bg-background px-3"
-              required
-              value={divisionId}
+              {...divisionRegistration}
               onChange={(event) => {
-                setDivisionId(event.currentTarget.value);
-                setDistrictId("");
-                setUpazilaId("");
+                void divisionRegistration.onChange(event);
+                setValue("districtId", "");
+                setValue("upazilaId", "");
+                setUpazilaRequiredForDistrict(null);
+                setQuote(null);
+                setLookupState("unchecked");
+                setQuoting(false);
+                setError(null);
+                automaticQuoteAttemptKey.current = null;
+                clearErrors(["districtId", "upazilaId"]);
               }}
             >
               <option value="">Choose division</option>
@@ -225,17 +465,33 @@ export function CartQuote({ cart }: { cart: Cart }) {
                 </option>
               ))}
             </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            District
+            {locationErrors.divisionId?.message && (
+              <FieldError id="quote-division-error">
+                {locationErrors.divisionId.message}
+              </FieldError>
+            )}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="quote-district">District</FieldLabel>
             <select
+              id="quote-district"
+              aria-invalid={Boolean(locationErrors.districtId)}
+              aria-describedby={
+                locationErrors.districtId ? "quote-district-error" : undefined
+              }
               className="h-10 rounded-lg border border-input bg-background px-3"
-              required
               disabled={!divisionId}
-              value={districtId}
+              {...districtRegistration}
               onChange={(event) => {
-                setDistrictId(event.currentTarget.value);
-                setUpazilaId("");
+                void districtRegistration.onChange(event);
+                setValue("upazilaId", "");
+                setUpazilaRequiredForDistrict(null);
+                setQuote(null);
+                setLookupState("unchecked");
+                setQuoting(Boolean(divisionId && event.currentTarget.value));
+                setError(null);
+                automaticQuoteAttemptKey.current = null;
+                clearErrors("upazilaId");
               }}
             >
               <option value="">Choose district</option>
@@ -245,39 +501,81 @@ export function CartQuote({ cart }: { cart: Cart }) {
                 </option>
               ))}
             </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Upazila (optional)
-            <select
-              className="h-10 rounded-lg border border-input bg-background px-3"
-              disabled={!districtId || upazilas.length === 0}
-              value={upazilaId}
-              onChange={(event) => setUpazilaId(event.currentTarget.value)}
-            >
-              <option value="">Choose upazila</option>
-              {upazilas.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="sm:col-span-2">
-            <Button
-              disabled={submitting || !divisionId || !districtId}
-              type="submit"
-            >
-              {submitting
-                ? "Calculating…"
-                : quoteStatus === "stale" || quoteStatus === "expired"
-                  ? "Request updated quote"
-                  : "Get delivery quote"}
-            </Button>
-          </div>
+            {locationErrors.districtId?.message && (
+              <FieldError id="quote-district-error">
+                {locationErrors.districtId.message}
+              </FieldError>
+            )}
+          </Field>
+          {districtId && upazilas.length > 0 && (
+            <Field>
+              <FieldLabel htmlFor="quote-upazila">
+                {upazilaRequired ? "Upazila *" : "Upazila (optional)"}
+              </FieldLabel>
+              <select
+                id="quote-upazila"
+                required={upazilaRequired}
+                aria-invalid={
+                  Boolean(locationErrors.upazilaId) ||
+                  (upazilaRequired && !upazilaId)
+                }
+                aria-describedby={
+                  [
+                    upazilaRequired ? "quote-upazila-description" : null,
+                    locationErrors.upazilaId ? "quote-upazila-error" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" ") || undefined
+                }
+                className="h-10 rounded-lg border border-input bg-background px-3"
+                {...upazilaRegistration}
+                onChange={(event) => {
+                  void upazilaRegistration.onChange(event);
+                  setQuote(null);
+                  setLookupState("unchecked");
+                  setQuoting(true);
+                  setError(null);
+                  clearErrors("upazilaId");
+                  automaticQuoteAttemptKey.current = null;
+                }}
+              >
+                <option value="">Choose upazila</option>
+                {upazilas.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+              {upazilaRequired && (
+                <FieldDescription id="quote-upazila-description">
+                  Choose an upazila to calculate delivery for this district.
+                </FieldDescription>
+              )}
+              {locationErrors.upazilaId?.message && (
+                <FieldError id="quote-upazila-error">
+                  {locationErrors.upazilaId.message}
+                </FieldError>
+              )}
+            </Field>
+          )}
+          {mode === "cart" && (
+            <div className="sm:col-span-2">
+              <Button
+                disabled={isSubmitting || hasUnavailableLines}
+                type="submit"
+              >
+                {isSubmitting
+                  ? "Calculating…"
+                  : quoteStatus === "stale" || quoteStatus === "expired"
+                    ? "Request updated quote"
+                    : "Get delivery quote"}
+              </Button>
+            </div>
+          )}
         </form>
       ) : null}
 
-      {quote && (
+      {quote && mode === "cart" && (
         <div
           aria-live="polite"
           className="mt-7 rounded-xl border border-border p-4"
@@ -303,7 +601,7 @@ export function CartQuote({ cart }: { cart: Cart }) {
             </p>
           ) : (
             <>
-              <h3 className="font-semibold">Current quote</h3>
+              <h3 className="font-semibold">Delivery quote</h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 {quote.destination.districtName}
                 {quote.destination.upazilaName
@@ -313,38 +611,28 @@ export function CartQuote({ cart }: { cart: Cart }) {
               </p>
               <dl className="mt-4 grid gap-2 text-sm">
                 <QuoteRow
-                  label="Merchandise (tax-inclusive)"
+                  label="Merchandise"
                   amount={quote.merchandiseGrossBdt}
                 />
                 <QuoteRow
-                  label={`Delivery · ${quote.delivery.tariffVersion}`}
+                  label="Delivery"
                   amount={quote.delivery.grossAmountBdt}
                 />
-                {quote.tax.mode !== "disabled" && (
-                  <QuoteRow
-                    label="Tax included in merchandise price"
-                    amount={quote.tax.merchandise.taxAmountBdt}
-                  />
-                )}
-                {quote.tax.mode !== "disabled" &&
-                  quote.delivery.tax.treatment === "taxable" && (
-                    <QuoteRow
-                      label="Tax included in delivery"
-                      amount={quote.delivery.tax.taxAmountBdt}
-                    />
-                  )}
               </dl>
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-base font-semibold">
                 <span>Total</span>
                 <span>{formatCatalogPrice({ amountBdt: quote.totalBdt })}</span>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                {quote.tax.mode === "disabled"
-                  ? "Tax calculation is off. No tax amount is added to this quote; delivery is shown separately. This quote is not an order and does not reserve stock."
-                  : "Tax amounts are accounted within the displayed tax-inclusive prices. This quote is not an order and does not reserve stock."}
-              </p>
+              {quote.tax.mode !== "disabled" && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Applicable tax is included in the displayed prices.
+                </p>
+              )}
               <Link
-                className="mt-5 inline-flex min-h-10 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                className={buttonVariants({
+                  className: "mt-5",
+                  size: "lg",
+                })}
                 href={`/checkout?quote=${encodeURIComponent(quote.id)}`}
               >
                 Continue to checkout
@@ -355,6 +643,8 @@ export function CartQuote({ cart }: { cart: Cart }) {
       )}
     </section>
   );
+
+  return deliveryLocation;
 }
 
 function QuoteRow({ label, amount }: { label: string; amount: number }) {
