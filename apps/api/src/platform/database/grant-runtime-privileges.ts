@@ -42,7 +42,7 @@ const runtimeTableGrants = [
   ["geography", "snapshot", ["SELECT"]],
   ["geography", "location", ["SELECT"]],
   ["delivery", "tariff", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
-  ["delivery", "tariff_district", ["SELECT"]],
+  ["delivery", "tariff_district", ["SELECT", "DELETE"]],
   ["delivery", "tariff_area", ["SELECT", "INSERT", "DELETE"]],
   ["delivery", "pathao_api_token", ["SELECT", "INSERT", "UPDATE"]],
   ["delivery", "pathao_booking", ["SELECT", "INSERT", "UPDATE"]],

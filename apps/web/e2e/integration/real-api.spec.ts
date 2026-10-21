@@ -80,7 +80,7 @@ test("real browser session reaches the API through Next and respects roles", asy
   await expect(page).toHaveURL(/\/$/);
 });
 
-test("superadmin manages a user and the promoted account enters the admin panel", async ({
+test("superadmin manages user access and repeatedly saves delivery tariffs", async ({
   page,
   browser,
 }) => {
@@ -233,6 +233,46 @@ test("superadmin manages a user and the promoted account enters the admin panel"
     ).toBeVisible();
     await promotedPage.goto("/admin");
     await expect(promotedPage).toHaveURL(/\/$/);
+
+    await page.goto("/admin/settings/delivery");
+    await expect(
+      page.getByRole("heading", { name: "Delivery rates", level: 1 }),
+    ).toBeVisible();
+    await page.getByLabel("Inside Dhaka (৳)").fill("80");
+    await page.getByLabel("Suburban (৳)").fill("110");
+    await page.getByLabel("Outside Dhaka (৳)").fill("130");
+    await chooseSelectOption(page, "Division", "ঢাকা বিভাগ");
+    await chooseSelectOption(page, "District", "ঢাকা জেলা");
+    await chooseSelectOption(page, "Zone", "Inside Dhaka");
+    await page.getByRole("button", { name: "Add area rule" }).click();
+    await page.getByLabel("Change reason").fill("Configure delivery rates");
+    const firstSave = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/delivery/manage") &&
+        response.request().method() === "PUT",
+    );
+    await page.getByRole("button", { name: "Save delivery rates" }).click();
+    expect((await firstSave).status()).toBe(200);
+    await expect(
+      page.getByText(
+        "Delivery rates updated. New quotes will use them immediately.",
+      ),
+    ).toBeVisible();
+
+    await page.getByLabel("Suburban (৳)").fill("111");
+    await page.getByLabel("Change reason").fill("Update delivery rates");
+    const secondSave = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/delivery/manage") &&
+        response.request().method() === "PUT",
+    );
+    await page.getByRole("button", { name: "Save delivery rates" }).click();
+    expect((await secondSave).status()).toBe(200);
+    await expect(
+      page.getByText(
+        "Delivery rates updated. New quotes will use them immediately.",
+      ),
+    ).toBeVisible();
   } finally {
     await promotedContext.close();
   }
