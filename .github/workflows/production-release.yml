@@ -3,6 +3,12 @@ name: AARAJ Production Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      confirm_destructive_migration:
+        description: Enter the exact main commit SHA approved for production migration.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -27,11 +33,21 @@ jobs:
 
       - name: Validate main deployment commit
         id: deployment
+        env:
+          CONFIRM_DESTRUCTIVE_MIGRATION: ${{ inputs.confirm_destructive_migration }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_EVENT_NAME" == push ]]
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$CONFIRM_DESTRUCTIVE_MIGRATION" == "$GITHUB_SHA" ]] || {
+              echo 'Manual production deployment requires confirming the exact commit SHA.' >&2
+              exit 1
+            }
+          elif [[ "$GITHUB_EVENT_NAME" != push ]]; then
+            echo 'Production deployment supports main pushes and confirmed maintenance dispatches only.' >&2
+            exit 1
+          fi
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
           baseline_tag="$(git tag --merged "$GITHUB_SHA" --list 'v[0-9]*' --sort=-version:refname \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
@@ -45,7 +61,7 @@ jobs:
           {
             echo '### Production deployment gate passed'
             echo
-            echo '- Source: `main` push'
+            echo "- Source: \`$GITHUB_EVENT_NAME\` on \`main\`"
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Release baseline: \`$baseline_tag\` (no new version tag is needed for this deployment)"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -127,7 +143,13 @@ jobs:
       needs.deployment-gate.result == 'success' &&
       needs.ci.result == 'success' &&
       needs.migration-policy.result == 'success' &&
-      needs.migration-policy.outputs.maintenance_required != 'true'
+      (
+        needs.migration-policy.outputs.maintenance_required != 'true' ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.confirm_destructive_migration == needs.deployment-gate.outputs.commit
+        )
+      )
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -249,6 +271,7 @@ jobs:
         env:
           RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
           MIGRATION_REQUIRED: ${{ needs.migration-policy.outputs.required }}
+          DEPLOYMENT_ACTOR: ${{ github.actor }}
           AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
           AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
           AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
@@ -267,6 +290,13 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'No migration files changed; the VPS migration runner will verify schema history and reconcile runtime grants before activation.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$MIGRATION_REQUIRED" == true ]]; then
+            {
+              echo
+              echo "Manual production migration confirmed for exact commit $RELEASE_COMMIT by $DEPLOYMENT_ACTOR."
+              echo 'This migration permanently removes the retired tax snapshots and tables. No verified database backup is configured.'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
           bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT"
 
