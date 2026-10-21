@@ -32,6 +32,12 @@ if (!/^[0-9a-f]{40}$/i.test(options.commit ?? "")) {
   throw new Error("--commit must be a full Git commit SHA.");
 }
 if (!options.output) throw new Error("--out-dir is required.");
+options.operation ??= "release";
+if (
+  !["release", "delivery-district-delete-grant"].includes(options.operation)
+) {
+  throw new Error("--operation must be a supported release operation.");
+}
 if (
   process.version !== `v${nodeVersion}` ||
   command("pnpm", ["--version"]) !== pnpmVersion
@@ -162,6 +168,7 @@ try {
     releaseTag: options.tag,
     commit: options.commit.toLowerCase(),
     dirty,
+    operation: options.operation,
     nodeVersion,
     pnpmVersion,
     lockfileSha256: sha256(
@@ -222,11 +229,16 @@ function parseArguments(args) {
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--allow-dirty") parsed.allowDirty = true;
-    else if (["--tag", "--commit", "--out-dir"].includes(argument)) {
+    else if (
+      ["--tag", "--commit", "--out-dir", "--operation"].includes(argument)
+    ) {
       parsed[
-        { "--tag": "tag", "--commit": "commit", "--out-dir": "output" }[
-          argument
-        ]
+        {
+          "--tag": "tag",
+          "--commit": "commit",
+          "--out-dir": "output",
+          "--operation": "operation",
+        }[argument]
       ] = args[++index];
     } else {
       throw new Error(`Unknown argument: ${argument}`);

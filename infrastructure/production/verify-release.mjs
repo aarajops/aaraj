@@ -47,6 +47,11 @@ try {
     (manifest.dirty !== false && !options.allowDirty) ||
     manifest.nodeVersion !== expectedNode ||
     manifest.pnpmVersion !== "12.5.1" ||
+    !["release", "delivery-district-delete-grant"].includes(
+      manifest.operation ?? "release",
+    ) ||
+    (options.operation &&
+      (manifest.operation ?? "release") !== options.operation) ||
     manifest.lockfileSha256 !==
       hash(await readFile(path.join(repository, "pnpm-lock.yaml"))) ||
     !/^v\d+\.\d+\.\d+$/.test(manifest.releaseTag) ||
@@ -86,11 +91,16 @@ function parseArguments(args) {
     const argument = args[index];
     if (argument === "--smoke") parsed.smoke = true;
     else if (argument === "--allow-dirty") parsed.allowDirty = true;
-    else if (["--archive", "--commit", "--tag"].includes(argument)) {
+    else if (
+      ["--archive", "--commit", "--tag", "--operation"].includes(argument)
+    ) {
       parsed[
-        { "--archive": "archive", "--commit": "commit", "--tag": "tag" }[
-          argument
-        ]
+        {
+          "--archive": "archive",
+          "--commit": "commit",
+          "--tag": "tag",
+          "--operation": "operation",
+        }[argument]
       ] = args[++index];
     } else throw new Error(`Unknown argument: ${argument}`);
   }

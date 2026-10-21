@@ -9,7 +9,7 @@ INCOMING="$SITE/incoming"
 MAX_ARCHIVE_BYTES=536870912
 
 usage() {
-  echo "Usage: aaraj-site-deploy.sh <stage|migrate|activate|rollback|restart> <commit-sha> [sha256]" >&2
+  echo "Usage: aaraj-site-deploy.sh <stage|migrate|grant-delivery-district-delete|activate|rollback|restart> <commit-sha> [sha256]" >&2
   exit 2
 }
 
@@ -21,7 +21,7 @@ digest="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
   stage) [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || usage ;;
-  migrate|activate|rollback|restart) [[ -z "$digest" ]] || usage ;;
+  migrate|grant-delivery-district-delete|activate|rollback|restart) [[ -z "$digest" ]] || usage ;;
   *) usage ;;
 esac
 
@@ -129,6 +129,7 @@ if (
   manifest.application !== "aaraj" ||
   manifest.commit !== process.argv[3] ||
   manifest.dirty !== false ||
+  !["release", "delivery-district-delete-grant"].includes(manifest.operation ?? "release") ||
   !/^v\d+\.\d+\.\d+$/.test(manifest.releaseTag) ||
   manifest.nodeVersion !== "24.20.0" ||
   manifest.pnpmVersion !== "12.5.1" ||
@@ -184,7 +185,7 @@ verify_release() {
   /usr/bin/node -e '
     const fs = require("node:fs");
     const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    if (manifest.application !== "aaraj" || manifest.commit !== process.argv[2] || manifest.dirty !== false) process.exit(1);
+    if (manifest.application !== "aaraj" || manifest.commit !== process.argv[2] || manifest.dirty !== false || !["release", "delivery-district-delete-grant"].includes(manifest.operation ?? "release")) process.exit(1);
   ' "$release/release-manifest.json" "$commit_sha" || return 1
   printf '%s\n' "$release"
 }
@@ -215,6 +216,11 @@ atomic_link() {
 activate_release() {
   local target old
   target="$(verify_release "$commit")"
+  /usr/bin/node - "$target/release-manifest.json" <<'NODE'
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+if ((manifest.operation ?? "release") !== "release") process.exit(1);
+NODE
   old="$(current_release_at "$RELEASES/current")"
   if [[ -n "$old" && "$old" != "$target" ]]; then
     verify_release "${old##*/}" >/dev/null
@@ -268,6 +274,9 @@ case "$operation" in
     rollback_release
     ;;
   migrate)
+    run_migration
+    ;;
+  grant-delivery-district-delete)
     run_migration
     ;;
   restart)

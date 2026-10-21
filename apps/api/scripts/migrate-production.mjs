@@ -18,10 +18,12 @@ if (process.env.NODE_ENV !== "production") {
 }
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const releaseSha = String(manifest.commit ?? "").toLowerCase();
+const operation = manifest.operation ?? "release";
 if (
   manifest.application !== "aaraj" ||
   !/^[0-9a-f]{40}$/.test(releaseSha) ||
   manifest.dirty !== false ||
+  !["release", "delivery-district-delete-grant"].includes(operation) ||
   (process.env.RELEASE_COMMIT_SHA &&
     process.env.RELEASE_COMMIT_SHA.toLowerCase() !== releaseSha)
 ) {
@@ -64,17 +66,24 @@ try {
     "aaraj:production:drizzle-migrations:v1",
   ]);
   const applied = await readAppliedHistory(lock, migrations);
-  await migrate(drizzle(pool), { migrationsFolder: migrationsDirectory });
-  const after = await readAppliedHistory(lock, migrations);
-  if (after.length !== migrations.length) {
-    throw new Error(
-      "Drizzle migration journal did not reach the staged release state.",
+  if (operation === "delivery-district-delete-grant") {
+    await grantDeliveryDistrictDelete(lock, runtimeUser);
+    process.stdout.write(
+      `Granted the delivery district delete privilege; no migrations were applied (${applied.length} already applied).\n`,
+    );
+  } else {
+    await migrate(drizzle(pool), { migrationsFolder: migrationsDirectory });
+    const after = await readAppliedHistory(lock, migrations);
+    if (after.length !== migrations.length) {
+      throw new Error(
+        "Drizzle migration journal did not reach the staged release state.",
+      );
+    }
+    await grantRuntimePrivileges(pool, database, runtimeUser);
+    process.stdout.write(
+      `Drizzle migrations are current for ${releaseSha}; ${after.length - applied.length} migration(s) applied and runtime grants reconciled.\n`,
     );
   }
-  await grantRuntimePrivileges(pool, database, runtimeUser);
-  process.stdout.write(
-    `Drizzle migrations are current for ${releaseSha}; ${after.length - applied.length} migration(s) applied and runtime grants reconciled.\n`,
-  );
 } finally {
   try {
     await lock.query("SELECT pg_advisory_unlock(hashtext($1))", [
@@ -83,6 +92,54 @@ try {
   } finally {
     lock.release();
     await pool.end();
+  }
+}
+
+async function grantDeliveryDistrictDelete(client, runtimeRole) {
+  const roleResult = await client.query(
+    `SELECT oid, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+       FROM pg_roles WHERE rolname = $1`,
+    [runtimeRole],
+  );
+  const role = roleResult.rows[0];
+  if (
+    !role ||
+    !role.rolcanlogin ||
+    role.rolsuper ||
+    role.rolcreatedb ||
+    role.rolcreaterole ||
+    role.rolreplication ||
+    role.rolbypassrls
+  ) {
+    throw new Error("The runtime PostgreSQL role is missing or elevated.");
+  }
+
+  const memberships = await client.query(
+    "SELECT 1 FROM pg_auth_members WHERE member = $1 LIMIT 1",
+    [role.oid],
+  );
+  if (memberships.rowCount) {
+    throw new Error(
+      "The runtime PostgreSQL role must not inherit other roles.",
+    );
+  }
+
+  const target = await client.query(
+    `SELECT to_regclass('"delivery"."tariff_district"') IS NOT NULL AS table_exists`,
+  );
+  if (!target.rows[0]?.table_exists) {
+    throw new Error("The delivery district tariff table does not exist.");
+  }
+
+  await client.query(
+    `GRANT DELETE ON TABLE "delivery"."tariff_district" TO ${quoteIdentifier(runtimeRole)}`,
+  );
+  const verified = await client.query(
+    `SELECT has_table_privilege($1, 'delivery.tariff_district', 'DELETE') AS granted`,
+    [runtimeRole],
+  );
+  if (!verified.rows[0]?.granted) {
+    throw new Error("The delivery district delete privilege was not applied.");
   }
 }
 
@@ -172,4 +229,8 @@ function required(name) {
   if (!value)
     throw new Error(`${name} must be configured for production migrations.`);
   return value;
+}
+
+function quoteIdentifier(value) {
+  return `"${value.replaceAll('"', '""')}"`;
 }

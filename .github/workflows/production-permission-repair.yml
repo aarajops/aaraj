@@ -1,0 +1,153 @@
+name: AARAJ Production Permission Repair
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aaraj-production
+  cancel-in-progress: false
+
+jobs:
+  deployment-gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.deployment.outputs.commit }}
+      tag: ${{ steps.deployment.outputs.tag }}
+    steps:
+      - name: Checkout deployment source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate main source and release baseline
+        id: deployment
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          release_tag="$(git tag --merged "$GITHUB_SHA" --list 'v[0-9]*' --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | head -n 1 || true)"
+          [[ -n "$release_tag" ]] || {
+            echo 'A stable release baseline tag is required.' >&2
+            exit 1
+          }
+          printf 'commit=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: deployment-gate
+    uses: ./.github/workflows/ci.yml
+
+  repair:
+    needs: [deployment-gate, ci]
+    if: needs.deployment-gate.result == 'success' && needs.ci.result == 'success'
+    runs-on: ubuntu-24.04
+    environment:
+      name: aaraj-production
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: aaraj_smoke
+          POSTGRES_USER: aaraj_smoke
+          POSTGRES_PASSWORD: aaraj_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aaraj_smoke -d aaraj_smoke"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - name: Checkout exact repair source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.deployment-gate.outputs.commit }}
+          persist-credentials: false
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Setup pnpm 12.5.1
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 12.5.1
+          run_install: false
+
+      - name: Verify toolchain and install frozen dependencies
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v$(cat .node-version)"
+          test "$(pnpm --version)" = "12.5.1"
+          pnpm install --frozen-lockfile
+
+      - name: Build targeted permission repair artifact
+        env:
+          DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          RELEASE_TAG: ${{ needs.deployment-gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node infrastructure/production/package-release.mjs \
+            --tag "$RELEASE_TAG" \
+            --commit "$DEPLOYMENT_COMMIT" \
+            --operation delivery-district-delete-grant \
+            --out-dir "$RUNNER_TEMP/aaraj-repair"
+
+      - name: Verify repair artifact and production application
+        env:
+          E2E_POSTGRES_HOST: 127.0.0.1
+          E2E_POSTGRES_PORT: 5432
+          E2E_POSTGRES_DATABASE: aaraj_smoke
+          E2E_POSTGRES_USER: aaraj_smoke
+          E2E_POSTGRES_PASSWORD: aaraj_smoke
+          E2E_REDIS_URL: redis://127.0.0.1:6379/14
+          DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          RELEASE_TAG: ${{ needs.deployment-gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node infrastructure/production/verify-release.mjs \
+            --archive "$RUNNER_TEMP/aaraj-repair/aaraj-release.tar.gz" \
+            --commit "$DEPLOYMENT_COMMIT" \
+            --tag "$RELEASE_TAG" \
+            --operation delivery-district-delete-grant \
+            --smoke
+
+      - name: Stage and grant only the delivery district delete privilege
+        env:
+          DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
+          AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
+          AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
+          AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
+          AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
+          AARAJ_PUBLIC_BASE_URL: ${{ vars.AARAJ_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          bash infrastructure/production/deploy-release.sh stage \
+            "$DEPLOYMENT_COMMIT" \
+            "$RUNNER_TEMP/aaraj-repair/aaraj-release.tar.gz"
+          bash infrastructure/production/deploy-release.sh grant-delivery-district-delete \
+            "$DEPLOYMENT_COMMIT"
+
+          [[ "$AARAJ_PUBLIC_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]
+          curl --fail --silent --show-error --max-time 10 \
+            "$AARAJ_PUBLIC_BASE_URL/api/health/ready" >/dev/null
+          echo 'The runtime role has DELETE on delivery.tariff_district; no schema migration or app activation was performed.' >> "$GITHUB_STEP_SUMMARY"

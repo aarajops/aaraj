@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: deploy-release.sh <stage|migrate|activate|rollback|restart|pathao-apply|pathao-restore|pathao-commit> <commit-sha> [archive]" >&2
+  echo "Usage: deploy-release.sh <stage|migrate|grant-delivery-district-delete|activate|rollback|restart|pathao-apply|pathao-restore|pathao-commit> <commit-sha> [archive]" >&2
   exit 2
 }
 
@@ -13,7 +13,7 @@ archive="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
   stage) [[ $# == 3 && -f "$archive" ]] || usage ;;
-  migrate|activate|rollback|restart|pathao-apply|pathao-restore|pathao-commit) [[ $# == 2 ]] || usage ;;
+  migrate|grant-delivery-district-delete|activate|rollback|restart|pathao-apply|pathao-restore|pathao-commit) [[ $# == 2 ]] || usage ;;
   *) usage ;;
 esac
 
