@@ -59,6 +59,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       required: ${{ steps.policy.outputs.required }}
+      maintenance_required: ${{ steps.policy.outputs.maintenance_required }}
     steps:
       - name: Checkout deployment history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,13 +93,24 @@ jobs:
               reason="Drizzle migration files changed since the latest stable release tag $previous."
             fi
           fi
+          maintenance_required=false
+          if [[ "$required" == true ]] && \
+            git diff --unified=0 "$migration_base" "$DEPLOYMENT_COMMIT" -- 'apps/api/drizzle/*.sql' \
+              | grep -Eiq '^\+[^+].*(DROP[[:space:]]+(TABLE|COLUMN|SCHEMA|TYPE)|TRUNCATE([[:space:]]|;)|DELETE[[:space:]]+FROM)'; then
+            maintenance_required=true
+          fi
           printf 'required=%s\n' "$required" >> "$GITHUB_OUTPUT"
+          printf 'maintenance_required=%s\n' "$maintenance_required" >> "$GITHUB_OUTPUT"
           {
             echo '### Migration review policy'
             echo
             echo "- $reason"
             echo '- Existing API CI runs fresh-schema and historical-upgrade migration compatibility tests.'
-            echo '- If migrations are required, review the migration diff and confirm a recent verified backup at the protected production approval.'
+            if [[ "$maintenance_required" == true ]]; then
+              echo '- Destructive SQL was detected. CI will complete, but automatic production deployment is held for a separately approved maintenance operation after a verified backup and restore drill.'
+            elif [[ "$required" == true ]]; then
+              echo '- Review the migration diff and confirm a recent verified backup before production migration.'
+            fi
             echo '- Migration execution remains isolated on the VPS under the separate migration role; production database credentials stay on the VPS.'
           } >> "$GITHUB_STEP_SUMMARY"
           {
@@ -114,7 +126,8 @@ jobs:
       always() &&
       needs.deployment-gate.result == 'success' &&
       needs.ci.result == 'success' &&
-      needs.migration-policy.result == 'success'
+      needs.migration-policy.result == 'success' &&
+      needs.migration-policy.outputs.maintenance_required != 'true'
     runs-on: ubuntu-24.04
     services:
       postgres:
