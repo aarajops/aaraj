@@ -92,6 +92,7 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
   it("starts every account as a customer and protects access routes from guests", async () => {
     await request(app.getHttpServer()).get("/api/v1/access/me").expect(401);
     await request(app.getHttpServer()).get("/api/v1/access/roles").expect(401);
+    await request(app.getHttpServer()).get("/api/v1/access/users").expect(401);
     await request(app.getHttpServer())
       .put(`/api/v1/access/users/${customer.id}/roles/admin`)
       .set("Origin", origin)
@@ -145,6 +146,70 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
       .get("/api/v1/access/roles")
       .set("Cookie", owner.cookie)
       .expect(200);
+  });
+
+  it("lists only safe user fields for superadmins with bounded search and pagination", async () => {
+    await change(owner, admin, "admin").expect(200);
+    await request(app.getHttpServer())
+      .get("/api/v1/access/users?limit=2")
+      .set("Cookie", owner.cookie)
+      .expect("Cache-Control", "no-store")
+      .expect(200)
+      .then(({ body }) => {
+        expect(body.users).toHaveLength(2);
+        expect(body.hasMore).toBe(true);
+        expect(body.nextOffset).toBe(2);
+        expect(body.users[0]).toEqual(
+          expect.objectContaining({
+            id: expect.any(String),
+            name: expect.any(String),
+            email: expect.any(String),
+            emailVerified: expect.any(Boolean),
+            createdAt: expect.any(String),
+            roles: expect.any(Array),
+          }),
+        );
+        expect(body.users[0]).not.toHaveProperty("password");
+        expect(body.users[0]).not.toHaveProperty("sessions");
+      });
+    await request(app.getHttpServer())
+      .get("/api/v1/access/users?search=customer%40example.com")
+      .set("Cookie", owner.cookie)
+      .expect(200)
+      .then(({ body }) => {
+        expect(body.users).toHaveLength(1);
+        expect(body.users[0]).toMatchObject({
+          id: customer.id,
+          email: customer.email,
+          roles: ["customer"],
+        });
+        expect(body.nextOffset).toBeNull();
+      });
+    for (const actor of [admin, staff, moderator, customer]) {
+      await request(app.getHttpServer())
+        .get("/api/v1/access/users")
+        .set("Cookie", actor.cookie)
+        .expect(403);
+    }
+    await request(app.getHttpServer())
+      .get("/api/v1/access/users?search=%25")
+      .set("Cookie", owner.cookie)
+      .expect(200)
+      .then(({ body }) => expect(body.users).toEqual([]));
+    await request(app.getHttpServer())
+      .get("/api/v1/access/users?limit=101")
+      .set("Cookie", owner.cookie)
+      .expect(400);
+    const listAudits = await database.db
+      .select()
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.actorId, owner.id),
+          eq(auditEvent.eventType, "access.users_listed"),
+        ),
+      );
+    expect(listAudits).toHaveLength(3);
   });
 
   it("assigns explicit role bundles without giving admins permission to manage roles", async () => {

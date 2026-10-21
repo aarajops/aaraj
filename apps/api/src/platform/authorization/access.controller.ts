@@ -6,6 +6,7 @@ import {
   Header,
   Param,
   Put,
+  Query,
   StandardSchemaValidationPipe,
   UseGuards,
   UsePipes,
@@ -15,8 +16,10 @@ import { ApiCookieAuth } from "@nestjs/swagger";
 import { Session, type UserSession } from "@thallesp/nestjs-better-auth";
 import {
   AccessUserIdSchema,
+  AccessUserListQuerySchema,
   AssignedRoleSchema,
   RoleChangeSchema,
+  type AccessUserListQuery,
   type AssignedRole,
   type RoleChangeInput,
 } from "@aaraj/contracts";
@@ -43,6 +46,15 @@ export class AccessController {
   @Can(AccessPolicy, "read")
   roles() {
     return accessCatalog();
+  }
+
+  @Get("users")
+  @Header("Cache-Control", "no-store")
+  listUsers(
+    @Session() session: UserSession,
+    @Query({ schema: AccessUserListQuerySchema }) query: AccessUserListQuery,
+  ) {
+    return this.access.listUsers(session.user, query);
   }
 
   @Get("users/:userId")

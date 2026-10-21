@@ -9,6 +9,9 @@ The core backend service for the **Aaraj** enterprise platform, built with **Nes
 * **Port**: Runs on port `3001` (configurable via `PORT` environment variable).
 * **Global Prefix**: All HTTP routes are served under `/api` (e.g. `http://localhost:3001/api`).
 * **Shared Contracts**: Validation DTOs and business schemas are consumed from `@aaraj/contracts`.
+* **Business boundaries**: Keep HTTP controllers, application providers, persistence schemas, and domain helpers inside the owning feature module. `app.module.ts` composes those modules; `platform/` contains cross-cutting infrastructure.
+* **Module APIs**: Export only providers or ports that another feature needs. Import the owning module to use those exports; avoid registering duplicate providers or reaching into another module's private implementation.
+* **HTTP boundary**: Controllers bind transport input and delegate application work to providers. Shared request and response schemas live in `@aaraj/contracts`; database rows and provider internals stay inside the API.
 * **Module System**: Pure ECMAScript Modules (`"type": "module"`). All relative imports require `.js` extensions.
 * **Testing**: Unit and End-to-End tests powered by **Vitest**.
 * **Linting & Formatting**: Enforced via **Oxlint** and **Prettier**.
@@ -91,7 +94,15 @@ pnpm --filter @aaraj/api build
 apps/api/
 ├── src/
 │   ├── auth/                    # Better Auth configuration and feature module
-│   ├── platform/                # Configuration, database, and Redis infrastructure
+│   ├── cart/                    # Cart business rules and persistence
+│   ├── catalog/                 # Catalog, categories, media, and size guides
+│   ├── delivery/                # Delivery tariffs and Pathao integration
+│   ├── geography/               # Bangladesh location data
+│   ├── inventory/               # Stock and reservation use cases
+│   ├── orders/                  # Checkout, order lifecycle, and management
+│   ├── platform/                # Cross-cutting authorization, audit, database, and infrastructure
+│   ├── quote/                   # Authoritative cart and delivery quotes
+│   ├── storefront/              # Public settings, banners, and brand assets
 │   ├── app.controller.spec.ts   # Health and readiness unit tests
 │   ├── app.controller.ts        # Health and readiness routes
 │   ├── app.module.ts            # Root application module

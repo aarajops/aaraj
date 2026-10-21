@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { API_V1_BASE_PATH, EffectiveAccessSchema } from "@aaraj/contracts";
+import { EffectiveAccessSchema } from "@aaraj/contracts";
+import { fetchEffectiveAccess } from "@/features/access/access-client";
 import { authClient } from "@/features/auth/auth-client";
 import type { InitialSession } from "@/features/auth/auth-session";
 import { Button } from "@/components/ui/button";
@@ -137,25 +138,26 @@ export function AuthPanel({
 
         let destination = "/";
         try {
-          const response = await fetch(`${API_V1_BASE_PATH}/access/me`, {
-            cache: "no-store",
-          });
+          const response = await fetchEffectiveAccess();
           if (response.ok) {
             const access = EffectiveAccessSchema.safeParse(
               await response.json(),
             );
-            if (
-              access.success &&
-              access.data.permissions.includes("catalog.manage")
-            ) {
-              destination = "/admin";
+            if (access.success) {
+              if (access.data.permissions.includes("catalog.manage")) {
+                destination = "/admin";
+              }
             }
           }
         } catch {
           // If access cannot be confirmed, keep navigation on the public storefront.
         }
 
-        router.replace(cartDestination ?? destination);
+        router.replace(
+          destination === "/admin"
+            ? destination
+            : (cartDestination ?? destination),
+        );
       }
     } catch {
       setErrorMessage(
@@ -325,9 +327,12 @@ export function AuthPanel({
         ) : session?.user ? (
           <div className="space-y-5">
             <div className="rounded-xl border border-border bg-background p-4">
-              <p className="font-medium">Signed in as {session.user.name}</p>
+              <p className="font-medium">Signed in</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {session.user.email}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Profile name: {session.user.name}
               </p>
             </div>
             <Button

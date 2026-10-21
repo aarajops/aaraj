@@ -10,8 +10,6 @@ import {
 } from "react-hook-form";
 import { z } from "zod";
 import {
-  API_V1_BASE_PATH,
-  ApiErrorResponseSchema,
   BangladeshGeographySchema,
   DeliveryAreaRuleSchema,
   DeliveryTariffManagementSchema,
@@ -30,7 +28,13 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
+import { getApiErrorMessage } from "@/lib/api-error";
+import {
+  fetchDeliveryGeography,
+  fetchManagedDeliveryTariff,
+  updateManagedDeliveryTariff,
+} from "@/features/delivery/delivery-client";
 import {
   Select,
   SelectContent,
@@ -138,28 +142,22 @@ export function DeliveryTariffManager() {
   useEffect(() => {
     let active = true;
     void Promise.all([
-      fetch(`${API_V1_BASE_PATH}/delivery/manage`, {
-        cache: "no-store",
-        credentials: "same-origin",
-      }).then(async (response) => {
+      fetchManagedDeliveryTariff().then(async (response) => {
         const body: unknown = await response.json().catch(() => null);
         if (!response.ok)
           throw new Error(
-            responseMessage(body, "Delivery rates could not be loaded."),
+            getApiErrorMessage(body, "Delivery rates could not be loaded."),
           );
         const result = DeliveryTariffManagementSchema.safeParse(body);
         if (!result.success)
           throw new Error("The server returned invalid delivery settings.");
         return result.data;
       }),
-      fetch(`${API_V1_BASE_PATH}/geography`, {
-        cache: "no-store",
-        credentials: "same-origin",
-      }).then(async (response) => {
+      fetchDeliveryGeography().then(async (response) => {
         const body: unknown = await response.json().catch(() => null);
         if (!response.ok)
           throw new Error(
-            responseMessage(body, "Delivery areas could not be loaded."),
+            getApiErrorMessage(body, "Delivery areas could not be loaded."),
           );
         const result = BangladeshGeographySchema.safeParse(body);
         if (!result.success)
@@ -205,17 +203,11 @@ export function DeliveryTariffManager() {
     try {
       const input: DeliveryTariffUpdate =
         DeliveryTariffUpdateSchema.parse(values);
-      const response = await fetch(`${API_V1_BASE_PATH}/delivery/manage`, {
-        method: "PUT",
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
+      const response = await updateManagedDeliveryTariff(input);
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok)
         throw new Error(
-          responseMessage(body, "The delivery tariff could not be saved."),
+          getApiErrorMessage(body, "The delivery tariff could not be saved."),
         );
       const result = DeliveryTariffManagementSchema.safeParse(body);
       if (!result.success)
@@ -675,14 +667,6 @@ function zoneFeeLabel(
         : fees?.outsideDhakaBdt;
   const parsedFee = feeInputSchema.safeParse(value);
   return parsedFee.success
-    ? formatCatalogPrice({ amountBdt: parsedFee.data })
+    ? formatBdtPrice({ amountBdt: parsedFee.data })
     : "Rate not set";
-}
-
-function responseMessage(body: unknown, fallback: string): string {
-  const result = ApiErrorResponseSchema.safeParse(body);
-  if (!result.success) return fallback;
-  return Array.isArray(result.data.message)
-    ? result.data.message.join(" ")
-    : result.data.message;
 }

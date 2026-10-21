@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Order } from "@aaraj/contracts";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
+import { formatDateTime } from "@/lib/date-time";
 import { fetchOrder, OrderRequestError } from "./orders-client";
 import { getPathaoCustomerTracking } from "./pathao-client";
 import type { PathaoCustomerTracking } from "@aaraj/contracts";
@@ -86,7 +87,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
               {order.status === "cancelled"
                 ? "Your Order was automatically cancelled because delivery serviceability was not reviewed by its deadline. Its stock reservation was released. Nothing is payable."
                 : order.fulfillmentStatus === "dispatched" && order.dispatch
-                  ? `Your Order was handed to ${order.dispatch.deliveryOperator} on ${formatDate(order.dispatch.dispatchedAt)}. It remains Cash on Delivery and has not been marked delivered or paid.`
+                  ? `Your Order was handed to ${order.dispatch.deliveryOperator} on ${formatDateTime(order.dispatch.dispatchedAt)}. It remains Cash on Delivery and has not been marked delivered or paid.`
                   : order.serviceability === "pending_manual_review"
                     ? "Your Order is received and awaiting manual delivery serviceability review. It is not yet confirmed for dispatch. If it is still awaiting review after 7 days, it will be cancelled and its stock reservation released."
                     : order.serviceability === "serviceable"
@@ -104,12 +105,12 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                 value={
                   order.status === "cancelled" || order.status === "rejected"
                     ? "Not payable; Order closed"
-                    : formatCatalogPrice({ amountBdt: order.codAmountDueBdt })
+                    : formatBdtPrice({ amountBdt: order.codAmountDueBdt })
                 }
               />
               <DataRow
                 label="Order total"
-                value={formatCatalogPrice({ amountBdt: order.totalBdt })}
+                value={formatBdtPrice({ amountBdt: order.totalBdt })}
               />
             </dl>
             {order.fulfillmentStatus === "dispatched" && order.dispatch && (
@@ -131,7 +132,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                   )}
                   <DataRow
                     label="Handed over"
-                    value={formatDate(order.dispatch.dispatchedAt)}
+                    value={formatDateTime(order.dispatch.dispatchedAt)}
                   />
                   <DataRow label="Delivery status" value="Dispatched" />
                 </dl>
@@ -154,7 +155,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                   />
                   <DataRow
                     label="COD due"
-                    value={formatCatalogPrice({
+                    value={formatBdtPrice({
                       amountBdt: order.codAmountDueBdt,
                     })}
                   />
@@ -172,7 +173,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                         key={`${observation.event}-${observation.receivedAt}`}
                       >
                         {humanizeTracking(observation.event)} · verified{" "}
-                        {formatDate(observation.receivedAt)}
+                        {formatDateTime(observation.receivedAt)}
                       </li>
                     ))}
                   </ol>
@@ -188,7 +189,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
             {order.cancellationReason === "serviceability_review_timeout" &&
               order.cancelledAt && (
                 <p className="mt-4 text-sm text-muted-foreground">
-                  Cancelled on {formatDate(order.cancelledAt)} because the
+                  Cancelled on {formatDateTime(order.cancelledAt)} because the
                   delivery review deadline passed.
                 </p>
               )}
@@ -204,7 +205,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                     {line.quantity}
                   </span>
                   <span>
-                    {formatCatalogPrice({ amountBdt: line.grossAmountBdt })}
+                    {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
                   </span>
                 </li>
               ))}
@@ -237,7 +238,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
             {order.guestAccessExpiresAt && (
               <p className="mt-6 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
                 Guest tracking is available in this browser until{" "}
-                {formatDate(order.guestAccessExpiresAt)}. Clearing browser
+                {formatDateTime(order.guestAccessExpiresAt)}. Clearing browser
                 cookies or using another device may remove access. Lost or
                 expired access cannot be restored automatically.
               </p>
@@ -262,14 +263,6 @@ function DataRow({ label, value }: { label: string; value: string }) {
       <dd>{value}</dd>
     </div>
   );
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("en-BD", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Dhaka",
-  }).format(new Date(value));
 }
 
 function humanizeTracking(value: string): string {

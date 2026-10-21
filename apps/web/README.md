@@ -11,20 +11,27 @@ src/                         Application source code
     (storefront)/            Public home, product, and account routes
     _components/             App-wide route-independent components
   components/ui/             shadcn/ui components used by the app
+  components/admin/          Shared admin list composition
+  features/access/           Staff access management and access API clients
   features/auth/             Sign-in UI, Better Auth client, server session read
   features/catalog/          Catalog UI, server queries, browser API client
+  features/delivery/         Delivery configuration and browser API client
   features/inventory/        Staff on-hand stock management
+  features/orders/           Checkout, order management, and browser API clients
+  features/storefront/       Public storefront and storefront administration
   lib/                       Shared application utilities
 e2e/                         Playwright storefront workflow and test API
 ```
 
 - Keep `src/app/**/page.tsx` focused on route behavior and composing feature code.
 - Parenthesized `(storefront)` and `(admin)` groups are omitted from URLs; `/admin` remains a real URL segment.
-- Route groups do not enforce authorization. Admin pages and Nest API operations enforce their specific catalog permissions, including staff access where granted.
-- Keep auth and catalog implementation in their feature folders; only create shared code when more than one feature needs it.
-- `components/ui/data-table.tsx` owns shared table rendering; each feature owns its typed columns, row actions, query state, and pagination controls.
+- Route groups do not enforce authorization. Admin pages and Nest API operations enforce the permissions for each business domain, including staff access where granted.
+- Keep business UI, server queries, and browser API clients with their owning feature. Keep sign-in in `features/auth`, role management in `features/access`, storefront configuration in `features/storefront/admin`, and delivery configuration in `features/delivery/admin`.
+- Put cross-feature formatters and application utilities in `lib/`; do not make a consumer feature such as catalog own formatting used by cart, orders, delivery, and storefront.
+- `components/ui/data-table.tsx` owns table rendering. `components/admin/admin-data-table.tsx` composes that renderer with shared admin search, filters, refresh, and URL pagination controls. Each feature owns its typed columns, route query parsing, API data, and row actions.
+- Keep browser HTTP request construction in feature-local `*-client.ts` modules and server-side API reads in feature-local `*-queries.ts` modules. UI components own interaction state and call those modules.
 - Keep large admin lists server-paginated. Do not sort or filter one loaded page as though it represented the full collection; use the API and route search parameters for collection-wide operations.
-- Keep API contracts in `@aaraj/contracts`. Server reads use `server-only`; browser auth and catalog API modules use `client-only`.
+- Keep API contracts in `@aaraj/contracts`. Feature server reads use `server-only`; browser API clients use `client-only`.
 - The per-request nonce CSP requires request-time rendering so Next.js can attach the matching nonce to generated scripts. Keep the root `connection()` call aligned with `src/proxy.ts`.
 - Send catalog mutations through the same-origin `/api` route. The Nest API enforces permissions and writes audit events; UI visibility is not an access-control check.
 - Preserve the current URLs unless a product or routing requirement calls for a change.

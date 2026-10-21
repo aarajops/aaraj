@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AddToCart } from "@/features/cart/add-to-cart";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
 import { catalogMeasurementLabels } from "@/features/catalog/size-guide-labels";
 import { CircleHelp } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -69,11 +69,11 @@ export function ProductPurchase({
     ...new Set(matchingVariants.map(({ price }) => price.amountBdt)),
   ].sort((left, right) => left - right);
   const priceLabel = selectedVariant
-    ? formatCatalogPrice(selectedVariant.price)
+    ? formatBdtPrice(selectedVariant.price)
     : prices.length === 1
-      ? formatCatalogPrice({ amountBdt: prices[0]! })
+      ? formatBdtPrice({ amountBdt: prices[0]! })
       : prices.length > 1
-        ? `${formatCatalogPrice({ amountBdt: prices[0]! })}–${formatCatalogPrice({ amountBdt: prices.at(-1)! })}`
+        ? `${formatBdtPrice({ amountBdt: prices[0]! })}–${formatBdtPrice({ amountBdt: prices.at(-1)! })}`
         : null;
 
   function selectColor(nextColor: string) {

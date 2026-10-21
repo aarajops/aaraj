@@ -4,8 +4,8 @@ import {
   getManagedStorefrontBanners,
   parseStorefrontBannerListQuery,
   type StorefrontBannerSearchParams,
-} from "@/features/admin/storefront-banner-queries";
-import { StorefrontBannerTable } from "@/features/admin/storefront-banner-table";
+} from "@/features/storefront/admin/storefront-banner-queries";
+import { StorefrontBannerTable } from "@/features/storefront/admin/storefront-banner-table";
 
 export const metadata: Metadata = {
   title: "Storefront banners",

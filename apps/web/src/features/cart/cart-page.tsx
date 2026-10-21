@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MAX_CART_QUANTITY_PER_VARIANT, type Cart } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
 import { CartRequestError, clearGuestCart } from "./cart-client";
 import {
   fetchGuestCart,
@@ -236,7 +236,7 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                         {line.product.color} · {line.product.sizeLabel}
                       </p>
                       <p className="mt-1 text-sm">
-                        {formatCatalogPrice({
+                        {formatBdtPrice({
                           amountBdt: line.product.unitPriceBdt,
                         })}{" "}
                         each

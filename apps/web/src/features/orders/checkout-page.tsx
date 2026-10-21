@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { CartQuote } from "@/features/cart/cart-quote";
 import { useCartStore } from "@/features/cart/cart-provider";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
 import {
   createCodOrder,
   OrderRequestError,
@@ -511,7 +511,7 @@ function CheckoutOrderSummary({
                 </Button>
               </div>
               <p className="col-start-3 row-start-1 shrink-0 text-right font-medium tabular-nums sm:col-start-4">
-                {formatCatalogPrice({
+                {formatBdtPrice({
                   amountBdt:
                     quotedLine?.grossAmountBdt ??
                     line.product.unitPriceBdt * line.quantity,
@@ -524,13 +524,13 @@ function CheckoutOrderSummary({
       <dl className="grid gap-3 border-t border-border pt-4 text-sm">
         <div className="flex justify-between gap-4">
           <dt className="text-muted-foreground">Subtotal</dt>
-          <dd>{formatCatalogPrice({ amountBdt: subtotal })}</dd>
+          <dd>{formatBdtPrice({ amountBdt: subtotal })}</dd>
         </div>
         <div className="flex justify-between gap-4">
           <dt className="text-muted-foreground">Delivery</dt>
           <dd>
             {quote ? (
-              formatCatalogPrice({ amountBdt: quote.delivery.grossAmountBdt })
+              formatBdtPrice({ amountBdt: quote.delivery.grossAmountBdt })
             ) : (
               <span className="text-muted-foreground">
                 {quotePending ? "Calculating…" : "Select location"}
@@ -542,7 +542,7 @@ function CheckoutOrderSummary({
           <dt>Total due on delivery</dt>
           <dd aria-live="polite">
             {quote
-              ? formatCatalogPrice({ amountBdt: quote.totalBdt })
+              ? formatBdtPrice({ amountBdt: quote.totalBdt })
               : quotePending
                 ? "Calculating…"
                 : "—"}

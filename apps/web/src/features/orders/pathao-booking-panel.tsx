@@ -11,7 +11,7 @@ import type {
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
 import {
   getPathaoBooking,
   getPathaoBookingOptions,
@@ -392,9 +392,9 @@ export function PathaoBookingPanel({
             </label>
             <p className="text-sm text-muted-foreground">
               Pathao will receive the Order&apos;s authoritative COD due of{" "}
-              {formatCatalogPrice({ amountBdt: order.codAmountDueBdt })}. The
-              full address is sent without AARAJ geography IDs so Pathao can
-              perform its documented address detection.
+              {formatBdtPrice({ amountBdt: order.codAmountDueBdt })}. The full
+              address is sent without AARAJ geography IDs so Pathao can perform
+              its documented address detection.
             </p>
             <Button
               disabled={

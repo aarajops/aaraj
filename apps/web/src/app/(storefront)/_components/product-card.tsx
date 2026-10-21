@@ -4,7 +4,7 @@ import { ImageOff } from "lucide-react";
 import type { CatalogPublishedProductListItem } from "@aaraj/contracts";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
 import { ProductLinkStatus } from "@/features/catalog/product-link-status";
 
 export function ProductCardSkeleton() {
@@ -81,7 +81,7 @@ export function ProductCard({
           {product.price && (
             <p className="mt-1 text-xs text-primary">
               {product.priceVaries && "From "}
-              {formatCatalogPrice(product.price)}
+              {formatBdtPrice(product.price)}
             </p>
           )}
           <ProductLinkStatus />

@@ -40,7 +40,7 @@ import {
   type CatalogProductFilterOptions,
   type CatalogPublishedProductListQuery,
 } from "@aaraj/contracts";
-import { formatCatalogPrice } from "./price";
+import { formatBdtPrice } from "@/lib/currency";
 
 interface CatalogFiltersProps {
   options: Pick<
@@ -823,10 +823,10 @@ function getActiveFilters(
     const range =
       minimum !== undefined
         ? maximum !== undefined
-          ? `${formatCatalogPrice({ amountBdt: minimum })}–${formatCatalogPrice({ amountBdt: maximum })}`
-          : `From ${formatCatalogPrice({ amountBdt: minimum })}`
+          ? `${formatBdtPrice({ amountBdt: minimum })}–${formatBdtPrice({ amountBdt: maximum })}`
+          : `From ${formatBdtPrice({ amountBdt: minimum })}`
         : maximum !== undefined
-          ? `Up to ${formatCatalogPrice({ amountBdt: maximum })}`
+          ? `Up to ${formatBdtPrice({ amountBdt: maximum })}`
           : "";
     filters.push({
       key: "price",

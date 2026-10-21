@@ -15,7 +15,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
 import { useCartSheet, useCartStore } from "./cart-provider";
 
 export function CartSheet() {
@@ -202,7 +202,7 @@ export function CartSheet() {
                   <div className="shrink-0 text-right">
                     {line.quantity > 1 && (
                       <p className="text-sm text-muted-foreground">
-                        {formatCatalogPrice({
+                        {formatBdtPrice({
                           amountBdt: line.product.unitPriceBdt,
                         })}{" "}
                         each
@@ -215,7 +215,7 @@ export function CartSheet() {
                           : "font-semibold"
                       }
                     >
-                      {formatCatalogPrice({
+                      {formatBdtPrice({
                         amountBdt: line.product.unitPriceBdt * line.quantity,
                       })}
                     </p>
@@ -230,7 +230,7 @@ export function CartSheet() {
           <SheetFooter className="mt-auto w-full gap-0 border-t border-border p-0">
             <div className="flex items-center justify-between gap-4 px-6 py-5 text-base font-medium">
               <span>Subtotal</span>
-              <span>{formatCatalogPrice({ amountBdt: subtotal })}</span>
+              <span>{formatBdtPrice({ amountBdt: subtotal })}</span>
             </div>
             <div className="grid w-full grid-cols-2 gap-0">
               <SheetClose

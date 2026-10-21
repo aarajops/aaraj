@@ -56,7 +56,9 @@ test("real browser session reaches the API through Next and respects roles", asy
   await expect(page).toHaveURL(/\/$/);
 
   await page.goto("/account");
-  await expect(page.getByText("Signed in as E2E Customer")).toBeVisible();
+  await expect(page.getByText("Signed in", { exact: true })).toBeVisible();
+  await expect(page.getByText("Profile name: E2E Customer")).toBeVisible();
+  await expect(page.getByText("Access roles: customer")).toHaveCount(0);
 
   const accessResponse = await page.request.get("/api/v1/access/me");
   expect(accessResponse.status()).toBe(200);
@@ -76,6 +78,164 @@ test("real browser session reaches the API through Next and respects roles", asy
 
   await page.goto("/admin/settings/storefront");
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("superadmin manages a user and the promoted account enters the admin panel", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const targetEmail = `user-admin-e2e-${randomUUID()}@example.test`;
+  const targetPassword = "UserManagementE2E-Only-Password-2026!";
+  const origin = "http://127.0.0.1:3180";
+  const promotedContext = await browser.newContext({ baseURL: origin });
+  const promotedPage = await promotedContext.newPage();
+
+  try {
+    await promotedPage.goto("/account");
+    await promotedPage.getByRole("tab", { name: "Create account" }).click();
+    await promotedPage.getByLabel("Name").fill("User Management E2E");
+    await promotedPage.getByLabel("Email", { exact: true }).fill(targetEmail);
+    await promotedPage
+      .getByLabel("Password", { exact: true })
+      .fill(targetPassword);
+    await promotedPage
+      .locator("form")
+      .getByRole("button", { name: "Create account", exact: true })
+      .click();
+    await expect(promotedPage).toHaveURL(/\/$/);
+
+    await page.goto("/account");
+    await page
+      .getByLabel("Email", { exact: true })
+      .fill("catalog-e2e@example.test");
+    await page
+      .getByLabel("Password", { exact: true })
+      .fill("CatalogE2E-Only-Password-2026!");
+    await page
+      .locator("form")
+      .getByRole("button", { name: "Sign in", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/admin$/);
+    await expect(
+      page.getByRole("navigation", { name: "Access" }).getByRole("link", {
+        name: "Users",
+      }),
+    ).toBeVisible();
+    const roleCatalogResponse = await page.request.get("/api/v1/access/roles");
+    expect(roleCatalogResponse.status()).toBe(200);
+    const roleCatalog = (await roleCatalogResponse.json()) as {
+      role: string;
+      permissions: string[];
+    }[];
+    const getAssignedRoles = async () => {
+      const response = await page.request.get(
+        `/api/v1/access/users?search=${encodeURIComponent(targetEmail)}`,
+      );
+      expect(response.status()).toBe(200);
+      return (await response.json()).users[0].roles as string[];
+    };
+    const roleLabelsAvailableFor = (assignedRoles: string[]) =>
+      roleCatalog
+        .filter(({ role }) => !assignedRoles.includes(role))
+        .map(({ role }) => role.charAt(0).toLocaleUpperCase() + role.slice(1));
+
+    await page.goto("/admin/users");
+    await page
+      .getByRole("searchbox", { name: "Search users" })
+      .fill(targetEmail);
+    await page.getByRole("button", { name: "Apply users search" }).click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("search"))
+      .toBe(targetEmail);
+    const targetRow = page.getByRole("row").filter({ hasText: targetEmail });
+    await expect(targetRow).toBeVisible();
+    await targetRow
+      .getByRole("button", { name: `Manage access for ${targetEmail}` })
+      .click();
+    const accessSheet = page.getByRole("dialog", { name: "Manage access" });
+    const roleSelect = accessSheet.getByRole("combobox", {
+      name: `Role to grant to ${targetEmail}`,
+    });
+    await expect(roleSelect).toHaveText("Choose a role");
+    await roleSelect.click();
+    const roleOptions = page.getByRole("option");
+    const availableRoleLabels = roleLabelsAvailableFor(
+      await getAssignedRoles(),
+    );
+    await expect(roleOptions).toHaveCount(availableRoleLabels.length);
+    expect(await roleOptions.allTextContents()).toEqual(availableRoleLabels);
+    await page.keyboard.press("Escape");
+    await expect(
+      accessSheet.getByRole("combobox", {
+        name: `Role to grant to ${targetEmail}`,
+      }),
+    ).toHaveText("Choose a role");
+    await roleSelect.click();
+    await page.getByRole("option", { name: "Admin", exact: true }).click();
+    await accessSheet
+      .getByLabel(`Reason for changing roles for ${targetEmail}`)
+      .fill("Approved E2E staff onboarding");
+    await accessSheet
+      .getByRole("button", { name: `Grant role to ${targetEmail}` })
+      .click();
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: `admin access granted to ${targetEmail}` }),
+    ).toBeVisible();
+    const targetRolesCell = targetRow.getByRole("cell").nth(2);
+    await expect(
+      targetRolesCell.getByText("admin", { exact: true }),
+    ).toBeVisible();
+
+    await promotedPage.goto("/account");
+    await expect(promotedPage).toHaveURL(/\/admin$/);
+    await expect(promotedPage.getByText("Access: admin, customer")).toHaveCount(
+      0,
+    );
+    await promotedPage.goto("/account");
+    await expect(promotedPage).toHaveURL(/\/admin$/);
+    await promotedPage.goto("/admin/users");
+    await expect(
+      promotedPage.getByRole("heading", {
+        name: "Superadmin access required",
+      }),
+    ).toBeVisible();
+    await expect(
+      promotedPage.getByRole("navigation", { name: "Access" }),
+    ).toHaveCount(0);
+    await targetRow
+      .getByRole("button", { name: `Manage access for ${targetEmail}` })
+      .click();
+    const revokeSheet = page.getByRole("dialog", { name: "Manage access" });
+    await expect(
+      revokeSheet.getByRole("combobox", {
+        name: `Role to grant to ${targetEmail}`,
+      }),
+    ).toHaveText("Choose a role");
+    await revokeSheet
+      .getByLabel(`Reason for changing roles for ${targetEmail}`)
+      .fill("E2E access rollback");
+    await revokeSheet.getByRole("button", { name: "Revoke admin" }).click();
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: `admin access removed from ${targetEmail}` }),
+    ).toBeVisible();
+    const remainingAccess = await page.request.get(
+      `/api/v1/access/users?search=${encodeURIComponent(targetEmail)}`,
+    );
+    expect(remainingAccess.status()).toBe(200);
+    expect((await remainingAccess.json()).users[0].roles).toEqual(["customer"]);
+    await expect(
+      targetRow.getByRole("cell").nth(2).getByText("customer", { exact: true }),
+    ).toBeVisible();
+    await promotedPage.goto("/admin");
+    await expect(promotedPage).toHaveURL(/\/$/);
+  } finally {
+    await promotedContext.close();
+  }
 });
 
 test("admin updates public storefront settings through to the rendered header", async ({

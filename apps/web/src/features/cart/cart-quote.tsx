@@ -15,7 +15,8 @@ import {
   FieldError,
   FieldLabel,
 } from "@/components/ui/field";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
+import { formatDateTime } from "@/lib/date-time";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import {
@@ -607,7 +608,7 @@ export function CartQuote({
                 {quote.destination.upazilaName
                   ? ` · ${quote.destination.upazilaName}`
                   : ""}{" "}
-                · valid until {formatDhakaTime(quote.expiresAt)}
+                · valid until {formatDateTime(quote.expiresAt)}
               </p>
               <dl className="mt-4 grid gap-2 text-sm">
                 <QuoteRow
@@ -621,7 +622,7 @@ export function CartQuote({
               </dl>
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-base font-semibold">
                 <span>Total</span>
-                <span>{formatCatalogPrice({ amountBdt: quote.totalBdt })}</span>
+                <span>{formatBdtPrice({ amountBdt: quote.totalBdt })}</span>
               </div>
               <Link
                 className={buttonVariants({
@@ -646,15 +647,7 @@ function QuoteRow({ label, amount }: { label: string; amount: number }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd>{formatCatalogPrice({ amountBdt: amount })}</dd>
+      <dd>{formatBdtPrice({ amountBdt: amount })}</dd>
     </div>
   );
-}
-
-function formatDhakaTime(value: string): string {
-  return new Intl.DateTimeFormat("en-BD", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Dhaka",
-  }).format(new Date(value));
 }

@@ -1,6 +1,11 @@
 "use client";
 
-import { useState, useTransition, type SubmitEvent } from "react";
+import {
+  useState,
+  useTransition,
+  type ReactNode,
+  type SubmitEvent,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { RowData } from "@tanstack/react-table";
@@ -46,6 +51,7 @@ type AdminDataTableProps<TData extends RowData & { id: string }> = {
   query: TableQuery;
   itemName: string;
   searchPlaceholder: string;
+  emptyMessage?: ReactNode;
   filters?: AdminDataTableFilter[];
   onRefresh: () => void;
   isRefreshing?: boolean;
@@ -62,6 +68,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   query,
   itemName,
   searchPlaceholder,
+  emptyMessage,
   filters = [],
   onRefresh,
   isRefreshing = false,
@@ -244,7 +251,10 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
         columns={columns}
         data={data}
         emptyMessage={
-          hasActiveFilters ? `No matching ${itemName}.` : `No ${itemName} yet.`
+          emptyMessage ??
+          (hasActiveFilters
+            ? `No matching ${itemName}.`
+            : `No ${itemName} yet.`)
         }
       />
 

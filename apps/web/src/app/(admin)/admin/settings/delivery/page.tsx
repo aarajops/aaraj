@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getInitialAccess } from "@/features/auth/auth-session";
-import { DeliveryTariffManager } from "@/features/admin/delivery-tariff-manager";
+import { DeliveryTariffManager } from "@/features/delivery/admin/delivery-tariff-manager";
 
 export const metadata: Metadata = {
   title: "Delivery rates",

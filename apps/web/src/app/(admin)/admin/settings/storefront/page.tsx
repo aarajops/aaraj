@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getInitialAccess } from "@/features/auth/auth-session";
 import { getPublicCatalogCategories } from "@/features/catalog/catalog-queries";
-import { StorefrontSettingsManager } from "@/features/admin/storefront-settings-manager";
+import { StorefrontSettingsManager } from "@/features/storefront/admin/storefront-settings-manager";
 
 export const metadata: Metadata = {
   title: "Storefront settings",

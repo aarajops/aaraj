@@ -14,8 +14,8 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
-} from "@/features/admin/admin-data-table";
-import { formatAdminDateTime } from "@/features/admin/admin-date-time";
+} from "@/components/admin/admin-data-table";
+import { formatDateTime } from "@/lib/date-time";
 import { Images, Plus } from "lucide-react";
 
 const columnHelper = createDataTableColumnHelper<StorefrontBanner>();
@@ -81,7 +81,7 @@ export function StorefrontBannerTable({
         columnHelper.accessor("updatedAt", {
           header: "Updated",
           cell: ({ getValue }) =>
-            getValue() ? formatAdminDateTime(getValue()!) : "Not yet updated",
+            getValue() ? formatDateTime(getValue()!) : "Not yet updated",
         }),
         columnHelper.display({
           id: "actions",

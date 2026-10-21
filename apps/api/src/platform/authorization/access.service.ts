@@ -8,12 +8,17 @@ import {
 import { AuthorizationService } from "@nestjs/authorization";
 import {
   AccessUserIdSchema,
+  MAX_LIST_OFFSET,
+  RoleSchema,
   AssignedRoleSchema,
   RoleChangeSchema,
+  type AccessManagedUser,
+  type AccessUserListQuery,
+  type AccessUserPage,
   type AssignedRole,
   type RoleChangeInput,
 } from "@aaraj/contracts";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { user } from "../../auth/auth-schema.js";
 import { DatabaseService } from "../database/database.service.js";
 import { AuditService } from "../audit/audit.service.js";
@@ -44,6 +49,91 @@ export class AccessService {
     const access = await this.permissions.forUser(userId);
     if (!access) throw new NotFoundException("User not found");
     return access;
+  }
+
+  async listUsers(
+    actor: AccessPrincipal,
+    query: AccessUserListQuery,
+  ): Promise<AccessUserPage> {
+    return this.database.db.transaction(async (tx) => {
+      await this.authorization.authorize(AccessPolicy, "manage", actor, tx);
+      const predicates = [];
+      if (query.search) {
+        const pattern = `${escapeLikeWildcards(query.search.toLowerCase())}%`;
+        predicates.push(
+          or(
+            sql`lower(${user.name}) LIKE ${pattern}`,
+            sql`lower(${user.email}) LIKE ${pattern}`,
+          )!,
+        );
+      }
+      const rows = await tx
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          emailVerified: user.emailVerified,
+          createdAt: user.createdAt,
+        })
+        .from(user)
+        .where(predicates.length ? and(...predicates) : undefined)
+        .orderBy(desc(user.createdAt), desc(user.id))
+        .limit(query.limit + 1)
+        .offset(query.offset);
+      const selected = rows.slice(0, query.limit);
+      const assignments = selected.length
+        ? await tx
+            .select({
+              userId: roleAssignment.userId,
+              role: roleAssignment.role,
+            })
+            .from(roleAssignment)
+            .where(
+              inArray(
+                roleAssignment.userId,
+                selected.map(({ id }) => id),
+              ),
+            )
+        : [];
+      const rolesByUser = new Map<
+        string,
+        Set<(typeof RoleSchema.options)[number]>
+      >(selected.map(({ id }) => [id, new Set(["customer"])]));
+      for (const assignment of assignments) {
+        rolesByUser.get(assignment.userId)?.add(assignment.role);
+      }
+      const users: AccessManagedUser[] = selected.map((record) => ({
+        ...record,
+        createdAt: record.createdAt.toISOString(),
+        roles: RoleSchema.options.filter((role) =>
+          rolesByUser.get(record.id)?.has(role),
+        ),
+      }));
+      const hasMore = rows.length > query.limit;
+      const candidateNextOffset = query.offset + users.length;
+      const page: AccessUserPage = {
+        users,
+        hasMore,
+        nextOffset:
+          hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+            ? candidateNextOffset
+            : null,
+      };
+      await this.audit.append(tx, {
+        actorType: "user",
+        actorId: actor.id,
+        eventType: "access.users_listed",
+        subjectType: "user_collection",
+        subjectId: "users",
+        metadata: {
+          limit: query.limit,
+          offset: query.offset,
+          returned: users.length,
+          searchUsed: Boolean(query.search),
+        },
+      });
+      return page;
+    });
   }
 
   async changeRole(
@@ -166,4 +256,8 @@ export class AccessService {
     // READ COMMITTED sees the preceding committed grant/revocation after waiting.
     await tx.execute(sql`select pg_advisory_xact_lock(1734439521, 1)`);
   }
+}
+
+function escapeLikeWildcards(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
 }

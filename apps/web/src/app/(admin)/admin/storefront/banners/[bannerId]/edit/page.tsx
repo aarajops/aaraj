@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { StorefrontBannerManager } from "@/features/admin/storefront-banner-manager";
+import { StorefrontBannerManager } from "@/features/storefront/admin/storefront-banner-manager";
 import {
   getManagedBannerAssets,
   getManagedStorefrontBanner,
-} from "@/features/admin/storefront-banner-queries";
+} from "@/features/storefront/admin/storefront-banner-queries";
 import { z } from "zod";
 
 export const metadata: Metadata = {

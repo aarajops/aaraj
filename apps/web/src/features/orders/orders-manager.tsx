@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { OrderListQuery, OrderManagementList } from "@aaraj/contracts";
 import { buttonVariants } from "@/components/ui/button";
-import { formatAdminDateTime } from "@/features/admin/admin-date-time";
+import { formatDateTime } from "@/lib/date-time";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
-} from "@/features/admin/admin-data-table";
-import { formatCatalogPrice } from "@/features/catalog/price";
+} from "@/components/admin/admin-data-table";
+import { formatBdtPrice } from "@/lib/currency";
 import { PathaoIssuesPanel } from "./pathao-issues-panel";
 
 const columnHelper =
@@ -55,11 +55,11 @@ export function OrdersManager({
             row.original.status === "cancelled" ||
             row.original.status === "rejected"
               ? "Not payable"
-              : formatCatalogPrice({ amountBdt: row.original.totalBdt }),
+              : formatBdtPrice({ amountBdt: row.original.totalBdt }),
         }),
         columnHelper.accessor("createdAt", {
           header: "Created",
-          cell: ({ getValue }) => formatAdminDateTime(getValue()),
+          cell: ({ getValue }) => formatDateTime(getValue()),
         }),
         columnHelper.display({
           id: "review",

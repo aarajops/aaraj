@@ -7,7 +7,7 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
-} from "@/features/admin/admin-data-table";
+} from "@/components/admin/admin-data-table";
 import Link from "next/link";
 
 const columnHelper = createDataTableColumnHelper<CatalogCategory>();

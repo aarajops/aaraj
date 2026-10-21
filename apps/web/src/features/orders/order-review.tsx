@@ -6,7 +6,8 @@ import { OrderDispatchInputSchema, type Order } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCatalogPrice } from "@/features/catalog/price";
+import { formatBdtPrice } from "@/lib/currency";
+import { formatDateTime } from "@/lib/date-time";
 import {
   dispatchCodOrder,
   OrderRequestError,
@@ -111,7 +112,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
             <p className="mt-2 text-xl font-semibold">
               {order.status === "cancelled" || order.status === "rejected"
                 ? "Not payable"
-                : formatCatalogPrice({ amountBdt: order.codAmountDueBdt })}
+                : formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
             </p>
             <p className="text-sm text-muted-foreground">
               No payment has been collected.
@@ -155,7 +156,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
                     {line.quantity}
                   </span>
                   <span>
-                    {formatCatalogPrice({ amountBdt: line.grossAmountBdt })}
+                    {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
                   </span>
                 </li>
               ))}
@@ -304,7 +305,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
               )}
               <DataRow
                 label="Dispatched at"
-                value={formatDate(order.dispatch.dispatchedAt)}
+                value={formatDateTime(order.dispatch.dispatchedAt)}
               />
             </dl>
           </section>
@@ -321,12 +322,4 @@ function DataRow({ label, value }: { label: string; value: string }) {
       <dd>{value}</dd>
     </div>
   );
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("en-BD", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Dhaka",
-  }).format(new Date(value));
 }

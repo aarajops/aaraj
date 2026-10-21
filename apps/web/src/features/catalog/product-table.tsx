@@ -11,8 +11,8 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
-} from "@/features/admin/admin-data-table";
-import { formatCatalogPrice } from "@/features/catalog/price";
+} from "@/components/admin/admin-data-table";
+import { formatBdtPrice } from "@/lib/currency";
 import Link from "next/link";
 
 const columnHelper = createDataTableColumnHelper<CatalogProduct>();
@@ -64,7 +64,7 @@ export function ProductTable({
           },
           cell: ({ row }) =>
             row.original.price
-              ? formatCatalogPrice(row.original.price)
+              ? formatBdtPrice(row.original.price)
               : "Price not set",
         }),
         columnHelper.display({

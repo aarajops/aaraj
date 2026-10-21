@@ -4,7 +4,6 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-  API_V1_BASE_PATH,
   ApiErrorResponseSchema,
   StorefrontSettingsSchema,
   type CatalogCategoryOption,
@@ -24,6 +23,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { hasDirtyFieldsExcept } from "@/lib/form-dirty-state";
+import { getApiErrorMessage } from "@/lib/api-error";
+import {
+  clearStorefrontBrandAsset,
+  fetchManagedStorefrontSettings,
+  updateManagedStorefrontSettings,
+  uploadStorefrontBrandAsset,
+} from "@/features/storefront/admin/storefront-management-client";
 import { HomepageCategorySettings } from "./homepage-category-settings";
 import {
   socialFields,
@@ -146,10 +152,7 @@ export function StorefrontSettingsManager({
 
   useEffect(() => {
     let active = true;
-    void fetch(`${API_V1_BASE_PATH}/storefront/manage/settings`, {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
+    void fetchManagedStorefrontSettings()
       .then(async (response) => {
         const body: unknown = await response.json().catch(() => null);
         if (!response.ok) {
@@ -189,16 +192,7 @@ export function StorefrontSettingsManager({
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch(
-        `${API_V1_BASE_PATH}/storefront/manage/settings`,
-        {
-          method: "PUT",
-          cache: "no-store",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
-        },
-      );
+      const response = await updateManagedStorefrontSettings(input);
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(
@@ -238,18 +232,10 @@ export function StorefrontSettingsManager({
     setError(null);
     setNotice(null);
     try {
-      const form = new FormData();
-      form.set("commandId", crypto.randomUUID());
-      form.set("expectedVersion", String(settings.version));
-      form.set("file", file);
-      const response = await fetch(
-        `${API_V1_BASE_PATH}/storefront/manage/assets/${kind}`,
-        {
-          method: "POST",
-          cache: "no-store",
-          credentials: "same-origin",
-          body: form,
-        },
+      const response = await uploadStorefrontBrandAsset(
+        kind,
+        file,
+        settings.version,
       );
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok) {
@@ -294,18 +280,7 @@ export function StorefrontSettingsManager({
     setError(null);
     setNotice(null);
     try {
-      const response = await fetch(
-        `${API_V1_BASE_PATH}/storefront/manage/assets/${kind}`,
-        {
-          method: "DELETE",
-          cache: "no-store",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            expectedVersion: settings.version,
-          }),
-        },
-      );
+      const response = await clearStorefrontBrandAsset(kind, settings.version);
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(
@@ -1205,9 +1180,7 @@ function responseMessage(body: unknown, fallback: string): string {
   if (result.data.errorCode === "STOREFRONT_SETTINGS_STALE") {
     return "These settings changed in another session. Reload this page and apply your change again.";
   }
-  return Array.isArray(result.data.message)
-    ? result.data.message.join(" ")
-    : result.data.message;
+  return getApiErrorMessage(body, fallback);
 }
 
 function collectFieldErrorMessages(value: unknown): string[] {

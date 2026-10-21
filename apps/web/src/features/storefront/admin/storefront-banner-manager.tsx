@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-  API_V1_BASE_PATH,
   ApiErrorResponseSchema,
   MAX_STOREFRONT_BANNER_ALT_TEXT_LENGTH,
   MAX_STOREFRONT_BANNER_HREF_LENGTH,
@@ -41,8 +40,14 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { formatAdminDateTime } from "@/features/admin/admin-date-time";
-import { revalidateStorefrontBanners } from "@/features/admin/storefront-banner-actions";
+import { formatDateTime } from "@/lib/date-time";
+import { getApiErrorMessage } from "@/lib/api-error";
+import {
+  fetchMoreStorefrontBannerAssets,
+  saveStorefrontBanner,
+  uploadStorefrontBannerAsset,
+} from "@/features/storefront/admin/storefront-management-client";
+import { revalidateStorefrontBanners } from "@/features/storefront/admin/storefront-banner-actions";
 import {
   Select,
   SelectContent,
@@ -114,18 +119,7 @@ export function StorefrontBannerManager({
     setError(null);
     setNotice(null);
     try {
-      const form = new FormData();
-      form.set("commandId", crypto.randomUUID());
-      form.set("file", file);
-      const response = await fetch(
-        `${API_V1_BASE_PATH}/storefront/manage/banner-assets`,
-        {
-          method: "POST",
-          cache: "no-store",
-          credentials: "same-origin",
-          body: form,
-        },
-      );
+      const response = await uploadStorefrontBannerAsset(file);
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(
@@ -162,28 +156,7 @@ export function StorefrontBannerManager({
     setError(null);
     setNotice(null);
     try {
-      const isEditing = Boolean(bannerId);
-      const createValues = {
-        name: values.name,
-        placement: values.placement,
-        active: values.active,
-        desktopAssetId: values.desktopAssetId,
-        mobileAssetId: values.mobileAssetId,
-        altText: values.altText,
-        href: values.href,
-      };
-      const response = await fetch(
-        isEditing
-          ? `${API_V1_BASE_PATH}/storefront/manage/banners/${encodeURIComponent(bannerId!)}`
-          : `${API_V1_BASE_PATH}/storefront/manage/banners`,
-        {
-          method: isEditing ? "PUT" : "POST",
-          cache: "no-store",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(isEditing ? values : createValues),
-        },
-      );
+      const response = await saveStorefrontBanner(bannerId, values);
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(responseMessage(body, "Banner could not be saved."));
@@ -211,10 +184,7 @@ export function StorefrontBannerManager({
     setLoadingMore(true);
     setError(null);
     try {
-      const response = await fetch(
-        `${API_V1_BASE_PATH}/storefront/manage/banner-assets?cursor=${encodeURIComponent(nextAssetsCursor)}`,
-        { cache: "no-store", credentials: "same-origin" },
-      );
+      const response = await fetchMoreStorefrontBannerAssets(nextAssetsCursor);
       const body: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(
@@ -515,8 +485,7 @@ function AssetField({
           <SelectItem value="__none__">No image</SelectItem>
           {assets.map((asset) => (
             <SelectItem key={asset.id} value={asset.id}>
-              {formatAdminDateTime(asset.createdAt)} · {asset.width} ×{" "}
-              {asset.height}
+              {formatDateTime(asset.createdAt)} · {asset.width} × {asset.height}
             </SelectItem>
           ))}
         </SelectContent>
@@ -622,7 +591,5 @@ function responseMessage(body: unknown, fallback: string): string {
   if (result.data.errorCode === "STOREFRONT_BANNER_STALE") {
     return "This banner changed in another session. Reload and apply your changes again.";
   }
-  return Array.isArray(result.data.message)
-    ? result.data.message.join(" ")
-    : result.data.message;
+  return getApiErrorMessage(body, fallback);
 }

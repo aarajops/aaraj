@@ -13,6 +13,7 @@ import {
   Store,
   Tags,
   Images,
+  UsersRound,
 } from "lucide-react";
 import {
   Sidebar,
@@ -92,6 +93,15 @@ const settingsLinks = [
   },
 ] as const;
 
+const accessLinks = [
+  {
+    href: "/admin/users",
+    label: "Users",
+    icon: UsersRound,
+    permission: "access.manage",
+  },
+] as const;
+
 type AdminSidebarProps = {
   user: { name: string; email: string } | null;
   permissions: Permission[];
@@ -109,10 +119,16 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
   const availableSettingsLinks = settingsLinks.filter(({ permission }) =>
     permissions.includes(permission),
   );
+  const availableAccessLinks = accessLinks.filter(({ permission }) =>
+    permissions.includes(permission),
+  );
   const activeHref = pathname
-    ? [...adminLinks, ...operationsLinks, ...settingsLinks].reduce<
-        string | undefined
-      >((active, { href }) => {
+    ? [
+        ...adminLinks,
+        ...operationsLinks,
+        ...settingsLinks,
+        ...accessLinks,
+      ].reduce<string | undefined>((active, { href }) => {
         const matchesRoute =
           pathname === href || pathname.startsWith(`${href}/`);
 
@@ -222,6 +238,37 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
               <nav aria-label="Settings">
                 <SidebarMenu>
                   {availableSettingsLinks.map(({ href, label, icon: Icon }) => {
+                    const isActive = activeHref === href;
+                    return (
+                      <SidebarMenuItem key={href}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          aria-current={pathname === href ? "page" : undefined}
+                          render={
+                            <Link href={href} onClick={closeMobileSidebar} />
+                          }
+                          tooltip={label}
+                        >
+                          <Icon aria-hidden="true" />
+                          <span className="group-data-[collapsible=icon]:hidden">
+                            {label}
+                          </span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </nav>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {availableAccessLinks.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Access</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <nav aria-label="Access">
+                <SidebarMenu>
+                  {availableAccessLinks.map(({ href, label, icon: Icon }) => {
                     const isActive = activeHref === href;
                     return (
                       <SidebarMenuItem key={href}>

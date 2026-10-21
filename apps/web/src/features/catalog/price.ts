@@ -1,5 +1,3 @@
-import type { CatalogPrice } from "@aaraj/contracts";
-
 const MAX_PRICE_BDT = 2_147_483_647;
 
 export function parseBdtPrice(value: string): number | null {
@@ -21,11 +19,4 @@ export function formatBdtInput(amountBdt: number | null): string {
     amountBdt <= MAX_PRICE_BDT
     ? amountBdt.toString()
     : "";
-}
-
-export function formatCatalogPrice(price: CatalogPrice): string {
-  const formattedAmount = new Intl.NumberFormat("en-BD", {
-    maximumFractionDigits: 0,
-  }).format(price.amountBdt);
-  return `৳${formattedAmount}`;
 }

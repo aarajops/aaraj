@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  OffsetPaginationMetadataSchema,
+  OffsetPaginationQuerySchema,
+} from "../common/pagination.js";
 
 export const ASSIGNED_ROLES = [
   "superadmin",
@@ -36,9 +40,46 @@ export const PermissionSchema = z.enum([
 ]);
 export type Permission = z.infer<typeof PermissionSchema>;
 
+export const AccessRoleCatalogEntrySchema = z.strictObject({
+  role: RoleSchema,
+  permissions: z.array(PermissionSchema),
+});
+export type AccessRoleCatalogEntry = z.infer<
+  typeof AccessRoleCatalogEntrySchema
+>;
+export const AccessRoleCatalogSchema = z.array(AccessRoleCatalogEntrySchema);
+export type AccessRoleCatalog = z.infer<typeof AccessRoleCatalogSchema>;
+
 export const EffectiveAccessSchema = z.strictObject({
   userId: AccessUserIdSchema,
   roles: z.array(RoleSchema),
   permissions: z.array(PermissionSchema),
 });
 export type EffectiveAccess = z.infer<typeof EffectiveAccessSchema>;
+
+const OptionalAccessUserSearchSchema = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().trim().min(1).max(254).optional(),
+);
+
+export const AccessUserListQuerySchema = OffsetPaginationQuerySchema.extend({
+  search: OptionalAccessUserSearchSchema,
+});
+export type AccessUserListQuery = z.infer<typeof AccessUserListQuerySchema>;
+
+export const AccessManagedUserSchema = z.strictObject({
+  id: AccessUserIdSchema,
+  name: z.string().min(1).max(255),
+  email: z.email().max(254),
+  emailVerified: z.boolean(),
+  createdAt: z.iso.datetime(),
+  roles: z.array(RoleSchema),
+});
+export type AccessManagedUser = z.infer<typeof AccessManagedUserSchema>;
+
+export const AccessUserPageSchema = z.strictObject({
+  users: AccessManagedUserSchema.array(),
+  ...OffsetPaginationMetadataSchema.shape,
+});
+export type AccessUserPage = z.infer<typeof AccessUserPageSchema>;

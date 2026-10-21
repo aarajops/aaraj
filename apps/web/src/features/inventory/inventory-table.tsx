@@ -8,8 +8,8 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
-} from "@/features/admin/admin-data-table";
-import { formatAdminDateTime } from "@/features/admin/admin-date-time";
+} from "@/components/admin/admin-data-table";
+import { formatDateTime } from "@/lib/date-time";
 
 const columnHelper = createDataTableColumnHelper<InventoryVariant>();
 
@@ -95,7 +95,7 @@ export function InventoryTable({
           header: "Last stock change",
           cell: ({ row }) =>
             row.original.stockUpdatedAt
-              ? formatAdminDateTime(row.original.stockUpdatedAt)
+              ? formatDateTime(row.original.stockUpdatedAt)
               : "No stock recorded",
         }),
         columnHelper.display({

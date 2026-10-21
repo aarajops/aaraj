@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthPanel } from "@/features/auth/auth-panel";
+import type { EffectiveAccess } from "@aaraj/contracts";
 import {
   getInitialAccess,
   getInitialSession,
@@ -14,10 +15,11 @@ export const metadata: Metadata = {
 
 export default async function AccountPage() {
   const initialSession = await getInitialSession();
+  let initialAccess: EffectiveAccess | null = null;
 
   if (initialSession) {
-    const access = await getInitialAccess();
-    if (access?.permissions.includes("catalog.manage")) {
+    initialAccess = await getInitialAccess();
+    if (initialAccess?.permissions.includes("catalog.manage")) {
       redirect("/admin");
     }
   }

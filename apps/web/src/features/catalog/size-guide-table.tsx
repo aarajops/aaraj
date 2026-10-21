@@ -10,8 +10,8 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
-} from "@/features/admin/admin-data-table";
-import { formatAdminDateTime } from "@/features/admin/admin-date-time";
+} from "@/components/admin/admin-data-table";
+import { formatDateTime } from "@/lib/date-time";
 import Link from "next/link";
 
 const columnHelper = createDataTableColumnHelper<CatalogSizeGuideSummary>();
@@ -65,7 +65,7 @@ export function SizeGuideTable({
         }),
         columnHelper.accessor("updatedAt", {
           header: "Updated",
-          cell: ({ getValue }) => formatAdminDateTime(getValue()),
+          cell: ({ getValue }) => formatDateTime(getValue()),
         }),
         columnHelper.display({
           id: "actions",

@@ -1,21 +1,35 @@
 // Generated from Better Auth's core email/password configuration and namespaced to identity.
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { boolean, index, pgSchema, text, timestamp } from "drizzle-orm/pg-core";
 
 const identity = pgSchema("identity");
 
-export const user = identity.table("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").default(false).notNull(),
-  image: text("image"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
+export const user = identity.table(
+  "user",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    emailVerified: boolean("email_verified").default(false).notNull(),
+    image: text("image"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("user_created_at_id_idx").on(table.createdAt.desc(), table.id.desc()),
+    index("user_name_lower_prefix_idx").using(
+      "btree",
+      sql`lower(${table.name}) text_pattern_ops`,
+    ),
+    index("user_email_lower_prefix_idx").using(
+      "btree",
+      sql`lower(${table.email}) text_pattern_ops`,
+    ),
+  ],
+);
 
 export const session = identity.table(
   "session",

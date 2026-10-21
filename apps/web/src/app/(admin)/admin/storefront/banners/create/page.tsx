@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { StorefrontBannerManager } from "@/features/admin/storefront-banner-manager";
-import { getManagedBannerAssets } from "@/features/admin/storefront-banner-queries";
+import { StorefrontBannerManager } from "@/features/storefront/admin/storefront-banner-manager";
+import { getManagedBannerAssets } from "@/features/storefront/admin/storefront-banner-queries";
 
 export const metadata: Metadata = {
   title: "Create banner",
