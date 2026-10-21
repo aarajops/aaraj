@@ -107,7 +107,12 @@ function StorefrontSearchForm({
   }));
 
   return (
-    <Form action="/shop" className={cn("flex min-w-0 flex-1", className)}>
+    <Form
+      action={
+        category ? `/shop/categories/${encodeURIComponent(category)}` : "/shop"
+      }
+      className={cn("flex min-w-0 flex-1", className)}
+    >
       <InputGroup className="h-12 rounded-full !border-0 bg-muted !outline-none !ring-0 shadow-none focus-within:!border-0 focus-within:!outline-none focus-within:!ring-0 md:h-15 xl:h-8 2xl:h-10">
         <InputGroupInput
           aria-label="Search products"
@@ -125,7 +130,6 @@ function StorefrontSearchForm({
         >
           <Select
             items={[{ label: "Categories", value: null }, ...categoryItems]}
-            name={category ? "category" : undefined}
             value={category || null}
             onValueChange={(value) =>
               setCategory(typeof value === "string" ? value : "")
