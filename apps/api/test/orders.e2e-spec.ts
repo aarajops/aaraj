@@ -52,7 +52,6 @@ import {
 import { PathaoService } from "../src/delivery/pathao/pathao.service.js";
 import { PathaoTokenService } from "../src/delivery/pathao/pathao-token.service.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
-import { taxProfile } from "../src/tax/tax-schema.js";
 
 const origin = "http://localhost:3000";
 const password = "aaraj-orders-e2e-password-123";
@@ -633,10 +632,6 @@ describe("COD Orders and checkout", () => {
           `AARAJ_DELIVERY_${date.replaceAll("-", "_")}_V2`,
         ),
       );
-    await database.db
-      .update(taxProfile)
-      .set({ effectiveFrom: "2020-01-01", effectiveTo: null })
-      .where(eq(taxProfile.version, "TEST_ONLY_BD_RETAIL_TAX_RULE_V1"));
   });
 
   afterAll(async () => {
@@ -1071,28 +1066,6 @@ describe("COD Orders and checkout", () => {
     expect(privateOrder.body.fulfillmentStatus).toBe("not_started");
   });
 
-  it("does not let a synthetic test tax profile authorize production checkout", async () => {
-    const variantId = await createVariant(1);
-    const cart = await newGuestCart([variantId]);
-    const quote = await createQuote(cart.cookie);
-    const key = randomUUID();
-    const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
-    const priorMode = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
-    try {
-      await placeOrder(checkoutCookie, checkoutBody(quote.id), key).expect(503);
-    } finally {
-      process.env.NODE_ENV = priorMode;
-    }
-    expect((await stockFor(variantId)).quantityReserved).toBe(0);
-    expect(
-      await database.db
-        .select()
-        .from(customerOrder)
-        .where(eq(customerOrder.quoteId, quote.id)),
-    ).toHaveLength(0);
-  });
-
   it("authorizes staff manual serviceability decisions and releases stock on rejection", async () => {
     const variantId = await createVariant(2);
     const cart = await newGuestCart([variantId]);
@@ -1368,7 +1341,6 @@ describe("COD Orders and checkout", () => {
       deliveryAmountBdt: original?.deliveryAmountBdt,
       totalBdt: original?.totalBdt,
       codAmountDueBdt: original?.codAmountDueBdt,
-      taxSnapshot: original?.taxSnapshot,
       deliverySnapshot: original?.deliverySnapshot,
     });
     const transitions = await database.db
@@ -3065,7 +3037,6 @@ describe("COD Orders and checkout", () => {
       deliveryAmountBdt: beforeExpiry?.deliveryAmountBdt,
       totalBdt: beforeExpiry?.totalBdt,
       codAmountDueBdt: beforeExpiry?.codAmountDueBdt,
-      taxSnapshot: beforeExpiry?.taxSnapshot,
       deliverySnapshot: beforeExpiry?.deliverySnapshot,
     });
     const restoredStock = await stockFor(fixture.variantId);

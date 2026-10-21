@@ -12,7 +12,6 @@ const applicationSchemas = [
   "cart",
   "geography",
   "delivery",
-  "tax",
   "storefront",
   "quote",
   "orders",
@@ -49,8 +48,6 @@ const runtimeTableGrants = [
   ["delivery", "pathao_booking", ["SELECT", "INSERT", "UPDATE"]],
   ["delivery", "pathao_webhook_inbox", ["SELECT", "INSERT", "UPDATE"]],
   ["delivery", "pathao_webhook_resolution", ["SELECT", "INSERT"]],
-  ["tax", "profile", ["SELECT"]],
-  ["tax", "configuration", ["SELECT", "UPDATE"]],
   ["storefront", "brand_asset", ["SELECT", "INSERT"]],
   ["storefront", "banner_asset", ["SELECT", "INSERT"]],
   ["storefront", "banner", ["SELECT", "INSERT", "UPDATE"]],
@@ -400,8 +397,6 @@ async function main(): Promise<void> {
       'SELECT 1 FROM "delivery"."tariff_district" LIMIT 0',
     );
     await runtimePool.query('SELECT 1 FROM "delivery"."tariff_area" LIMIT 0');
-    await runtimePool.query('SELECT 1 FROM "tax"."profile" LIMIT 0');
-    await runtimePool.query('SELECT 1 FROM "tax"."configuration" LIMIT 0');
     await runtimePool.query(
       'SELECT 1 FROM "storefront"."configuration" LIMIT 0',
     );

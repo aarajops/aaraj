@@ -241,16 +241,6 @@ export class OrdersService implements OrdersPathaoPort {
             deliveryAmountBdt: quote.delivery.grossAmountBdt,
             totalBdt: quote.totalBdt,
             codAmountDueBdt: quote.totalBdt,
-            taxSnapshot: {
-              ...(quote.tax.mode ? { mode: quote.tax.mode } : {}),
-              profileVersion: quote.tax.profileVersion,
-              sourceReference: quote.tax.sourceReference,
-              sourceVersion: quote.tax.sourceVersion,
-              roundingRule: quote.tax.roundingRule,
-              merchandise: quote.tax.merchandise,
-              delivery: quote.delivery.tax,
-              totalTaxAmountBdt: quote.tax.totalTaxAmountBdt,
-            },
             deliverySnapshot: {
               tariffVersion: quote.delivery.tariffVersion,
               effectiveFrom: quote.delivery.effectiveFrom,
@@ -1264,7 +1254,6 @@ export class OrdersService implements OrdersPathaoPort {
         grossAmountBdt: line.grossAmountBdt,
       })),
       merchandiseGrossBdt: row.merchandiseGrossBdt,
-      tax: row.taxSnapshot,
       delivery: {
         tariffVersion: (row.deliverySnapshot as { tariffVersion: string })
           .tariffVersion,

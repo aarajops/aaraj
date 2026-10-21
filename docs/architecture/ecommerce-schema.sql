@@ -317,20 +317,13 @@ CREATE TABLE cart.merge_receipts (
 -- PRICING: rules are versioned; exact rational conversion and deterministic allocation.
 CREATE TABLE pricing.price_lists (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), code text NOT NULL UNIQUE,
-  currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'), tax_inclusive boolean NOT NULL
+  currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$')
 );
 CREATE TABLE pricing.prices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), price_list_id uuid NOT NULL REFERENCES pricing.price_lists(id),
   variant_ref uuid NOT NULL, minimum_quantity integer NOT NULL CHECK (minimum_quantity > 0),
   unit_amount bigint NOT NULL CHECK (unit_amount >= 0), valid_from timestamptz NOT NULL, valid_until timestamptz,
   UNIQUE (price_list_id, variant_ref, minimum_quantity, valid_from), CHECK (valid_until IS NULL OR valid_until > valid_from)
-);
-CREATE TABLE pricing.tax_rules (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), jurisdiction text NOT NULL, tax_code text NOT NULL,
-  version integer NOT NULL CHECK (version > 0), numerator integer NOT NULL CHECK (numerator >= 0),
-  denominator integer NOT NULL CHECK (denominator > 0), valid_from timestamptz NOT NULL,
-  valid_until timestamptz, legal_reference text NOT NULL,
-  UNIQUE (jurisdiction, tax_code, version), CHECK (valid_until IS NULL OR valid_until > valid_from)
 );
 CREATE TABLE pricing.exchange_rates (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), base_currency text NOT NULL, quote_currency text NOT NULL,
@@ -366,17 +359,17 @@ CREATE TABLE pricing.quotes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), customer_ref uuid, cart_ref uuid NOT NULL,
   currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'), pricing_version text NOT NULL,
   subtotal_amount bigint NOT NULL CHECK (subtotal_amount >= 0), discount_amount bigint NOT NULL CHECK (discount_amount >= 0),
-  tax_amount bigint NOT NULL CHECK (tax_amount >= 0), shipping_amount bigint NOT NULL CHECK (shipping_amount >= 0),
+  shipping_amount bigint NOT NULL CHECK (shipping_amount >= 0),
   total_amount bigint NOT NULL CHECK (total_amount >= 0), expires_at timestamptz NOT NULL,
-  CHECK (discount_amount <= subtotal_amount), CHECK (total_amount = subtotal_amount - discount_amount + tax_amount + shipping_amount)
+  CHECK (discount_amount <= subtotal_amount), CHECK (total_amount = subtotal_amount - discount_amount + shipping_amount)
 );
 CREATE TABLE pricing.quote_lines (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), quote_id uuid NOT NULL REFERENCES pricing.quotes(id),
   variant_ref uuid NOT NULL, quantity integer NOT NULL CHECK (quantity > 0),
   unit_amount bigint NOT NULL CHECK (unit_amount >= 0), discount_amount bigint NOT NULL CHECK (discount_amount >= 0),
-  tax_amount bigint NOT NULL CHECK (tax_amount >= 0), total_amount bigint NOT NULL CHECK (total_amount >= 0),
-  tax_rule_snapshot jsonb NOT NULL, CHECK (discount_amount <= unit_amount * quantity),
-  CHECK (total_amount = unit_amount * quantity - discount_amount + tax_amount), UNIQUE (id, quote_id)
+  total_amount bigint NOT NULL CHECK (total_amount >= 0),
+  CHECK (discount_amount <= unit_amount * quantity),
+  CHECK (total_amount = unit_amount * quantity - discount_amount), UNIQUE (id, quote_id)
 );
 CREATE TABLE pricing.discount_allocations (
   quote_line_id uuid NOT NULL REFERENCES pricing.quote_lines(id), promotion_id uuid NOT NULL REFERENCES pricing.promotions(id),
@@ -402,13 +395,13 @@ CREATE TABLE ordering.orders (
     'CONFIRMED','ALLOCATING','FULFILLING','PARTIALLY_SHIPPED','SHIPPED','DELIVERED','CANCEL_PENDING','CANCELLED','CLOSED')),
   payment_method text NOT NULL CHECK (payment_method IN ('PREPAID','COD','COD_WITH_ADVANCE')),
   subtotal_amount bigint NOT NULL CHECK (subtotal_amount >= 0), discount_amount bigint NOT NULL CHECK (discount_amount >= 0),
-  tax_amount bigint NOT NULL CHECK (tax_amount >= 0), shipping_amount bigint NOT NULL CHECK (shipping_amount >= 0),
+  shipping_amount bigint NOT NULL CHECK (shipping_amount >= 0),
   total_amount bigint NOT NULL CHECK (total_amount >= 0), required_advance_amount bigint NOT NULL DEFAULT 0 CHECK (required_advance_amount >= 0),
   customer_snapshot_ciphertext bytea NOT NULL, initial_address_ciphertext bytea NOT NULL, pii_key_version text NOT NULL,
   geography_snapshot jsonb NOT NULL, pricing_policy_snapshot jsonb NOT NULL,
   version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
   PRIMARY KEY (id, created_at), FOREIGN KEY (id, created_at) REFERENCES ordering.order_ids(id, created_at),
-  CHECK (discount_amount <= subtotal_amount), CHECK (total_amount = subtotal_amount - discount_amount + tax_amount + shipping_amount),
+  CHECK (discount_amount <= subtotal_amount), CHECK (total_amount = subtotal_amount - discount_amount + shipping_amount),
   CHECK (required_advance_amount <= total_amount), CHECK (payment_method <> 'COD' OR required_advance_amount = 0),
   CHECK (payment_method <> 'COD_WITH_ADVANCE' OR required_advance_amount > 0)
 ) PARTITION BY RANGE (created_at);
@@ -418,9 +411,9 @@ CREATE TABLE ordering.order_lines (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), order_id uuid NOT NULL, order_created_at timestamptz NOT NULL,
   variant_ref uuid NOT NULL, product_snapshot jsonb NOT NULL, quantity integer NOT NULL CHECK (quantity BETWEEN 1 AND 1000000),
   unit_amount bigint NOT NULL CHECK (unit_amount >= 0), discount_amount bigint NOT NULL CHECK (discount_amount >= 0),
-  tax_amount bigint NOT NULL CHECK (tax_amount >= 0), total_amount bigint NOT NULL CHECK (total_amount >= 0),
-  tax_snapshot jsonb NOT NULL, FOREIGN KEY (order_id, order_created_at) REFERENCES ordering.orders(id, created_at),
-  CHECK (discount_amount <= unit_amount * quantity), CHECK (total_amount = unit_amount * quantity - discount_amount + tax_amount),
+  total_amount bigint NOT NULL CHECK (total_amount >= 0),
+  FOREIGN KEY (order_id, order_created_at) REFERENCES ordering.orders(id, created_at),
+  CHECK (discount_amount <= unit_amount * quantity), CHECK (total_amount = unit_amount * quantity - discount_amount),
   UNIQUE (id, order_id, order_created_at)
 );
 CREATE TABLE ordering.line_discount_allocations (
@@ -468,38 +461,6 @@ CREATE TABLE ordering.customer_risk_projections (
   rts_count bigint NOT NULL DEFAULT 0 CHECK (rts_count >= 0),
   source_version bigint NOT NULL CHECK (source_version > 0), updated_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE TABLE ordering.tax_invoices (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), order_id uuid NOT NULL, order_created_at timestamptz NOT NULL,
-  invoice_number text NOT NULL UNIQUE, invoice_type text NOT NULL CHECK (invoice_type IN ('SALE','CREDIT_NOTE','DEBIT_NOTE')),
-  original_invoice_id uuid REFERENCES ordering.tax_invoices(id),
-  currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'), issued_at timestamptz NOT NULL,
-  supplier_snapshot jsonb NOT NULL, buyer_snapshot_ciphertext bytea NOT NULL,
-  taxable_amount bigint NOT NULL CHECK (taxable_amount >= 0), tax_amount bigint NOT NULL CHECK (tax_amount >= 0),
-  supplementary_duty_amount bigint NOT NULL DEFAULT 0 CHECK (supplementary_duty_amount >= 0),
-  total_amount bigint NOT NULL CHECK (total_amount >= 0), supply_at timestamptz NOT NULL,
-  transport_snapshot jsonb NOT NULL, tax_policy_version text NOT NULL,
-  template_version text NOT NULL, document_object_key text, document_sha256 bytea,
-  FOREIGN KEY (order_id, order_created_at) REFERENCES ordering.orders(id, created_at),
-  CHECK (total_amount = taxable_amount + tax_amount + supplementary_duty_amount),
-  CHECK ((invoice_type = 'SALE') = (original_invoice_id IS NULL))
-);
-CREATE TABLE ordering.tax_invoice_lines (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), invoice_id uuid NOT NULL REFERENCES ordering.tax_invoices(id),
-  order_line_id uuid REFERENCES ordering.order_lines(id), item_kind text NOT NULL CHECK (item_kind IN ('GOODS','SHIPPING','ADJUSTMENT')),
-  description_snapshot text NOT NULL, hs_code text, unit_code text NOT NULL, quantity integer NOT NULL CHECK (quantity > 0),
-  taxable_amount bigint NOT NULL CHECK (taxable_amount >= 0), vat_amount bigint NOT NULL CHECK (vat_amount >= 0),
-  supplementary_duty_amount bigint NOT NULL DEFAULT 0 CHECK (supplementary_duty_amount >= 0), rate_snapshot jsonb NOT NULL
-);
-CREATE TABLE ordering.tax_exports (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), period_start date NOT NULL, period_end date NOT NULL,
-  format_version text NOT NULL, object_key text NOT NULL UNIQUE,
-  sha256 bytea NOT NULL CHECK (octet_length(sha256) = 32), created_at timestamptz NOT NULL DEFAULT now(), CHECK (period_end >= period_start)
-);
-CREATE TABLE ordering.tax_export_invoices (
-  export_id uuid NOT NULL REFERENCES ordering.tax_exports(id), invoice_id uuid NOT NULL REFERENCES ordering.tax_invoices(id),
-  PRIMARY KEY (export_id, invoice_id)
-);
-
 -- PAYMENT: never trust a browser redirect; a capture requires server verification.
 CREATE TABLE payment.intents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), order_ref uuid NOT NULL,
@@ -547,7 +508,7 @@ CREATE TABLE payment.cod_collections (
 );
 CREATE TABLE payment.cod_collection_allocations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), cod_collection_id uuid NOT NULL REFERENCES payment.cod_collections(id),
-  order_line_ref uuid, component text NOT NULL CHECK (component IN ('GOODS','TAX','SHIPPING')),
+  order_line_ref uuid, component text NOT NULL CHECK (component IN ('GOODS','SHIPPING')),
   amount bigint NOT NULL CHECK (amount > 0),
   UNIQUE NULLS NOT DISTINCT (cod_collection_id, order_line_ref, component),
   UNIQUE (id, cod_collection_id)
@@ -563,7 +524,7 @@ CREATE TABLE payment.captures (
 );
 CREATE TABLE payment.capture_allocations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), capture_id uuid NOT NULL REFERENCES payment.captures(id),
-  order_line_ref uuid, component text NOT NULL CHECK (component IN ('GOODS','TAX','SHIPPING','ADVANCE')),
+  order_line_ref uuid, component text NOT NULL CHECK (component IN ('GOODS','SHIPPING','ADVANCE')),
   amount bigint NOT NULL CHECK (amount > 0), UNIQUE NULLS NOT DISTINCT (capture_id, order_line_ref, component),
   UNIQUE (id, capture_id)
 );
@@ -809,7 +770,7 @@ CREATE TABLE courier_ledger.courier_contracts (
   delivery_fee_amount bigint NOT NULL CHECK (delivery_fee_amount >= 0), return_fee_amount bigint NOT NULL CHECK (return_fee_amount >= 0),
   cod_fee_numerator integer NOT NULL CHECK (cod_fee_numerator >= 0), cod_fee_denominator integer NOT NULL CHECK (cod_fee_denominator > 0),
   fee_basis text NOT NULL CHECK (fee_basis IN ('COLLECTED_COD','ORDER_TOTAL','CONTRACT_RULE')),
-  rounding_rule text NOT NULL, tax_rule_snapshot jsonb NOT NULL,
+  rounding_rule text NOT NULL,
   UNIQUE (provider, merchant_account_ref, version), CHECK (effective_until IS NULL OR effective_until > effective_from)
 );
 CREATE TABLE courier_ledger.accounts (
@@ -836,10 +797,9 @@ CREATE TABLE courier_ledger.receivables (
   contract_id uuid NOT NULL REFERENCES courier_ledger.courier_contracts(id), journal_id uuid NOT NULL REFERENCES courier_ledger.journals(id),
   currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'), cod_collected_amount bigint NOT NULL CHECK (cod_collected_amount >= 0),
   delivery_fee_amount bigint NOT NULL CHECK (delivery_fee_amount >= 0), commission_amount bigint NOT NULL CHECK (commission_amount >= 0),
-  tax_amount bigint NOT NULL DEFAULT 0 CHECK (tax_amount >= 0),
   expected_net_amount bigint NOT NULL, settled_amount bigint NOT NULL DEFAULT 0 CHECK (settled_amount >= 0),
   due_at timestamptz NOT NULL, state text NOT NULL CHECK (state IN ('OPEN','PARTIAL','SETTLED','DISPUTED','WRITTEN_OFF')),
-  CHECK (expected_net_amount = cod_collected_amount - delivery_fee_amount - commission_amount - tax_amount)
+  CHECK (expected_net_amount = cod_collected_amount - delivery_fee_amount - commission_amount)
 );
 CREATE TABLE courier_ledger.remittances (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), provider text NOT NULL, merchant_account_ref text NOT NULL,

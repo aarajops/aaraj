@@ -92,14 +92,11 @@ async function readResponse<T>(
   if (!response.ok) {
     const problem = ApiErrorResponseSchema.safeParse(body);
     const errorCode = problem.success ? problem.data.errorCode : undefined;
-    const message =
-      errorCode === "TAX_PROFILE_UNAVAILABLE"
-        ? "Online checkout is temporarily unavailable. No order was placed; your cart is unchanged. Please try again later."
-        : problem.success
-          ? Array.isArray(problem.data.message)
-            ? problem.data.message.join(" ")
-            : problem.data.message
-          : "The quote request could not be completed.";
+    const message = problem.success
+      ? Array.isArray(problem.data.message)
+        ? problem.data.message.join(" ")
+        : problem.data.message
+      : "The quote request could not be completed.";
     throw new QuoteRequestError(message, response.status, errorCode);
   }
   const result = schema.safeParse(body);

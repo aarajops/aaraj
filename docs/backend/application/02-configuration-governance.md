@@ -6,10 +6,10 @@ This document defines where Aaraj configuration lives and which domain owns its 
 
 | Class                     | Source of truth                                               | Examples                                                          |
 | ------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Code and release rules    | Contracts, application code, and reviewed database migrations | Supported tax calculations, validation rules, schema invariants   |
+| Code and release rules    | Contracts, application code, and reviewed database migrations | Validation rules, schema invariants   |
 | Deployment/runtime values | Per-deployment environment or host configuration              | Database and Redis endpoints, public canonical origin, ports      |
 | Secrets                   | Protected deployment provisioning and secret-handling process | Auth and encryption keys, courier and object-storage credentials  |
-| Business settings         | Database tables owned by their business domain                | Storefront display settings, tax profile and calculation behavior |
+| Business settings         | Database tables owned by their business domain                | Storefront display settings |
 | Public settings response  | Explicit allowlisted domain projection                        | Store name, SEO defaults, announcement, public contacts, assets   |
 
 The public settings projection must never include deployment values, secret material, audit metadata, actor identifiers, or private integration state. Secret values must not be placed in merchant-editable settings or audit metadata.
@@ -32,7 +32,6 @@ The separate [application configuration guide](./01-configuration.md) shows a po
 Business settings are typed data owned by a domain module. Each owner defines its contracts, persistence, validation, authorization policy, API, audit events, and admin editor. Do not introduce a universal key/value table or arbitrary JSON blob for unrelated domain behavior.
 
 - Catalog owns its category hierarchy and product rules.
-- Tax owns its tax configuration and effective tax profiles.
 - Storefront owns public store identity and presentation settings.
 - Future payment, checkout, and fulfillment settings belong to those domains when those capabilities require merchant administration.
 - Courier credentials remain deployment secrets; a public settings response must not expose them.
@@ -59,7 +58,7 @@ Logo, brand icon, favicon, and social image uploads use the authorized multipart
 
 The migration leaves the SEO fields and images optional. Open Graph and X metadata prefers the dedicated social image, then the configured store logo, then the bundled `/public/aaraj-social.png` share image, which is composed from the actual `/public/aaraj-logo.svg` logo lockup. The storefront header and footer use the configured horizontal logo, with `/public/aaraj-logo.svg` as the fallback. Generated 192×192, 512×512, and Apple touch icons use the configured square brand icon, falling back to `/public/aaraj-icon.svg`; the 64×64 browser icon prefers the optional favicon override, then the square brand icon, then that same square fallback. Logo artwork is never used as the app-icon source. Next.js generates these icons through its metadata file conventions. It resolves page metadata on the server from the public settings response, uses the configured canonical origin (never the request `Host` header) as `metadataBase`, and emits canonical URLs for the home and product pages. Open Graph and X card images include descriptive alt text. Product detail metadata is specific to the published product; account, checkout, order, cart, and admin routes are marked noindex. `robots.txt` allows crawlers to read those page-level noindex directives and advertises the dynamic sitemap. `sitemap.xml` lists the home page and published product URLs with product update timestamps and each product's primary image. The generated `manifest.webmanifest` follows the Next.js metadata file convention, uses the public store name and description, takes `background_color` and `theme_color` from validated storefront settings, and references generated 192×192 and 512×512 square brand icons. The background setting is applied to the storefront CSS theme and generated PNG icons; the brand setting is applied to the CSS brand accent. The storefront renders configured contact details in the header/footer, and plain-text descriptions and configured footer links in the footer. Social URLs are restricted to their intended HTTPS host families; footer links accept same-origin paths or HTTPS URLs. The database asset manifest is insert-only for the runtime role and configuration changes remain versioned and audited.
 
-Changes record the actor, reason, version, and changed field names. Audit metadata excludes setting values. Existing domain-specific settings such as tax remain with their existing modules and transaction snapshots; this feature does not move them into the storefront table.
+Changes record the actor, reason, version, and changed field names. Audit metadata excludes setting values. Domain-specific settings remain with the modules that own them; this feature does not move them into the storefront table.
 
 ## Change verification
 

@@ -549,11 +549,6 @@ function CheckoutOrderSummary({
           </dd>
         </div>
       </dl>
-      {quote && quote.tax.mode !== "disabled" && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          Applicable tax is included in the displayed prices.
-        </p>
-      )}
       <Button
         className="mt-5 w-full"
         disabled={

@@ -31,7 +31,6 @@ export const PermissionSchema = z.enum([
   "catalog.categories.manage",
   "inventory.manage",
   "orders.manage",
-  "tax.manage",
   "delivery.tariff.manage",
   "storefront.settings.manage",
 ]);

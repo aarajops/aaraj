@@ -15,7 +15,6 @@ import { InventoryModule } from "./inventory/inventory.module.js";
 import { CartModule } from "./cart/cart.module.js";
 import { GeographyModule } from "./geography/geography.module.js";
 import { DeliveryModule } from "./delivery/delivery.module.js";
-import { TaxModule } from "./tax/tax.module.js";
 import { QuoteModule } from "./quote/quote.module.js";
 import { OrdersModule } from "./orders/orders.module.js";
 import { PathaoModule } from "./delivery/pathao/pathao.module.js";
@@ -37,7 +36,6 @@ import { StorefrontModule } from "./storefront/storefront.module.js";
     CartModule,
     GeographyModule,
     DeliveryModule,
-    TaxModule,
     QuoteModule,
     OrdersModule,
     PathaoModule,

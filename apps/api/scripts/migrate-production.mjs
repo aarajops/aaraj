@@ -134,7 +134,6 @@ async function readAppliedHistory(client, migrations) {
           "cart",
           "geography",
           "delivery",
-          "tax",
           "quote",
           "orders",
         ],

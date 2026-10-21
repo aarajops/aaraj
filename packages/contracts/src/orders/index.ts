@@ -85,15 +85,6 @@ const OrderLineSchema = z.strictObject({
   grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 });
 
-const OrderTaxComponentSchema = z.strictObject({
-  treatment: z.enum(["taxable", "exempt", "not_calculated"]),
-  grossAmountBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  taxableBaseBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  taxAmountBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  rateNumerator: z.number().int().positive().nullable(),
-  rateDenominator: z.number().int().positive().nullable(),
-});
-
 export const OrderAddressSchema = z.strictObject({
   recipientName: z.string().min(2).max(120),
   phone: z.string().regex(/^\+8801[3-9]\d{8}$/),
@@ -143,20 +134,6 @@ export const OrderSchema = z.strictObject({
     .int()
     .nonnegative()
     .max(Number.MAX_SAFE_INTEGER),
-  tax: z.strictObject({
-    mode: z.enum(["disabled", "inclusive"]).optional(),
-    profileVersion: z.string().min(1).max(80).nullable(),
-    sourceReference: z.string().min(1).max(500).nullable(),
-    sourceVersion: z.string().min(1).max(120).nullable(),
-    roundingRule: z.literal("half_up_bdt_v1").nullable(),
-    merchandise: OrderTaxComponentSchema,
-    delivery: OrderTaxComponentSchema,
-    totalTaxAmountBdt: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(Number.MAX_SAFE_INTEGER),
-  }),
   delivery: z.strictObject({
     tariffVersion: z.string().min(1).max(80),
     effectiveFrom: z.iso.date(),

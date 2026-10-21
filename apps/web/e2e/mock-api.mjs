@@ -259,7 +259,7 @@ const server = createServer(async (request, response) => {
     const permissions = ["access.read_self"];
     if (["staff", "admin", "superadmin"].includes(role)) {
       permissions.push("catalog.manage");
-      permissions.push("orders.manage", "inventory.manage", "tax.manage");
+      permissions.push("orders.manage", "inventory.manage");
     }
     if (["admin", "superadmin"].includes(role)) {
       permissions.push("catalog.categories.manage");

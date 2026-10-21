@@ -83,24 +83,6 @@ try {
   await migrate(drizzle(migrationPool), {
     migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
   });
-  await migrationPool.query(
-    `INSERT INTO "tax"."profile" (
-       "version", "effective_from", "legal_merchant_reference",
-       "registration_status", "operating_model", "price_presentation",
-       "product_treatment", "product_rate_numerator", "product_rate_denominator",
-       "delivery_treatment", "rounding_rule", "source_reference", "source_version",
-       "approval_reference", "approved", "test_only"
-     ) VALUES (
-       'TEST_ONLY_BD_RETAIL_TAX_RULE_V1', '2020-01-01', 'TEST_ONLY synthetic merchant fixture',
-       'not_required', 'direct_retailer', 'vat_inclusive',
-       'taxable', 3, 17, 'exempt', 'half_up_bdt_v1',
-       'TEST_ONLY synthetic fixture; not legal guidance', 'TEST_ONLY_V1',
-       'TEST_ONLY_AUTOMATED_FIXTURE', true, true
-     )`,
-  );
-  await migrationPool.query(
-    `UPDATE "tax"."configuration" SET "enabled" = true WHERE "id" = 'default'`,
-  );
   const { grantRuntimePrivileges } =
     await import("../dist/platform/database/grant-runtime-privileges.js");
   await grantRuntimePrivileges(migrationPool, database, runtimeRole);

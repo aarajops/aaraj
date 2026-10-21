@@ -28,10 +28,6 @@ import { DatabaseService } from "../platform/database/database.service.js";
 import { DeliveryService } from "../delivery/delivery.service.js";
 import { GeographyService } from "../geography/geography.service.js";
 import { quoteSnapshot } from "./quote-schema.js";
-import { TaxService, type QuoteTaxState } from "../tax/tax.service.js";
-import { calculateInclusiveTaxBdt } from "../tax/inclusive-tax.js";
-
-type TaxComponent = AuthoritativeQuote["tax"]["merchandise"];
 
 @Injectable()
 export class QuoteService {
@@ -41,7 +37,6 @@ export class QuoteService {
     @Inject(CATALOG_CART_PORT) private readonly catalog: CatalogCartPort,
     private readonly geography: GeographyService,
     private readonly delivery: DeliveryService,
-    private readonly tax: TaxService,
   ) {}
 
   async create(
@@ -73,7 +68,6 @@ export class QuoteService {
       destination.district.id,
       destination.upazila?.id,
     );
-    const taxState = await this.tax.getCurrentQuoteState();
     const variants = await this.catalog.findPurchasableVariants(
       context.cart.lines.map(({ variantId }) => variantId),
     );
@@ -106,15 +100,6 @@ export class QuoteService {
     const merchandiseGrossBdt = safeAmount(
       lines.reduce((sum, line) => sum + BigInt(line.grossAmountBdt), 0n),
     );
-    const merchandiseTax = taxComponent(
-      merchandiseGrossBdt,
-      taxState,
-      "product",
-    );
-    const deliveryTax = taxComponent(tariff.feeBdt, taxState, "delivery");
-    const totalTaxAmountBdt = safeAmount(
-      BigInt(merchandiseTax.taxAmountBdt) + BigInt(deliveryTax.taxAmountBdt),
-    );
     const totalBdt = safeAmount(
       BigInt(merchandiseGrossBdt) + BigInt(tariff.feeBdt),
     );
@@ -138,16 +123,8 @@ export class QuoteService {
         deliveryTariffEffectiveFrom: tariff.effectiveFrom,
         deliveryZone: tariff.zone,
         deliveryAmountBdt: tariff.feeBdt,
-        taxProfileVersion: taxState.profile?.version ?? null,
-        taxSourceReference: taxState.profile?.sourceReference ?? null,
-        taxSourceVersion: taxState.profile?.sourceVersion ?? null,
-        taxRoundingRule: taxState.profile?.roundingRule ?? null,
-        taxProfileSnapshot: taxState.profileSnapshot,
-        merchandiseTaxSnapshot: merchandiseTax,
-        deliveryTaxSnapshot: deliveryTax,
         lines,
         merchandiseGrossBdt,
-        totalTaxAmountBdt,
         totalBdt,
         validityPolicyVersion: QUOTE_VALIDITY_POLICY_VERSION,
         createdAt: sql`now()`,
@@ -206,10 +183,7 @@ export class QuoteService {
     if (!sameCatalogLines(row.lines, variants))
       return stale(row.id, "catalog_changed");
 
-    const [currentTariffVersion, currentTaxState] = await Promise.all([
-      this.delivery.getCurrentVersion(),
-      this.tax.getCurrentQuoteState(),
-    ]);
+    const currentTariffVersion = await this.delivery.getCurrentVersion();
     if (currentTariffVersion !== row.deliveryTariffVersion) {
       return stale(row.id, "delivery_tariff_changed");
     }
@@ -242,14 +216,6 @@ export class QuoteService {
     ) {
       return stale(row.id, "delivery_tariff_changed");
     }
-    if (
-      (currentTaxState.profile?.version ?? null) !== row.taxProfileVersion ||
-      stableJson(currentTaxState.profileSnapshot) !==
-        stableJson(row.taxProfileSnapshot)
-    ) {
-      return stale(row.id, "tax_rule_changed");
-    }
-
     const [newest] = await this.database.db
       .select({ id: quoteSnapshot.id })
       .from(quoteSnapshot)
@@ -336,19 +302,6 @@ export class QuoteService {
         effectiveFrom: row.deliveryTariffEffectiveFrom,
         zone: row.deliveryZone as AuthoritativeQuote["delivery"]["zone"],
         grossAmountBdt: row.deliveryAmountBdt,
-        tax: row.deliveryTaxSnapshot,
-      },
-      tax: {
-        mode: row.taxProfileVersion ? "inclusive" : "disabled",
-        profileVersion: row.taxProfileVersion,
-        sourceReference: row.taxSourceReference,
-        sourceVersion: row.taxSourceVersion,
-        pricePresentation: row.taxProfileVersion
-          ? "vat_inclusive"
-          : "not_configured",
-        roundingRule: row.taxRoundingRule,
-        merchandise: row.merchandiseTaxSnapshot,
-        totalTaxAmountBdt: row.totalTaxAmountBdt,
       },
       totalBdt: row.totalBdt,
       validityPolicyVersion: row.validityPolicyVersion,
@@ -356,47 +309,6 @@ export class QuoteService {
       expiresAt: row.expiresAt.toISOString(),
     });
   }
-}
-
-function taxComponent(
-  grossAmountBdt: number,
-  state: QuoteTaxState,
-  target: "product" | "delivery",
-): TaxComponent {
-  if (state.mode === "disabled") {
-    return {
-      treatment: "not_calculated",
-      grossAmountBdt,
-      taxableBaseBdt: grossAmountBdt,
-      taxAmountBdt: 0,
-      rateNumerator: null,
-      rateDenominator: null,
-    };
-  }
-  const profile = state.profile;
-  const isDelivery = target === "delivery";
-  const treatment = isDelivery
-    ? profile.deliveryTreatment
-    : profile.productTreatment;
-  const numerator = isDelivery
-    ? profile.deliveryRateNumerator
-    : profile.productRateNumerator;
-  const denominator = isDelivery
-    ? profile.deliveryRateDenominator
-    : profile.productRateDenominator;
-  const result = calculateInclusiveTaxBdt({
-    grossAmountBdt,
-    treatment: treatment as "taxable" | "exempt",
-    rateNumerator: numerator,
-    rateDenominator: denominator,
-  });
-  return {
-    treatment: treatment as "taxable" | "exempt",
-    grossAmountBdt,
-    ...result,
-    rateNumerator: numerator,
-    rateDenominator: denominator,
-  };
 }
 
 function quoteOwnerCondition(owner: CartQuoteOwner) {
@@ -459,22 +371,6 @@ function parseQuoteLines(value: unknown): AuthoritativeQuote["lines"] {
       "A stored quote snapshot is invalid.",
     );
   return result.data;
-}
-
-function stableJson(value: unknown): string {
-  return JSON.stringify(sortObjectKeys(value));
-}
-
-function sortObjectKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortObjectKeys);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, sortObjectKeys(item)]),
-    );
-  }
-  return value;
 }
 
 function stale(

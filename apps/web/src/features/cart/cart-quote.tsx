@@ -623,11 +623,6 @@ export function CartQuote({
                 <span>Total</span>
                 <span>{formatCatalogPrice({ amountBdt: quote.totalBdt })}</span>
               </div>
-              {quote.tax.mode !== "disabled" && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Applicable tax is included in the displayed prices.
-                </p>
-              )}
               <Link
                 className={buttonVariants({
                   className: "mt-5",

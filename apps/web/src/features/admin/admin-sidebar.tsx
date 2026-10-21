@@ -9,7 +9,6 @@ import {
   Truck,
   LayoutDashboard,
   Package,
-  ReceiptText,
   Ruler,
   Store,
   Tags,
@@ -84,12 +83,6 @@ const settingsLinks = [
     label: "Banners",
     icon: Images,
     permission: "storefront.settings.manage",
-  },
-  {
-    href: "/admin/tax",
-    label: "Tax",
-    icon: ReceiptText,
-    permission: "tax.manage",
   },
   {
     href: "/admin/settings/delivery",

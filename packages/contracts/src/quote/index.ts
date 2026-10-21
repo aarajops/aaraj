@@ -33,16 +33,6 @@ const QuoteLineSchema = z.strictObject({
   grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 });
 
-const QuoteTaxComponentSchema = z.strictObject({
-  treatment: z.enum(["taxable", "exempt", "not_calculated"]),
-  grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  taxableBaseBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  taxAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  rateNumerator: z.number().int().positive().nullable(),
-  rateDenominator: z.number().int().positive().nullable(),
-});
-export type QuoteTaxComponent = z.infer<typeof QuoteTaxComponentSchema>;
-
 export const AuthoritativeQuoteSchema = z.strictObject({
   schemaVersion: z.literal(QUOTE_SCHEMA_VERSION),
   id: z.uuid(),
@@ -64,21 +54,6 @@ export const AuthoritativeQuoteSchema = z.strictObject({
     effectiveFrom: z.iso.date(),
     zone: DeliveryZoneSchema.nullable().default(null),
     grossAmountBdt: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
-    tax: QuoteTaxComponentSchema,
-  }),
-  tax: z.strictObject({
-    mode: z.enum(["disabled", "inclusive"]).optional(),
-    profileVersion: z.string().min(1).max(80).nullable(),
-    sourceReference: z.string().min(1).max(500).nullable(),
-    sourceVersion: z.string().min(1).max(120).nullable(),
-    pricePresentation: z.enum(["vat_inclusive", "not_configured"]),
-    roundingRule: z.literal("half_up_bdt_v1").nullable(),
-    merchandise: QuoteTaxComponentSchema,
-    totalTaxAmountBdt: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(Number.MAX_SAFE_INTEGER),
   }),
   totalBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   validityPolicyVersion: z.literal(QUOTE_VALIDITY_POLICY_VERSION),
@@ -100,7 +75,6 @@ export const QuoteLookupSchema = z.discriminatedUnion("status", [
       "catalog_changed",
       "destination_requoted",
       "delivery_tariff_changed",
-      "tax_rule_changed",
     ]),
   }),
   z.strictObject({

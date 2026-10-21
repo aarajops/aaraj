@@ -2,7 +2,7 @@
 
 This is the schema and ERD companion to the [enterprise architecture](ecommerce-blueprint.md). The diagrams describe logical relationships; complete PostgreSQL columns and constraints are in [ecommerce-schema.sql](ecommerce-schema.sql). Both are proposed design artifacts, not applied migrations.
 
-The implemented launch catalog adds one current base price per sellable variant: a non-negative whole-BDT integer, named `amountBdt` in API contracts and `price_bdt` in PostgreSQL. Zero represents a free product; draft variants may instead remain unpriced. Publication requires all active variants to have a price. The public product response exposes a single price taken from the first active variant in color order and the assigned size guide's order; public color/size options do not expose individual variant prices. Staff responses retain each variant's price for catalog management. The proposed quote/tax/payment structures below are future design only and do not change this product-price representation.
+The implemented launch catalog adds one current base price per sellable variant: a non-negative whole-BDT integer, named `amountBdt` in API contracts and `price_bdt` in PostgreSQL. Zero represents a free product; draft variants may instead remain unpriced. Publication requires all active variants to have a price. The public product response exposes a single price taken from the first active variant in color order and the assigned size guide's order; public color/size options do not expose individual variant prices. Staff responses retain each variant's price for catalog management. Quotes use merchandise prices plus the configured delivery charge.
 
 For the launch catalog, each product style has at most one primary category, which must be an active leaf when assigned. Categories remain reusable managed records; use a future collections feature for overlapping campaigns or merchandising groups. The target model below follows this single-category relationship and does not use a product-category join table.
 
@@ -17,8 +17,8 @@ A relationship between bounded contexts means a public application call or event
 | catalog            | Products, SKU variants, brands, categories, typed attributes, media and search documents                                           |
 | inventory          | Warehouses, physical/reserved/available balances, movements, reservations and adjustments                                          |
 | cart               | Anonymous/customer carts, lines, one-time merge receipts                                                                           |
-| pricing            | Effective price books, promotions, quotes, quotas, tax rules and immutable quote allocations                                       |
-| ordering           | Orders/lines, checkout saga, risk review, address/price/tax snapshots and issued invoice/correction facts                          |
+| pricing            | Effective prices, quotes and promotions                                                                                            |
+| ordering           | Orders/lines, checkout, risk review, delivery/address/price snapshots                                                               |
 | payment            | MFS intents/attempts/captures, verified COD funding receipts, refunds/payouts, reconciliation and optional wallet                  |
 | fulfillment        | Split warehouse allocation, courier bookings, shipments, returns and inspection/disposition                                        |
 | courier_ledger     | Effective courier contracts/fees, COD receivables, statements, remittances, discrepancies and balanced journals                    |
@@ -58,11 +58,11 @@ carts, cart_lines, merge_receipts
 
 ### pricing (12 tables)
 
-price_lists, prices, tax_rules, exchange_rates, promotions, coupons, promotion_counters, customer_promotion_counters, quotes, quote_lines, discount_allocations, promotion_redemptions
+price_lists, prices, exchange_rates, promotions, coupons, promotion_counters, customer_promotion_counters, quotes, quote_lines, discount_allocations, promotion_redemptions
 
 ### ordering (14 tables)
 
-order_ids, orders, order_lines, line_discount_allocations, order_address_revisions, order_state_history, checkout_sagas, risk_assessments, fraud_reviews, customer_risk_projections, tax_invoices, tax_invoice_lines, tax_exports, tax_export_invoices
+order_ids, orders, order_lines, line_discount_allocations, order_address_revisions, order_state_history, checkout_sagas, risk_assessments, fraud_reviews, customer_risk_projections
 
 ### payment (19 tables)
 
@@ -131,15 +131,13 @@ erDiagram
 
 Available stock is physical minus reserved, constrained nonnegative. Cart and quote lines hold opaque SKU IDs; checkout calls Catalog, Pricing and Inventory ports to revalidate.
 
-### Order, payment source, fulfillment, return and tax
+### Order, payment source, fulfillment and return
 
 ```mermaid
 erDiagram
   CUSTOMER ||--o{ ORDER : places
   ORDER ||--|{ ORDER_LINE : snapshots
   ORDER ||--o{ CHECKOUT_SAGA : coordinates
-  ORDER ||--o{ TAX_INVOICE : documents
-  TAX_INVOICE ||--|{ TAX_INVOICE_LINE : details
   ORDER_LINE ||--o{ DISCOUNT_ALLOCATION : apportions
   ORDER ||--o{ PAYMENT_INTENT : funds
   PAYMENT_INTENT ||--o{ PAYMENT_ATTEMPT : tries
@@ -221,4 +219,4 @@ A row CHECK cannot prove sums over multiple rows. Lock aggregates or use guarded
 - Provision future partitions and alert on coverage. The reference SQL has no default partition that could conceal a scheduler failure.
 - Runtime roles have DML only in their schema and cannot run DDL or disable audit/ledger guards. Migration and break-glass credentials are separate.
 
-The implemented catalog stores whole BDT prices in PostgreSQL `integer` and exposes them as JSON integer `amountBdt` values. It rejects fractional amounts. The broader quote, tax, and payment model is still a proposal; its precision, rounding, and provider-boundary rules must be reviewed before that work begins.
+The implemented catalog stores whole BDT prices in PostgreSQL `integer` and exposes them as JSON integer `amountBdt` values. It rejects fractional amounts. Quotes add the configured delivery amount to merchandise prices.

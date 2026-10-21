@@ -72,7 +72,6 @@ export const customerOrder = ordersSchema.table(
     }).notNull(),
     totalBdt: bigint("total_bdt", { mode: "number" }).notNull(),
     codAmountDueBdt: bigint("cod_amount_due_bdt", { mode: "number" }).notNull(),
-    taxSnapshot: jsonb("tax_snapshot").notNull(),
     deliverySnapshot: jsonb("delivery_snapshot").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -139,7 +138,7 @@ export const customerOrder = ordersSchema.table(
     ),
     check(
       "order_snapshot_object_check",
-      sql`jsonb_typeof(${table.taxSnapshot}) = 'object' and jsonb_typeof(${table.deliverySnapshot}) = 'object'`,
+      sql`jsonb_typeof(${table.deliverySnapshot}) = 'object'`,
     ),
     check(
       "order_address_ciphertext_check",

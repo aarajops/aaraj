@@ -302,6 +302,13 @@
       "when": 1792492919946,
       "tag": "0042_delivery_zone_tariffs",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1792555394841,
+      "tag": "0043_remove_tax_feature",
+      "breakpoints": true
     }
   ]
 }

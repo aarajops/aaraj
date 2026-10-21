@@ -18,7 +18,6 @@ import {
   geographyLocation,
   geographySnapshot,
 } from "../geography/geography-schema.js";
-import { taxProfile } from "../tax/tax-schema.js";
 
 export const quoteSchema = pgSchema("quote");
 
@@ -51,21 +50,8 @@ export const quoteSnapshot = quoteSchema.table(
     deliveryAmountBdt: bigint("delivery_amount_bdt", {
       mode: "number",
     }).notNull(),
-    taxProfileVersion: text("tax_profile_version").references(
-      () => taxProfile.version,
-      { onDelete: "restrict" },
-    ),
-    taxSourceReference: text("tax_source_reference"),
-    taxSourceVersion: text("tax_source_version"),
-    taxRoundingRule: text("tax_rounding_rule"),
-    taxProfileSnapshot: jsonb("tax_profile_snapshot").notNull(),
-    merchandiseTaxSnapshot: jsonb("merchandise_tax_snapshot").notNull(),
-    deliveryTaxSnapshot: jsonb("delivery_tax_snapshot").notNull(),
     lines: jsonb("lines").notNull(),
     merchandiseGrossBdt: bigint("merchandise_gross_bdt", {
-      mode: "number",
-    }).notNull(),
-    totalTaxAmountBdt: bigint("total_tax_amount_bdt", {
       mode: "number",
     }).notNull(),
     totalBdt: bigint("total_bdt", { mode: "number" }).notNull(),
@@ -110,7 +96,7 @@ export const quoteSnapshot = quoteSchema.table(
     ),
     check(
       "snapshot_amount_check",
-      sql`${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.totalTaxAmountBdt} between 0 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt}`,
+      sql`${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt}`,
     ),
     check(
       "snapshot_delivery_zone_check",
@@ -127,10 +113,6 @@ export const quoteSnapshot = quoteSchema.table(
     check(
       "snapshot_lines_array_check",
       sql`jsonb_typeof(${table.lines}) = 'array'`,
-    ),
-    check(
-      "snapshot_tax_object_check",
-      sql`jsonb_typeof(${table.taxProfileSnapshot}) = 'object' and jsonb_typeof(${table.merchandiseTaxSnapshot}) = 'object' and jsonb_typeof(${table.deliveryTaxSnapshot}) = 'object'`,
     ),
   ],
 );

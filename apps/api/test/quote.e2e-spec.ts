@@ -25,7 +25,6 @@ import {
 } from "../src/catalog/catalog-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
-import { taxConfiguration, taxProfile } from "../src/tax/tax-schema.js";
 import { geographySnapshot } from "../src/geography/geography-schema.js";
 
 const origin = "http://localhost:3000";
@@ -262,35 +261,19 @@ describe("authoritative Bangladesh quotes", () => {
           `AARAJ_DELIVERY_${date.replaceAll("-", "_")}_V2`,
         ),
       );
-    await database.db
-      .update(taxProfile)
-      .set({ effectiveFrom: addDays(date, 1), effectiveTo: null })
-      .where(eq(taxProfile.version, "TEST_ONLY_BD_RETAIL_TAX_RULE_V2"));
-    await database.db
-      .update(taxProfile)
-      .set({ effectiveTo: null })
-      .where(eq(taxProfile.version, "TEST_ONLY_BD_RETAIL_TAX_RULE_V1"));
   });
 
   afterAll(async () => {
     await app?.close();
   });
 
-  it("quotes Dhaka at BDT 80, keeps inclusive tax within gross prices, and reports current state", async () => {
+  it("quotes merchandise and delivery from the current catalog and tariff", async () => {
     const guest = await newGuestCart();
     const response = await createQuote(guest.cookie);
     expect(response.body).toMatchObject({
       currency: "BDT",
       merchandiseGrossBdt: 250,
       delivery: { grossAmountBdt: 80 },
-      tax: {
-        profileVersion: "TEST_ONLY_BD_RETAIL_TAX_RULE_V1",
-        merchandise: {
-          grossAmountBdt: 250,
-          taxableBaseBdt: 212,
-          taxAmountBdt: 38,
-        },
-      },
       totalBdt: 330,
       validityPolicyVersion: "AARAJ_QUOTE_VALIDITY_2026_10_07_V1",
     });
@@ -531,81 +514,6 @@ describe("authoritative Bangladesh quotes", () => {
     );
   });
 
-  it("quotes without tax in production while the owner setting is disabled", async () => {
-    const originalNodeEnv = process.env.NODE_ENV;
-    const guest = await newGuestCart();
-    await database.db
-      .update(taxConfiguration)
-      .set({ enabled: false })
-      .where(eq(taxConfiguration.id, "default"));
-    process.env.NODE_ENV = "production";
-
-    try {
-      const response = await createQuote(guest.cookie);
-
-      expect(response.body).toMatchObject({
-        tax: {
-          mode: "disabled",
-          profileVersion: null,
-          pricePresentation: "not_configured",
-          totalTaxAmountBdt: 0,
-          merchandise: {
-            treatment: "not_calculated",
-            grossAmountBdt: 250,
-            taxableBaseBdt: 250,
-            taxAmountBdt: 0,
-          },
-        },
-        delivery: {
-          grossAmountBdt: 80,
-          tax: {
-            treatment: "not_calculated",
-            grossAmountBdt: 80,
-            taxableBaseBdt: 80,
-            taxAmountBdt: 0,
-          },
-        },
-        totalBdt: 330,
-      });
-    } finally {
-      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = originalNodeEnv;
-      await database.db
-        .update(taxConfiguration)
-        .set({ enabled: true })
-        .where(eq(taxConfiguration.id, "default"));
-    }
-  });
-
-  it("does not accept the synthetic tax profile in production mode", async () => {
-    const guest = await newGuestCart();
-    const before = await database.db
-      .select({ id: quoteSnapshot.id })
-      .from(quoteSnapshot);
-    const originalNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
-    try {
-      await request(app.getHttpServer())
-        .post(`${API_V1_BASE_PATH}/quotes`)
-        .set("Origin", origin)
-        .set("Cookie", guest.cookie)
-        .send(quoteBody())
-        .expect(503)
-        .expect(({ body }) =>
-          expect(body).toMatchObject({
-            errorCode: "TAX_PROFILE_UNAVAILABLE",
-          }),
-        );
-    } finally {
-      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = originalNodeEnv;
-    }
-    const after = await database.db
-      .select({ id: quoteSnapshot.id })
-      .from(quoteSnapshot);
-    expect(after).toHaveLength(before.length);
-  });
-
   it("makes a quote stale after cart or catalog changes and reissues from current data", async () => {
     const guest = await newGuestCart();
     const initial = await createQuote(guest.cookie);
@@ -638,7 +546,7 @@ describe("authoritative Bangladesh quotes", () => {
     expect(requote.body.lines[0].unitPriceBdt).toBe(300);
   });
 
-  it("invalidates old quotes when the delivery tariff and tax rule versions change", async () => {
+  it("invalidates old quotes when the delivery tariff changes", async () => {
     const guest = await newGuestCart();
     const date = bangladeshBusinessDate();
     const previousDate = addDays(date, -1);
@@ -679,59 +587,6 @@ describe("authoritative Bangladesh quotes", () => {
           reason: "delivery_tariff_changed",
         }),
       );
-
-    const taxV1 = await createQuote(guest.cookie);
-    await database.db
-      .update(taxProfile)
-      .set({ effectiveTo: date })
-      .where(eq(taxProfile.version, "TEST_ONLY_BD_RETAIL_TAX_RULE_V1"));
-    await database.db
-      .insert(taxProfile)
-      .values({
-        version: "TEST_ONLY_BD_RETAIL_TAX_RULE_V2",
-        effectiveFrom: date,
-        legalMerchantReference: "TEST_ONLY synthetic merchant fixture",
-        registrationStatus: "not_required",
-        operatingModel: "direct_retailer",
-        pricePresentation: "vat_inclusive",
-        productTreatment: "taxable",
-        productRateNumerator: 1,
-        productRateDenominator: 9,
-        deliveryTreatment: "taxable",
-        deliveryRateNumerator: 1,
-        deliveryRateDenominator: 9,
-        roundingRule: "half_up_bdt_v1",
-        sourceReference: "TEST_ONLY synthetic fixture; not legal guidance",
-        sourceVersion: "TEST_ONLY_V2",
-        approvalReference: "TEST_ONLY_AUTOMATED_FIXTURE",
-        approved: true,
-        testOnly: true,
-      })
-      .onConflictDoUpdate({
-        target: taxProfile.version,
-        set: {
-          effectiveFrom: date,
-          effectiveTo: null,
-          productRateNumerator: 1,
-          productRateDenominator: 9,
-          deliveryTreatment: "taxable",
-          deliveryRateNumerator: 1,
-          deliveryRateDenominator: 9,
-        },
-      });
-    await getQuote(taxV1.body.id, guest.cookie)
-      .expect(200)
-      .expect(({ body }) =>
-        expect(body).toMatchObject({
-          status: "stale",
-          reason: "tax_rule_changed",
-        }),
-      );
-    const taxV2 = await createQuote(guest.cookie);
-    expect(taxV2.body.delivery).toMatchObject({
-      grossAmountBdt: 81,
-      tax: { treatment: "taxable", taxableBaseBdt: 73, taxAmountBdt: 8 },
-    });
   });
 
   it("requires a requote after expiry and prevents a guest quote from following login merge", async () => {
@@ -742,17 +597,13 @@ describe("authoritative Bangladesh quotes", () => {
         "id", "schema_version", "customer_id", "guest_cart_hash", "cart_revision",
         "geography_version", "division_id", "division_name", "district_id", "district_name",
         "upazila_id", "upazila_name", "delivery_tariff_version", "delivery_tariff_effective_from",
-        "delivery_amount_bdt", "tax_profile_version", "tax_source_reference", "tax_source_version",
-        "tax_rounding_rule", "tax_profile_snapshot", "merchandise_tax_snapshot", "delivery_tax_snapshot",
-        "lines", "merchandise_gross_bdt", "total_tax_amount_bdt", "total_bdt",
+        "delivery_amount_bdt", "lines", "merchandise_gross_bdt", "total_bdt",
         "validity_policy_version", "created_at", "expires_at"
       )
       SELECT gen_random_uuid(), "schema_version", "customer_id", "guest_cart_hash", "cart_revision",
         "geography_version", "division_id", "division_name", "district_id", "district_name",
         "upazila_id", "upazila_name", "delivery_tariff_version", "delivery_tariff_effective_from",
-        "delivery_amount_bdt", "tax_profile_version", "tax_source_reference", "tax_source_version",
-        "tax_rounding_rule", "tax_profile_snapshot", "merchandise_tax_snapshot", "delivery_tax_snapshot",
-        "lines", "merchandise_gross_bdt", "total_tax_amount_bdt", "total_bdt",
+        "delivery_amount_bdt", "lines", "merchandise_gross_bdt", "total_bdt",
         "validity_policy_version", "created_at" - interval '20 minutes', "expires_at" - interval '20 minutes'
       FROM "quote"."snapshot" WHERE "id" = ${quote.body.id}
       RETURNING "id"
