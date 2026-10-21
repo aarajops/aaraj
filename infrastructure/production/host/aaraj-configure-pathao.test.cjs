@@ -577,7 +577,7 @@ test("validates Pathao before VPS access and restores interrupted changes", () =
   );
   assert.match(
     workflow.slice(cleanup),
-    /always\(\) && \(failure\(\) \|\| cancelled\(\)\)[\s\S]*?pathao-restore[\s\S]*?configuration restored\.[\s\S]*?deploy-release\.sh restart/,
+    /always\(\)\s*&&\s*\(failure\(\)\s*\|\|\s*cancelled\(\)\)[\s\S]*?pathao-restore[\s\S]*?configuration restored\.[\s\S]*?deploy-release\.sh restart/,
   );
   for (const secret of [
     "PATHAO_TOKEN_ENCRYPTION_KEY",
