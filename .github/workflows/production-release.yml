@@ -107,7 +107,7 @@ jobs:
             echo "- $reason"
             echo '- Existing API CI runs fresh-schema and historical-upgrade migration compatibility tests.'
             if [[ "$maintenance_required" == true ]]; then
-              echo '- Destructive SQL was detected. CI will complete, but automatic production deployment is held for a separately approved maintenance operation after a verified backup and restore drill.'
+              echo '- Destructive SQL was detected. CI will complete, but automatic production deployment is held for an approved maintenance operation. Confirm a recent backup and a periodically verified recovery path before execution.'
             elif [[ "$required" == true ]]; then
               echo '- Review the migration diff and confirm a recent verified backup before production migration.'
             fi
