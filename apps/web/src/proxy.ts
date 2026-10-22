@@ -4,22 +4,19 @@ export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDevelopment = process.env.NODE_ENV === "development";
   const isAdmin = request.nextUrl.pathname.startsWith("/admin");
-  const googleTagSources = isAdmin
-    ? ""
-    : " https://www.googletagmanager.com";
+  const googleTagSources = isAdmin ? "" : " https://www.googletagmanager.com";
   const googleAnalyticsSources = isAdmin
     ? ""
     : " https://*.google-analytics.com";
   const contentSecurityPolicy = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDevelopment ? " 'unsafe-eval'" : ""}${googleTagSources}`,
-    `script-src-elem 'self' 'nonce-${nonce}' 'strict-dynamic'${googleTagSources}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDevelopment ? " 'unsafe-eval'" : ""}`,
+    `script-src-elem 'self' 'nonce-${nonce}'${googleTagSources}`,
     isDevelopment
       ? "style-src 'self' 'unsafe-inline'"
       : `style-src 'self' 'nonce-${nonce}'`,
     `img-src 'self' blob: data:${googleTagSources}${googleAnalyticsSources}`,
     `connect-src 'self'${googleTagSources}${googleAnalyticsSources}${isAdmin ? "" : " https://*.google.com"}`,
-    ...(isAdmin ? [] : ["frame-src https://www.googletagmanager.com"]),
     "font-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
