@@ -22,6 +22,32 @@ if (
 
 const failures = [];
 
+const aliasOrigin = new URL(origin);
+aliasOrigin.hostname = aliasOrigin.hostname.startsWith("www.")
+  ? aliasOrigin.hostname.slice(4)
+  : `www.${aliasOrigin.hostname}`;
+try {
+  const aliasResponse = await fetch(new URL("/", aliasOrigin), {
+    redirect: "manual",
+    headers: { "cache-control": "no-cache" },
+    signal: AbortSignal.timeout(10000),
+  });
+  const location = aliasResponse.headers.get("location");
+  const destination = location ? new URL(location, aliasOrigin) : null;
+  if (
+    aliasResponse.status !== 301 ||
+    !destination ||
+    destination.origin !== origin.origin ||
+    destination.pathname !== "/"
+  ) {
+    failures.push(
+      `www alias did not redirect to the canonical HTTPS origin (HTTP ${aliasResponse.status})`,
+    );
+  }
+} catch (error) {
+  failures.push(`www alias redirect check failed: ${error.message}`);
+}
+
 async function get(path) {
   try {
     const response = await fetch(new URL(path, origin), {
@@ -123,6 +149,6 @@ if (failures.length) {
   process.exitCode = 1;
 } else {
   console.log(
-    "Public storefront, SEO metadata, canonical origin, manifest, and generated icons are healthy.",
+    "Public storefront, canonical www redirect, SEO metadata, manifest, and generated icons are healthy.",
   );
 }

@@ -28,7 +28,7 @@ RUN apk add --no-cache dumb-init
 # Enable Corepack and prepare pnpm
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@12.5.1 --activate
+RUN corepack enable && corepack prepare pnpm@12.15.0 --activate
 
 WORKDIR /app
 

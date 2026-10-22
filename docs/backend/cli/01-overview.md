@@ -54,7 +54,7 @@ The NestJS CLI and its underlying schematic engines require modern Node.js runti
 | :--- | :--- | :--- |
 | **Nest CLI Binary (`@nestjs/cli`)** | Node.js **v20.11+** | Node.js **v24 LTS** |
 | **Schematics Engine (`@nestjs/schematics`)** | Node.js **v22.22.3+**, **v24.15+**, or **v26+** | Node.js **v24 LTS** |
-| **Package Managers** | npm 10+, pnpm 9+, Yarn 4+, Bun 1+ | **pnpm 12.5.1+** |
+| **Package Managers** | npm 10+, pnpm 9+, Yarn 4+, Bun 1+ | **pnpm 12.15.0+** |
 
 ### Internationalization Support (ICU) Check
 

@@ -19,7 +19,7 @@ Nest is written in TypeScript and runs on Node.js. In the `@aaraj` monorepo, `@a
 ## 2. Runtime & Prerequisites
 
 NestJS requires Node.js **v20.19+**, **v22.12+**, or **v24+**.
-* The Aaraj repository is pinned to **Node.js 24 LTS** (`>=24.15.0 <25`) and uses **pnpm 12.5.1**.
+* The Aaraj repository is pinned to **Node.js 24 LTS** (`>=24.15.0 <25`) and uses **pnpm 12.15.0**.
 * Package management is governed strictly by the root `pnpm-lock.yaml`.
 
 ---

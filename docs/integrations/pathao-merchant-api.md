@@ -192,15 +192,24 @@ Example payloads in the supplied material include `consignment_id`, `merchant_or
 
 The relevant implementation is in `apps/api/src/delivery/pathao/`. Its configured sandbox/live base URLs match the supplied material; it implements token issuance/refresh, store listing, order creation, order-info lookup, and the webhook callback. AARAJ validates one configured delivery-type number (`12` or `48`) and sends it as the required Pathao `delivery_type` field. The webhook route is `/api/v1/delivery/pathao/webhook` and returns HTTP `202` with the integration handshake header.
 
-Those code facts do not establish that a real Pathao request has succeeded. CI uses deterministic mocks. Sandbox and live values are provisioned from the protected GitHub Environment. A real sandbox authentication attempt from the production host timed out at the network layer; no real order or webhook delivery has been verified. The implementation has no AARAJ-only live-approval or credential-rotation configuration flags.
+Those code facts do not establish that a real Pathao request has succeeded. CI uses deterministic mocks. Sandbox and live values are provisioned from the protected GitHub Environment. A real sandbox authentication attempt from the production host timed out at the network layer; no real order or webhook delivery has been verified. The API has no provider credential-rotation control.
+
+## Production qualification
+
+**Not qualified:** keep live credentials inactive until a merchant sandbox
+run verifies authentication, order creation and lookup, webhook delivery, and
+duplicate/timeout reconciliation. The last sandbox authentication attempt
+timed out; use manual delivery until qualification succeeds. Mocked CI is not
+production qualification.
 
 ## Environment configuration interpretation
 
 For GitHub Environment `aaraj-production`:
 
-- Use Environment **Variables** for `PATHAO_BASE_URL` and `PATHAO_DELIVERY_TYPE`. Set the base URL to exactly the documented sandbox or live URL. Set delivery type to the single value selected for the order requests (`48` or `12`), never a list.
+- Keep `PATHAO_BASE_URL` and `PATHAO_DELIVERY_TYPE` unset while production qualification is incomplete. They have been removed from the environment. When the base URL is absent, the helper clears Pathao credentials from `runtime.env` on the next configuration apply while preserving the token-encryption key; the already-running process keeps its current configuration until that apply and restart occur.
+- After qualification, use Environment **Variables** for `PATHAO_BASE_URL` and `PATHAO_DELIVERY_TYPE`. Set the URL to exactly the documented sandbox or live URL and select one delivery type (`48` or `12`).
 - Use Environment **Secrets** for the sandbox/live client IDs, client secrets, usernames, passwords, webhook secrets, and AARAJ's `PATHAO_TOKEN_ENCRYPTION_KEY`.
-- The release workflow selects credentials from the URL, validates the configuration, and provisions it through the root-owned helper before activation. If the base URL is absent, the helper clears the Pathao credentials from the runtime file while preserving the token-encryption key. Changing GitHub Environment values alone does not apply them.
+- The release workflow selects credentials from the URL, validates the configuration, and provisions it through the root-owned helper before activation. Changing GitHub Environment values alone does not apply them.
 
 These environment-variable names describe AARAJ's deployment mapping, not Pathao's own configuration interface.
 

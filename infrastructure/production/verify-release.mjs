@@ -46,7 +46,7 @@ try {
     manifest.application !== "aaraj" ||
     (manifest.dirty !== false && !options.allowDirty) ||
     manifest.nodeVersion !== expectedNode ||
-    manifest.pnpmVersion !== "12.5.1" ||
+    manifest.pnpmVersion !== "12.15.0" ||
     !["release", "delivery-district-delete-grant"].includes(
       manifest.operation ?? "release",
     ) ||

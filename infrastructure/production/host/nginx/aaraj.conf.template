@@ -12,14 +12,29 @@ server {
     }
 
     location / {
-        return 301 https://$host$request_uri;
+        return 301 https://__AARAJ_DOMAIN__$request_uri;
     }
 }
 
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name __AARAJ_DOMAIN__ www.__AARAJ_DOMAIN__;
+    server_name www.__AARAJ_DOMAIN__;
+
+    ssl_certificate /etc/letsencrypt/live/__AARAJ_DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__AARAJ_DOMAIN__/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location / {
+        return 301 https://__AARAJ_DOMAIN__$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name __AARAJ_DOMAIN__;
 
     ssl_certificate /etc/letsencrypt/live/__AARAJ_DOMAIN__/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/__AARAJ_DOMAIN__/privkey.pem;

@@ -23,7 +23,7 @@ const options = parseArguments(process.argv.slice(2));
 const nodeVersion = (
   await readFile(path.join(repository, ".node-version"), "utf8")
 ).trim();
-const pnpmVersion = "12.5.1";
+const pnpmVersion = "12.15.0";
 
 if (!/^v\d+\.\d+\.\d+$/.test(options.tag ?? "")) {
   throw new Error("--tag must be a stable vX.Y.Z release tag.");

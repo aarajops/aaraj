@@ -5,8 +5,8 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      confirm_destructive_migration:
-        description: Enter the exact main commit SHA approved for production migration.
+      confirm_production_commit:
+        description: Enter the exact main commit SHA you intend to deploy.
         required: true
         type: string
 
@@ -34,13 +34,13 @@ jobs:
       - name: Validate main deployment commit
         id: deployment
         env:
-          CONFIRM_DESTRUCTIVE_MIGRATION: ${{ inputs.confirm_destructive_migration }}
+          CONFIRM_PRODUCTION_COMMIT: ${{ inputs.confirm_production_commit }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$CONFIRM_DESTRUCTIVE_MIGRATION" == "$GITHUB_SHA" ]] || {
+            [[ "$CONFIRM_PRODUCTION_COMMIT" == "$GITHUB_SHA" ]] || {
               echo 'Manual production deployment requires confirming the exact commit SHA.' >&2
               exit 1
             }
@@ -63,7 +63,8 @@ jobs:
             echo
             echo "- Source: \`$GITHUB_EVENT_NAME\` on \`main\`"
             echo "- Commit: \`$GITHUB_SHA\`"
-            echo "- Release baseline: \`$baseline_tag\` (no new version tag is needed for this deployment)"
+            echo "- Migration comparison baseline: \`$baseline_tag\`"
+            echo '- After a migration-bearing deployment succeeds, advance the baseline with a stable version tag.'
           } >> "$GITHUB_STEP_SUMMARY"
 
   ci:
@@ -88,52 +89,49 @@ jobs:
         id: policy
         env:
           DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          MIGRATION_BASELINE: ${{ needs.deployment-gate.outputs.tag }}
         run: |
           set -euo pipefail
-          previous="$(git tag --merged "$DEPLOYMENT_COMMIT" --list 'v[0-9]*' --sort=-version:refname \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | head -n 1 || true)"
-          if [[ -z "$previous" ]]; then
-            migration_base="$(git hash-object -t tree -w --stdin </dev/null)"
-            required=true
-            reason='No earlier stable release tag exists; initial schema state needs explicit review.'
-          else
-            migration_base="$previous"
-            if git diff --quiet "$previous" "$DEPLOYMENT_COMMIT" -- apps/api/drizzle; then
-              required=false
-              reason="No Drizzle migration files changed since the latest stable release tag $previous."
-            else
-              status=$?
-              if [[ $status -ne 1 ]]; then exit "$status"; fi
-              required=true
-              reason="Drizzle migration files changed since the latest stable release tag $previous."
-            fi
-          fi
-          maintenance_required=false
-          if [[ "$required" == true ]] && \
-            git diff --unified=0 "$migration_base" "$DEPLOYMENT_COMMIT" -- 'apps/api/drizzle/*.sql' \
-              | grep -Eiq '^\+[^+].*(DROP[[:space:]]+(TABLE|COLUMN|SCHEMA|TYPE)|TRUNCATE([[:space:]]|;)|DELETE[[:space:]]+FROM)'; then
-            maintenance_required=true
-          fi
-          printf 'required=%s\n' "$required" >> "$GITHUB_OUTPUT"
-          printf 'maintenance_required=%s\n' "$maintenance_required" >> "$GITHUB_OUTPUT"
-          {
-            echo '### Migration review policy'
-            echo
-            echo "- $reason"
-            echo '- Existing API CI runs fresh-schema and historical-upgrade migration compatibility tests.'
-            if [[ "$maintenance_required" == true ]]; then
-              echo '- Destructive SQL was detected. CI will complete, but automatic production deployment is held for an approved maintenance operation. Confirm a recent backup and a periodically verified recovery path before execution.'
-            elif [[ "$required" == true ]]; then
-              echo '- Review the migration diff and confirm a recent verified backup before production migration.'
-            fi
-            echo '- Migration execution remains isolated on the VPS under the separate migration role; production database credentials stay on the VPS.'
-          } >> "$GITHUB_STEP_SUMMARY"
+          policy_file="$RUNNER_TEMP/aaraj-migration-policy.json"
+          node infrastructure/production/check-migration-policy.mjs \
+            "$MIGRATION_BASELINE" "$DEPLOYMENT_COMMIT" > "$policy_file"
+          node - "$policy_file" "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY" "$MIGRATION_BASELINE" <<'NODE'
+          const fs = require("node:fs");
+          const [policyFile, outputFile, summaryFile, baseline] = process.argv.slice(2);
+          const policy = JSON.parse(fs.readFileSync(policyFile, "utf8"));
+          fs.appendFileSync(
+            outputFile,
+            `required=${policy.required}\nmaintenance_required=${policy.maintenanceRequired}\n`,
+          );
+          const lines = [
+            "### Migration review policy",
+            "",
+            `- Baseline: ${baseline}`,
+            "- Each new immutable SQL migration must have an explicit impact class in `infrastructure/production/migration-impact.json`.",
+            "- Existing API CI runs fresh-schema and historical-upgrade migration compatibility checks.",
+          ];
+          for (const migration of policy.migrations) {
+            lines.push(`- \`${migration.file}\`: ${migration.impact}`);
+          }
+          if (policy.maintenanceRequired) {
+            lines.push(
+              "- Maintenance-class changes require a manual dispatch for the exact commit and a passing host backup preflight. GitHub does not enforce an independent reviewer on this private-repository plan.",
+            );
+          } else if (policy.required) {
+            lines.push(
+              "- The host migration wrapper requires a current verified off-site backup and restore-drill record before the migration service can start.",
+            );
+          }
+          lines.push(
+            "- Migration execution remains isolated on the VPS under the separate migration role; production database credentials stay on the VPS.",
+          );
+          fs.appendFileSync(summaryFile, `${lines.join("\n")}\n`);
+          NODE
           {
             echo
             echo '#### Migration file summary'
-            git diff --stat "$migration_base" "$DEPLOYMENT_COMMIT" -- apps/api/drizzle
-            git diff --name-status "$migration_base" "$DEPLOYMENT_COMMIT" -- apps/api/drizzle
+            git diff --stat "$MIGRATION_BASELINE" "$DEPLOYMENT_COMMIT" -- apps/api/drizzle
+            git diff --name-status "$MIGRATION_BASELINE" "$DEPLOYMENT_COMMIT" -- apps/api/drizzle
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
@@ -147,7 +145,7 @@ jobs:
         needs.migration-policy.outputs.maintenance_required != 'true' ||
         (
           github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.confirm_destructive_migration == needs.deployment-gate.outputs.commit
+          github.event.inputs.confirm_production_commit == needs.deployment-gate.outputs.commit
         )
       )
     runs-on: ubuntu-24.04
@@ -188,16 +186,16 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Setup pnpm 12.5.1
+      - name: Setup pnpm 12.15.0
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
-          version: 12.5.1
+          version: 12.15.0
           run_install: false
 
       - name: Verify toolchain and install frozen dependencies
         run: |
           test "$(node --version)" = "v$(cat .node-version)"
-          test "$(pnpm --version)" = "12.5.1"
+          test "$(pnpm --version)" = "12.15.0"
           pnpm install --frozen-lockfile
 
       - name: Build and package the deployment commit
@@ -227,6 +225,16 @@ jobs:
             --commit "$DEPLOYMENT_COMMIT" \
             --tag "$RELEASE_TAG" \
             --smoke
+
+      - name: Verify production backup and restore readiness
+        env:
+          RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
+          AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
+          AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
+          AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
+          AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
+        run: bash infrastructure/production/deploy-release.sh preflight "$RELEASE_COMMIT"
 
       - name: Validate and provision Pathao runtime configuration
         id: pathao_configuration
@@ -284,18 +292,18 @@ jobs:
 
           if [[ "$MIGRATION_REQUIRED" == true ]]; then
             {
-              echo "Migration-bearing release $RELEASE_COMMIT is staged. The protected production job is running its migration automatically on the VPS."
+              echo "Migration-bearing release $RELEASE_COMMIT is staged. The production job is running its migration on the VPS."
               echo
               echo 'The release activates only after the migration service reports successful completion.'
             } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo 'No migration files changed; the VPS migration runner will verify schema history and reconcile runtime grants before activation.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'No migration SQL changed; the VPS migration runner will verify schema history and reconcile runtime grants before activation.' >> "$GITHUB_STEP_SUMMARY"
           fi
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$MIGRATION_REQUIRED" == true ]]; then
             {
               echo
-              echo "Manual production migration confirmed for exact commit $RELEASE_COMMIT by $DEPLOYMENT_ACTOR."
-              echo 'This migration permanently removes the retired tax snapshots and tables. No verified database backup is configured.'
+              echo "Manual production deployment confirmed for exact commit $RELEASE_COMMIT by $DEPLOYMENT_ACTOR."
+              echo 'The host migration wrapper will block until current backup and restore-drill evidence is verified.'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
           bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT"

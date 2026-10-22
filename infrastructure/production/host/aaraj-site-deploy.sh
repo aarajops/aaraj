@@ -9,7 +9,7 @@ INCOMING="$SITE/incoming"
 MAX_ARCHIVE_BYTES=536870912
 
 usage() {
-  echo "Usage: aaraj-site-deploy.sh <stage|migrate|grant-delivery-district-delete|activate|rollback|restart> <commit-sha> [sha256]" >&2
+  echo "Usage: aaraj-site-deploy.sh <stage|preflight|migrate|grant-delivery-district-delete|activate|rollback|restart> <commit-sha> [sha256]" >&2
   exit 2
 }
 
@@ -21,7 +21,7 @@ digest="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
   stage) [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || usage ;;
-  migrate|grant-delivery-district-delete|activate|rollback|restart) [[ -z "$digest" ]] || usage ;;
+  preflight|migrate|grant-delivery-district-delete|activate|rollback|restart) [[ -z "$digest" ]] || usage ;;
   *) usage ;;
 esac
 
@@ -131,8 +131,8 @@ if (
   manifest.dirty !== false ||
   !["release", "delivery-district-delete-grant"].includes(manifest.operation ?? "release") ||
   !/^v\d+\.\d+\.\d+$/.test(manifest.releaseTag) ||
-  manifest.nodeVersion !== "24.20.0" ||
-  manifest.pnpmVersion !== "12.5.1" ||
+  manifest.nodeVersion !== "24.22.1" ||
+  manifest.pnpmVersion !== "12.15.0" ||
   manifest.api?.entrypoint !== "api/dist/main.js" ||
   manifest.api?.migrationEntrypoint !== "api/scripts/migrate-production.mjs" ||
   !["web/apps/web/server.js", "web/server.js"].includes(manifest.web?.serverEntrypoint) ||
@@ -264,6 +264,9 @@ run_migration() {
 }
 
 case "$operation" in
+  preflight)
+    /usr/bin/sudo -n /usr/local/sbin/aaraj-verify-backup
+    ;;
   stage)
     stage_release
     ;;

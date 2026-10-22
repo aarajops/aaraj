@@ -53,7 +53,7 @@ The repository maintains an authoritative, durable documentation portal under `/
    - External consumers import from `@aaraj/contracts` using its public exports.
    - Deep imports into `packages/*/src/...` are strictly prohibited.
 4. **Toolchain & Runtime**:
-   - **Package Manager**: `pnpm@12.5.1`
+   - **Package Manager**: `pnpm@12.15.0`
    - **Application Runtime**: `Node.js 24 LTS` (`>=24.15.0 <25`)
 
 ---
@@ -67,7 +67,7 @@ Use double quotes in TypeScript/JavaScript strings and JSX attributes across all
 ### Prerequisites
 
 - Node.js `>=24.15.0 <25` with `node` available on `PATH` (`node --version` should work)
-- pnpm `12.5.1`
+- pnpm `12.15.0`
 - Docker Engine with Docker Compose, running and accessible without `sudo`.
 - `infrastructure/local/.env.local` configured from `.env.example` (keep your existing file).
 
@@ -90,7 +90,7 @@ Log out of your desktop session and log back in, then reopen VS Code. Verify acc
 Install the package manager version pinned in `package.json`, then install the workspace dependencies:
 
 ```bash
-npm install --global pnpm@12.5.1
+npm install --global pnpm@12.15.0
 pnpm --version
 pnpm install
 ```

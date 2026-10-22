@@ -85,7 +85,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 12.5.1
+          version: 12.15.0
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -135,7 +135,7 @@ publish_devtools_graph:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
   script:
-    - npm install -g pnpm@12.5.1
+    - npm install -g pnpm@12.15.0
     - pnpm install --frozen-lockfile
     - PUBLISH_GRAPH=true pnpm --filter @aaraj/api run start
   variables:
