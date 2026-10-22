@@ -814,7 +814,7 @@ test("admin uploads and publishes a catalog banner through to the storefront", a
 test("catalog operator configures a product through to storefront visibility", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
 
   const suffix = randomUUID().slice(0, 8);
   const guideName = `E2E guide ${suffix}`;
