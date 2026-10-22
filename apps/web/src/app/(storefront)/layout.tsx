@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { headers } from "next/headers";
 import { GoogleTagManager } from "@next/third-parties/google";
 import { SiteHeader } from "@/app/_components/site-header";
 import { StoreFooter } from "@/app/_components/store-footer";
@@ -10,7 +11,11 @@ export default async function StorefrontLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const settings = await getPublicStorefrontSettings();
+  const [settings, requestHeaders] = await Promise.all([
+    getPublicStorefrontSettings(),
+    headers(),
+  ]);
+  const nonce = requestHeaders.get("x-nonce") ?? undefined;
   const storefrontTheme = {
     "--background": settings.backgroundColor,
     "--brand": settings.brandColor,
@@ -19,7 +24,7 @@ export default async function StorefrontLayout({
   return (
     <>
       {process.env.NODE_ENV === "production" ? (
-        <GoogleTagManager gtmId="GTM-N28C5K72" />
+        <GoogleTagManager gtmId="GTM-N28C5K72" nonce={nonce} />
       ) : null}
       <CartProvider>
         <div
