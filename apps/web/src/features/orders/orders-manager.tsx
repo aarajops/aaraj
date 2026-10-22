@@ -37,8 +37,11 @@ export function OrdersManager({
         columnHelper.display({
           id: "status",
           header: "Status",
-          cell: ({ row }) =>
-            `${humanize(row.original.status)} · ${humanize(row.original.fulfillmentStatus)} · COD ${humanize(row.original.collectionStatus)}`,
+          cell: ({ row }) => (
+            <span className="whitespace-normal">
+              {`${humanize(row.original.status)} · ${humanize(row.original.fulfillmentStatus)} · COD ${humanize(row.original.collectionStatus)}`}
+            </span>
+          ),
         }),
         columnHelper.accessor("serviceability", {
           header: "Delivery review",
