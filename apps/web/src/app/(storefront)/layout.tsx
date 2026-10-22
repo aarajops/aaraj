@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { GoogleTagManager } from "@next/third-parties/google";
 import { SiteHeader } from "@/app/_components/site-header";
 import { StoreFooter } from "@/app/_components/store-footer";
 import { CartProvider } from "@/features/cart/cart-provider";
@@ -16,15 +17,20 @@ export default async function StorefrontLayout({
   } as CSSProperties;
 
   return (
-    <CartProvider>
-      <div
-        className="flex min-h-screen flex-col bg-background text-foreground"
-        style={storefrontTheme}
-      >
-        <SiteHeader />
-        {children}
-        <StoreFooter />
-      </div>
-    </CartProvider>
+    <>
+      {process.env.NODE_ENV === "production" ? (
+        <GoogleTagManager gtmId="GTM-N28C5K72" />
+      ) : null}
+      <CartProvider>
+        <div
+          className="flex min-h-screen flex-col bg-background text-foreground"
+          style={storefrontTheme}
+        >
+          <SiteHeader />
+          {children}
+          <StoreFooter />
+        </div>
+      </CartProvider>
+    </>
   );
 }

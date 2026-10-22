@@ -16,6 +16,7 @@
     "@aaraj/contracts": "workspace:*",
     "@base-ui/react": "^1.8.0",
     "@hookform/resolvers": "^5.9.1",
+    "@next/third-parties": "16.4.2",
     "@tanstack/react-table": "^9.2.6",
     "better-auth": "^1.7.6",
     "class-variance-authority": "^0.7.1",
