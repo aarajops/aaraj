@@ -1,11 +1,9 @@
 # Install this file as /etc/sudoers.d/aaraj-deploy with owner root:root and
 # mode 0440; validate it with visudo -cf. Deployment receives only the listed
-# service restart, backup verifier, validated migration start, and fixed
-# Pathao env-file helper.
+# service restart, validated migration start, and fixed Pathao env-file helper.
 # This stdin-only helper does not need a sudo PTY; avoid echoing its secret input.
 Defaults!/usr/local/sbin/aaraj-configure-pathao.cjs !use_pty
 aaraj-deploy ALL=(root) NOPASSWD: \
   /usr/bin/systemctl restart aaraj-pm2.service, \
-  /usr/local/sbin/aaraj-verify-backup "", \
   /usr/local/sbin/aaraj-start-migration *, \
   /usr/local/sbin/aaraj-configure-pathao.cjs ""

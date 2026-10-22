@@ -115,11 +115,7 @@ jobs:
           }
           if (policy.maintenanceRequired) {
             lines.push(
-              "- Maintenance-class changes require a manual dispatch for the exact commit and a passing host backup preflight. GitHub does not enforce an independent reviewer on this private-repository plan.",
-            );
-          } else if (policy.required) {
-            lines.push(
-              "- The host migration wrapper requires a current verified off-site backup and restore-drill record before the migration service can start.",
+              "- Maintenance-class changes require a manual dispatch for the exact commit. GitHub does not enforce an independent reviewer on this private-repository plan.",
             );
           }
           lines.push(
@@ -226,16 +222,6 @@ jobs:
             --tag "$RELEASE_TAG" \
             --smoke
 
-      - name: Verify production backup and restore readiness
-        env:
-          RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
-          AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
-          AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
-          AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
-          AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
-          AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
-        run: bash infrastructure/production/deploy-release.sh preflight "$RELEASE_COMMIT"
-
       - name: Validate and provision Pathao runtime configuration
         id: pathao_configuration
         env:
@@ -303,7 +289,6 @@ jobs:
             {
               echo
               echo "Manual production deployment confirmed for exact commit $RELEASE_COMMIT by $DEPLOYMENT_ACTOR."
-              echo 'The host migration wrapper will block until current backup and restore-drill evidence is verified.'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
           bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT"

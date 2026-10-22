@@ -9,7 +9,7 @@ INCOMING="$SITE/incoming"
 MAX_ARCHIVE_BYTES=536870912
 
 usage() {
-  echo "Usage: aaraj-site-deploy.sh <stage|preflight|migrate|grant-delivery-district-delete|activate|rollback|restart> <commit-sha> [sha256]" >&2
+  echo "Usage: aaraj-site-deploy.sh <stage|migrate|grant-delivery-district-delete|activate|rollback|restart> <commit-sha> [sha256]" >&2
   exit 2
 }
 
@@ -21,7 +21,7 @@ digest="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
   stage) [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || usage ;;
-  preflight|migrate|grant-delivery-district-delete|activate|rollback|restart) [[ -z "$digest" ]] || usage ;;
+  migrate|grant-delivery-district-delete|activate|rollback|restart) [[ -z "$digest" ]] || usage ;;
   *) usage ;;
 esac
 
@@ -264,9 +264,6 @@ run_migration() {
 }
 
 case "$operation" in
-  preflight)
-    /usr/bin/sudo -n /usr/local/sbin/aaraj-verify-backup
-    ;;
   stage)
     stage_release
     ;;

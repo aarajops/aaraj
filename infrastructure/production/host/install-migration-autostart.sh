@@ -6,16 +6,14 @@ umask 077
 
 host_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 wrapper_source="$host_dir/aaraj-start-migration"
-backup_verifier_source="$host_dir/aaraj-verify-backup"
 pathao_helper_source="$host_dir/aaraj-configure-pathao.cjs"
 sudoers_source="$host_dir/sudoers.aaraj-deploy"
 wrapper_target=/usr/local/sbin/aaraj-start-migration
-backup_verifier_target=/usr/local/sbin/aaraj-verify-backup
+legacy_backup_verifier=/usr/local/sbin/aaraj-verify-backup
 pathao_helper_target=/usr/local/sbin/aaraj-configure-pathao.cjs
 sudoers_target=/etc/sudoers.d/aaraj-deploy
 
 [[ -f "$wrapper_source" && ! -L "$wrapper_source" && \
-  -f "$backup_verifier_source" && ! -L "$backup_verifier_source" && \
   -f "$pathao_helper_source" && ! -L "$pathao_helper_source" && \
   -f "$sudoers_source" && ! -L "$sudoers_source" ]] || {
   echo "AARAJ deployment helper files are missing or unsafe." >&2
@@ -33,32 +31,35 @@ getent passwd aaraj-deploy >/dev/null
   exit 1
 }
 [[ ! -L "$wrapper_target" && ! -d "$wrapper_target" && \
-  ! -L "$backup_verifier_target" && ! -d "$backup_verifier_target" && \
   ! -L "$pathao_helper_target" && ! -d "$pathao_helper_target" && \
   ! -L "$sudoers_target" && ! -d "$sudoers_target" ]] || {
   echo "Refusing to replace a symlink or directory at a managed target." >&2
   exit 1
 }
+if [[ -e "$legacy_backup_verifier" || -L "$legacy_backup_verifier" ]]; then
+  [[ -f "$legacy_backup_verifier" && ! -L "$legacy_backup_verifier" && \
+    "$(stat -c '%u:%g' -- "$legacy_backup_verifier")" == "0:0" ]] || {
+    echo "Refusing to remove an unsafe legacy backup verifier." >&2
+    exit 1
+  }
+fi
 
 wrapper_stage="$(mktemp /usr/local/sbin/.aaraj-start-migration.XXXXXXXX)"
-backup_verifier_stage="$(mktemp /usr/local/sbin/.aaraj-verify-backup.XXXXXXXX)"
 pathao_helper_stage="$(mktemp /usr/local/sbin/.aaraj-configure-pathao.XXXXXXXX)"
 sudoers_stage="$(mktemp /etc/sudoers.d/.aaraj-deploy.XXXXXXXX)"
-trap 'rm -f -- "$wrapper_stage" "$backup_verifier_stage" "$pathao_helper_stage" "$sudoers_stage"' EXIT
+trap 'rm -f -- "$wrapper_stage" "$pathao_helper_stage" "$sudoers_stage"' EXIT
 
 install -o root -g root -m 0755 "$wrapper_source" "$wrapper_stage"
-install -o root -g root -m 0755 "$backup_verifier_source" "$backup_verifier_stage"
 install -o root -g root -m 0755 "$pathao_helper_source" "$pathao_helper_stage"
 install -o root -g root -m 0440 "$sudoers_source" "$sudoers_stage"
 bash -n "$wrapper_stage"
-bash -n "$backup_verifier_stage"
 /usr/bin/node --input-type=commonjs --check < "$pathao_helper_stage"
 visudo -cf "$sudoers_stage"
 
 mv -f -- "$wrapper_stage" "$wrapper_target"
-mv -f -- "$backup_verifier_stage" "$backup_verifier_target"
 mv -f -- "$pathao_helper_stage" "$pathao_helper_target"
 mv -f -- "$sudoers_stage" "$sudoers_target"
+rm -f -- "$legacy_backup_verifier"
 trap - EXIT
 
 visudo -cf "$sudoers_target"

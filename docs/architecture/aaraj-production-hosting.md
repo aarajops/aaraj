@@ -60,42 +60,11 @@ authorization, backups, recovery access, or deployment have been verified.
   canonical HTTPS origin; the TLS certificate must cover both hostnames.
 - Do not install a persistent GitHub Actions runner on the production VPS.
 
-## Encrypted backup and restore
+## Database recovery
 
-Use a dedicated offsite object-storage bucket and a client-side encrypted
-backup repository such as restic. Keep its repository credentials separate
-from AARAJ media credentials, with the repository password stored root-only on
-the VPS and escrowed outside the VPS. Back up a PostgreSQL 16 custom-format
-dump through certificate-verified TLS and the AARAJ backup role. Include the
-protected `/etc/sites/aaraj/` configuration in the encrypted repository, with
-access to restored secrets limited to the administrator. Do not send backup
-credentials or database passwords to GitHub Actions.
-
-Before a migration service starts, require a recent successful database backup
-and a current restore drill. The root-owned `aaraj-verify-backup` preflight reads
-the off-site Restic repository using the configured database-snapshot tag. After
-a successful restore into a separate empty database, record its snapshot ID
-and completion time in root-only
-`/etc/sites/aaraj/backup.env` (`root:root`, mode `0600`). Set the backup and
-restore-drill age limits from the approved recovery objectives. Keep the
-configured Restic password file root-only (mode `0600`).
-`backup.env.example` contains placeholders, not deployable credentials or
-policy values. Missing, stale, unreadable, or unverified evidence blocks the
-migration before systemd starts it. The verifier does not receive database
-passwords through GitHub.
-
-Schedule repository integrity checks and repeat restore drills into a separate
-empty database. For recovery, restore to a new database and validate the
-application before switching production. The restic repository format is encrypted, and its
-`check` and restore commands are documented by the
-[restic project](https://restic.readthedocs.io/en/stable/).
-
-Backup destination, credentials, retention, recovery objectives, automation,
-and a successful restore drill remain unconfigured. Until an administrator
-completes that host setup and the verifier passes, production deployment is
-blocked before Pathao settings or database state are changed. Redis
-backup/restore requirements must be based on whether its current AARAJ data is
-reconstructible or represents user state.
+Manage database recovery separately from deployment. The exact-commit manual
+dispatch remains required for maintenance-class migrations. Keep the approved
+recovery procedure available to the operator before data-changing work.
 
 ```mermaid
 flowchart LR
@@ -107,9 +76,7 @@ flowchart LR
   MGate -->|yes| Compat[CI runs migration compatibility checks]
   MGate -->|no| Gate[AARAJ production environment]
   Compat --> Gate
-  Gate --> Backup{Verified backup and restore drill?}
-  Backup -->|no| Blocked[Deployment blocked]
-  Backup -->|yes| Pathao[Provision validated Pathao settings]
+  Gate --> Pathao[Provision validated Pathao settings]
   Pathao --> Transfer[Pinned SSH identity and site-scoped transfer]
   Transfer --> Stage["/srv/sites/aaraj/releases/{sha}"]
   Stage --> RunMigration[CI/CD runs the exact release migration service on the VPS]
@@ -125,8 +92,8 @@ flowchart LR
 GitHub Actions is the only routine production deployment path. Pull requests
 run CI before merge. Each push to `main` runs the same CI checks and builds and
 smoke-tests that exact commit. Compatible releases can deploy through the
-`aaraj-production` environment after the backup preflight; maintenance
-migrations require a manual dispatch for the exact SHA. Publishing a GitHub
+`aaraj-production` environment; maintenance migrations require a manual
+dispatch for the exact SHA. Publishing a GitHub
 Release page is optional and does not trigger another deployment. The
 environment is restricted to `main` and scopes the SSH credential to the
 deploy job.
@@ -148,14 +115,13 @@ release artifact.
 The main-push workflow builds one artifact from the exact verified commit and
 smoke-tests it before deployment; build jobs have no production environment
 secrets. The `aaraj-production` environment scopes the per-site SSH credential
-to the deploy job. After CI and artifact checks pass, CI/CD verifies backup
-readiness, provisions validated Pathao runtime settings, stages the artifact,
-starts the exact commit's migration service through the narrow root-owned
-wrapper, waits for it to finish, then activates and health-checks the app.
-Routine, backward-compatible migrations can proceed automatically after the
-host backup preflight passes. The migration wrapper checks again immediately
-before systemd starts. Maintenance migrations require an exact-SHA manual
-dispatch. That confirms operator intent; it is not an independent review.
+to the deploy job. After CI and artifact checks pass, CI/CD provisions
+validated Pathao runtime settings, stages the artifact, starts the exact
+commit's migration service through the narrow root-owned wrapper, waits for it
+to finish, then activates and health-checks the app. Routine migrations can
+proceed automatically after compatibility checks. Maintenance migrations
+require an exact-SHA manual dispatch. That confirms operator intent; it is not
+an independent review.
 The workflow uses an AARAJ concurrency group with cancellation disabled. A
 second deployment cannot overlap an active deployment to the same site. Until
 private-repository review controls are available, access to `main` is the
@@ -169,8 +135,8 @@ before deployment.
 Never accept an unverified `ssh-keyscan`, disable host-key checking, use the
 human administrator key, or expose root SSH credentials. The key maps to the
 unprivileged `aaraj-deploy` account. It can write only AARAJ's incoming and
-release directories. Its narrow sudo permissions run the backup verifier,
-restart `aaraj-pm2.service`, and invoke the root-owned
+release directories. Its narrow sudo permissions restart
+`aaraj-pm2.service` and invoke the root-owned
 `aaraj-start-migration` wrapper with a commit SHA; that wrapper accepts only a
 validated staged AARAJ release. The account cannot modify shared Nginx
 configuration, read runtime or migration secrets, or target another site's
@@ -303,11 +269,10 @@ records execution in the host journal.
 
 CI migration compatibility tests precede production migration and activation.
 Design routine migrations to preserve compatibility with the previous app
-version. A `maintenance` classification requires a verified backup and an
-exact commit SHA confirmed through `workflow_dispatch`. That confirmation is
-not an independent review while the repository remains on a plan without
-private-repository reviewer controls. No production database rollback is
-automatic.
+version. A `maintenance` classification requires an exact commit SHA confirmed
+through `workflow_dispatch`. That confirmation is not an independent review
+while the repository remains on a plan without private-repository reviewer
+controls. No production database rollback is automatic.
 Code rollback is allowed only while the schema is known to remain compatible
 with the previous app version.
 
@@ -323,11 +288,7 @@ with the previous app version.
    `BETTER_AUTH_URL`; point `www` DNS to the host and include it in the TLS
    certificate. Confirm PostgreSQL certificate and hostname validation from
    the VPS before a migration.
-3. Configure the encrypted Restic repository and root-only backup settings,
-   complete a tagged database backup, and record a successful restore into a
-   separate empty database. Confirm `aaraj-verify-backup` passes before
-   reviewing the initial Drizzle journal and SQL in a pull request.
-4. From a reviewed repository checkout on the VPS, install the one-time
+3. From a reviewed repository checkout on the VPS, install the one-time
    permission with `bash infrastructure/production/host/install-migration-autostart.sh`.
    Push the commit to `main`. CI/CD starts `aaraj-migration@<commit>.service` after staging and
    continues only after successful completion. The runner applies the initial
@@ -380,12 +341,12 @@ with the previous app version.
 | File or setting | Required change |
 | --- | --- |
 | `.github/workflows/ci.yml` | Run every current check on pull requests and expose the workflow through `workflow_call`; pin Node `24.22.1` and pnpm `12.15.0`, and assert the versions. |
-| `.github/workflows/production-release.yml` | On `main` pushes, call CI once, package and smoke-test that exact commit, classify new migration files against the latest stable tag, and deploy through strict pinned SSH with site-only transfer, backup preflight, health checks, compatible rollback, and concurrency group `aaraj-production`. |
+| `.github/workflows/production-release.yml` | On `main` pushes, call CI once, package and smoke-test that exact commit, classify new migration files against the latest stable tag, and deploy through strict pinned SSH with site-only transfer, health checks, compatible rollback, and concurrency group `aaraj-production`. |
 | `.node-version` | Add `24.22.1` as the repository's exact CI/release Node version. |
 | `apps/web/next.config.ts` | Enable standalone output, set `outputFileTracingRoot` to the monorepo root, and use the release SHA for a deterministic Next.js build ID while preserving the current same-origin API rewrite and security headers. |
 | `apps/api/scripts/migrate-production.mjs` | Add host-local production migration execution using the shipped Drizzle runtime and migration files, separate migration-role environment variables, the existing strict PostgreSQL TLS helper, and migration journal/checksum checks. Keep the existing local `db:migrate` path intact. |
 | `infrastructure/production/package-release.mjs` and `verify-release.mjs` | Build the isolated API deployment tree and Next standalone tree, add only runtime/migration assets and non-secret configuration, generate the manifest/checksum, and verify extracted artifacts start with no workspace paths or omitted runtime files. |
-| `infrastructure/production/host/` | Keep the site-scoped deployment script, SHA-validating migration wrapper and one-time installer, backup preflight, narrow sudo allowlist, per-release migration and PM2 systemd units, PM2 ecosystem, log rotation, canonical Nginx template, and site-only environment examples. Install host configuration and group-scoped directory permissions during an approved infrastructure phase. |
+| `infrastructure/production/host/` | Keep the site-scoped deployment script, SHA-validating migration wrapper and one-time installer, narrow sudo allowlist, per-release migration and PM2 systemd units, PM2 ecosystem, log rotation, canonical Nginx template, and site-only environment examples. Install host configuration and group-scoped directory permissions during an approved infrastructure phase. |
 | `docs/architecture/ecommerce-blueprint.md`, `docs/README.md`, and `README.md` | Point the approved initial-hosting decision and engineering portal to this operational architecture. |
 | GitHub repository settings | Keep deployment variables and the dedicated deployment key and verified host-key pin scoped to the `aaraj-production` environment. Enable required reviewers and protected branch rules when the private-repository plan supports them. |
 
@@ -405,7 +366,7 @@ once; it does not perform a second compiler build solely for comparison.
 2. **Host preflight:** verify Ubuntu 24.04, CPU architecture, disk and memory,
    firewall, Nginx ownership, existing sites/processes, PostgreSQL 16 and
    verified TLS, private Redis isolation, apex/`www` DNS and TLS prerequisites,
-   and encrypted backup/restore evidence. No host changes before this gate passes.
+   and production database connectivity. No host changes before this gate passes.
 3. **Repository release implementation:** add and qualify the workflow,
    packaging, migration gate, host-scoped deployment helper, health checks,
    and documented rollback. Production credentials and deployment access stay

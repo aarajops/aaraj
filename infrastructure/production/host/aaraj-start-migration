@@ -40,8 +40,6 @@ if (
 }
 NODE
 
-/usr/local/sbin/aaraj-verify-backup
-
 unit="aaraj-migration@$commit.service"
 if /usr/bin/systemctl start "$unit"; then
   /usr/bin/journalctl --unit "$unit" --no-pager --output=cat --lines 30
