@@ -6,6 +6,7 @@ import { GeographyModule } from "../geography/geography.module.js";
 import { DatabaseModule } from "../platform/database/database.module.js";
 import { QuoteController } from "./quote.controller.js";
 import { QuoteService } from "./quote.service.js";
+import { QuoteSnapshotCleanupWorker } from "./quote-snapshot-cleanup.worker.js";
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { QuoteService } from "./quote.service.js";
     DatabaseModule,
   ],
   controllers: [QuoteController],
-  providers: [QuoteService],
+  providers: [QuoteService, QuoteSnapshotCleanupWorker],
   exports: [QuoteService],
 })
 export class QuoteModule {}

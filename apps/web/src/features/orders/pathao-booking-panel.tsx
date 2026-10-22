@@ -332,6 +332,14 @@ export function PathaoBookingPanel({
                     {observation.providerStatus}
                   </p>
                 )}
+                {observation.providerCollectedAmount !== null && (
+                  <p className="text-muted-foreground">
+                    Provider-reported collected amount:{" "}
+                    {observation.providerCollectedAmount} (unit unverified).
+                    Verify it against delivery records before recording COD
+                    collection.
+                  </p>
+                )}
                 {observation.status === "reconciliation_required" && (
                   <p className="text-destructive">
                     Needs staff review; no Order payment or Inventory change was

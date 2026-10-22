@@ -645,6 +645,7 @@ test("customer Order page explains serviceability timeout cancellation", async (
         serviceability: "pending_manual_review",
         paymentMethod: "cod",
         collectionStatus: "uncollected",
+        collectedAmountBdt: null,
         fulfillmentStatus: "cancelled",
         dispatch: null,
         lines: [

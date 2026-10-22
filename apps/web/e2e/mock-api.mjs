@@ -90,6 +90,7 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
         : status === "rejected"
           ? "cancelled"
           : "not_started",
+    collectionStatus: "uncollected",
     serviceability:
       status === "confirmed"
         ? "serviceable"

@@ -22,9 +22,11 @@ import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import {
   CATALOG_CART_PORT,
   type CatalogCartPort,
+  type PurchasableCatalogVariant,
 } from "../catalog/catalog-cart.port.js";
 import { Inject } from "@nestjs/common";
 import { DatabaseService } from "../platform/database/database.service.js";
+import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DeliveryService } from "../delivery/delivery.service.js";
 import { GeographyService } from "../geography/geography.service.js";
 import { quoteSnapshot } from "./quote-schema.js";
@@ -278,6 +280,46 @@ export class QuoteService {
     return lookup.quote;
   }
 
+  async lockAndValidateForOrderCheckout(
+    transaction: AuditTransaction,
+    quote: AuthoritativeQuote,
+  ): Promise<void> {
+    const [row] = await transaction
+      .select({ id: quoteSnapshot.id })
+      .from(quoteSnapshot)
+      .where(
+        and(
+          eq(quoteSnapshot.id, quote.id),
+          sql`${quoteSnapshot.expiresAt} > clock_timestamp()`,
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      throw new ConflictException("The quote expired during checkout.", {
+        errorCode: "QUOTE_EXPIRED",
+      });
+    }
+
+    const variants =
+      await this.catalog.findPurchasableVariantsWithinTransaction(
+        transaction,
+        quote.lines.map(({ variantId }) => variantId),
+      );
+    if (!sameCatalogLines(quote.lines, variants)) {
+      throw new ConflictException(
+        "The catalog changed during checkout. Request a fresh quote.",
+        { errorCode: "QUOTE_STALE" },
+      );
+    }
+  }
+
+  async pruneExpiredUnreferenced(batchSize = 500): Promise<number> {
+    const result = await this.database.db.execute(sql`
+      select quote.prune_expired_unreferenced(${batchSize}) as deleted_count
+    `);
+    return Number(result.rows[0]?.deleted_count ?? 0);
+  }
+
   private toPublicQuote(
     row: typeof quoteSnapshot.$inferSelect,
   ): AuthoritativeQuote {
@@ -347,7 +389,7 @@ function sameCartLines(
 
 function sameCatalogLines(
   rawLines: unknown,
-  variants: Awaited<ReturnType<CatalogCartPort["findPurchasableVariants"]>>,
+  variants: readonly PurchasableCatalogVariant[],
 ): boolean {
   const lines = parseQuoteLines(rawLines);
   if (lines.length !== variants.length) return false;

@@ -1183,10 +1183,7 @@ export class PathaoService {
       const fulfillment = await this.orders.getPathaoFulfillmentSnapshot(
         booking.orderId,
       );
-      if (
-        fulfillment.fulfillmentStatus !== "dispatched" ||
-        fulfillment.dispatchedAt === null
-      ) {
+      if (fulfillment.dispatchedAt === null) {
         await this.finishWebhook(
           event.id,
           leaseOwner,
@@ -1624,6 +1621,7 @@ function toObservation(row: InboxRow): PathaoWebhookObservation {
     consignmentId: row.consignmentId,
     status: row.processingState as PathaoWebhookObservation["status"],
     providerStatus: row.providerOrderStatus,
+    providerCollectedAmount: row.providerCollectedAmountBdt,
     providerTimestamp: row.providerTimestamp?.toISOString() ?? null,
     receivedAt: row.receivedAt.toISOString(),
     errorCode: row.lastErrorCode,

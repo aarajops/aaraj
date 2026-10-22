@@ -278,7 +278,7 @@ describe("migration 0023 historical upgrade", () => {
     ).rejects.toMatchObject({
       code: "P0001",
       message:
-        "Only a pending manual serviceability review or confirmed dispatch may transition",
+        "Only a pending review, dispatch, cancellation, delivery outcome or COD reconciliation may transition",
     });
 
     await expect(

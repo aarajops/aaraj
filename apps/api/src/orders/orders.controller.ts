@@ -25,14 +25,20 @@ import {
 } from "@thallesp/nestjs-better-auth";
 import {
   CreateOrderInputSchema,
+  OrderCancellationInputSchema,
+  OrderCollectionInputSchema,
   OrderDispatchCommandIdSchema,
   OrderDispatchInputSchema,
+  OrderFulfillmentOutcomeInputSchema,
   OrderIdempotencyKeySchema,
   OrderIdSchema,
   OrderListQuerySchema,
   OrderServiceabilityInputSchema,
   type CreateOrderInput,
+  type OrderCancellationInput,
+  type OrderCollectionInput,
   type OrderDispatchInput,
+  type OrderFulfillmentOutcomeInput,
   type OrderListQuery,
   type OrderServiceabilityInput,
 } from "@aaraj/contracts";
@@ -212,6 +218,51 @@ export class OrdersController {
       parsedCommandId.data.toLowerCase(),
       input,
     );
+  }
+
+  @Post("manage/:orderId/cancel")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  cancelAwaitingDispatch(
+    @Session() session: UserSession,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @Body({ schema: OrderCancellationInputSchema })
+    input: OrderCancellationInput,
+  ) {
+    return this.orders.cancelAwaitingDispatch(orderId, session.user.id, input);
+  }
+
+  @Post("manage/:orderId/fulfillment-outcome")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  recordFulfillmentOutcome(
+    @Session() session: UserSession,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @Body({ schema: OrderFulfillmentOutcomeInputSchema })
+    input: OrderFulfillmentOutcomeInput,
+  ) {
+    return this.orders.recordFulfillmentOutcome(
+      orderId,
+      session.user.id,
+      input,
+    );
+  }
+
+  @Post("manage/:orderId/collection")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  recordCodCollection(
+    @Session() session: UserSession,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @Body({ schema: OrderCollectionInputSchema }) input: OrderCollectionInput,
+  ) {
+    return this.orders.recordCodCollection(orderId, session.user.id, input);
   }
 
   @Get(":orderId")

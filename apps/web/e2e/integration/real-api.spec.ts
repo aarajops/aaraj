@@ -1521,6 +1521,9 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     pathaoPanel.getByRole("button", { name: "Create Pathao booking" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Cancel before dispatch" }),
+  ).toBeVisible();
 
   await page.getByLabel("Delivery operator").fill("Integration Dispatch Desk");
   await page
@@ -1547,12 +1550,12 @@ test("catalog operator configures a product through to storefront visibility", a
     await route.continue();
   });
   await page.getByRole("button", { name: "Record dispatch" }).click();
-  await expect(page.locator('p[role="alert"]')).toContainText("dispatch", {
-    ignoreCase: true,
-  });
+  await expect(
+    page.getByRole("region", { name: "Dispatch Order" }).getByRole("alert"),
+  ).toContainText("dispatch", { ignoreCase: true });
   await page.getByRole("button", { name: "Retry dispatch" }).click();
   await expect(
-    page.getByRole("heading", { name: "Dispatched", level: 2 }),
+    page.getByText("Dispatched · COD Uncollected", { exact: true }),
   ).toBeVisible();
   expect(dispatchCommandIds).toHaveLength(2);
   expect(dispatchCommandIds[0]).toBeTruthy();
@@ -1580,9 +1583,43 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(pathaoTracking).toHaveCount(0);
   await expect(
     page.getByRole("status").filter({
-      hasText: "has not been marked delivered or paid",
+      hasText: "Delivery and COD collection are tracked separately",
     }),
   ).toBeVisible();
+
+  await page.goto(`/admin/orders/${customerOrderId}`);
+  await expect(
+    page.getByRole("heading", { name: "Record delivery outcome" }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Verification note")
+    .fill("Verified signed delivery receipt");
+  await page.getByRole("button", { name: "Record Delivered" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Reconcile COD collection" }),
+  ).toBeVisible();
+
+  const deliveredOrderResponse = await page.request.get(
+    `/api/v1/orders/manage/${customerOrderId}`,
+  );
+  expect(deliveredOrderResponse.status()).toBe(200);
+  const codAmountDueBdt = (await deliveredOrderResponse.json()).codAmountDueBdt;
+  await page.getByLabel("Amount collected (BDT)").fill(String(codAmountDueBdt));
+  await page
+    .getByLabel("Verification note")
+    .fill("Matched signed courier receipt");
+  await page.getByRole("button", { name: "Save COD reconciliation" }).click();
+  await expect(
+    page.getByRole("status").filter({
+      hasText: `Collected: ${codAmountDueBdt} / ${codAmountDueBdt} BDT`,
+    }),
+  ).toBeVisible();
+
+  await page.goto(`/orders/${customerOrderId}`);
+  await expect(
+    page.getByRole("status").filter({ hasText: "recorded as delivered" }),
+  ).toBeVisible();
+  await expect(page.getByText("Collected", { exact: true })).toBeVisible();
 
   await page.goto("/admin");
   await page.locator("summary[aria-label^='Account menu for']").click();

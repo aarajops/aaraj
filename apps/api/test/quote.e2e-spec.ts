@@ -25,6 +25,7 @@ import {
 } from "../src/catalog/catalog-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
+import { QuoteService } from "../src/quote/quote.service.js";
 import { geographySnapshot } from "../src/geography/geography-schema.js";
 
 const origin = "http://localhost:3000";
@@ -329,6 +330,43 @@ describe("authoritative Bangladesh quotes", () => {
       .set("Cookie", guest.cookie)
       .send({ ...quoteBody(), recipientPhone: "+8801712345678" })
       .expect(400);
+  });
+
+  it("prunes expired unreferenced snapshots while preserving current quotes", async () => {
+    const guest = await newGuestCart();
+    const quote = await createQuote(guest.cookie);
+    const expiredCopy = await database.db.execute<{ id: string }>(sql`
+      INSERT INTO "quote"."snapshot" (
+        "id", "schema_version", "customer_id", "guest_cart_hash", "cart_revision",
+        "geography_version", "division_id", "division_name", "district_id", "district_name",
+        "upazila_id", "upazila_name", "delivery_tariff_version", "delivery_tariff_effective_from",
+        "delivery_zone", "delivery_amount_bdt", "lines", "merchandise_gross_bdt", "total_bdt",
+        "validity_policy_version", "created_at", "expires_at"
+      )
+      WITH expiry AS (SELECT clock_timestamp() AS now)
+      SELECT gen_random_uuid(), "schema_version", "customer_id", "guest_cart_hash", "cart_revision",
+        "geography_version", "division_id", "division_name", "district_id", "district_name",
+        "upazila_id", "upazila_name", "delivery_tariff_version", "delivery_tariff_effective_from",
+        "delivery_zone", "delivery_amount_bdt", "lines", "merchandise_gross_bdt", "total_bdt",
+        "validity_policy_version", expiry.now - interval '20 minutes',
+        expiry.now - interval '5 minutes'
+      FROM "quote"."snapshot" CROSS JOIN expiry WHERE "id" = ${quote.body.id}
+      RETURNING "id"
+    `);
+    const expiredId = expiredCopy.rows[0]?.id;
+    if (!expiredId)
+      throw new Error("Expired quote snapshot fixture is missing.");
+
+    await expect(
+      app.get(QuoteService).pruneExpiredUnreferenced(),
+    ).resolves.toBeGreaterThanOrEqual(1);
+
+    const [deleted] = await database.db
+      .select({ id: quoteSnapshot.id })
+      .from(quoteSnapshot)
+      .where(eq(quoteSnapshot.id, expiredId));
+    expect(deleted).toBeUndefined();
+    await getQuote(quote.body.id, guest.cookie).expect(200);
   });
 
   it("quotes a supported non-Dhaka district at BDT 130 and rejects invalid hierarchy", async () => {

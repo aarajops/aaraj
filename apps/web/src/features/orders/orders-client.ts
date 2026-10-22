@@ -4,14 +4,20 @@ import "client-only";
 import {
   API_V1_BASE_PATH,
   ApiErrorResponseSchema,
+  OrderCancellationInputSchema,
+  OrderCollectionInputSchema,
   CreateOrderInputSchema,
   OrderCreatedSchema,
   OrderDispatchInputSchema,
+  OrderFulfillmentOutcomeInputSchema,
   OrderSchema,
   OrderServiceabilityInputSchema,
   type CreateOrderInput,
+  type OrderCancellationInput,
+  type OrderCollectionInput,
   type OrderCreated,
   type OrderDispatchInput,
+  type OrderFulfillmentOutcomeInput,
   type Order,
   type OrderServiceabilityInput,
 } from "@aaraj/contracts";
@@ -115,6 +121,60 @@ export async function dispatchCodOrder(
         "Content-Type": "application/json",
         "Idempotency-Key": commandId,
       },
+      body: JSON.stringify(validatedInput),
+    },
+  );
+  return readResponse(response, OrderSchema);
+}
+
+export async function cancelAwaitingDispatchOrder(
+  orderId: string,
+  input: OrderCancellationInput,
+): Promise<Order> {
+  const validatedInput = OrderCancellationInputSchema.parse(input);
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/cancel`,
+    {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validatedInput),
+    },
+  );
+  return readResponse(response, OrderSchema);
+}
+
+export async function recordOrderFulfillmentOutcome(
+  orderId: string,
+  input: OrderFulfillmentOutcomeInput,
+): Promise<Order> {
+  const validatedInput = OrderFulfillmentOutcomeInputSchema.parse(input);
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/fulfillment-outcome`,
+    {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validatedInput),
+    },
+  );
+  return readResponse(response, OrderSchema);
+}
+
+export async function recordOrderCodCollection(
+  orderId: string,
+  input: OrderCollectionInput,
+): Promise<Order> {
+  const validatedInput = OrderCollectionInputSchema.parse(input);
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/collection`,
+    {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(validatedInput),
     },
   );

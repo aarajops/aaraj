@@ -20,6 +20,9 @@ import {
   type OrderAddress,
   type OrderCreated,
   type OrderDispatchInput,
+  type OrderCancellationInput,
+  type OrderCollectionInput,
+  type OrderFulfillmentOutcomeInput,
   type OrderListQuery,
   type OrderServiceabilityInput,
 } from "@aaraj/contracts";
@@ -204,6 +207,8 @@ export class OrdersService implements OrdersPathaoPort {
           replayed = true;
           return row;
         }
+
+        await this.quotes.lockAndValidateForOrderCheckout(transaction, quote);
 
         const reservation = await this.inventory.reserveWithinTransaction(
           transaction,
@@ -504,15 +509,21 @@ export class OrdersService implements OrdersPathaoPort {
         reference: customerOrder.reference,
         status: customerOrder.status,
         fulfillmentStatus: customerOrder.fulfillmentStatus,
+        collectionStatus: customerOrder.collectionStatus,
         serviceability: customerOrder.serviceability,
         totalBdt: customerOrder.totalBdt,
         createdAt: customerOrder.createdAt,
       })
       .from(customerOrder)
       .where(
-        searchPattern
-          ? ilike(customerOrder.reference, searchPattern)
-          : undefined,
+        and(
+          searchPattern
+            ? ilike(customerOrder.reference, searchPattern)
+            : undefined,
+          query.fulfillmentStatus
+            ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
+            : undefined,
+        ),
       )
       .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
       .limit(query.limit + 1)
@@ -916,7 +927,7 @@ export class OrdersService implements OrdersPathaoPort {
           .limit(1);
         if (!row) throw orderNotFound();
 
-        if (row.fulfillmentStatus === "dispatched") {
+        if (row.dispatchCommandId !== null) {
           if (
             row.dispatchCommandId !== commandId ||
             row.dispatchRequestFingerprint !== fingerprint
@@ -1050,13 +1061,256 @@ export class OrdersService implements OrdersPathaoPort {
     return this.getForManagement(orderId);
   }
 
+  async cancelAwaitingDispatch(
+    orderId: string,
+    staffId: string,
+    input: OrderCancellationInput,
+  ): Promise<Order> {
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+      if (row.status === "cancelled") return;
+      if (
+        row.status !== "confirmed" ||
+        row.serviceability !== "serviceable" ||
+        row.fulfillmentStatus !== "awaiting_dispatch"
+      ) {
+        throw new ConflictException(
+          "Only confirmed Orders awaiting dispatch can be cancelled.",
+          { errorCode: "ORDER_NOT_CANCELLABLE" },
+        );
+      }
+
+      const [pathaoClaim] = await transaction
+        .select({ status: orderPathaoBookingClaim.status })
+        .from(orderPathaoBookingClaim)
+        .where(eq(orderPathaoBookingClaim.orderId, row.id))
+        .limit(1);
+      if (pathaoClaim) {
+        throw new ConflictException(
+          "Resolve the Pathao consignment in the provider system before cancelling this Order.",
+          { errorCode: "ORDER_PATHAO_BOOKING_REQUIRES_RECONCILIATION" },
+        );
+      }
+
+      await this.inventory.releaseWithinTransaction(transaction, {
+        commandId: randomUUID(),
+        reservationId: row.reservationId,
+      });
+
+      const [cancelled] = await transaction
+        .update(customerOrder)
+        .set({
+          status: "cancelled",
+          fulfillmentStatus: "cancelled",
+          cancellationReason: "staff_cancelled",
+          cancelledAt: sql`clock_timestamp()`,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(customerOrder.id, row.id),
+            eq(customerOrder.status, "confirmed"),
+            eq(customerOrder.fulfillmentStatus, "awaiting_dispatch"),
+          ),
+        )
+        .returning({ cancelledAt: customerOrder.cancelledAt });
+      if (!cancelled?.cancelledAt) {
+        throw new ConflictException(
+          "The Order changed before cancellation could be recorded.",
+          { errorCode: "ORDER_NOT_CANCELLABLE" },
+        );
+      }
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_cancelled_before_dispatch",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: cancelled.cancelledAt,
+        reason: input.reason,
+        metadata: {
+          cancellationReason: "staff_cancelled",
+          reservationId: row.reservationId,
+        },
+      });
+    });
+    return this.getForManagement(orderId);
+  }
+
+  async recordFulfillmentOutcome(
+    orderId: string,
+    staffId: string,
+    input: OrderFulfillmentOutcomeInput,
+  ): Promise<Order> {
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+      if (
+        row.fulfillmentStatus === input.outcome &&
+        row.fulfillmentOutcomeReason === input.reason
+      ) {
+        return;
+      }
+
+      const allowedTransitions: Record<string, readonly string[]> = {
+        dispatched: [
+          "partially_delivered",
+          "delivered",
+          "delivery_failed",
+          "returned",
+        ],
+        partially_delivered: ["partially_delivered", "delivered", "returned"],
+        delivery_failed: [
+          "delivery_failed",
+          "partially_delivered",
+          "delivered",
+          "returned",
+        ],
+      };
+      if (
+        !row.dispatchedAt ||
+        row.status !== "confirmed" ||
+        !allowedTransitions[row.fulfillmentStatus]?.includes(input.outcome)
+      ) {
+        throw new ConflictException(
+          "This delivery outcome is not valid for the current Order state.",
+          { errorCode: "ORDER_FULFILLMENT_OUTCOME_CONFLICT" },
+        );
+      }
+
+      const [updated] = await transaction
+        .update(customerOrder)
+        .set({
+          fulfillmentStatus: input.outcome,
+          fulfillmentOutcomeReason: input.reason,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(customerOrder.id, row.id),
+            eq(customerOrder.status, "confirmed"),
+            eq(customerOrder.fulfillmentStatus, row.fulfillmentStatus),
+          ),
+        )
+        .returning({ occurredAt: customerOrder.updatedAt });
+      if (!updated?.occurredAt) {
+        throw new ConflictException(
+          "The Order changed before its delivery outcome could be recorded.",
+          { errorCode: "ORDER_FULFILLMENT_OUTCOME_CONFLICT" },
+        );
+      }
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_fulfillment_outcome_recorded",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: updated.occurredAt,
+        reason: input.reason,
+        metadata: {
+          from: row.fulfillmentStatus,
+          to: input.outcome,
+          deliveryProvider: row.deliveryProvider,
+        },
+      });
+    });
+    return this.getForManagement(orderId);
+  }
+
+  async recordCodCollection(
+    orderId: string,
+    staffId: string,
+    input: OrderCollectionInput,
+  ): Promise<Order> {
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+      if (
+        row.status !== "confirmed" ||
+        !["partially_delivered", "delivered", "returned"].includes(
+          row.fulfillmentStatus,
+        )
+      ) {
+        throw new ConflictException(
+          "COD collection can be recorded after a delivery or return outcome is verified.",
+          { errorCode: "ORDER_COLLECTION_NOT_READY" },
+        );
+      }
+      if (
+        row.collectionStatus ===
+          (input.collectedAmountBdt === row.codAmountDueBdt
+            ? "collected"
+            : "discrepancy") &&
+        row.collectedAmountBdt === input.collectedAmountBdt &&
+        row.collectionReason === input.reason
+      ) {
+        return;
+      }
+
+      const collectionStatus =
+        input.collectedAmountBdt === row.codAmountDueBdt
+          ? "collected"
+          : "discrepancy";
+      const [updated] = await transaction
+        .update(customerOrder)
+        .set({
+          collectionStatus,
+          collectedAmountBdt: input.collectedAmountBdt,
+          collectionReason: input.reason,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(customerOrder.id, row.id))
+        .returning({ occurredAt: customerOrder.updatedAt });
+      if (!updated?.occurredAt) {
+        throw new ConflictException(
+          "The Order changed before COD collection could be recorded.",
+          { errorCode: "ORDER_COLLECTION_CONFLICT" },
+        );
+      }
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_collection_reconciled",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: updated.occurredAt,
+        reason: input.reason,
+        metadata: {
+          collectionStatus,
+          previousCollectionStatus: row.collectionStatus,
+          previousCollectedAmountBdt: row.collectedAmountBdt,
+          collectedAmountBdt: input.collectedAmountBdt,
+          codAmountDueBdt: row.codAmountDueBdt,
+        },
+      });
+    });
+    return this.getForManagement(orderId);
+  }
+
   async expirePendingServiceabilityReviews(batchSize = 50): Promise<number> {
     if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) {
       throw new RangeError("Serviceability expiry batch size must be 1–500.");
     }
 
     let cancelledCount = 0;
-    const failedOrderIds: string[] = [];
+    const excludedOrderIds: string[] = [];
     for (let attempt = 0; attempt < batchSize; attempt += 1) {
       let cancelled: boolean;
       try {
@@ -1072,8 +1326,8 @@ export class OrdersService implements OrdersPathaoPort {
                 eq(customerOrder.status, "awaiting_confirmation"),
                 eq(customerOrder.serviceability, "pending_manual_review"),
                 sql`${customerOrder.createdAt} <= clock_timestamp() - ${ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS} * interval '1 hour'`,
-                failedOrderIds.length
-                  ? notInArray(customerOrder.id, failedOrderIds)
+                excludedOrderIds.length
+                  ? notInArray(customerOrder.id, excludedOrderIds)
                   : undefined,
               ),
             )
@@ -1093,8 +1347,8 @@ export class OrdersService implements OrdersPathaoPort {
       } catch (error) {
         if (!(error instanceof ServiceabilityExpiryTransitionError))
           throw error;
-        failedOrderIds.push(error.orderId);
-        this.logger.error("A pending COD Order could not be expired.");
+        excludedOrderIds.push(error.orderId);
+        this.logger.error("An expired COD Order could not be cancelled.");
         continue;
       }
       if (!cancelled) break;
@@ -1231,11 +1485,12 @@ export class OrdersService implements OrdersPathaoPort {
       serviceability: row.serviceability,
       paymentMethod: row.paymentMethod,
       collectionStatus: row.collectionStatus,
+      collectedAmountBdt: row.collectedAmountBdt,
       fulfillmentStatus: row.fulfillmentStatus,
       dispatch:
-        row.fulfillmentStatus === "dispatched" &&
+        row.dispatchedAt !== null &&
         row.deliveryOperator !== null &&
-        row.dispatchedAt !== null
+        row.dispatchCommandId !== null
           ? {
               deliveryProvider: row.deliveryProvider,
               deliveryOperator: row.deliveryOperator,

@@ -1221,11 +1221,115 @@ describe("COD Orders and checkout", () => {
     }
   });
 
+  it("filters managed Orders by fulfillment status", async () => {
+    const awaitingDispatch = await createGuestOrder();
+    const awaitingReview = await createGuestOrder();
+    await confirmServiceable(awaitingDispatch.id);
+
+    const response = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage`)
+      .set("Cookie", staff.cookie)
+      .query({ fulfillmentStatus: "awaiting_dispatch" })
+      .expect(200);
+
+    expect(response.body.rows.map((row: { id: string }) => row.id)).toContain(
+      awaitingDispatch.id,
+    );
+    expect(
+      response.body.rows.map((row: { id: string }) => row.id),
+    ).not.toContain(awaitingReview.id);
+  });
+
+  it("cancels a confirmed undispatched Order and releases its reservation atomically", async () => {
+    const fixture = await createGuestOrder();
+    await confirmServiceable(fixture.id);
+
+    const response = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/cancel`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ reason: "Customer confirmed cancellation by phone" })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      status: "cancelled",
+      fulfillmentStatus: "cancelled",
+      cancellationReason: "staff_cancelled",
+    });
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
+    const [reservation] = await database.db
+      .select({ status: inventoryStockReservation.status })
+      .from(inventoryStockReservation)
+      .where(eq(inventoryStockReservation.id, fixture.reservationId));
+    expect(reservation?.status).toBe("released");
+    const [cancellationAudit] = await database.db
+      .select({ id: auditEvent.id })
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.subjectId, fixture.id),
+          eq(
+            auditEvent.eventType,
+            "commerce.cod_order_cancelled_before_dispatch",
+          ),
+        ),
+      );
+    expect(cancellationAudit).toBeDefined();
+  });
+
+  it("records delivery outcomes and COD collection through guarded transitions", async () => {
+    const fixture = await createGuestOrder();
+    await confirmServiceable(fixture.id);
+    await dispatchOrder(fixture.id, staff.cookie).expect(201);
+
+    const delivery = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/fulfillment-outcome`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ outcome: "delivered", reason: "Delivery receipt verified" })
+      .expect(201);
+    expect(delivery.body.fulfillmentStatus).toBe("delivered");
+    expect(delivery.body.collectionStatus).toBe("uncollected");
+
+    const stored = await orderById(fixture.id);
+    if (!stored) throw new Error("Delivered Order fixture is missing.");
+    const discrepancy = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/collection`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        collectedAmountBdt: stored.codAmountDueBdt - 1,
+        reason: "Courier receipt differs by BDT 1",
+      })
+      .expect(201);
+    expect(discrepancy.body).toMatchObject({
+      collectionStatus: "discrepancy",
+      collectedAmountBdt: stored.codAmountDueBdt - 1,
+    });
+
+    const reconciled = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/collection`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        collectedAmountBdt: stored.codAmountDueBdt,
+        reason: "Corrected against signed delivery receipt",
+      })
+      .expect(201);
+    expect(reconciled.body).toMatchObject({
+      collectionStatus: "collected",
+      collectedAmountBdt: stored.codAmountDueBdt,
+    });
+  });
+
   it("rejects invalid managed Order list query parameters", async () => {
     for (const query of [
       { limit: 0 },
       { offset: 100_001 },
       { search: "not a reference" },
+      { fulfillmentStatus: "unknown" },
     ]) {
       await request(app.getHttpServer())
         .get(`${API_V1_BASE_PATH}/orders/manage`)
@@ -2035,6 +2139,23 @@ describe("COD Orders and checkout", () => {
     });
     expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(0);
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
+    const staffBookingDetails = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(staffBookingDetails.body.observations).toContainEqual(
+      expect.objectContaining({
+        event: "order.delivered",
+        providerCollectedAmount: order.codAmountDueBdt,
+      }),
+    );
+    const customerTracking = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/orders/${fixture.id}/tracking`)
+      .set("Cookie", fixture.cookie)
+      .expect(200);
+    expect(customerTracking.body.observations[0]).not.toHaveProperty(
+      "providerCollectedAmount",
+    );
     const providerObservations = await database.db
       .select()
       .from(pathaoWebhookInbox)

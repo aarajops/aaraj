@@ -83,6 +83,7 @@ export const PathaoWebhookObservationSchema = z.strictObject({
     "ignored",
   ]),
   providerStatus: z.string().max(100).nullable(),
+  providerCollectedAmount: z.number().nonnegative().nullable(),
   providerTimestamp: z.iso.datetime().nullable(),
   receivedAt: z.iso.datetime(),
   errorCode: z

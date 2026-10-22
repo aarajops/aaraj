@@ -66,11 +66,15 @@ function ordersPageHref(query: {
   limit: number;
   offset: number;
   search?: string;
+  fulfillmentStatus?: string;
 }): string {
   const params = new URLSearchParams();
   if (query.limit !== 50) params.set("limit", String(query.limit));
   if (query.offset > 0) params.set("offset", String(query.offset));
   if (query.search) params.set("search", query.search);
+  if (query.fulfillmentStatus) {
+    params.set("fulfillmentStatus", query.fulfillmentStatus);
+  }
   const search = params.toString();
   return search ? `/admin/orders?${search}` : "/admin/orders";
 }

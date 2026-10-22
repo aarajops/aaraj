@@ -38,7 +38,7 @@ export function OrdersManager({
           id: "status",
           header: "Status",
           cell: ({ row }) =>
-            `${humanize(row.original.status)} · ${humanize(row.original.fulfillmentStatus)}`,
+            `${humanize(row.original.status)} · ${humanize(row.original.fulfillmentStatus)} · COD ${humanize(row.original.collectionStatus)}`,
         }),
         columnHelper.accessor("serviceability", {
           header: "Delivery review",
@@ -88,7 +88,9 @@ export function OrdersManager({
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Orders</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Verify delivery serviceability before dispatch. Address details are
-          restricted to authorized order views.
+          restricted to authorized order views. Held stock stays reserved until
+          dispatch or staff cancellation; use the fulfillment filter to review
+          Orders awaiting dispatch.
         </p>
         <PathaoIssuesPanel />
         <AdminDataTable
@@ -98,6 +100,30 @@ export function OrdersManager({
           data={initialPage.rows}
           pathname="/admin/orders"
           query={query}
+          filters={[
+            {
+              name: "fulfillmentStatus",
+              label: "Fulfillment",
+              value: query.fulfillmentStatus ?? "",
+              allLabel: "All fulfillment states",
+              options: [
+                {
+                  label: "Awaiting serviceability review",
+                  value: "not_started",
+                },
+                {
+                  label: "Awaiting dispatch (stock held)",
+                  value: "awaiting_dispatch",
+                },
+                { label: "Dispatched", value: "dispatched" },
+                { label: "Partially delivered", value: "partially_delivered" },
+                { label: "Delivered", value: "delivered" },
+                { label: "Delivery failed", value: "delivery_failed" },
+                { label: "Returned", value: "returned" },
+                { label: "Cancelled", value: "cancelled" },
+              ],
+            },
+          ]}
           itemName="orders"
           searchPlaceholder="Order reference"
           onRefresh={() => startTransition(() => router.refresh())}

@@ -85,27 +85,47 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
             </p>
             <p className="mt-3" role="status">
               {order.status === "cancelled"
-                ? "Your Order was automatically cancelled because delivery serviceability was not reviewed by its deadline. Its stock reservation was released. Nothing is payable."
-                : order.fulfillmentStatus === "dispatched" && order.dispatch
-                  ? `Your Order was handed to ${order.dispatch.deliveryOperator} on ${formatDateTime(order.dispatch.dispatchedAt)}. It remains Cash on Delivery and has not been marked delivered or paid.`
-                  : order.serviceability === "pending_manual_review"
-                    ? "Your Order is received and awaiting manual delivery serviceability review. It is not yet confirmed for dispatch. If it is still awaiting review after 7 days, it will be cancelled and its stock reservation released."
-                    : order.serviceability === "serviceable"
-                      ? "Delivery serviceability has been confirmed. AARAJ will prepare the Order for dispatch."
-                      : "AARAJ cannot deliver to this destination. This Order was rejected and its stock hold was released."}
+                ? order.cancellationReason === "serviceability_review_timeout"
+                  ? "Your Order was automatically cancelled because delivery serviceability was not reviewed by its deadline. Its stock reservation was released. Nothing is payable."
+                  : "Your Order was cancelled by AARAJ before dispatch. Its stock reservation was released. Nothing is payable."
+                : order.fulfillmentStatus === "delivered"
+                  ? "Your Order is recorded as delivered. COD collection is tracked separately below."
+                  : order.fulfillmentStatus === "partially_delivered"
+                    ? "Your Order is recorded as partially delivered. COD collection is tracked separately below."
+                    : order.fulfillmentStatus === "returned"
+                      ? "Your Order is recorded as returned to the merchant. COD collection is tracked separately below."
+                      : order.fulfillmentStatus === "delivery_failed"
+                        ? "A delivery attempt was recorded as failed. AARAJ is reviewing the next delivery step."
+                        : order.dispatch
+                          ? `Your Order was handed to ${order.dispatch.deliveryOperator} on ${formatDateTime(order.dispatch.dispatchedAt)}. Delivery and COD collection are tracked separately.`
+                          : order.serviceability === "pending_manual_review"
+                            ? "Your Order is received and awaiting manual delivery serviceability review. It is not yet confirmed for dispatch. If it is still awaiting review after 7 days, it will be cancelled and its stock reservation released."
+                            : order.serviceability === "serviceable"
+                              ? "Delivery serviceability has been confirmed. AARAJ is preparing the Order for dispatch. If dispatch is delayed, we will verify any active courier booking before changing the Order."
+                              : "AARAJ cannot deliver to this destination. This Order was rejected and its stock hold was released."}
             </p>
             <dl className="mt-5 grid gap-2 border-t border-border pt-4 text-sm">
               <DataRow label="Payment method" value="Cash on Delivery" />
               <DataRow
                 label="Collection status"
-                value="Uncollected; no payment was taken at checkout"
+                value={
+                  order.collectionStatus === "uncollected"
+                    ? "Uncollected; no payment was taken at checkout"
+                    : order.collectionStatus === "collected"
+                      ? `Collected ${formatBdtPrice({ amountBdt: order.collectedAmountBdt ?? 0 })}`
+                      : `Collection amount under reconciliation: ${formatBdtPrice({ amountBdt: order.collectedAmountBdt ?? 0 })}`
+                }
               />
               <DataRow
                 label="COD due on delivery"
                 value={
                   order.status === "cancelled" || order.status === "rejected"
                     ? "Not payable; Order closed"
-                    : formatBdtPrice({ amountBdt: order.codAmountDueBdt })
+                    : order.collectionStatus === "collected"
+                      ? "Collected"
+                      : order.collectionStatus === "discrepancy"
+                        ? "Under reconciliation"
+                        : formatBdtPrice({ amountBdt: order.codAmountDueBdt })
                 }
               />
               <DataRow
@@ -113,7 +133,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                 value={formatBdtPrice({ amountBdt: order.totalBdt })}
               />
             </dl>
-            {order.fulfillmentStatus === "dispatched" && order.dispatch && (
+            {order.dispatch && (
               <section
                 aria-label="Dispatch details"
                 className="mt-5 rounded-xl border border-border p-4"
@@ -134,7 +154,10 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                     label="Handed over"
                     value={formatDateTime(order.dispatch.dispatchedAt)}
                   />
-                  <DataRow label="Delivery status" value="Dispatched" />
+                  <DataRow
+                    label="Delivery status"
+                    value={humanizeTracking(order.fulfillmentStatus)}
+                  />
                 </dl>
               </section>
             )}
@@ -161,9 +184,9 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                   />
                 </dl>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Courier tracking does not confirm COD collection or
-                  remittance. Your Order remains unpaid until AARAJ records
-                  collection through its separate reconciliation process.
+                  Courier tracking does not itself confirm COD collection or
+                  merchant remittance. The collection status above reflects
+                  AARAJ&apos;s separate staff-verified reconciliation.
                 </p>
                 {tracking.observations.length > 0 && (
                   <ol className="mt-4 divide-y divide-border text-sm">

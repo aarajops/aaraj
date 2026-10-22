@@ -35,6 +35,16 @@ export type CreateOrderInput = z.infer<typeof CreateOrderInputSchema>;
 
 export const OrderIdSchema = z.uuid();
 export const OrderIdempotencyKeySchema = z.uuid();
+export const OrderFulfillmentStatusSchema = z.enum([
+  "not_started",
+  "awaiting_dispatch",
+  "dispatched",
+  "partially_delivered",
+  "delivered",
+  "delivery_failed",
+  "returned",
+  "cancelled",
+]);
 const OptionalOrderReferenceSearchSchema = z.preprocess(
   (value) =>
     typeof value === "string" && value.trim() === "" ? undefined : value,
@@ -49,6 +59,7 @@ const OptionalOrderReferenceSearchSchema = z.preprocess(
 
 export const OrderListQuerySchema = OffsetPaginationQuerySchema.extend({
   search: OptionalOrderReferenceSearchSchema,
+  fulfillmentStatus: OrderFulfillmentStatusSchema.optional(),
 });
 export type OrderListQuery = z.infer<typeof OrderListQuerySchema>;
 
@@ -67,6 +78,32 @@ export const OrderDispatchInputSchema = z.strictObject({
   handoffReference: z.string().trim().min(1).max(160).optional(),
 });
 export type OrderDispatchInput = z.infer<typeof OrderDispatchInputSchema>;
+
+export const OrderCancellationInputSchema = z.strictObject({
+  reason: z.string().trim().min(3).max(500),
+});
+export type OrderCancellationInput = z.infer<
+  typeof OrderCancellationInputSchema
+>;
+
+export const OrderFulfillmentOutcomeInputSchema = z.strictObject({
+  outcome: z.enum([
+    "partially_delivered",
+    "delivered",
+    "delivery_failed",
+    "returned",
+  ]),
+  reason: z.string().trim().min(3).max(500),
+});
+export type OrderFulfillmentOutcomeInput = z.infer<
+  typeof OrderFulfillmentOutcomeInputSchema
+>;
+
+export const OrderCollectionInputSchema = z.strictObject({
+  collectedAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  reason: z.string().trim().min(3).max(500),
+});
+export type OrderCollectionInput = z.infer<typeof OrderCollectionInputSchema>;
 
 const OrderDispatchDetailsSchema = z.strictObject({
   deliveryProvider: z.enum(["manual", "pathao"]).nullable(),
@@ -120,13 +157,14 @@ export const OrderSchema = z.strictObject({
     "unserviceable",
   ]),
   paymentMethod: z.literal("cod"),
-  collectionStatus: z.literal("uncollected"),
-  fulfillmentStatus: z.enum([
-    "not_started",
-    "awaiting_dispatch",
-    "dispatched",
-    "cancelled",
-  ]),
+  collectionStatus: z.enum(["uncollected", "collected", "discrepancy"]),
+  collectedAmountBdt: z
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .nullable(),
+  fulfillmentStatus: OrderFulfillmentStatusSchema,
   dispatch: OrderDispatchDetailsSchema.nullable(),
   lines: z.array(OrderLineSchema).min(1).max(50),
   merchandiseGrossBdt: z
@@ -142,7 +180,9 @@ export const OrderSchema = z.strictObject({
   }),
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   codAmountDueBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  cancellationReason: z.enum(["serviceability_review_timeout"]).nullable(),
+  cancellationReason: z
+    .enum(["serviceability_review_timeout", "staff_cancelled"])
+    .nullable(),
   cancelledAt: z.iso.datetime().nullable(),
   address: OrderAddressSchema,
   createdAt: z.iso.datetime(),
@@ -167,11 +207,15 @@ export const OrderCreatedSchema = z.strictObject({
     "unserviceable",
   ]),
   paymentMethod: z.literal("cod"),
-  collectionStatus: z.literal("uncollected"),
+  collectionStatus: z.enum(["uncollected", "collected", "discrepancy"]),
   fulfillmentStatus: z.enum([
     "not_started",
     "awaiting_dispatch",
     "dispatched",
+    "partially_delivered",
+    "delivered",
+    "delivery_failed",
+    "returned",
     "cancelled",
   ]),
   createdAt: z.iso.datetime(),
@@ -195,8 +239,13 @@ export const OrderManagementListSchema = z.strictObject({
         "not_started",
         "awaiting_dispatch",
         "dispatched",
+        "partially_delivered",
+        "delivered",
+        "delivery_failed",
+        "returned",
         "cancelled",
       ]),
+      collectionStatus: z.enum(["uncollected", "collected", "discrepancy"]),
       serviceability: z.enum([
         "pending_manual_review",
         "serviceable",

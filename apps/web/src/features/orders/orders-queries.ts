@@ -16,6 +16,7 @@ export type OrdersPageSearchParams = {
   limit?: string | string[];
   offset?: string | string[];
   search?: string | string[];
+  fulfillmentStatus?: string | string[];
 };
 
 const defaultOrderListQuery = OrderListQuerySchema.parse({});
@@ -26,7 +27,8 @@ export function parseOrdersPageQuery(
   if (
     Array.isArray(searchParams.limit) ||
     Array.isArray(searchParams.offset) ||
-    Array.isArray(searchParams.search)
+    Array.isArray(searchParams.search) ||
+    Array.isArray(searchParams.fulfillmentStatus)
   ) {
     return defaultOrderListQuery;
   }
@@ -53,6 +55,9 @@ export async function getManagedOrders(
       offset: String(query.offset),
     });
     if (query.search) search.set("search", query.search);
+    if (query.fulfillmentStatus) {
+      search.set("fulfillmentStatus", query.fulfillmentStatus);
+    }
     const response = await fetch(
       `${getApiInternalUrl()}${API_V1_BASE_PATH}/orders/manage?${search}`,
       { headers: await requestHeaders(), cache: "no-store" },

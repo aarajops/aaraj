@@ -85,6 +85,7 @@ export const quoteSnapshot = quoteSchema.table(
       table.guestCartHash,
       table.createdAt,
     ),
+    index("snapshot_expires_idx").on(table.expiresAt, table.id),
     check("snapshot_schema_version_check", sql`${table.schemaVersion} = 1`),
     check(
       "snapshot_owner_check",

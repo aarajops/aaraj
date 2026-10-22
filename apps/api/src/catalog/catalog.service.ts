@@ -64,7 +64,10 @@ import {
   catalogSizeGuideRow,
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
-import type { CatalogCartVariant } from "./catalog-cart.port.js";
+import type {
+  CatalogCartVariant,
+  PurchasableCatalogVariant,
+} from "./catalog-cart.port.js";
 import { CategoryService } from "./category.service.js";
 import {
   loadCategoryReference,
@@ -134,6 +137,49 @@ export class CatalogService {
           unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
           currency: "BDT" as const,
           image: image ? { ...image.card, altText: image.altText } : null,
+        },
+      ];
+    });
+  }
+
+  async findPurchasableVariantsWithinTransaction(
+    transaction: AuditTransaction,
+    variantIds: readonly string[],
+  ): Promise<PurchasableCatalogVariant[]> {
+    if (variantIds.length === 0) return [];
+
+    const rows = await transaction
+      .select({
+        variantId: catalogProductVariant.id,
+        name: catalogProduct.name,
+        color: catalogProductVariant.color,
+        sizeLabel: catalogProductVariant.sizeLabel,
+        unitPriceBdt: catalogProductVariant.priceBdt,
+      })
+      .from(catalogProductVariant)
+      .innerJoin(
+        catalogProduct,
+        eq(catalogProduct.id, catalogProductVariant.productId),
+      )
+      .where(
+        and(
+          inArray(catalogProductVariant.id, [...new Set(variantIds)]),
+          eq(catalogProductVariant.isActive, true),
+          isNotNull(catalogProductVariant.priceBdt),
+          ...this.publishedProductEligibilityConditions(),
+        ),
+      )
+      .for("share");
+
+    return rows.flatMap((row) => {
+      if (row.unitPriceBdt === null) return [];
+      return [
+        {
+          variantId: row.variantId,
+          name: row.name,
+          color: row.color,
+          sizeLabel: row.sizeLabel,
+          unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
         },
       ];
     });

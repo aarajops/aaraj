@@ -46,10 +46,22 @@ export const customerOrder = ordersSchema.table(
       .notNull(),
     paymentMethod: text("payment_method").notNull().default("cod"),
     collectionStatus: text("collection_status")
+      .$type<"uncollected" | "collected" | "discrepancy">()
       .notNull()
       .default("uncollected"),
+    collectedAmountBdt: bigint("collected_amount_bdt", { mode: "number" }),
+    collectionReason: text("collection_reason"),
     fulfillmentStatus: text("fulfillment_status")
-      .$type<"not_started" | "awaiting_dispatch" | "dispatched" | "cancelled">()
+      .$type<
+        | "not_started"
+        | "awaiting_dispatch"
+        | "dispatched"
+        | "partially_delivered"
+        | "delivered"
+        | "delivery_failed"
+        | "returned"
+        | "cancelled"
+      >()
       .notNull(),
     dispatchCommandId: uuid("dispatch_command_id"),
     dispatchRequestFingerprint: text("dispatch_request_fingerprint"),
@@ -60,9 +72,10 @@ export const customerOrder = ordersSchema.table(
       onDelete: "restrict",
     }),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
-    cancellationReason: text(
-      "cancellation_reason",
-    ).$type<"serviceability_review_timeout">(),
+    fulfillmentOutcomeReason: text("fulfillment_outcome_reason"),
+    cancellationReason: text("cancellation_reason").$type<
+      "serviceability_review_timeout" | "staff_cancelled"
+    >(),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     merchandiseGrossBdt: bigint("merchandise_gross_bdt", {
       mode: "number",
@@ -121,17 +134,21 @@ export const customerOrder = ordersSchema.table(
     ),
     check(
       "order_initial_state_check",
-      sql`(${table.status} <> 'awaiting_confirmation' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'not_started')) and (${table.status} <> 'confirmed' or (${table.serviceability} = 'serviceable' and ${table.fulfillmentStatus} in ('awaiting_dispatch', 'dispatched') and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and (${table.status} <> 'rejected' or (${table.serviceability} = 'unserviceable' and ${table.fulfillmentStatus} = 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and (${table.status} <> 'cancelled' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'cancelled' and ${table.cancellationReason} = 'serviceability_review_timeout' and ${table.cancelledAt} is not null and ${table.cancelledAt} >= ${table.createdAt})) and ((${table.status} = 'cancelled' and ${table.cancellationReason} is not null and ${table.cancelledAt} is not null) or (${table.status} <> 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and ((${table.fulfillmentStatus} = 'dispatched' and ${table.dispatchCommandId} is not null and ${table.dispatchRequestFingerprint} is not null and ${table.dispatchRequestFingerprint} ~ '^[0-9a-f]{64}$' and ${table.deliveryOperator} is not null and ${table.deliveryOperator} = btrim(${table.deliveryOperator}) and length(${table.deliveryOperator}) between 2 and 120 and ${table.dispatchedBy} is not null and ${table.dispatchedAt} is not null) or (${table.fulfillmentStatus} <> 'dispatched' and ${table.dispatchCommandId} is null and ${table.dispatchRequestFingerprint} is null and ${table.deliveryOperator} is null and ${table.handoffReference} is null and ${table.dispatchedBy} is null and ${table.dispatchedAt} is null)) and (${table.handoffReference} is null or (${table.handoffReference} = btrim(${table.handoffReference}) and length(${table.handoffReference}) between 1 and 160))`,
+      sql`(${table.status} <> 'awaiting_confirmation' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'not_started')) and (${table.status} <> 'confirmed' or (${table.serviceability} = 'serviceable' and ${table.fulfillmentStatus} in ('awaiting_dispatch', 'dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and (${table.status} <> 'rejected' or (${table.serviceability} = 'unserviceable' and ${table.fulfillmentStatus} = 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and (${table.status} <> 'cancelled' or (${table.fulfillmentStatus} = 'cancelled' and ${table.cancelledAt} is not null and ${table.cancelledAt} >= ${table.createdAt} and ((${table.serviceability} = 'pending_manual_review' and ${table.cancellationReason} = 'serviceability_review_timeout') or (${table.serviceability} = 'serviceable' and ${table.cancellationReason} = 'staff_cancelled')))) and ((${table.status} = 'cancelled' and ${table.cancellationReason} is not null and ${table.cancelledAt} is not null) or (${table.status} <> 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null)) and ((${table.fulfillmentStatus} in ('dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.dispatchCommandId} is not null and ${table.dispatchRequestFingerprint} is not null and ${table.dispatchRequestFingerprint} ~ '^[0-9a-f]{64}$' and ${table.deliveryOperator} is not null and ${table.deliveryOperator} = btrim(${table.deliveryOperator}) and length(${table.deliveryOperator}) between 2 and 120 and ${table.dispatchedBy} is not null and ${table.dispatchedAt} is not null) or (${table.fulfillmentStatus} not in ('dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.dispatchCommandId} is null and ${table.dispatchRequestFingerprint} is null and ${table.deliveryOperator} is null and ${table.handoffReference} is null and ${table.dispatchedBy} is null and ${table.dispatchedAt} is null)) and ((${table.fulfillmentStatus} in ('partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.fulfillmentOutcomeReason} is not null and ${table.fulfillmentOutcomeReason} = btrim(${table.fulfillmentOutcomeReason}) and length(${table.fulfillmentOutcomeReason}) between 3 and 500) or (${table.fulfillmentStatus} not in ('partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.fulfillmentOutcomeReason} is null)) and (${table.handoffReference} is null or (${table.handoffReference} = btrim(${table.handoffReference}) and length(${table.handoffReference}) between 1 and 160))`,
     ),
     check(
       "order_delivery_provider_check",
-      sql`(${table.fulfillmentStatus} = 'dispatched' and (${table.deliveryProvider} is null or ${table.deliveryProvider} in ('manual', 'pathao'))) or (${table.fulfillmentStatus} <> 'dispatched' and ${table.deliveryProvider} is null)`,
+      sql`(${table.fulfillmentStatus} in ('dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and (${table.deliveryProvider} is null or ${table.deliveryProvider} in ('manual', 'pathao'))) or (${table.fulfillmentStatus} not in ('dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.deliveryProvider} is null)`,
     ),
-    check("order_cod_method_check", sql`${table.paymentMethod} = 'cod'`),
     check(
       "order_collection_status_check",
-      sql`${table.collectionStatus} = 'uncollected'`,
+      sql`(${table.collectionStatus} = 'uncollected' and ${table.collectedAmountBdt} is null and ${table.collectionReason} is null) or (${table.collectionStatus} in ('collected', 'discrepancy') and ${table.collectedAmountBdt} is not null and ${table.collectedAmountBdt} between 0 and 9007199254740991 and ${table.collectionReason} is not null and ${table.collectionReason} = btrim(${table.collectionReason}) and length(${table.collectionReason}) between 3 and 500)`,
     ),
+    check(
+      "order_collection_amount_status_check",
+      sql`(${table.collectionStatus} = 'collected' and ${table.collectedAmountBdt} is not null and ${table.collectedAmountBdt} = ${table.codAmountDueBdt}) or (${table.collectionStatus} = 'discrepancy' and ${table.collectedAmountBdt} is not null and ${table.collectedAmountBdt} <> ${table.codAmountDueBdt}) or ${table.collectionStatus} = 'uncollected'`,
+    ),
+    check("order_cod_method_check", sql`${table.paymentMethod} = 'cod'`),
     check(
       "order_amount_check",
       sql`${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.codAmountDueBdt} = ${table.totalBdt} and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt}`,

@@ -322,6 +322,9 @@ export async function grantRuntimePrivileges(
         `GRANT ${privileges.join(", ")} ON TABLE ${quoteIdentifier(schema)}.${quoteIdentifier(table)} TO ${quotedRuntimeRole}`,
       );
     }
+    await client.query(
+      `GRANT EXECUTE ON FUNCTION "quote"."prune_expired_unreferenced"(integer) TO ${quotedRuntimeRole}`,
+    );
     for (const [schema, table, column, privileges] of runtimeColumnGrants) {
       await client.query(
         `GRANT ${privileges.join(", ")} (${quoteIdentifier(column)}) ON TABLE ${quoteIdentifier(schema)}.${quoteIdentifier(table)} TO ${quotedRuntimeRole}`,
@@ -427,7 +430,17 @@ async function main(): Promise<void> {
       quotePrivileges.rows[0].can_truncate
     ) {
       throw new Error(
-        "Quote snapshots must be insertable and immutable to the runtime role.",
+        "Quote snapshots must be insertable without direct UPDATE, DELETE, or TRUNCATE privileges for the runtime role.",
+      );
+    }
+    const quoteCleanupPrivileges = await runtimePool.query<{
+      can_execute_cleanup: boolean;
+    }>(
+      `SELECT has_function_privilege(current_user, 'quote.prune_expired_unreferenced(integer)', 'EXECUTE') AS can_execute_cleanup`,
+    );
+    if (!quoteCleanupPrivileges.rows[0]?.can_execute_cleanup) {
+      throw new Error(
+        "The runtime role must be able to execute the bounded quote cleanup function.",
       );
     }
     const storefrontAssetPrivileges = await runtimePool.query<{
