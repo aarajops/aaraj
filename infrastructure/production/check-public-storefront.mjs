@@ -22,6 +22,28 @@ if (
 
 const failures = [];
 
+try {
+  const writeProbe = await fetch(new URL("/api/v1/quotes", origin), {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      origin: origin.origin,
+    },
+    // The empty quote input fails schema validation before the handler writes.
+    body: "{}",
+    signal: AbortSignal.timeout(10000),
+  });
+  if (writeProbe.status !== 400) {
+    failures.push(
+      `canonical-origin write probe returned HTTP ${writeProbe.status}, expected HTTP 400 validation failure`,
+    );
+  }
+} catch (error) {
+  failures.push(`canonical-origin write probe failed: ${error.message}`);
+}
+
 const aliasOrigin = new URL(origin);
 aliasOrigin.hostname = aliasOrigin.hostname.startsWith("www.")
   ? aliasOrigin.hostname.slice(4)
@@ -149,6 +171,6 @@ if (failures.length) {
   process.exitCode = 1;
 } else {
   console.log(
-    "Public storefront, canonical www redirect, SEO metadata, manifest, and generated icons are healthy.",
+    "Public storefront, canonical-origin write handling, www redirect, SEO metadata, manifest, and generated icons are healthy.",
   );
 }
