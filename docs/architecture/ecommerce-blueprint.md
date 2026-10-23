@@ -20,7 +20,7 @@ Current implementation status (22 October 2026): the monorepo has a local Postgr
 | Events                     | Proposed module-owned PostgreSQL outbox/inbox when an asynchronous workflow is implemented                                                                                                                                                        | No outbox or event relay exists in the current application                                                                                                                                                                                                        |
 | Jobs                       | Add a durable queue such as BullMQ when an implemented workflow needs background delivery or processing                                                                                                                                           | Bound concurrency and make retryable business effects idempotent                                                                                                                                                                                                  |
 | Providers                  | Typed HTTP adapters using Node 24 native `fetch`; `@nestjs/axios` only where specifically justified                                                                                                                                               | No unmaintained bKash, Nagad, SSLCommerz, Pathao, Steadfast, or RedX wrappers                                                                                                                                                                                     |
-| Initial production hosting | Existing Contabo VPS on Ubuntu 24.04 LTS; shared Nginx; per-site Linux users and PM2; PostgreSQL 16 with isolated databases and certificate-verified TLS; private Redis; Let's Encrypt; encrypted offsite backups; mandatory GitHub Actions CI/CD | AARAJ is the first site under `/srv/sites/aaraj`; GitHub-hosted runners build versioned releases, and protected GitHub environments gate site-scoped deployment and migrations. See the approved [hosting and release architecture](aaraj-production-hosting.md). |
+| Initial production hosting | Existing Contabo VPS on Ubuntu 24.04 LTS; shared Nginx; per-site Linux users and PM2; PostgreSQL 16 with isolated databases and certificate-verified TLS; private Redis; Let's Encrypt; mandatory GitHub Actions CI/CD | AARAJ is the first site under `/srv/sites/aaraj`; GitHub-hosted runners build versioned releases, and protected GitHub environments gate site-scoped deployment and migrations. See the approved [hosting and release architecture](aaraj-production-hosting.md). |
 | Currency                   | BDT first; currency metadata and explicit rational FX quotes                                                                                                                                                                                      | Amounts never silently mix currencies; no floating-point financial arithmetic                                                                                                                                                                                     |
 | Launch scope               | Single merchant; fulfillment and stock policy are decided from launch operations                                                                                                                                                                  | Do not create inventory-location or warehouse models until a stock-managed workflow requires them; marketplace sellers, escrow, and cross-border settlement remain deferred                                                                                       |
 
@@ -37,7 +37,7 @@ Non-negotiable invariants:
 
 ## Section 1: Executive architecture topography
 
-The diagram is the eventual target topology, not a Day 1 deployment prescription. A pooler, read replicas, dedicated workers, queues, CDN/WAF, and separate services are introduced when the selected hosting design, measured load, recovery objectives, or an implemented workflow needs them.
+The diagram is the eventual target topology, not a Day 1 deployment prescription. A pooler, read replicas, dedicated workers, queues, CDN/WAF, and separate services are introduced when the selected hosting design, measured load, or an implemented workflow needs them.
 
 ```mermaid
 flowchart TB
@@ -90,14 +90,13 @@ flowchart TB
   Monolith --> OTel[Redacted OpenTelemetry collector]
   Workers --> OTel
   OTel --> Alerts[Dashboards / on-call alerts / DLQ console]
-  Primary --> Recovery[Encrypted backups / WAL archive / PITR]
   Secrets[Host-managed per-site secrets / future managed secret service] --> Monolith
   Secrets --> Workers
 ```
 
 The diagram's database arrows are ownership routes, not permission to query every schema. A checkout request can synchronously call `Inventory.reserve()` through a port, but the Inventory implementation alone touches stock tables. Each module commits locally. An Order-owned process manager records the cross-module workflow, retries, and compensations. Read pages compose port results or use event-fed projections owned by the reader.
 
-When durable background work exists, deploy its workers with independent concurrency limits; separate critical payment reconciliation from media, bulk email, or analytics queues when those workloads exist. Scale HTTP replicas within the measured database connection budget, and scale workers from queue age/work duration when applicable. Choose the production availability topology against the approved SLO and recovery objectives. Stateless HTTP replicas never keep authoritative carts, sessions, stock, or checkout progress in memory.
+When durable background work exists, deploy its workers with independent concurrency limits; separate critical payment reconciliation from media, bulk email, or analytics queues when those workloads exist. Scale HTTP replicas within the measured database connection budget, and scale workers from queue age/work duration when applicable. Choose the production availability topology against the approved SLO. Stateless HTTP replicas never keep authoritative carts, sessions, stock, or checkout progress in memory.
 
 ### I. Core monolith architecture and ingress security
 
@@ -143,7 +142,7 @@ Keep schema ownership, parameterized SQL, no runtime DDL, and a separate migrati
 
 If a pooler is selected, choose its mode deliberately. Transaction pooling disallows relying on session-local state and session advisory locks; use transaction-scoped settings/locks. Prepared-statement support depends on pool version/configuration, so exercise the selected pg/Drizzle setup in integration tests. Keep migration and replication connections on an explicitly managed path. [PgBouncer feature compatibility](https://www.pgbouncer.org/features.html).
 
-PostgreSQL is authoritative for writes and consistency-sensitive reads. Add read replicas only when read demand and query measurements justify their cost and operational lag/failover handling. If used, keep payment status, stock availability at checkout, permissions, idempotency receipts, and read-after-write responses on the primary; label stale-tolerant projections and define behavior when replica lag exceeds policy. Never automatically retry an uncertain write on another server.
+PostgreSQL is authoritative for writes and consistency-sensitive reads. Add read replicas only when read demand and query measurements justify their cost; account for operational lag. If used, keep payment status, stock availability at checkout, permissions, idempotency receipts, and read-after-write responses on the primary; label stale-tolerant projections and define behavior when replica lag exceeds policy. Never automatically retry an uncertain write on another server.
 
 Start with ordinary tables and sound indexes. Evaluate partitioning independently for each high-growth table only when expected size, query plans, retention/deletion needs, and operational evidence show a benefit. PostgreSQL partitioning adds key and constraint considerations; time partitioning can simplify retention and enable pruning when queries include the partition key, while unnecessary partitions add planning and maintenance overhead. If adopted, provision partitions ahead of traffic and test late arrivals, uniqueness/foreign-key behavior, retention, and missing-partition handling. Treat partitioned examples in the companion DDL as design options, not required initial schema. [PostgreSQL partitioning](https://www.postgresql.org/docs/current/ddl-partitioning.html).
 
@@ -451,21 +450,13 @@ Initialize OpenTelemetry before instrumented modules. Record route templates, op
 
 Measure SLOs separately: initial design targets are 99.9% monthly API availability, catalog p95 <300 ms at origin, checkout acceptance p95 <800 ms excluding human/provider completion, outbox lag p95 <5 s, and pending-payment reconciliation within 5 minutes under normal provider availability. These are proposed acceptance targets to validate with representative load, not measured current performance. Track business invariants (negative stock, duplicate capture, journal imbalance) with zero-tolerance alerts; do not use customer IDs as unbounded metric labels.
 
-#### 32. Backups, PITR, and restore evidence
+#### 32. Expand-and-contract migrations
 
-Continuously archive WAL to encrypted offsite object storage with independent credentials and retention controls, plus scheduled verified base backups. Managed RDS PITR is the reference operational path; if self-managed PostgreSQL is selected, use a supported backup tool and test WAL continuity explicitly. Retain configuration, infrastructure state, encryption-key recovery, media manifests, and restore instructions; a replica alone is not a backup.
+Use one controlled migration runner with an advisory transaction lock/checksummed history and direct DB connection. Expand first: add nullable fields/new tables, support old and new schema paths, backfill in bounded resumable batches, validate constraints, and switch reads/writes before removing obsolete structures. Keep the running app compatible until the new process starts. Build indexes concurrently where supported; this operation requires its own migration transaction policy. Set lock/statement timeouts and monitor replication lag.
 
-Set RPO/RTO with product and operations based on customer impact, transaction risk, and recovery cost; the former <5-minute RPO / <30-minute RTO values are candidates to review, not default commitments. Configure backup/PITR and WAL archiving to meet the approved targets. Measure recoverability from the latest durably archived/replicated commit, not the timestamp of a cron success. Restore into an isolated environment on an operations-approved cadence and before launch. Verify row counts, journal balance, order/payment links, deduplication, keys, and application behavior. [PostgreSQL continuous archiving and PITR](https://www.postgresql.org/docs/current/continuous-archiving.html).
+Events and contracts are additive/versioned; consumers tolerate unknown fields and park unsupported versions. Applied migrations are immutable and are not reversed. If an activated release fails, deploy a corrective release through the normal pipeline.
 
-Financial/provider evidence can exist after the chosen restore point. Before reopening mutations, reconcile external captures/refunds/consignments/remittances against restored receipts, then replay safe events. Rebuild caches/search from authoritative owner exports. Revoke sessions that may have been affected by the restore; never replay side-effecting jobs indiscriminately.
-
-#### 33. Expand-and-contract releases and rollback
-
-Use one controlled migration runner with an advisory transaction lock/checksummed history and direct DB connection. Expand first: add nullable fields/new tables, support both schema versions, backfill in bounded resumable batches, validate constraints, switch reads/writes, then contract only after old versions and the rollback window expire. Build indexes concurrently where supported; this operation requires its own migration transaction policy. Set lock/statement timeouts and monitor replication lag.
-
-New and previous application versions must both operate on the expanded schema during canary/rolling releases. Events and contracts are additive/versioned; consumers tolerate unknown fields and park unsupported versions. Roll back the application image/feature flag while keeping the compatible schema. Do not run destructive “down” migrations against newly written production data. A destructive contract migration or irreversible provider action cannot be promised an instantaneous rollback; retain a tested forward-repair and restore procedure.
-
-#### 34. Automated tests and regression guardrails
+#### 33. Automated tests and regression guardrails
 
 | Layer                        | Required proof                                                                                                                                                                                     |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -475,25 +466,17 @@ New and previous application versions must both operate on the expanded schema d
 | Provider contract suites     | Native-fetch fixtures plus available official sandboxes; signatures, schema drift, timeout/query recovery, duplicate/out-of-order webhooks, refunds and statement matching                         |
 | Supertest E2E                | Email/password sign-up and sign-in → cart merge → quote → reservation → prepaid/COD advance → confirmation → split delivery → payout → partial return/refund, with authorization and CSRF failures |
 | Storefront/admin journeys    | Browser purchase funnel on low-bandwidth mobile, Bangla rendering, accessibility, secure admin actions, status refresh after redirects                                                             |
-| Resilience/load              | Last-unit contention, flash-sale admission, worker death before/after commit, Redis flush/restart, provider outages, replica lag, DLQ recovery, rolling migration and PITR drill                   |
+| Resilience/load              | Last-unit contention, flash-sale admission, worker death before/after commit, Redis flush/restart, provider outages, replica lag, DLQ recovery, and rolling migration                                |
 
 Coverage alone does not establish correctness. Add conservation assertions: stock never negative, sum of allocated discounts equals discount, captured/refunded amounts reconcile, every journal balances, and committed state changes have durable events. Freeze clocks and use deterministic fixtures; isolate external dependencies so live SMS/payment providers never make CI flaky. Load-test realistic hot-SKU skew and burst patterns, measure p95/p99 and pool/queue saturation, and set capacity with headroom before promising scale.
 
-#### 35. Disaster recovery and multi-region readiness
-
-Choose in-region failover and regional disaster recovery to meet the approved availability and recovery objectives. If regional recovery is required, maintain a warm standby/replication plan and rehearse promotion. Keep **one writer**: fence the previous primary and side-effecting worker fleet before promoting, then switch secrets/endpoints/traffic and validate consistency. Cross-region asynchronous replication has measurable data-loss risk; multi-region presence alone does not prove the approved RPO target.
-
-Enter maintenance mode on primary loss, severe replication/ledger inconsistency, or unsafe recovery: serve public cached reads and authenticated safe status views, reject mutations clearly, keep provider callbacks in a verified durable ingress buffer where possible, and pause outbound financial/consignment jobs. A failover runbook assigns incident commander, DB lead, payment reconciliation owner, and customer communication owner, with explicit stop/rollback conditions.
-
-Time detection, fencing, restore/promotion, transaction reconciliation, and gradual reopening during recovery exercises. Prove the selected objective at representative production data volume; if recovery exceeds it, improve the design or revise the target before launch. DNS/CDN TTLs, KMS access, provider IP allowlists, and standby secrets must work in any configured recovery region.
-
-#### 36. DLQs, alerts, and operating ownership
+#### 34. DLQs, alerts, and operating ownership
 
 Maintain durable failure records with event/job IDs, handler version, attempt count, safe reason, first/last failure, next action, and runbook link. Queue retention and Redis eviction policy are explicit (`noeviction` for critical queues); the failed set alone is not the complete DLQ workflow. Payment, fulfillment, notification, and analytics queues have different retry/deadline budgets.
 
-Alert immediately on journal imbalance/duplicate capture/security-control bypass; page on sustained critical outbox lag, payment unknown-age thresholds, missing WAL, or webhook verification failures; ticket noncritical media/analytics failures. Use Slack/PagerDuty/Discord adapters selected by operations, with redacted messages and deduplicated incident keys. Alerts need an owner, severity, threshold, suppression/escalation rules, and resolution evidence.
+Alert immediately on journal imbalance/duplicate capture/security-control bypass; page on sustained critical outbox lag, payment unknown-age thresholds, or webhook verification failures; ticket noncritical media/analytics failures. Use Slack/PagerDuty/Discord adapters selected by operations, with redacted messages and deduplicated incident keys. Alerts need an owner, severity, threshold, suppression/escalation rules, and resolution evidence.
 
-The DLQ console shows a safe payload summary, current aggregate/provider state, schema/handler version, and replay dry-run validation. Repair poison schemas/data first; replay with the **original business/event identity** and a new replay-attempt audit reference. Require MFA/permission for financial replays. Never bulk retry unknown charges or duplicate consignments blindly. Maintain and rehearse runbooks for pending payment, stuck reservation, missing event, failed refund, stale courier status, unmatched payout, redaction leak, and database recovery.
+The DLQ console shows a safe payload summary, current aggregate/provider state, schema/handler version, and replay dry-run validation. Repair poison schemas/data first; replay with the **original business/event identity** and a new replay-attempt audit reference. Require MFA/permission for financial replays. Never bulk retry unknown charges or duplicate consignments blindly. Maintain and rehearse runbooks for pending payment, stuck reservation, missing event, failed refund, stale courier status, unmatched payout, and redaction leak.
 
 ## Section 2: Relational data schema and entity blueprint
 
@@ -544,13 +527,13 @@ The [implementation roadmap](ecommerce-implementation-roadmap.md#section-3-phase
 | 5     | Persisted checkout, prepaid/COD advances, fraud review                          | Provider sandbox/live-readiness evidence and ambiguous-payment recovery pass                                    |
 | 6     | Split fulfillment, couriers, COD ledger, RMA/refunds                            | Booking dedup, remittance matching, partial-return reconciliation pass                                          |
 | 7     | Consented CAPI/GA4, social channels, audit operations, DLQ/support console      | Event dedup, privacy, social order confirmation, controlled replay pass                                         |
-| 8     | Load/security hardening, release automation, PITR/DR, launch                    | Production-sized recovery exercise, SLO/load evidence, reconciled financial canary                              |
+| 8     | Load/security hardening, release automation, launch                              | SLO/load evidence, reconciled financial canary                                                                   |
 
 Security controls, audit facts, tests, and telemetry begin with the corresponding implemented slices and grow in every phase. Add an outbox with the first workflow that needs durable asynchronous delivery; later logistics can reuse it. Phase 7 adds audit operations/social integrations, not the first audit records. Phase 8 verifies the accumulated test program, not the first tests.
 
 For Meta CAPI and GA4, derive conversion events from the defined authoritative purchase milestone (for example confirmed paid order, with a separate COD policy). Use stable event IDs shared with the browser for provider-supported deduplication, order/transaction IDs, event time, BDT integer-to-provider formatting, consent provenance, and versioned semantics. Do not emit a fresh purchase for webhook retries or every partial shipment. Record refunds/cancellations according to each platform's supported event model. Hashing an identifier does not make it anonymous; minimize approved fields and prevent raw PII entering tracking logs. Keep analytics failures outside the checkout critical path.
 
-Launch proceeds through internal/sandbox journeys, controlled merchant pilot, small production traffic, and measured expansion. Each gate includes a rollback/disable switch and an owner. Payment/courier credentials, data rights, and real recovery evidence are prerequisites to the relevant feature going live, not reasons to postpone independent foundation work.
+Launch proceeds through internal/sandbox journeys, controlled merchant pilot, small production traffic, and measured expansion. Each gate includes a disable switch and an owner. Payment/courier credentials and data rights are prerequisites to the relevant feature going live, not reasons to postpone independent foundation work.
 
 ## Section 4: Day 1 actionable execution checklist
 

@@ -455,7 +455,7 @@ export class RedisIdempotencyStore implements IdempotencyStore {
 
 ## 7. Zero-Downtime AES-256-GCM Encryption at Rest
 
-Idempotency stores cache complete HTTP responses, often containing sensitive billing details, card tokens, or PII. Encrypting the payload at rest prevents leaks in database backups:
+Idempotency stores cache complete HTTP responses, often containing sensitive billing details, card tokens, or PII. Encrypting the payload at rest limits exposure if stored data is accessed outside the application:
 
 ```typescript
 IdempotencyModule.forRootAsync({

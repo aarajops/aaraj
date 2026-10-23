@@ -2,18 +2,21 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: deploy-release.sh <stage|migrate|grant-delivery-district-delete|activate|rollback|restart|pathao-apply|pathao-restore|pathao-commit> <commit-sha> [archive]" >&2
+  echo "Usage: deploy-release.sh <stage|migrate|grant-delivery-district-delete|activate> <commit-sha> <archive>" >&2
+  echo "       deploy-release.sh pathao-apply" >&2
   exit 2
 }
 
-[[ $# -ge 2 && $# -le 3 ]] || usage
+[[ $# -ge 1 ]] || usage
 operation="$1"
-commit="$2"
-archive="${3:-}"
-[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
-  stage) [[ $# == 3 && -f "$archive" ]] || usage ;;
-  migrate|grant-delivery-district-delete|activate|rollback|restart|pathao-apply|pathao-restore|pathao-commit) [[ $# == 2 ]] || usage ;;
+  stage|migrate|grant-delivery-district-delete|activate)
+    [[ $# == 3 ]] || usage
+    commit="$2"
+    archive="$3"
+    [[ "$commit" =~ ^[0-9a-f]{40}$ && -f "$archive" ]] || usage
+    ;;
+  pathao-apply) [[ $# == 1 ]] || usage ;;
   *) usage ;;
 esac
 
@@ -32,6 +35,7 @@ if (( port_number < 1 || port_number > 65535 )); then
   echo "Invalid SSH port." >&2
   exit 2
 fi
+port="$port_number"
 [[ "$remote_user" == "aaraj-deploy" ]] || { echo "Only the AARAJ deployment account is allowed." >&2; exit 2; }
 
 temporary="$(mktemp -d)"
@@ -44,7 +48,7 @@ printf '%s\n' "$known_hosts_value" > "$known_hosts_file"
 unset private_key known_hosts_value
 chmod 0600 "$key_file" "$known_hosts_file"
 
-if (( port == 22 )); then host_identity="$host"; else host_identity="[$host]:$port"; fi
+if (( port_number == 22 )); then host_identity="$host"; else host_identity="[$host]:$port"; fi
 ssh-keygen -F "$host_identity" -f "$known_hosts_file" >/dev/null || {
   echo "Pinned known_hosts has no entry for $host_identity." >&2
   exit 1
@@ -74,26 +78,6 @@ run_remote() {
     "bash -s -- $remote_arguments" < "$remote_script"
 }
 
-run_pathao_helper() {
-  local action="$1" remote_command
-  case "$action" in
-    apply|commit)
-      remote_command='sudo -n /usr/local/sbin/aaraj-configure-pathao.cjs'
-      ;;
-    restore)
-      remote_command='sudo -n /usr/local/sbin/aaraj-configure-pathao.cjs'
-      ;;
-    *) echo "Invalid Pathao helper action." >&2; return 2 ;;
-  esac
-
-  if [[ "$action" == apply ]]; then
-    ssh -T -p "$port" "${ssh_options[@]}" "$destination" "$remote_command"
-  else
-    printf 'operation=%s\nrelease=%s\n' "$action" "$commit" |
-      ssh -T -p "$port" "${ssh_options[@]}" "$destination" "$remote_command"
-  fi
-}
-
 if [[ "$operation" == "stage" ]]; then
   sidecar="$archive.sha256"
   [[ -f "$sidecar" ]] || { echo "Artifact checksum sidecar is missing." >&2; exit 1; }
@@ -102,14 +86,18 @@ if [[ "$operation" == "stage" ]]; then
   [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || { echo "Invalid artifact checksum." >&2; exit 1; }
 
   scp -P "$port" "${ssh_options[@]}" -- "$archive" \
-    "$destination:/srv/sites/aaraj/incoming/$commit.tar.gz"
+    "$destination:/srv/sites/aaraj/incoming/$commit-$digest.tar.gz"
   run_remote stage "$commit" "$digest"
+elif [[ "$operation" == "migrate" || \
+  "$operation" == "grant-delivery-district-delete" || \
+  "$operation" == "activate" ]]; then
+  sidecar="$archive.sha256"
+  [[ -f "$sidecar" ]] || { echo "Artifact checksum sidecar is missing." >&2; exit 1; }
+  (cd "$(dirname "$archive")" && sha256sum --check "$(basename "$sidecar")")
+  digest="$(awk 'NR == 1 { print $1 }' "$sidecar")"
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || { echo "Invalid artifact checksum." >&2; exit 1; }
+  run_remote "$operation" "$commit" "$digest"
 elif [[ "$operation" == pathao-apply ]]; then
-  run_pathao_helper apply
-elif [[ "$operation" == pathao-restore ]]; then
-  run_pathao_helper restore
-elif [[ "$operation" == pathao-commit ]]; then
-  run_pathao_helper commit
-else
-  run_remote "$operation" "$commit"
+  ssh -T -p "$port" "${ssh_options[@]}" "$destination" \
+    'sudo -n /usr/local/sbin/aaraj-configure-pathao.cjs'
 fi

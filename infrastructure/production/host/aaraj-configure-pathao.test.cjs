@@ -13,12 +13,9 @@ const {
   PATHAO_KEYS,
   applyConfiguration,
   buildPayload,
-  commitConfiguration,
   parsePayload,
-  restoreConfiguration,
 } = require("./aaraj-configure-pathao.cjs");
 
-const RELEASE = "a".repeat(40);
 const TOKEN_KEY = crypto.randomBytes(32).toString("base64url");
 const CLIENT_SECRET = "dummy-client-secret-123";
 const SANDBOX_URL = "https://courier-api-sandbox.pathao.com";
@@ -67,12 +64,8 @@ function configuration(environment = "sandbox", overrides = {}) {
   return values;
 }
 
-function payload(operation, release = RELEASE, values = configuration()) {
-  const lines = [`operation=${operation}`, `release=${release}`];
-  if (operation === "apply") {
-    for (const key of PATHAO_KEYS) lines.push(`${key}=${values.get(key)}`);
-  }
-  return `${lines.join("\n")}\n`;
+function payload(values = configuration()) {
+  return `${PATHAO_KEYS.map((key) => `${key}=${values.get(key)}`).join("\n")}\n`;
 }
 
 function fixture(
@@ -84,17 +77,14 @@ function fixture(
   );
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const runtimeEnvPath = path.join(directory, "runtime.env");
-  const backupPath = path.join(directory, ".runtime.env.pathao-backup");
   fs.writeFileSync(runtimeEnvPath, initial, { mode: 0o640 });
   fs.chmodSync(runtimeEnvPath, 0o640);
-  return { directory, runtimeEnvPath, backupPath };
+  return { directory, runtimeEnvPath };
 }
 
-function apply(fx, values = configuration(), release = RELEASE, extra = {}) {
+function apply(fx, values = configuration(), extra = {}) {
   return applyConfiguration({
     runtimeEnvPath: fx.runtimeEnvPath,
-    backupPath: fx.backupPath,
-    release,
     values,
     ...extra,
   });
@@ -124,7 +114,6 @@ test("applies complete sandbox settings atomically and preserves unrelated entri
   assert.equal(ownerAfter.mode & 0o777, 0o640);
   assert.equal(ownerAfter.uid, ownerBefore.uid);
   assert.equal(ownerAfter.gid, ownerBefore.gid);
-  assert.equal(fs.statSync(fx.backupPath).mode & 0o777, 0o600);
   assert.doesNotMatch(
     contents,
     /PATHAO_SANDBOX_CLIENT_SECRET=dummy-client-secret/,
@@ -214,9 +203,8 @@ test("rejects incomplete or malformed Pathao configuration before writing", (t) 
     const invalid = configuration("sandbox", { [key]: value });
     assert.throws(() => apply(fx, invalid), expected, key);
     assert.equal(
-      fs.existsSync(fx.backupPath),
-      false,
-      `${key} must not leave a rollback snapshot`,
+      fs.readFileSync(fx.runtimeEnvPath, "utf8"),
+      "# Keep this comment\nAPP_NAME=aaraj\nOTHER_SECRET=unrelated-value\n",
     );
   }
 });
@@ -227,15 +215,14 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
       PATHAO_SANDBOX_CLIENT_SECRET: "stale-github-secret",
       PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
     },
-    RELEASE,
   );
   const unconfigured = parsePayload(unconfiguredPayload);
-  assert.equal(unconfigured.values.get("PATHAO_BASE_URL"), "");
+  assert.equal(unconfigured.get("PATHAO_BASE_URL"), "");
   assert.equal(
-    unconfigured.values.get("PATHAO_TOKEN_ENCRYPTION_KEY"),
+    unconfigured.get("PATHAO_TOKEN_ENCRYPTION_KEY"),
     TOKEN_KEY,
   );
-  assert.equal(unconfigured.values.get("PATHAO_SANDBOX_CLIENT_SECRET"), "");
+  assert.equal(unconfigured.get("PATHAO_SANDBOX_CLIENT_SECRET"), "");
   assert.doesNotMatch(unconfiguredPayload, /stale-github-secret/);
 
   const sandboxPayload = buildPayload(
@@ -245,10 +232,9 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
       ...DUMMY_CREDENTIALS,
       PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
     },
-    RELEASE,
   );
   assert.equal(
-    parsePayload(sandboxPayload).values.get("PATHAO_SANDBOX_CLIENT_SECRET"),
+    parsePayload(sandboxPayload).get("PATHAO_SANDBOX_CLIENT_SECRET"),
     CLIENT_SECRET,
   );
   const livePayload = buildPayload(
@@ -258,16 +244,15 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
       ...DUMMY_LIVE_CREDENTIALS,
       PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
     },
-    RELEASE,
   );
   const live = parsePayload(livePayload);
-  assert.equal(live.values.get("PATHAO_BASE_URL"), LIVE_URL);
-  assert.equal(live.values.get("PATHAO_DELIVERY_TYPE"), "12");
+  assert.equal(live.get("PATHAO_BASE_URL"), LIVE_URL);
+  assert.equal(live.get("PATHAO_DELIVERY_TYPE"), "12");
   assert.equal(
-    live.values.get("PATHAO_LIVE_CLIENT_SECRET"),
+    live.get("PATHAO_LIVE_CLIENT_SECRET"),
     DUMMY_LIVE_CREDENTIALS.PATHAO_LIVE_CLIENT_SECRET,
   );
-  assert.equal(live.values.get("PATHAO_SANDBOX_CLIENT_ID"), "");
+  assert.equal(live.get("PATHAO_SANDBOX_CLIENT_ID"), "");
   assert.throws(
     () =>
       buildPayload(
@@ -276,7 +261,6 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
           PATHAO_DELIVERY_TYPE: "48",
           PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
         },
-        RELEASE,
       ),
     /PATHAO_SANDBOX_CLIENT_ID/,
   );
@@ -291,7 +275,6 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
           PATHAO_SANDBOX_PASSWORD:
             "line1\nPATHAO_BASE_URL=https://api-hermes.pathao.com",
         },
-        RELEASE,
       ),
     /unsafe content/,
   );
@@ -310,7 +293,7 @@ test("applies live settings using Pathao's documented live URL without AARAJ-onl
 
 test("rejects duplicate, unauthorized, and injection-shaped payload entries without leaking values", (t) => {
   const fx = fixture(t);
-  const valid = payload("apply");
+  const valid = payload();
   const secret = CLIENT_SECRET;
   const duplicate = `${valid}PATHAO_BASE_URL=${SANDBOX_URL}\n`;
   assert.throws(
@@ -330,8 +313,8 @@ test("rejects duplicate, unauthorized, and injection-shaped payload entries with
     },
   );
   assert.throws(
-    () => parsePayload(payload("restore", "../runtime.env")),
-    /release identifier is invalid/,
+    () => parsePayload("operation=unknown\n"),
+    /unauthorized key operation/,
   );
   assert.throws(
     () =>
@@ -368,13 +351,12 @@ test("rejects duplicate, unauthorized, and injection-shaped payload entries with
   assert.equal(runtimeValues(unknownPathao).PATHAO_OBSOLETE_FIELD, undefined);
   const unrewritablePathao = fixture(
     t,
-    'PATHAO_BASE_URL=\nPATHAO_SANDBOX_PASSWORD="cannot\'restore"\n',
+    'PATHAO_BASE_URL=\nPATHAO_SANDBOX_PASSWORD="cannot\'be-rewritten"\n',
   );
   assert.throws(
     () => apply(unrewritablePathao, configuration("unconfigured")),
     /cannot be safely rewritten/,
   );
-  assert.equal(fs.existsSync(unrewritablePathao.backupPath), false);
 });
 
 test("rejects encryption key replacement and leaves the runtime file untouched", (t) => {
@@ -395,38 +377,6 @@ test("rejects encryption key replacement and leaves the runtime file untouched",
     /must match the existing runtime key/,
   );
   assert.equal(fs.readFileSync(fx.runtimeEnvPath, "utf8"), before);
-  assert.equal(fs.existsSync(fx.backupPath), false);
-});
-
-test("restores only prior Pathao values, keeps intervening unrelated changes, and commits snapshots", (t) => {
-  const fx = fixture(
-    t,
-    "# Original comment\nAPP_NAME=old\nPATHAO_BASE_URL=\nPATHAO_SANDBOX_CLIENT_SECRET=stale\nPATHAO_STALE_TEST_KEY=prior-value\n",
-  );
-  assert.equal(apply(fx), "applied");
-  assert.equal(runtimeValues(fx).PATHAO_STALE_TEST_KEY, undefined);
-  fs.appendFileSync(fx.runtimeEnvPath, "ADMIN_NOTE=preserve-this\n");
-  assert.equal(restoreConfiguration({ ...fx, release: RELEASE }), "restored");
-  const restored = fs.readFileSync(fx.runtimeEnvPath, "utf8");
-  const env = runtimeValues(fx);
-  assert.equal(env.PATHAO_BASE_URL, "");
-  assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, "stale");
-  assert.equal(env.PATHAO_STALE_TEST_KEY, "prior-value");
-  assert.equal(env.PATHAO_SANDBOX_CLIENT_ID, undefined);
-  assert.equal(env.ADMIN_NOTE, "preserve-this");
-  assert.match(restored, /^# Original comment$/m);
-  assert.equal(fs.existsSync(fx.backupPath), false);
-
-  assert.equal(apply(fx), "applied");
-  assert.equal(
-    commitConfiguration({ backupPath: fx.backupPath, release: RELEASE }),
-    "committed",
-  );
-  assert.equal(fs.existsSync(fx.backupPath), false);
-  assert.equal(
-    commitConfiguration({ backupPath: fx.backupPath, release: RELEASE }),
-    "nothing-to-commit",
-  );
 });
 
 test("leaves the original runtime file intact if atomic replacement fails", (t) => {
@@ -435,17 +385,16 @@ test("leaves the original runtime file intact if atomic replacement fails", (t) 
   let renames = 0;
   assert.throws(
     () =>
-      apply(fx, configuration(), RELEASE, {
+      apply(fx, configuration(), {
         renameFile(source, destination) {
           renames += 1;
-          if (renames === 2) throw new Error("simulated rename failure");
+          if (renames === 1) throw new Error("simulated rename failure");
           fs.renameSync(source, destination);
         },
       }),
     /Atomic runtime configuration update failed/,
   );
   assert.equal(fs.readFileSync(fx.runtimeEnvPath, "utf8"), before);
-  assert.equal(fs.existsSync(fx.backupPath), false);
   assert.deepEqual(fs.readdirSync(fx.directory).sort(), ["runtime.env"]);
 });
 
@@ -456,39 +405,14 @@ test("rejects hard-linked runtime files and leaves the linked file untouched", (
   const before = fs.readFileSync(linkedPath, "utf8");
   assert.throws(() => apply(fx), /single-link regular file/);
   assert.equal(fs.readFileSync(linkedPath, "utf8"), before);
-  assert.equal(fs.existsSync(fx.backupPath), false);
 });
 
-test("rejects hard-linked and dangling-symlink rollback snapshots", (t) => {
-  const hardLinked = fixture(t);
-  assert.equal(apply(hardLinked), "applied");
-  const snapshotCopy = path.join(hardLinked.directory, "snapshot-copy");
-  fs.linkSync(hardLinked.backupPath, snapshotCopy);
-  assert.throws(() => apply(hardLinked), /single-link regular file/);
-
-  const danglingLink = fixture(t);
-  fs.symlinkSync(
-    path.join(danglingLink.directory, "missing-target"),
-    danglingLink.backupPath,
-  );
-  assert.throws(() => apply(danglingLink), /single-link regular file/);
-  assert.equal(fs.lstatSync(danglingLink.backupPath).isSymbolicLink(), true);
-  assert.equal(
-    fs.readFileSync(danglingLink.runtimeEnvPath, "utf8"),
-    "# Keep this comment\nAPP_NAME=aaraj\nOTHER_SECRET=unrelated-value\n",
-  );
-});
-
-test("supports same-release retries without replacing the original rollback snapshot", (t) => {
+test("applies the requested configuration directly and accepts idempotent retries", (t) => {
   const fx = fixture(t);
   assert.equal(apply(fx), "applied");
-  const snapshotBefore = fs.readFileSync(fx.backupPath, "utf8");
   assert.equal(apply(fx), "already-applied");
-  assert.equal(fs.readFileSync(fx.backupPath, "utf8"), snapshotBefore);
-  assert.throws(
-    () => apply(fx, configuration("unconfigured"), "b".repeat(40)),
-    /snapshot does not match this release/,
-  );
+  assert.equal(apply(fx, configuration("unconfigured")), "applied");
+  assert.equal(runtimeValues(fx).PATHAO_BASE_URL, "");
 });
 
 test("keeps the sudoers and installation contract narrowly scoped", (t) => {
@@ -556,7 +480,7 @@ test("syntax-checks the staged Pathao helper from stdin despite its temporary su
   );
 });
 
-test("validates Pathao before VPS access and restores interrupted changes", () => {
+test("validates and applies Pathao before staging and migration", () => {
   const workflow = fs.readFileSync(
     path.join(__dirname, "../../../.github/workflows/production-release.yml"),
     "utf8",
@@ -566,18 +490,10 @@ test("validates Pathao before VPS access and restores interrupted changes", () =
   );
   const stage = workflow.indexOf("- name: Stage and migrate AARAJ");
   const activation = workflow.indexOf("- name: Activate and verify AARAJ");
-  const cleanup = workflow.indexOf(
-    "- name: Restore pending Pathao configuration after interruption",
-  );
   assert.ok(provision >= 0 && provision < stage && stage < activation);
-  assert.ok(cleanup > activation);
   assert.match(
-    workflow.slice(provision, stage),
+    workflow.slice(provision, activation),
     /buildPayload\(process\.env[\s\S]*?deploy-release\.sh pathao-apply/,
-  );
-  assert.match(
-    workflow.slice(cleanup),
-    /always\(\)\s*&&\s*\(failure\(\)\s*\|\|\s*cancelled\(\)\)[\s\S]*?pathao-restore[\s\S]*?configuration restored\.[\s\S]*?deploy-release\.sh restart/,
   );
   for (const secret of [
     "PATHAO_TOKEN_ENCRYPTION_KEY",

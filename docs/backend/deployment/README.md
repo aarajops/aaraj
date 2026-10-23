@@ -59,7 +59,7 @@ This guide details enterprise deployment standards for NestJS: compiled build ar
 | **Official Managed Cloud** | [Mau](https://mau.nestjs.com/) (AWS) | Single-command deployment (`nest deploy`), automated DB/broker provisioning, zero infra configuration, native AWS reliability. | Managed service cost; tied to AWS infrastructure. |
 | **Container Orchestration** | Kubernetes (EKS, GKE, AKS), AWS ECS | Enterprise-grade autoscaling (HPA), zero-downtime rolling updates, declarative infrastructure (GitOps), fine-grained networking. | Operational complexity, requires dedicated DevOps/platform engineering. |
 | **Serverless Containers** | AWS Fargate, Google Cloud Run | Pay-per-use, scale-to-zero, zero cluster maintenance, automatic TLS. | Cold start latencies, connection pool churn (requires RDS Proxy/PgBouncer). |
-| **Self-Hosted Dedicated / VPS** | Hetzner, DigitalOcean, EC2 | Maximum hardware control, predictable low cost, customizable network kernel. | Manual backups, manual OS patching, manual load balancing and failover setup. |
+| **Self-Hosted Dedicated / VPS** | Hetzner, DigitalOcean, EC2 | Maximum hardware control, predictable low cost, customizable network kernel. | Manual OS patching, manual load balancing and failover setup. |
 
 ---
 

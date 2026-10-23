@@ -141,13 +141,14 @@ jobs:
           AARAJ_PUBLIC_BASE_URL: ${{ vars.AARAJ_PUBLIC_BASE_URL }}
         run: |
           set -euo pipefail
+          [[ "$AARAJ_PUBLIC_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]
           bash infrastructure/production/deploy-release.sh stage \
             "$DEPLOYMENT_COMMIT" \
             "$RUNNER_TEMP/aaraj-repair/aaraj-release.tar.gz"
           bash infrastructure/production/deploy-release.sh grant-delivery-district-delete \
-            "$DEPLOYMENT_COMMIT"
+            "$DEPLOYMENT_COMMIT" \
+            "$RUNNER_TEMP/aaraj-repair/aaraj-release.tar.gz"
 
-          [[ "$AARAJ_PUBLIC_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]
           curl --fail --silent --show-error --max-time 10 \
             "$AARAJ_PUBLIC_BASE_URL/api/health/ready" >/dev/null
           echo 'The runtime role has DELETE on delivery.tariff_district; no schema migration or app activation was performed.' >> "$GITHUB_STEP_SUMMARY"

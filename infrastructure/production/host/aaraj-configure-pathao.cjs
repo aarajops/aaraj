@@ -7,10 +7,8 @@ const crypto = require("node:crypto");
 const { parseEnv } = require("node:util");
 
 const RUNTIME_ENV_PATH = "/etc/sites/aaraj/runtime.env";
-const BACKUP_PATH = "/etc/sites/aaraj/.runtime.env.pathao-backup";
 const MAX_RUNTIME_BYTES = 1024 * 1024;
 const MAX_INPUT_BYTES = 32 * 1024;
-const RELEASE_SHA = /^[0-9a-f]{40}$/;
 const PATHAO_KEYS = [
   "PATHAO_BASE_URL",
   "PATHAO_DELIVERY_TYPE",
@@ -75,26 +73,15 @@ function parsePayload(input) {
     entries.set(key, value);
   }
 
-  const operation = entries.get("operation");
-  const release = entries.get("release");
-  if (!["apply", "restore", "commit"].includes(operation))
-    fail("Configuration operation is invalid.");
-  if (!RELEASE_SHA.test(release || ""))
-    fail("Configuration release identifier is invalid.");
-
-  const expected =
-    operation === "apply"
-      ? new Set(["operation", "release", ...PATHAO_KEYS])
-      : new Set(["operation", "release"]);
   for (const key of entries.keys()) {
-    if (!expected.has(key))
+    if (!PATHAO_KEYS.includes(key))
       fail(`Configuration payload contains unauthorized key ${key}.`);
   }
-  for (const key of expected) {
+  for (const key of PATHAO_KEYS) {
     if (!entries.has(key)) fail(`Configuration payload is missing ${key}.`);
   }
 
-  return { operation, release, values: entries };
+  return entries;
 }
 
 function parseRuntimeEnv(contents) {
@@ -236,9 +223,7 @@ function validateConfiguration(inputValues, existingValues) {
   return result;
 }
 
-function buildPayload(environment, release) {
-  if (!RELEASE_SHA.test(release || ""))
-    fail("Configuration release identifier is invalid.");
+function buildPayload(environment) {
   const baseUrl = environment.PATHAO_BASE_URL ?? "";
   const mode = pathaoEnvironment(baseUrl);
 
@@ -267,12 +252,7 @@ function buildPayload(environment, release) {
     }
   }
   validateConfiguration(values, new Map());
-  return [
-    "operation=apply",
-    `release=${release}`,
-    ...PATHAO_KEYS.map((key) => `${key}=${values.get(key)}`),
-    "",
-  ].join("\n");
+  return `${PATHAO_KEYS.map((key) => `${key}=${values.get(key)}`).join("\n")}\n`;
 }
 
 function encodeEnvValue(value) {
@@ -334,16 +314,6 @@ function readRegularFile(filePath, label) {
   }
 }
 
-function pathExists(filePath) {
-  try {
-    fs.lstatSync(filePath);
-    return true;
-  } catch (error) {
-    if (error?.code === "ENOENT") return false;
-    fail("Pathao rollback snapshot is inaccessible.");
-  }
-}
-
 function atomicWrite(
   filePath,
   contents,
@@ -381,51 +351,6 @@ function atomicWrite(
   }
 }
 
-function pathaoSnapshot(values) {
-  return Object.fromEntries(
-    [...values]
-      .filter(([key]) => key.startsWith("PATHAO_"))
-      .map(([key, value]) => [key, value]),
-  );
-}
-
-function parseBackup(filePath, release) {
-  const { contents, stat } = readRegularFile(
-    filePath,
-    "Pathao rollback snapshot",
-  );
-  if ((stat.mode & 0o7777) !== 0o600)
-    fail("Pathao rollback snapshot permissions are invalid.");
-  let snapshot;
-  try {
-    snapshot = JSON.parse(contents);
-  } catch {
-    fail("Pathao rollback snapshot is malformed.");
-  }
-  if (
-    snapshot?.version !== 1 ||
-    snapshot.release !== release ||
-    !snapshot.values ||
-    typeof snapshot.values !== "object" ||
-    Array.isArray(snapshot.values)
-  ) {
-    fail("Pathao rollback snapshot does not match this release.");
-  }
-  const keys = Object.keys(snapshot.values);
-  if (keys.some((key) => !/^PATHAO_[A-Z0-9_]+$/.test(key))) {
-    fail("Pathao rollback snapshot contains unauthorized keys.");
-  }
-  for (const value of Object.values(snapshot.values)) {
-    if (
-      value !== null &&
-      (typeof value !== "string" || /[\x00-\x1f\x7f']/.test(value))
-    ) {
-      fail("Pathao rollback snapshot contains invalid values.");
-    }
-  }
-  return snapshot;
-}
-
 function samePathaoValues(currentValues, desiredValues) {
   for (const [key, value] of currentValues) {
     if (
@@ -445,94 +370,22 @@ function samePathaoValues(currentValues, desiredValues) {
 
 function applyConfiguration({
   runtimeEnvPath,
-  backupPath,
-  release,
   values,
-  backupOwner,
   renameFile,
 }) {
   const runtime = readRegularFile(runtimeEnvPath, "Runtime environment file");
   const parsed = parseRuntimeEnv(runtime.contents);
   const desired = validateConfiguration(values, parsed.values);
 
-  if (pathExists(backupPath)) {
-    const snapshot = parseBackup(backupPath, release);
-    const original = new Map(
-      Object.entries(snapshot.values).filter(([, value]) => value !== null),
-    );
-    if (samePathaoValues(parsed.values, desired)) return "already-applied";
-    if (!samePathaoValues(parsed.values, original)) {
-      fail("A different Pathao configuration transaction is still pending.");
-    }
-    const nextContents = rewriteRuntimeEnv(runtime.contents, desired);
-    atomicWrite(runtimeEnvPath, nextContents, {
-      mode: 0o640,
-      uid: runtime.stat.uid,
-      gid: runtime.stat.gid,
-      renameFile,
-    });
-    return "applied";
-  }
-
-  const snapshot = {
-    version: 1,
-    release,
-    values: pathaoSnapshot(parsed.values),
-  };
-  const owner = backupOwner || { uid: runtime.stat.uid, gid: runtime.stat.gid };
-  atomicWrite(backupPath, `${JSON.stringify(snapshot)}\n`, {
-    mode: 0o600,
-    uid: owner.uid,
-    gid: owner.gid,
-    renameFile,
-  });
-  try {
-    const nextContents = rewriteRuntimeEnv(runtime.contents, desired);
-    atomicWrite(runtimeEnvPath, nextContents, {
-      mode: 0o640,
-      uid: runtime.stat.uid,
-      gid: runtime.stat.gid,
-      renameFile,
-    });
-  } catch (error) {
-    try {
-      if (fs.readFileSync(runtimeEnvPath, "utf8") === runtime.contents)
-        fs.unlinkSync(backupPath);
-    } catch {
-      // Retain a recoverable snapshot if the result of the atomic rename is uncertain.
-    }
-    throw error;
-  }
-  return "applied";
-}
-
-function restoreConfiguration({
-  runtimeEnvPath,
-  backupPath,
-  release,
-  renameFile,
-}) {
-  if (!pathExists(backupPath)) return "nothing-to-restore";
-  const snapshot = parseBackup(backupPath, release);
-  const runtime = readRegularFile(runtimeEnvPath, "Runtime environment file");
-  parseRuntimeEnv(runtime.contents);
-  const previous = new Map(Object.entries(snapshot.values));
-  const nextContents = rewriteRuntimeEnv(runtime.contents, previous);
+  if (samePathaoValues(parsed.values, desired)) return "already-applied";
+  const nextContents = rewriteRuntimeEnv(runtime.contents, desired);
   atomicWrite(runtimeEnvPath, nextContents, {
     mode: 0o640,
     uid: runtime.stat.uid,
     gid: runtime.stat.gid,
     renameFile,
   });
-  fs.unlinkSync(backupPath);
-  return "restored";
-}
-
-function commitConfiguration({ backupPath, release }) {
-  if (!pathExists(backupPath)) return "nothing-to-commit";
-  parseBackup(backupPath, release);
-  fs.unlinkSync(backupPath);
-  return "committed";
+  return "applied";
 }
 
 function readGroupId(name) {
@@ -572,16 +425,6 @@ function assertProductionFiles() {
   ) {
     fail("Runtime environment ownership or permissions are invalid.");
   }
-  if (pathExists(BACKUP_PATH)) {
-    const backup = readRegularFile(BACKUP_PATH, "Pathao rollback snapshot");
-    if (
-      backup.stat.uid !== 0 ||
-      backup.stat.gid !== 0 ||
-      (backup.stat.mode & 0o7777) !== 0o600
-    ) {
-      fail("Pathao rollback snapshot ownership or permissions are invalid.");
-    }
-  }
 }
 
 async function readStdin() {
@@ -605,28 +448,11 @@ async function main() {
   if (process.argv.length !== 2)
     fail("This helper accepts configuration only on stdin.");
   assertProductionFiles();
-  const payload = parsePayload(await readStdin());
-  let result;
-  if (payload.operation === "apply") {
-    result = applyConfiguration({
-      runtimeEnvPath: RUNTIME_ENV_PATH,
-      backupPath: BACKUP_PATH,
-      release: payload.release,
-      values: payload.values,
-      backupOwner: { uid: 0, gid: 0 },
-    });
-  } else if (payload.operation === "restore") {
-    result = restoreConfiguration({
-      runtimeEnvPath: RUNTIME_ENV_PATH,
-      backupPath: BACKUP_PATH,
-      release: payload.release,
-    });
-  } else {
-    result = commitConfiguration({
-      backupPath: BACKUP_PATH,
-      release: payload.release,
-    });
-  }
+  const values = parsePayload(await readStdin());
+  const result = applyConfiguration({
+    runtimeEnvPath: RUNTIME_ENV_PATH,
+    values,
+  });
   process.stdout.write(`Pathao runtime configuration ${result}.\n`);
 }
 
@@ -647,6 +473,4 @@ module.exports = {
   buildPayload,
   rewriteRuntimeEnv,
   applyConfiguration,
-  restoreConfiguration,
-  commitConfiguration,
 };

@@ -115,7 +115,7 @@ jobs:
           }
           if (policy.maintenanceRequired) {
             lines.push(
-              "- Maintenance-class changes require a manual dispatch for the exact commit. GitHub does not enforce an independent reviewer on this private-repository plan.",
+              "- Maintenance-class changes require a manual dispatch for the exact commit; verify GitHub review rules separately.",
             );
           }
           lines.push(
@@ -223,9 +223,8 @@ jobs:
             --smoke
 
       - name: Validate and provision Pathao runtime configuration
-        id: pathao_configuration
         env:
-          RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
+          AARAJ_PUBLIC_BASE_URL: ${{ vars.AARAJ_PUBLIC_BASE_URL }}
           AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
           AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
           AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
@@ -246,20 +245,15 @@ jobs:
           PATHAO_LIVE_WEBHOOK_SECRET: ${{ secrets.PATHAO_LIVE_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
-          node -e 'const { buildPayload } = require("./infrastructure/production/host/aaraj-configure-pathao.cjs"); buildPayload(process.env, process.env.RELEASE_COMMIT);' >/dev/null
-          if node <<'NODE' | bash infrastructure/production/deploy-release.sh pathao-apply "$RELEASE_COMMIT"
-          const { buildPayload } = require("./infrastructure/production/host/aaraj-configure-pathao.cjs");
-          process.stdout.write(buildPayload(process.env, process.env.RELEASE_COMMIT));
-          NODE
-          then
-            exit 0
-          fi
-          echo 'Pathao configuration provisioning failed; attempting to restore this release transaction.' >&2
-          bash infrastructure/production/deploy-release.sh pathao-restore "$RELEASE_COMMIT" || {
-            echo 'Pathao configuration restore failed. Stop rollout and recover the pending transaction before another deploy.' >&2
-            exit 1
+          [[ "$AARAJ_PUBLIC_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || {
+            echo 'AARAJ_PUBLIC_BASE_URL must be an HTTPS origin without a path.' >&2
+            exit 2
           }
-          exit 1
+          node -e 'const { buildPayload } = require("./infrastructure/production/host/aaraj-configure-pathao.cjs"); buildPayload(process.env);' >/dev/null
+          node <<'NODE' | bash infrastructure/production/deploy-release.sh pathao-apply
+          const { buildPayload } = require("./infrastructure/production/host/aaraj-configure-pathao.cjs");
+          process.stdout.write(buildPayload(process.env));
+          NODE
 
       - name: Stage and migrate AARAJ
         env:
@@ -291,7 +285,7 @@ jobs:
               echo "Manual production deployment confirmed for exact commit $RELEASE_COMMIT by $DEPLOYMENT_ACTOR."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
-          bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT"
+          bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT" "$artifact"
 
       - name: Activate and verify AARAJ
         env:
@@ -305,12 +299,8 @@ jobs:
           AARAJ_PUBLIC_BASE_URL: ${{ vars.AARAJ_PUBLIC_BASE_URL }}
         run: |
           set -euo pipefail
+          artifact="$RUNNER_TEMP/aaraj-release/aaraj-release.tar.gz"
           health_base="$AARAJ_PUBLIC_BASE_URL"
-          [[ "$health_base" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || {
-            echo 'AARAJ_PUBLIC_BASE_URL must be an HTTPS origin without a path.' >&2
-            exit 2
-          }
-
           check_public_health() {
             local storefront_status readiness_status
             for _ in {1..30}; do
@@ -339,46 +329,20 @@ jobs:
           trap 'rm -f -- "$health_body_file"' EXIT
 
           activated=false
-          if bash infrastructure/production/deploy-release.sh activate "$RELEASE_COMMIT"; then
+          if bash infrastructure/production/deploy-release.sh activate "$RELEASE_COMMIT" "$artifact"; then
             activated=true
           fi
           if [[ "$activated" == true ]] && check_public_health && \
             node infrastructure/production/check-public-storefront.mjs "$health_base"; then
             echo "AARAJ release $RELEASE_COMMIT passed public HTTPS, API, PostgreSQL, and Redis health checks." >> "$GITHUB_STEP_SUMMARY"
             echo 'The storefront HTML, SEO metadata, canonical origin, manifest, and generated icons passed public checks.' >> "$GITHUB_STEP_SUMMARY"
-            bash infrastructure/production/deploy-release.sh pathao-commit "$RELEASE_COMMIT"
             exit 0
           fi
 
-          bash infrastructure/production/deploy-release.sh pathao-restore "$RELEASE_COMMIT"
-
           if [[ "$MIGRATION_REQUIRED" == true ]]; then
-            bash infrastructure/production/deploy-release.sh restart "$RELEASE_COMMIT"
-            echo 'Migration-bearing release did not pass activation or health checks. No automatic database or code rollback was attempted; follow the documented recovery procedure.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
+            echo 'Migration-bearing release did not pass activation or health checks. Review the migration and service logs, then deploy a corrective release.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
             exit 1
           fi
 
-          echo 'Release health failed; attempting compatible previous-release rollback.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
-          bash infrastructure/production/deploy-release.sh rollback "$RELEASE_COMMIT"
-          check_public_health
+          echo 'Release health checks failed. Review service logs, then deploy a corrective release.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
           exit 1
-
-      - name: Restore pending Pathao configuration after interruption
-        if: >-
-          always() &&
-          (failure() || cancelled()) &&
-          steps.pathao_configuration.outcome != 'skipped'
-        env:
-          RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
-          AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
-          AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
-          AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
-          AARAJ_DEPLOY_SSH_KEY: ${{ secrets.AARAJ_DEPLOY_SSH_KEY }}
-          AARAJ_DEPLOY_KNOWN_HOSTS: ${{ secrets.AARAJ_DEPLOY_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          result="$(bash infrastructure/production/deploy-release.sh pathao-restore "$RELEASE_COMMIT")"
-          printf '%s\n' "$result"
-          if [[ "$result" == 'Pathao runtime configuration restored.' ]]; then
-            bash infrastructure/production/deploy-release.sh restart "$RELEASE_COMMIT"
-          fi

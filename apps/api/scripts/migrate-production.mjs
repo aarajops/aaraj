@@ -19,16 +19,29 @@ if (process.env.NODE_ENV !== "production") {
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const releaseSha = String(manifest.commit ?? "").toLowerCase();
 const operation = manifest.operation ?? "release";
+const releaseIdentity = process.env.RELEASE_ARTIFACT_ID ?? "";
+const identityMatch = /^([0-9a-f]{40})-([0-9a-f]{64})$/.exec(
+  releaseIdentity,
+);
 if (
   manifest.application !== "aaraj" ||
   !/^[0-9a-f]{40}$/.test(releaseSha) ||
   manifest.dirty !== false ||
   !["release", "delivery-district-delete-grant"].includes(operation) ||
-  (process.env.RELEASE_COMMIT_SHA &&
-    process.env.RELEASE_COMMIT_SHA.toLowerCase() !== releaseSha)
+  !identityMatch ||
+  identityMatch[1] !== releaseSha
 ) {
   throw new Error(
     "The migration files do not match a clean, staged AARAJ release.",
+  );
+}
+const artifactMarker = await readFile(
+  path.resolve(apiDirectory, "../.artifact-sha256"),
+  "utf8",
+);
+if (artifactMarker.trim() !== identityMatch[2]) {
+  throw new Error(
+    "The migration artifact checksum does not match its release identity.",
   );
 }
 

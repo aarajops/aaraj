@@ -9,7 +9,7 @@ INCOMING="$SITE/incoming"
 MAX_ARCHIVE_BYTES=536870912
 
 usage() {
-  echo "Usage: aaraj-site-deploy.sh <stage|migrate|grant-delivery-district-delete|activate|rollback|restart> <commit-sha> [sha256]" >&2
+  echo "Usage: aaraj-site-deploy.sh <stage|migrate|grant-delivery-district-delete|activate> <commit-sha> <artifact-sha256>" >&2
   exit 2
 }
 
@@ -20,10 +20,12 @@ commit="$2"
 digest="${3:-}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || usage
 case "$operation" in
-  stage) [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || usage ;;
-  migrate|grant-delivery-district-delete|activate|rollback|restart) [[ -z "$digest" ]] || usage ;;
+  stage|migrate|grant-delivery-district-delete|activate)
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || usage
+    ;;
   *) usage ;;
 esac
+release_id="$commit-$digest"
 
 for path in /srv /srv/sites "$SITE" "$RELEASES" "$SHARED" "$SHARED/next-cache" "$INCOMING"; do
   [[ -d "$path" && ! -L "$path" ]] || { echo "Required AARAJ site path is missing or symlinked: $path" >&2; exit 1; }
@@ -39,10 +41,21 @@ done
 exec 9>"$RELEASES/.deploy.lock"
 flock -n 9 || { echo "Another AARAJ release operation is active." >&2; exit 1; }
 
+INCOMING_ARCHIVE=""
+STAGING_DIR=""
+LINK_STAGE_DIR=""
+cleanup_stage_files() {
+  if [[ -n "$STAGING_DIR" ]]; then rm -rf -- "$STAGING_DIR"; fi
+  if [[ -n "$INCOMING_ARCHIVE" ]]; then rm -f -- "$INCOMING_ARCHIVE"; fi
+  if [[ -n "$LINK_STAGE_DIR" ]]; then rm -rf -- "$LINK_STAGE_DIR"; fi
+}
+trap cleanup_stage_files EXIT
+
 stage_release() {
-  local archive="$INCOMING/$commit.tar.gz"
-  local destination="$RELEASES/$commit"
-  local staging size actual_digest server_entry web_directory cache_directory
+  local archive="$INCOMING/$release_id.tar.gz"
+  local destination="$RELEASES/$release_id"
+  local size actual_digest server_entry web_directory cache_directory
+  INCOMING_ARCHIVE="$archive"
 
   [[ -f "$archive" && ! -L "$archive" ]] || { echo "Transferred AARAJ archive is missing or unsafe." >&2; exit 1; }
   size="$(stat -c '%s' -- "$archive")"
@@ -57,15 +70,15 @@ stage_release() {
       echo "Release already exists with a different artifact." >&2
       exit 1
     }
-    verify_release "$commit" >/dev/null
+    verify_release "$release_id" >/dev/null
     rm -f -- "$archive"
-    echo "Release $commit is already staged."
+    INCOMING_ARCHIVE=""
+    echo "Release artifact $release_id is already staged."
     return
   fi
 
-  staging="$(mktemp -d "$RELEASES/.staging-$commit.XXXXXXXX")"
-  trap 'rm -rf -- "$staging"' EXIT
-  python3 - "$archive" "$staging" <<'PY'
+  STAGING_DIR="$(mktemp -d "$RELEASES/.staging-$release_id.XXXXXXXX")"
+  python3 - "$archive" "$STAGING_DIR" <<'PY'
 import pathlib
 import sys
 import tarfile
@@ -118,11 +131,11 @@ with tarfile.open(archive_path, "r:gz") as archive:
     archive.extractall(path=destination, members=members, filter="data")
 PY
 
-  [[ -f "$staging/release-manifest.json" && ! -L "$staging/release-manifest.json" ]] || {
+  [[ -f "$STAGING_DIR/release-manifest.json" && ! -L "$STAGING_DIR/release-manifest.json" ]] || {
     echo "Artifact manifest is missing or unsafe." >&2
     exit 1
   }
-  /usr/bin/node - "$staging/release-manifest.json" "$commit" <<'NODE'
+  /usr/bin/node - "$STAGING_DIR/release-manifest.json" "$commit" <<'NODE'
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 if (
@@ -141,126 +154,111 @@ if (
   process.exitCode = 1;
 }
 NODE
-  [[ -f "$staging/api/dist/main.js" && \
-    -f "$staging/api/drizzle/meta/_journal.json" && \
-    -f "$staging/api/scripts/migrate-production.mjs" ]] || {
+  [[ -f "$STAGING_DIR/api/dist/main.js" && \
+    -f "$STAGING_DIR/api/drizzle/meta/_journal.json" && \
+    -f "$STAGING_DIR/api/scripts/migrate-production.mjs" ]] || {
     echo "Artifact is missing AARAJ API runtime or migration files." >&2
     exit 1
   }
-  server_entry="$(/usr/bin/node -e 'const m=require(process.argv[1]); process.stdout.write(m.web.serverEntrypoint)' "$staging/release-manifest.json")"
-  [[ -f "$staging/$server_entry" ]] || { echo "Artifact is missing its Next.js server." >&2; exit 1; }
+  server_entry="$(/usr/bin/node -e 'const m=require(process.argv[1]); process.stdout.write(m.web.serverEntrypoint)' "$STAGING_DIR/release-manifest.json")"
+  [[ -f "$STAGING_DIR/$server_entry" ]] || { echo "Artifact is missing its Next.js server." >&2; exit 1; }
   web_directory="$(dirname -- "$server_entry")"
-  [[ -d "$staging/$web_directory/.next/static" && -d "$staging/$web_directory/public" ]] || {
+  [[ -d "$STAGING_DIR/$web_directory/.next/static" && -d "$STAGING_DIR/$web_directory/public" ]] || {
     echo "Artifact is missing Next.js static or public files." >&2
     exit 1
   }
 
-  cache_directory="$staging/$web_directory/.next/cache"
-  [[ -d "$staging/$web_directory/.next" && ! -L "$staging/$web_directory/.next" ]] || {
+  cache_directory="$STAGING_DIR/$web_directory/.next/cache"
+  [[ -d "$STAGING_DIR/$web_directory/.next" && ! -L "$STAGING_DIR/$web_directory/.next" ]] || {
     echo "Artifact Next.js directory is missing or unsafe." >&2
     exit 1
   }
   rm -rf -- "$cache_directory"
   ln -s -- "$SHARED/next-cache" "$cache_directory"
-  printf '%s\n' "$digest" > "$staging/.artifact-sha256"
+  printf '%s\n' "$digest" > "$STAGING_DIR/.artifact-sha256"
 
-  find "$staging" -type d -exec chgrp aaraj-code {} +
-  find "$staging" -type f -exec chgrp aaraj-code {} +
-  find "$staging" -type d -exec chmod 2750 {} +
-  find "$staging" -type f ! -perm /111 -exec chmod 0640 {} +
-  find "$staging" -type f -perm /111 -exec chmod 0750 {} +
-  mv -- "$staging" "$destination"
-  trap - EXIT
+  find "$STAGING_DIR" -type d -exec chgrp aaraj-code {} +
+  find "$STAGING_DIR" -type f -exec chgrp aaraj-code {} +
+  find "$STAGING_DIR" -type d -exec chmod 2750 {} +
+  find "$STAGING_DIR" -type f ! -perm /111 -exec chmod 0640 {} +
+  find "$STAGING_DIR" -type f -perm /111 -exec chmod 0750 {} +
+  mv -- "$STAGING_DIR" "$destination"
+  STAGING_DIR=""
   rm -f -- "$archive"
-  echo "Staged AARAJ release $commit."
+  INCOMING_ARCHIVE=""
+  echo "Staged AARAJ release artifact $release_id."
+}
+
+is_release_key() {
+  [[ "$1" =~ ^[0-9a-f]{40}(-[0-9a-f]{64})?$ ]]
 }
 
 verify_release() {
-  local commit_sha="$1"
-  local release="$RELEASES/$commit_sha"
+  local release_key="$1"
+  local expected_commit marker expected_digest=""
+  local release="$RELEASES/$release_key"
+  if [[ "$release_key" =~ ^([0-9a-f]{40})-([0-9a-f]{64})$ ]]; then
+    expected_commit="${BASH_REMATCH[1]}"
+    expected_digest="${BASH_REMATCH[2]}"
+  else
+    echo "Invalid AARAJ release identifier." >&2
+    return 1
+  fi
   [[ -d "$release" && ! -L "$release" && -f "$release/.artifact-sha256" ]] || {
     echo "Requested AARAJ release is not installed." >&2
     return 1
   }
+  marker="$(cat -- "$release/.artifact-sha256")"
+  [[ "$marker" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "Requested AARAJ release has an invalid artifact marker." >&2
+    return 1
+  }
+  if [[ "$marker" != "$expected_digest" ]]; then
+    echo "Requested AARAJ release does not match its artifact identifier." >&2
+    return 1
+  fi
   /usr/bin/node -e '
     const fs = require("node:fs");
     const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
     if (manifest.application !== "aaraj" || manifest.commit !== process.argv[2] || manifest.dirty !== false || !["release", "delivery-district-delete-grant"].includes(manifest.operation ?? "release")) process.exit(1);
-  ' "$release/release-manifest.json" "$commit_sha" || return 1
+  ' "$release/release-manifest.json" "$expected_commit" || return 1
   printf '%s\n' "$release"
 }
 
-current_release_at() {
-  local link="$1" target
-  [[ -L "$link" ]] || { [[ ! -e "$link" ]] || { echo "Expected a release symlink at $link." >&2; return 1; }; return 0; }
-  target="$(readlink -f -- "$link")"
-  [[ "$target" == "$RELEASES/"* && "${target##*/}" =~ ^[0-9a-f]{40}$ && -d "$target" ]] || {
-    echo "Release link escapes the AARAJ release directory." >&2
-    return 1
-  }
-  printf '%s\n' "$target"
-}
-
 atomic_link() {
-  local link="$1" target="$2" temporary
-  [[ "$target" == "$RELEASES/"* && "${target##*/}" =~ ^[0-9a-f]{40}$ && -d "$target" ]] || {
+  local link="$1" target="$2"
+  [[ "$target" == "$RELEASES/"* && -d "$target" && \
+    "${target##*/}" =~ ^[0-9a-f]{40}-[0-9a-f]{64}$ ]] || {
     echo "Invalid AARAJ release target." >&2
     exit 1
   }
-  temporary="$(mktemp -d "$RELEASES/.link.XXXXXXXX")"
-  ln -s -- "$target" "$temporary/target"
-  mv -Tf -- "$temporary/target" "$link"
-  rmdir -- "$temporary"
+  LINK_STAGE_DIR="$(mktemp -d "$RELEASES/.link.XXXXXXXX")"
+  ln -s -- "$target" "$LINK_STAGE_DIR/target"
+  mv -Tf -- "$LINK_STAGE_DIR/target" "$link"
+  rmdir -- "$LINK_STAGE_DIR"
+  LINK_STAGE_DIR=""
 }
 
 activate_release() {
-  local target old
-  target="$(verify_release "$commit")"
+  local target candidate
+  target="$(verify_release "$release_id")"
   /usr/bin/node - "$target/release-manifest.json" <<'NODE'
 const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 if ((manifest.operation ?? "release") !== "release") process.exit(1);
 NODE
-  old="$(current_release_at "$RELEASES/current")"
-  if [[ -n "$old" && "$old" != "$target" ]]; then
-    verify_release "${old##*/}" >/dev/null
-    atomic_link "$RELEASES/previous" "$old"
-  fi
   atomic_link "$RELEASES/current" "$target"
   sudo -n /usr/bin/systemctl restart aaraj-pm2.service
-  echo "Activated AARAJ release $commit."
-}
-
-rollback_release() {
-  local active previous
-  active="$(current_release_at "$RELEASES/current")"
-  if [[ -z "$active" || "${active##*/}" != "$commit" ]]; then
-    echo "Release $commit was not activated; no code rollback was needed."
-    return 0
-  fi
-  previous="$(current_release_at "$RELEASES/previous")"
-  [[ -n "$previous" && "$previous" != "$active" ]] || { echo "No previous AARAJ release is available." >&2; exit 1; }
-  verify_release "${previous##*/}" >/dev/null
-  atomic_link "$RELEASES/previous" "$active"
-  atomic_link "$RELEASES/current" "$previous"
-  sudo -n /usr/bin/systemctl restart aaraj-pm2.service
-  echo "Restored AARAJ release ${previous##*/}."
-}
-
-restart_current_release() {
-  local active
-  active="$(current_release_at "$RELEASES/current")"
-  if [[ -z "$active" || "${active##*/}" != "$commit" ]]; then
-    echo "Release $commit is not active; no service restart was needed."
-    return 0
-  fi
-  verify_release "$commit" >/dev/null
-  sudo -n /usr/bin/systemctl restart aaraj-pm2.service
-  echo "Restarted AARAJ release $commit."
+  for candidate in "$RELEASES"/*; do
+    [[ -d "$candidate" && ! -L "$candidate" ]] || continue
+    is_release_key "${candidate##*/}" || continue
+    [[ "$candidate" == "$target" ]] || rm -rf -- "$candidate"
+  done
+  echo "Activated AARAJ release artifact $release_id."
 }
 
 run_migration() {
-  /usr/bin/sudo -n /usr/local/sbin/aaraj-start-migration "$commit"
+  /usr/bin/sudo -n /usr/local/sbin/aaraj-start-migration "$commit" "$digest"
 }
 
 case "$operation" in
@@ -270,16 +268,23 @@ case "$operation" in
   activate)
     activate_release
     ;;
-  rollback)
-    rollback_release
-    ;;
   migrate)
     run_migration
     ;;
   grant-delivery-district-delete)
     run_migration
-    ;;
-  restart)
-    restart_current_release
+    repair_release="$(verify_release "$release_id")"
+    /usr/bin/node - "$repair_release/release-manifest.json" <<'NODE'
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+if (manifest.operation !== "delivery-district-delete-grant") process.exit(1);
+NODE
+    if [[ -L "$RELEASES/current" && \
+      "$(readlink -f -- "$RELEASES/current")" == "$repair_release" ]]; then
+      echo "Refusing to remove the active AARAJ release." >&2
+      exit 1
+    fi
+    rm -rf -- "$repair_release"
+    echo "Removed the completed permission-repair artifact."
     ;;
 esac

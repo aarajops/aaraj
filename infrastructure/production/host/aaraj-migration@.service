@@ -9,12 +9,11 @@ User=aaraj-migrate
 Group=aaraj-migrate
 SupplementaryGroups=aaraj-code
 Environment=NODE_ENV=production
-Environment=RELEASE_COMMIT_SHA=%i
+Environment=RELEASE_ARTIFACT_ID=%i
 EnvironmentFile=/etc/sites/aaraj/migration.env
 WorkingDirectory=/srv/sites/aaraj/releases/%i/api
 ExecStart=/usr/bin/node /srv/sites/aaraj/releases/%i/api/scripts/migrate-production.mjs
 TimeoutStartSec=1h
-RemainAfterExit=yes
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

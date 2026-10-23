@@ -4,7 +4,7 @@ Order delivery addresses are encrypted with AES-256-GCM before they are stored. 
 
 ## Initial configuration
 
-For an installation that has not rotated its key, keep `ORDER_PII_ENCRYPTION_KEY` stable and backed up. The application reads existing `v1` rows and writes `v2.legacy` rows while this compatibility setting is in use.
+For an installation that has not rotated its key, keep `ORDER_PII_ENCRYPTION_KEY` stable across deployments. The application reads existing `v1` rows and writes `v2.legacy` rows while this compatibility setting is in use.
 
 ## Activate a new key
 
@@ -16,7 +16,7 @@ ORDER_PII_KEYRING='{"activeKeyId":"<active-key-id>","keys":{"legacy":"<existing-
 
 When `ORDER_PII_KEYRING` is set, remove `ORDER_PII_ENCRYPTION_KEY`. Keep `legacy` in the keyring: old `v1` addresses and existing checkout idempotency fingerprints depend on it. New Orders use `activeKeyId`; reads select the key ID stored in each `v2` value. Switching `activeKeyId` does not make older values unreadable as long as their keys remain configured.
 
-Keep every key in a protected secret store and a separately protected recovery copy. Verify a non-production Order can still be read and checkout retries still replay after switching the active ID. Never test by deleting an old key from production first.
+Keep every key in a protected secret store. Verify a non-production Order can still be read and checkout retries still replay after switching the active ID. Never test by deleting an old key from production first.
 
 ## Current retirement limit
 

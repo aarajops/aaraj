@@ -2,18 +2,21 @@
 set -euo pipefail
 
 [[ "$(id -u)" == 0 ]] || { echo "Run this command through sudo." >&2; exit 1; }
-[[ $# == 1 && "$1" =~ ^[0-9a-f]{40}$ ]] || {
-  echo "Usage: aaraj-start-migration <commit-sha>" >&2
+[[ $# == 2 && "$1" =~ ^[0-9a-f]{40}$ && "$2" =~ ^[0-9a-f]{64}$ ]] || {
+  echo "Usage: aaraj-start-migration <commit-sha> <artifact-sha256>" >&2
   exit 2
 }
 
 commit="$1"
-release="/srv/sites/aaraj/releases/$commit"
+digest="$2"
+release_id="$commit-$digest"
+release="/srv/sites/aaraj/releases/$release_id"
 manifest="$release/release-manifest.json"
 migration_script="$release/api/scripts/migrate-production.mjs"
 [[ -d "$release" && ! -L "$release" && \
   -f "$manifest" && ! -L "$manifest" && \
   -f "$release/.artifact-sha256" && ! -L "$release/.artifact-sha256" && \
+  "$(cat -- "$release/.artifact-sha256")" == "$digest" && \
   -f "$migration_script" && ! -L "$migration_script" ]] || {
   echo "The requested migration is not part of a staged AARAJ release." >&2
   exit 1
@@ -40,7 +43,7 @@ if (
 }
 NODE
 
-unit="aaraj-migration@$commit.service"
+unit="aaraj-migration@$release_id.service"
 if /usr/bin/systemctl start "$unit"; then
   /usr/bin/journalctl --unit "$unit" --no-pager --output=cat --lines 30
   echo "Migration service $unit completed successfully."
