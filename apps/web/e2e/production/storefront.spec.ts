@@ -59,11 +59,6 @@ test("production storefront serves routes, rewrites, and the strict CSP", async 
   expect(await page.locator(".storefront-theme").getAttribute("style")).toBe(
     null,
   );
-  await expect(
-    page.locator('[data-slot="carousel-content"] > div[style]').first(),
-  ).toHaveAttribute("style", /transform:/);
-  expect(await page.locator("img[style]").count()).toBeGreaterThan(0);
-
   const repeatedResponse = await page.request.get("/");
   const repeatedPolicy =
     repeatedResponse.headers()["content-security-policy"] ?? "";
@@ -243,6 +238,12 @@ test("production storefront renders processed media through the same-origin API 
       image.evaluate((element) => (element as HTMLImageElement).naturalWidth),
     )
     .toBe(1);
+  await expect(
+    page.locator('[data-slot="carousel-content"] > div'),
+  ).toHaveAttribute("style", /transform:/);
+  await expect(
+    page.getByRole("button", { name: "Show image 2: Secondary media fixture" }),
+  ).toHaveAttribute("style", /aspect-ratio:/);
 
   const productCrawlerResponse = await page.request.get(
     "/shop/products/media-e2e-fixture",

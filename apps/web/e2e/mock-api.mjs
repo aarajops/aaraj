@@ -175,6 +175,17 @@ const mediaFixtureProduct = {
       },
       detail: { src: mediaFixturePath, width: 1, height: 1 },
     },
+    {
+      id: "b3d4f309-2b26-5d75-b2c3-a2d9db5e4ed3",
+      variantId: null,
+      altText: "Secondary media fixture",
+      card: {
+        src: mediaFixtureCardPath,
+        width: 1,
+        height: 1,
+      },
+      detail: { src: mediaFixturePath, width: 1, height: 1 },
+    },
   ],
   variants: [],
   sizeGuide: null,
