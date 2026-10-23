@@ -22,7 +22,8 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       commit: ${{ steps.deployment.outputs.commit }}
-      tag: ${{ steps.deployment.outputs.tag }}
+      migration_baseline: ${{ steps.deployment.outputs.migration_baseline }}
+      release_tag: ${{ steps.deployment.outputs.release_tag }}
     steps:
       - name: Checkout deployment history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,15 +57,23 @@ jobs:
             echo 'A stable release baseline tag is required by the installed VPS migration validator.' >&2
             exit 1
           }
+          if [[ "$(git rev-parse "${baseline_tag}^{commit}")" == "$GITHUB_SHA" ]]; then
+            release_tag="$baseline_tag"
+          else
+            IFS=. read -r major minor patch <<< "${baseline_tag#v}"
+            release_tag="v${major}.${minor}.$((10#$patch + 1))"
+          fi
           printf 'commit=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          printf 'tag=%s\n' "$baseline_tag" >> "$GITHUB_OUTPUT"
+          printf 'migration_baseline=%s\n' "$baseline_tag" >> "$GITHUB_OUTPUT"
+          printf 'release_tag=%s\n' "$release_tag" >> "$GITHUB_OUTPUT"
           {
             echo '### Production deployment gate passed'
             echo
             echo "- Source: \`$GITHUB_EVENT_NAME\` on \`main\`"
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Migration comparison baseline: \`$baseline_tag\`"
-            echo '- After a migration-bearing deployment succeeds, advance the baseline with a stable version tag.'
+            echo "- Release version: \`$release_tag\`"
+            echo '- A successful production deployment records this release tag as the next migration baseline.'
           } >> "$GITHUB_STEP_SUMMARY"
 
   ci:
@@ -89,7 +98,7 @@ jobs:
         id: policy
         env:
           DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
-          MIGRATION_BASELINE: ${{ needs.deployment-gate.outputs.tag }}
+          MIGRATION_BASELINE: ${{ needs.deployment-gate.outputs.migration_baseline }}
         run: |
           set -euo pipefail
           policy_file="$RUNNER_TEMP/aaraj-migration-policy.json"
@@ -197,7 +206,7 @@ jobs:
       - name: Build and package the deployment commit
         env:
           DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
-          RELEASE_TAG: ${{ needs.deployment-gate.outputs.tag }}
+          RELEASE_TAG: ${{ needs.deployment-gate.outputs.release_tag }}
         run: >-
           node infrastructure/production/package-release.mjs
           --tag "$RELEASE_TAG"
@@ -213,7 +222,7 @@ jobs:
           E2E_POSTGRES_PASSWORD: aaraj_smoke
           E2E_REDIS_URL: redis://127.0.0.1:6379/14
           DEPLOYMENT_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
-          RELEASE_TAG: ${{ needs.deployment-gate.outputs.tag }}
+          RELEASE_TAG: ${{ needs.deployment-gate.outputs.release_tag }}
         run: |
           set -euo pipefail
           node infrastructure/production/verify-release.mjs \
@@ -346,3 +355,33 @@ jobs:
 
           echo 'Release health checks failed. Review service logs, then deploy a corrective release.' | tee -a "$GITHUB_STEP_SUMMARY" >&2
           exit 1
+
+  record-release:
+    needs: [deployment-gate, deploy]
+    if: needs.deploy.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout deployed commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.deployment-gate.outputs.commit }}
+
+      - name: Record successful production release
+        env:
+          RELEASE_TAG: ${{ needs.deployment-gate.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            tagged_commit="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+            [[ "$tagged_commit" == "$GITHUB_SHA" ]] || {
+              echo "Release tag $RELEASE_TAG already points to a different commit." >&2
+              exit 1
+            }
+          else
+            git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "AARAJ production release $RELEASE_TAG"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+          echo "Recorded successful production release $RELEASE_TAG as the next migration baseline." >> "$GITHUB_STEP_SUMMARY"

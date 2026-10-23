@@ -216,11 +216,11 @@ and migration logs, then deploy a corrective release.
 ## Drizzle migration gate
 
 The production workflow compares migration files with the latest earlier stable
-release tag in the deployed commit's history. Apply the next stable version tag
-to the exact commit after a successful migration-bearing deployment; this
-advances the migration comparison baseline. A GitHub Release page is optional,
-and code-only deployments do not need a new version tag. Each new migration
-must have an entry in `infrastructure/production/migration-impact.json`:
+release tag in the deployed commit's history. After each successful production
+deployment, the workflow records the release tag on that commit; this advances
+the migration comparison baseline without a manual tagging step. A GitHub
+Release page is optional. Each new migration must have an entry in
+`infrastructure/production/migration-impact.json`:
 `compatible` means an online, backward-compatible change; `maintenance` means
 a data rewrite/backfill, destructive change, locking DDL that needs an
 operator window, or a change that requires coordinated application updates.
@@ -304,7 +304,7 @@ until the repository's review rules are verified in GitHub.
 | File or setting | Required change |
 | --- | --- |
 | `.github/workflows/ci.yml` | Run every current check on pull requests and expose the workflow through `workflow_call`; pin Node `24.22.1` and pnpm `12.15.0`, and assert the versions. |
-| `.github/workflows/production-release.yml` | On `main` pushes, call CI once, package and smoke-test that exact commit, classify new migration files against the latest stable tag, and deploy through strict pinned SSH with site-only transfer, health checks, and concurrency group `aaraj-production`. |
+| `.github/workflows/production-release.yml` | On `main` pushes, call CI once, package and smoke-test that exact commit, classify new migration files against the latest stable tag, serialize deployments, deploy through strict pinned SSH, verify health, and record the release tag after success. Maintenance migrations require a confirmed dispatch for the exact commit. |
 | `.node-version` | Add `24.22.1` as the repository's exact CI/release Node version. |
 | `apps/web/next.config.ts` | Enable standalone output, set `outputFileTracingRoot` to the monorepo root, and use the release SHA for a deterministic Next.js build ID while preserving the current same-origin API rewrite and security headers. |
 | `apps/api/scripts/migrate-production.mjs` | Add host-local production migration execution using the shipped Drizzle runtime and migration files, separate migration-role environment variables, the existing strict PostgreSQL TLS helper, and migration journal/checksum checks. Keep the existing local `db:migrate` path intact. |
