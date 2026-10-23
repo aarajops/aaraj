@@ -368,11 +368,7 @@ function samePathaoValues(currentValues, desiredValues) {
   return true;
 }
 
-function applyConfiguration({
-  runtimeEnvPath,
-  values,
-  renameFile,
-}) {
+function applyConfiguration({ runtimeEnvPath, values, renameFile }) {
   const runtime = readRegularFile(runtimeEnvPath, "Runtime environment file");
   const parsed = parseRuntimeEnv(runtime.contents);
   const desired = validateConfiguration(values, parsed.values);
