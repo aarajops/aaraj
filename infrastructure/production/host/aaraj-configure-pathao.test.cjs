@@ -161,20 +161,17 @@ test("removes stale Pathao runtime entries while preserving other settings", (t)
   assert.equal(updated.APP_NAME, "aaraj");
 });
 
-test("provisions an unconfigured Pathao integration against the runtime environment example", (t) => {
+test("accepts an already-unconfigured Pathao integration in the runtime environment example", (t) => {
   const example = fs.readFileSync(
     path.join(__dirname, "runtime.env.example"),
     "utf8",
   );
   const fx = fixture(t, example);
+  const original = fs.readFileSync(fx.runtimeEnvPath, "utf8");
   const existing = runtimeValues(fx);
   assert.equal(existing.PATHAO_BASE_URL, "");
-  assert.equal(apply(fx, configuration("unconfigured")), "applied");
-  const updated = runtimeValues(fx);
-  assert.equal(updated.PATHAO_BASE_URL, "");
-  assert.equal(updated.BETTER_AUTH_URL, existing.BETTER_AUTH_URL);
-  assert.equal(updated.POSTGRES_DB, existing.POSTGRES_DB);
-  assert.equal(updated.REDIS_URL, existing.REDIS_URL);
+  assert.equal(apply(fx, configuration("unconfigured")), "already-applied");
+  assert.equal(fs.readFileSync(fx.runtimeEnvPath, "utf8"), original);
 });
 
 test("rejects incomplete or malformed Pathao configuration before writing", (t) => {
@@ -210,41 +207,32 @@ test("rejects incomplete or malformed Pathao configuration before writing", (t) 
 });
 
 test("builds GitHub payloads from the official base URL and clears inactive credentials", () => {
-  const unconfiguredPayload = buildPayload(
-    {
-      PATHAO_SANDBOX_CLIENT_SECRET: "stale-github-secret",
-      PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
-    },
-  );
+  const unconfiguredPayload = buildPayload({
+    PATHAO_SANDBOX_CLIENT_SECRET: "stale-github-secret",
+    PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
+  });
   const unconfigured = parsePayload(unconfiguredPayload);
   assert.equal(unconfigured.get("PATHAO_BASE_URL"), "");
-  assert.equal(
-    unconfigured.get("PATHAO_TOKEN_ENCRYPTION_KEY"),
-    TOKEN_KEY,
-  );
+  assert.equal(unconfigured.get("PATHAO_TOKEN_ENCRYPTION_KEY"), TOKEN_KEY);
   assert.equal(unconfigured.get("PATHAO_SANDBOX_CLIENT_SECRET"), "");
   assert.doesNotMatch(unconfiguredPayload, /stale-github-secret/);
 
-  const sandboxPayload = buildPayload(
-    {
-      PATHAO_BASE_URL: SANDBOX_URL,
-      PATHAO_DELIVERY_TYPE: "48",
-      ...DUMMY_CREDENTIALS,
-      PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
-    },
-  );
+  const sandboxPayload = buildPayload({
+    PATHAO_BASE_URL: SANDBOX_URL,
+    PATHAO_DELIVERY_TYPE: "48",
+    ...DUMMY_CREDENTIALS,
+    PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
+  });
   assert.equal(
     parsePayload(sandboxPayload).get("PATHAO_SANDBOX_CLIENT_SECRET"),
     CLIENT_SECRET,
   );
-  const livePayload = buildPayload(
-    {
-      PATHAO_BASE_URL: LIVE_URL,
-      PATHAO_DELIVERY_TYPE: "12",
-      ...DUMMY_LIVE_CREDENTIALS,
-      PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
-    },
-  );
+  const livePayload = buildPayload({
+    PATHAO_BASE_URL: LIVE_URL,
+    PATHAO_DELIVERY_TYPE: "12",
+    ...DUMMY_LIVE_CREDENTIALS,
+    PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
+  });
   const live = parsePayload(livePayload);
   assert.equal(live.get("PATHAO_BASE_URL"), LIVE_URL);
   assert.equal(live.get("PATHAO_DELIVERY_TYPE"), "12");
@@ -255,27 +243,23 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
   assert.equal(live.get("PATHAO_SANDBOX_CLIENT_ID"), "");
   assert.throws(
     () =>
-      buildPayload(
-        {
-          PATHAO_BASE_URL: SANDBOX_URL,
-          PATHAO_DELIVERY_TYPE: "48",
-          PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
-        },
-      ),
+      buildPayload({
+        PATHAO_BASE_URL: SANDBOX_URL,
+        PATHAO_DELIVERY_TYPE: "48",
+        PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
+      }),
     /PATHAO_SANDBOX_CLIENT_ID/,
   );
   assert.throws(
     () =>
-      buildPayload(
-        {
-          PATHAO_BASE_URL: SANDBOX_URL,
-          PATHAO_DELIVERY_TYPE: "48",
-          ...DUMMY_CREDENTIALS,
-          PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
-          PATHAO_SANDBOX_PASSWORD:
-            "line1\nPATHAO_BASE_URL=https://api-hermes.pathao.com",
-        },
-      ),
+      buildPayload({
+        PATHAO_BASE_URL: SANDBOX_URL,
+        PATHAO_DELIVERY_TYPE: "48",
+        ...DUMMY_CREDENTIALS,
+        PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
+        PATHAO_SANDBOX_PASSWORD:
+          "line1\nPATHAO_BASE_URL=https://api-hermes.pathao.com",
+      }),
     /unsafe content/,
   );
 });
