@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+const googleScriptSources =
+  "https://www.googletagmanager.com https://tagmanager.google.com https://*.google-analytics.com https://www.googleadservices.com https://www.google.com";
+const googleImageSources =
+  "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.g.doubleclick.net https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com https://www.googleadservices.com https://www.google.com https://ssl.gstatic.com https://www.gstatic.com";
+const googleConnectSources =
+  "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.g.doubleclick.net https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com https://www.googleadservices.com https://ad.doubleclick.net";
+
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDevelopment = process.env.NODE_ENV === "development";
@@ -11,7 +18,7 @@ export function proxy(request: NextRequest) {
       isDevelopment ? " 'unsafe-eval'" : ""
     }`,
     `script-src-elem 'self' 'nonce-${nonce}'${storefrontOnly(
-      "https://www.googletagmanager.com https://tagmanager.google.com",
+      googleScriptSources,
     )}`,
     `style-src 'self' ${
       isDevelopment ? "'unsafe-inline'" : `'nonce-${nonce}'`
@@ -20,10 +27,10 @@ export function proxy(request: NextRequest) {
     )}`,
     ...(!isAdmin && !isDevelopment ? ["style-src-attr 'unsafe-inline'"] : []),
     `img-src 'self' blob: data:${storefrontOnly(
-      "https://www.googletagmanager.com https://*.google-analytics.com https://ssl.gstatic.com https://www.gstatic.com",
+      googleImageSources,
     )}`,
     `connect-src 'self'${storefrontOnly(
-      "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com",
+      googleConnectSources,
     )}`,
     `font-src 'self'${storefrontOnly("https://fonts.gstatic.com data:")}`,
     `frame-src 'self'${storefrontOnly("https://www.googletagmanager.com")}`,
