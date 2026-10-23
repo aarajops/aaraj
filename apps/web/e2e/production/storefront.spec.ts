@@ -3,8 +3,7 @@ import { expect, test } from "@playwright/test";
 test("production storefront serves routes, rewrites, and the strict CSP", async ({
   page,
 }) => {
-  const gtmUrl =
-    "https://www.googletagmanager.com/gtm.js?id=GTM-N28C5K72";
+  const gtmUrl = "https://www.googletagmanager.com/gtm.js?id=GTM-N28C5K72";
   const gtmRequests: string[] = [];
   page.on("request", (request) => {
     if (request.url().startsWith(gtmUrl)) {
@@ -65,8 +64,7 @@ test("production storefront serves routes, rewrites, and the strict CSP", async 
   expect(await repeatedResponse.text()).toContain(`nonce="${repeatedNonce}"`);
 
   const adminResponse = await page.request.get("/admin", { maxRedirects: 0 });
-  const adminPolicy =
-    adminResponse.headers()["content-security-policy"] ?? "";
+  const adminPolicy = adminResponse.headers()["content-security-policy"] ?? "";
   expect(adminPolicy).toContain("frame-src 'self'");
   expect(adminPolicy).not.toContain("googletagmanager.com");
   expect(adminPolicy).not.toContain("google-analytics.com");

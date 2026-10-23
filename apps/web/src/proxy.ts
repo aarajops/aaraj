@@ -18,9 +18,7 @@ export function proxy(request: NextRequest) {
     }${storefrontOnly(
       "https://www.googletagmanager.com https://tagmanager.google.com https://fonts.googleapis.com",
     )}`,
-    ...(!isAdmin && !isDevelopment
-      ? ["style-src-attr 'unsafe-inline'"]
-      : []),
+    ...(!isAdmin && !isDevelopment ? ["style-src-attr 'unsafe-inline'"] : []),
     `img-src 'self' blob: data:${storefrontOnly(
       "https://www.googletagmanager.com https://*.google-analytics.com https://ssl.gstatic.com https://www.gstatic.com",
     )}`,
@@ -28,9 +26,7 @@ export function proxy(request: NextRequest) {
       "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com",
     )}`,
     `font-src 'self'${storefrontOnly("https://fonts.gstatic.com data:")}`,
-    `frame-src 'self'${storefrontOnly(
-      "https://www.googletagmanager.com",
-    )}`,
+    `frame-src 'self'${storefrontOnly("https://www.googletagmanager.com")}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
