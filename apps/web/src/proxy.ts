@@ -1,11 +1,34 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const googleScriptSources =
-  "https://www.googletagmanager.com https://tagmanager.google.com https://*.google-analytics.com https://www.googleadservices.com https://www.google.com";
-const googleImageSources =
-  "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.g.doubleclick.net https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com https://www.googleadservices.com https://www.google.com https://ssl.gstatic.com https://www.gstatic.com";
-const googleConnectSources =
-  "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.g.doubleclick.net https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com https://www.googleadservices.com https://ad.doubleclick.net";
+const googleScriptSources = [
+  "https://www.googletagmanager.com",
+  "https://tagmanager.google.com",
+  "https://*.google-analytics.com",
+  "https://www.googleadservices.com",
+  "https://www.google.com",
+].join(" ");
+const googleImageSources = [
+  "https://www.googletagmanager.com",
+  "https://*.google-analytics.com",
+  "https://*.google.com",
+  "https://*.g.doubleclick.net",
+  "https://googleads.g.doubleclick.net",
+  "https://pagead2.googlesyndication.com",
+  "https://www.googleadservices.com",
+  "https://www.google.com",
+  "https://ssl.gstatic.com",
+  "https://www.gstatic.com",
+].join(" ");
+const googleConnectSources = [
+  "https://www.googletagmanager.com",
+  "https://*.google-analytics.com",
+  "https://*.google.com",
+  "https://*.g.doubleclick.net",
+  "https://googleads.g.doubleclick.net",
+  "https://pagead2.googlesyndication.com",
+  "https://www.googleadservices.com",
+  "https://ad.doubleclick.net",
+].join(" ");
 
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
@@ -26,12 +49,8 @@ export function proxy(request: NextRequest) {
       "https://www.googletagmanager.com https://tagmanager.google.com https://fonts.googleapis.com",
     )}`,
     ...(!isAdmin && !isDevelopment ? ["style-src-attr 'unsafe-inline'"] : []),
-    `img-src 'self' blob: data:${storefrontOnly(
-      googleImageSources,
-    )}`,
-    `connect-src 'self'${storefrontOnly(
-      googleConnectSources,
-    )}`,
+    `img-src 'self' blob: data:${storefrontOnly(googleImageSources)}`,
+    `connect-src 'self'${storefrontOnly(googleConnectSources)}`,
     `font-src 'self'${storefrontOnly("https://fonts.gstatic.com data:")}`,
     `frame-src 'self'${storefrontOnly("https://www.googletagmanager.com")}`,
     "object-src 'none'",
