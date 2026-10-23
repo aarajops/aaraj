@@ -20,9 +20,7 @@ const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const releaseSha = String(manifest.commit ?? "").toLowerCase();
 const operation = manifest.operation ?? "release";
 const releaseIdentity = process.env.RELEASE_ARTIFACT_ID ?? "";
-const identityMatch = /^([0-9a-f]{40})-([0-9a-f]{64})$/.exec(
-  releaseIdentity,
-);
+const identityMatch = /^([0-9a-f]{40})-([0-9a-f]{64})$/.exec(releaseIdentity);
 if (
   manifest.application !== "aaraj" ||
   !/^[0-9a-f]{40}$/.test(releaseSha) ||
