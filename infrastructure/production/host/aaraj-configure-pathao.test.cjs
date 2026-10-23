@@ -161,20 +161,20 @@ test("removes stale Pathao runtime entries while preserving other settings", (t)
   assert.equal(updated.APP_NAME, "aaraj");
 });
 
-test("provisions an unconfigured Pathao integration against the runtime environment example", (t) => {
+test("accepts an already-unconfigured Pathao integration in the runtime environment example", (t) => {
   const example = fs.readFileSync(
     path.join(__dirname, "runtime.env.example"),
     "utf8",
   );
   const fx = fixture(t, example);
+  const original = fs.readFileSync(fx.runtimeEnvPath, "utf8");
   const existing = runtimeValues(fx);
   assert.equal(existing.PATHAO_BASE_URL, "");
-  assert.equal(apply(fx, configuration("unconfigured")), "applied");
-  const updated = runtimeValues(fx);
-  assert.equal(updated.PATHAO_BASE_URL, "");
-  assert.equal(updated.BETTER_AUTH_URL, existing.BETTER_AUTH_URL);
-  assert.equal(updated.POSTGRES_DB, existing.POSTGRES_DB);
-  assert.equal(updated.REDIS_URL, existing.REDIS_URL);
+  assert.equal(
+    apply(fx, configuration("unconfigured")),
+    "already-applied",
+  );
+  assert.equal(fs.readFileSync(fx.runtimeEnvPath, "utf8"), original);
 });
 
 test("rejects incomplete or malformed Pathao configuration before writing", (t) => {
