@@ -3,20 +3,79 @@ import { expect, test } from "@playwright/test";
 test("production storefront serves routes, rewrites, and the strict CSP", async ({
   page,
 }) => {
+  const gtmUrl =
+    "https://www.googletagmanager.com/gtm.js?id=GTM-N28C5K72";
+  const gtmRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().startsWith(gtmUrl)) {
+      gtmRequests.push(request.url());
+    }
+  });
+  const gtmRequest = page.waitForRequest((request) =>
+    request.url().startsWith(gtmUrl),
+  );
   const homeResponse = await page.goto("/");
   expect(homeResponse?.status()).toBe(200);
+  await gtmRequest;
+  expect(gtmRequests).toHaveLength(1);
   expect(await page.title()).toBe("Aaraj | Products");
 
   const headers = homeResponse!.headers();
   const contentSecurityPolicy = headers["content-security-policy"] ?? "";
   expect(contentSecurityPolicy).toMatch(/nonce-/);
   expect(contentSecurityPolicy).toContain("upgrade-insecure-requests");
-  expect(contentSecurityPolicy).not.toMatch(/'unsafe-(eval|inline)'/);
+  expect(contentSecurityPolicy).toContain("script-src-elem");
+  expect(contentSecurityPolicy).toContain("connect-src");
+  expect(contentSecurityPolicy).toContain("frame-src");
+  expect(contentSecurityPolicy).toContain("https://www.googletagmanager.com");
+  expect(contentSecurityPolicy).toContain("https://*.google-analytics.com");
+  expect(contentSecurityPolicy).toContain("style-src-attr 'unsafe-inline'");
+  expect(contentSecurityPolicy).not.toMatch(
+    /script-src(?:-elem)?[^;]*'unsafe-(?:eval|inline)'/,
+  );
   expect(headers["x-frame-options"]).toBe("DENY");
   expect(headers["x-content-type-options"]).toBe("nosniff");
   const nonce = contentSecurityPolicy.match(/'nonce-([^']+)'/)?.[1];
   expect(nonce).toBeTruthy();
-  expect(await homeResponse!.text()).toContain(`nonce="${nonce}"`);
+  const homeHtml = await homeResponse!.text();
+  expect(homeHtml).toContain(`nonce="${nonce}"`);
+  expect(homeHtml).toContain("GTM-N28C5K72");
+  expect(homeHtml).toContain("gtm.js?id=");
+  const themeStyle = page.locator("style[nonce]").filter({
+    hasText: "--background:",
+  });
+  await expect(themeStyle).toHaveAttribute("nonce", nonce!);
+  await expect(themeStyle).toContainText(
+    ".storefront-theme{--background:#fafafafa;--brand:#7b2220}",
+  );
+  expect(await page.locator(".storefront-theme").getAttribute("style")).toBe(
+    null,
+  );
+  await expect(
+    page.locator('[data-slot="carousel-content"] > div[style]').first(),
+  ).toHaveAttribute("style", /transform:/);
+  expect(await page.locator("img[style]").count()).toBeGreaterThan(0);
+
+  const repeatedResponse = await page.request.get("/");
+  const repeatedPolicy =
+    repeatedResponse.headers()["content-security-policy"] ?? "";
+  const repeatedNonce = repeatedPolicy.match(/'nonce-([^']+)'/)?.[1];
+  expect(repeatedNonce).toBeTruthy();
+  expect(repeatedNonce).not.toBe(nonce);
+  expect(await repeatedResponse.text()).toContain(`nonce="${repeatedNonce}"`);
+
+  const adminResponse = await page.request.get("/admin", { maxRedirects: 0 });
+  const adminPolicy =
+    adminResponse.headers()["content-security-policy"] ?? "";
+  expect(adminPolicy).toContain("frame-src 'self'");
+  expect(adminPolicy).not.toContain("googletagmanager.com");
+  expect(adminPolicy).not.toContain("google-analytics.com");
+  expect(adminPolicy).not.toContain("style-src-attr");
+
+  const faviconResponse = await page.request.get("/favicon.ico");
+  expect(faviconResponse.status()).toBe(200);
+  expect(faviconResponse.headers()["content-type"]).toContain("image/svg+xml");
+  expect(await faviconResponse.text()).toContain("<svg");
 
   const crawlerResponse = await page.request.get("/", {
     headers: { "User-Agent": "facebookexternalhit/1.1" },
