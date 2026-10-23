@@ -40,10 +40,12 @@ test("production storefront serves routes, rewrites, and the strict CSP", async 
   expect(homeHtml).toContain(`nonce="${nonce}"`);
   expect(homeHtml).toContain("GTM-N28C5K72");
   expect(homeHtml).toContain("gtm.js?id=");
-  const themeStyle = page.locator("style[nonce]").filter({
+  const themeStyle = page.locator("style").filter({
     hasText: "--background:",
   });
-  await expect(themeStyle).toHaveAttribute("nonce", nonce!);
+  expect(
+    await themeStyle.evaluate((element) => (element as HTMLStyleElement).nonce),
+  ).toBe(nonce);
   await expect(themeStyle).toContainText(
     ".storefront-theme{--background:#fafafafa;--brand:#7b2220}",
   );
