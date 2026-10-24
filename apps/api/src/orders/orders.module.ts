@@ -7,7 +7,6 @@ import { PlatformAuthorizationModule } from "../platform/authorization/authoriza
 import { DatabaseModule } from "../platform/database/database.module.js";
 import { QuoteModule } from "../quote/quote.module.js";
 import { OrdersController } from "./orders.controller.js";
-import { OrderServiceabilityExpiryWorker } from "./order-serviceability-expiry.worker.js";
 import { OrdersService } from "./orders.service.js";
 import { ORDERS_PATHAO_PORT } from "./orders-pathao.port.js";
 
@@ -24,7 +23,6 @@ import { ORDERS_PATHAO_PORT } from "./orders-pathao.port.js";
   controllers: [OrdersController],
   providers: [
     OrdersService,
-    OrderServiceabilityExpiryWorker,
     { provide: ORDERS_PATHAO_PORT, useExisting: OrdersService },
   ],
   exports: [ORDERS_PATHAO_PORT],

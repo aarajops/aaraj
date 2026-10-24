@@ -30,7 +30,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
         if (active) {
           setError(
             reason instanceof OrderRequestError && reason.status === 404
-              ? "Online Order access is unavailable. A lost or expired guest access cookie cannot be recovered automatically. Contact AARAJ through its published support channels; support will not disclose private Order details without a separately approved identity verification process."
+              ? "We couldn’t access this order. Its secure guest link may have expired. Contact AARAJ support with your order number. Order details are shared only after identity verification."
               : reason instanceof Error
                 ? reason.message
                 : "Order details could not be loaded.",
@@ -74,6 +74,8 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   }, [order]);
 
   useEffect(() => {
+    if (order?.dispatch?.deliveryProvider !== "pathao") return;
+
     let active = true;
     void getPathaoCustomerTracking(orderId)
       .then((result) => {
@@ -85,100 +87,178 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
     return () => {
       active = false;
     };
-  }, [orderId]);
+  }, [
+    orderId,
+    order?.dispatch?.deliveryProvider,
+    order?.dispatch?.dispatchedAt,
+  ]);
+
+  const presentation = order ? getOrderPresentation(order) : null;
+  const settlement = order ? getSettlementSummary(order) : null;
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-background px-5 py-12 text-foreground sm:py-16">
-      <article className="mx-auto max-w-3xl">
-        <p className="text-sm font-semibold tracking-[0.16em] text-primary">
-          AARAJ ORDER
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Order details
-        </h1>
+    <main className="flex-1 bg-background px-5 py-10 text-foreground sm:py-14">
+      <article className="mx-auto max-w-2xl">
         {error ? (
-          <section className="mt-7 rounded-2xl border border-border p-6">
-            <p role="alert">{error}</p>
+          <section>
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              AARAJ
+            </p>
+            <h1 className="mt-2 text-3xl font-medium tracking-tight">
+              Order unavailable
+            </h1>
+            <p
+              className="mt-4 text-sm leading-6 text-muted-foreground"
+              role="alert"
+            >
+              {error}
+            </p>
             <Link
-              className="mt-5 inline-block text-primary underline"
+              className="mt-6 inline-flex text-sm font-medium text-primary underline underline-offset-4"
               href="/shop"
             >
               Continue shopping
             </Link>
           </section>
         ) : !order ? (
-          <p className="mt-7" role="status">
-            Loading Order…
+          <p className="text-sm text-muted-foreground" role="status">
+            Loading order…
           </p>
         ) : (
-          <section className="mt-7 rounded-2xl border border-border p-5 sm:p-7">
-            <p className="text-sm text-muted-foreground">Order ID</p>
-            <p
-              className="mt-1 text-2xl font-semibold"
-              data-testid="order-reference"
+          <>
+            <header className="border-b border-border pb-6">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                AARAJ
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <h1 className="text-3xl font-medium tracking-tight">
+                  {presentation?.title}
+                </h1>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${presentation?.statusClass}`}
+                >
+                  {presentation?.statusLabel}
+                </span>
+              </div>
+              <p
+                className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground"
+                role="status"
+              >
+                {presentation?.message}
+              </p>
+              <p className="mt-4 text-sm">
+                <span className="text-muted-foreground">Order </span>
+                <span className="font-medium" data-testid="order-reference">
+                  {order.reference}
+                </span>
+              </p>
+            </header>
+
+            <section aria-labelledby="order-items-heading" className="py-6">
+              <h2
+                className="text-sm font-semibold"
+                id="order-items-heading"
+              >
+                Items
+              </h2>
+              <ul className="mt-3 divide-y divide-border border-y border-border">
+                {order.lines.map((line) => (
+                  <li
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 py-3 text-sm"
+                    key={line.variantId}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium">{line.productName}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {line.color} · {line.sizeLabel} · Qty {line.quantity}
+                      </p>
+                    </div>
+                    <span className="whitespace-nowrap">
+                      {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section
+              aria-labelledby="payment-heading"
+              className="border-t border-border py-6"
             >
-              {order.reference}
-            </p>
-            <p className="mt-3" role="status">
-              {order.status === "cancelled"
-                ? order.cancellationReason === "serviceability_review_timeout"
-                  ? "Your Order was automatically cancelled because delivery serviceability was not reviewed by its deadline. Its stock reservation was released. Nothing is payable."
-                  : "Your Order was cancelled by AARAJ before dispatch. Its stock reservation was released. Nothing is payable."
-                : order.fulfillmentStatus === "delivered"
-                  ? "Your Order is recorded as delivered. COD collection is tracked separately below."
-                  : order.fulfillmentStatus === "partially_delivered"
-                    ? "Your Order is recorded as partially delivered. COD collection is tracked separately below."
-                    : order.fulfillmentStatus === "returned"
-                      ? "Your Order is recorded as returned to the merchant. COD collection is tracked separately below."
-                      : order.fulfillmentStatus === "delivery_failed"
-                        ? "A delivery attempt was recorded as failed. AARAJ is reviewing the next delivery step."
-                        : order.dispatch
-                          ? `Your Order was handed to ${order.dispatch.deliveryOperator} on ${formatDateTime(order.dispatch.dispatchedAt)}. Delivery and COD collection are tracked separately.`
-                          : order.serviceability === "pending_manual_review"
-                            ? "Your Order is received and awaiting manual delivery serviceability review. It is not yet confirmed for dispatch. If it is still awaiting review after 7 days, it will be cancelled and its stock reservation released."
-                            : order.serviceability === "serviceable"
-                              ? "Delivery serviceability has been confirmed. AARAJ is preparing the Order for dispatch. If dispatch is delayed, we will verify any active courier booking before changing the Order."
-                              : "AARAJ cannot deliver to this destination. This Order was rejected and its stock hold was released."}
-            </p>
-            <dl className="mt-5 grid gap-2 border-t border-border pt-4 text-sm">
-              <DataRow label="Payment method" value="Cash on Delivery" />
-              <DataRow
-                label="Collection status"
-                value={
-                  order.collectionStatus === "uncollected"
-                    ? "Uncollected; no payment was taken at checkout"
-                    : order.collectionStatus === "collected"
-                      ? `Collected ${formatBdtPrice({ amountBdt: order.collectedAmountBdt ?? 0 })}`
-                      : `Collection amount under reconciliation: ${formatBdtPrice({ amountBdt: order.collectedAmountBdt ?? 0 })}`
-                }
-              />
-              <DataRow
-                label="COD due on delivery"
-                value={
-                  order.status === "cancelled" || order.status === "rejected"
-                    ? "Not payable; Order closed"
-                    : order.collectionStatus === "collected"
-                      ? "Collected"
-                      : order.collectionStatus === "discrepancy"
-                        ? "Under reconciliation"
-                        : formatBdtPrice({ amountBdt: order.codAmountDueBdt })
-                }
-              />
-              <DataRow
-                label="Order total"
-                value={formatBdtPrice({ amountBdt: order.totalBdt })}
-              />
-            </dl>
+              <h2 className="text-sm font-semibold" id="payment-heading">
+                Payment
+              </h2>
+              <dl className="mt-3 grid gap-2 text-sm">
+                <DataRow
+                  label="Delivery fee"
+                  value={formatBdtPrice({
+                    amountBdt: order.delivery.grossAmountBdt,
+                  })}
+                />
+              </dl>
+              <div className="mt-3 flex items-start justify-between gap-4 border-t border-border pt-3">
+                <div>
+                  <p className="text-sm font-semibold">{settlement?.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {settlement?.detail}
+                  </p>
+                </div>
+                <p className="whitespace-nowrap text-sm font-semibold">
+                  {settlement?.amount}
+                </p>
+              </div>
+            </section>
+
+            <section
+              aria-labelledby="delivery-address-heading"
+              className="border-t border-border py-6"
+            >
+              <h2
+                className="text-sm font-semibold"
+                id="delivery-address-heading"
+              >
+                Delivery address
+              </h2>
+              <address className="mt-3 space-y-1 text-sm not-italic leading-6 text-secondary-foreground">
+                <span className="block">
+                  {order.address.recipientName} · {order.address.phone}
+                </span>
+                <span className="block">
+                  {[
+                    order.address.house,
+                    order.address.street,
+                    order.address.locality,
+                    order.address.doorstepDetails,
+                    order.address.upazilaName,
+                    order.address.districtName,
+                    order.address.divisionName,
+                    order.address.postalCode,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </span>
+                {order.address.instructions && (
+                  <span className="block text-muted-foreground">
+                    {order.address.instructions}
+                  </span>
+                )}
+              </address>
+            </section>
+
             {order.dispatch && (
               <section
                 aria-label="Dispatch details"
-                className="mt-5 rounded-xl border border-border p-4"
+                className="border-t border-border py-6"
               >
-                <h2 className="font-semibold">Dispatch details</h2>
+                <h2 className="text-sm font-semibold">Delivery</h2>
                 <dl className="mt-3 grid gap-2 text-sm">
                   <DataRow
-                    label="Delivery operator"
+                    label="Courier"
                     value={order.dispatch.deliveryOperator}
+                  />
+                  <DataRow
+                    label="Dispatched"
+                    value={formatDateTime(order.dispatch.dispatchedAt)}
                   />
                   {order.dispatch.handoffReference && (
                     <DataRow
@@ -187,51 +267,37 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                     />
                   )}
                   <DataRow
-                    label="Handed over"
-                    value={formatDateTime(order.dispatch.dispatchedAt)}
-                  />
-                  <DataRow
                     label="Delivery status"
                     value={humanizeTracking(order.fulfillmentStatus)}
                   />
                 </dl>
               </section>
             )}
+
             {tracking?.booking && (
               <section
-                aria-label="Pathao delivery tracking"
-                className="mt-5 rounded-xl border border-border p-4"
+                aria-label="Courier tracking"
+                className="border-t border-border py-6"
               >
-                <h2 className="font-semibold">Pathao delivery tracking</h2>
+                <h2 className="text-sm font-semibold">Tracking</h2>
                 <dl className="mt-3 grid gap-2 text-sm">
                   <DataRow
                     label="Consignment"
                     value={tracking.booking.consignmentId}
                   />
                   <DataRow
-                    label="Latest verified progress"
+                    label="Latest progress"
                     value={humanizeTracking(tracking.booking.trackingProgress)}
                   />
-                  <DataRow
-                    label="COD due"
-                    value={formatBdtPrice({
-                      amountBdt: order.codAmountDueBdt,
-                    })}
-                  />
                 </dl>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Courier tracking does not itself confirm COD collection or
-                  merchant remittance. The collection status above reflects
-                  AARAJ&apos;s separate staff-verified reconciliation.
-                </p>
                 {tracking.observations.length > 0 && (
-                  <ol className="mt-4 divide-y divide-border text-sm">
+                  <ol className="mt-3 divide-y divide-border text-sm">
                     {tracking.observations.map((observation) => (
                       <li
-                        className="py-2"
+                        className="py-2 text-muted-foreground"
                         key={`${observation.event}-${observation.receivedAt}`}
                       >
-                        {humanizeTracking(observation.event)} · verified{" "}
+                        {humanizeTracking(observation.event)} ·{" "}
                         {formatDateTime(observation.receivedAt)}
                       </li>
                     ))}
@@ -239,87 +305,182 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                 )}
               </section>
             )}
-            {trackingUnavailable && (
-              <p className="mt-4 text-sm text-muted-foreground" role="status">
-                Courier tracking is temporarily unavailable. Your Order and COD
-                amount are unchanged.
-              </p>
-            )}
-            {order.cancellationReason === "serviceability_review_timeout" &&
-              order.cancelledAt && (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Cancelled on {formatDateTime(order.cancelledAt)} because the
-                  delivery review deadline passed.
+
+            {trackingUnavailable &&
+              order.dispatch?.deliveryProvider === "pathao" && (
+                <p
+                  className="border-t border-border py-4 text-xs text-muted-foreground"
+                  role="status"
+                >
+                  Tracking updates are temporarily unavailable. Please check
+                  again soon.
                 </p>
               )}
-            <h2 className="mt-7 text-lg font-semibold">Items</h2>
-            <ul className="mt-2 divide-y divide-border">
-              {order.lines.map((line) => (
-                <li
-                  className="flex justify-between gap-4 py-3"
-                  key={line.variantId}
-                >
-                  <span>
-                    {line.productName} · {line.color} · {line.sizeLabel} ×{" "}
-                    {line.quantity}
-                  </span>
-                  <span>
-                    {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <h2 className="mt-7 text-lg font-semibold">Delivery address</h2>
-            <address className="mt-2 not-italic leading-6 text-secondary-foreground">
-              <span className="block">
-                {order.address.recipientName} · {order.address.phone}
-              </span>
-              <span className="block">
-                {[
-                  order.address.house,
-                  order.address.street,
-                  order.address.locality,
-                  order.address.doorstepDetails,
-                  order.address.upazilaName,
-                  order.address.districtName,
-                  order.address.divisionName,
-                  order.address.postalCode,
-                ]
-                  .filter(Boolean)
-                  .join(", ")}
-              </span>
-              {order.address.instructions && (
-                <span className="mt-2 block">
-                  Delivery instructions: {order.address.instructions}
-                </span>
-              )}
-            </address>
+
             {order.guestAccessExpiresAt && (
-              <p className="mt-6 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+              <p className="border-t border-border py-4 text-xs text-muted-foreground">
                 Guest tracking is available in this browser until{" "}
-                {formatDateTime(order.guestAccessExpiresAt)}. Clearing browser
-                cookies or using another device may remove access. Lost or
-                expired access cannot be restored automatically.
+                {formatDateTime(order.guestAccessExpiresAt)}.
               </p>
             )}
-            <Link
-              className="mt-6 inline-block text-primary underline"
-              href="/shop"
-            >
-              Continue shopping
-            </Link>
-          </section>
+
+            <footer className="border-t border-border py-6">
+              <Link
+                className="inline-flex text-sm font-medium text-primary underline underline-offset-4"
+                href="/shop"
+              >
+                Continue shopping
+              </Link>
+            </footer>
+          </>
         )}
       </article>
     </main>
   );
 }
 
+function getOrderPresentation(order: Order) {
+  if (order.status === "cancelled") {
+    const cancelledDate = order.cancelledAt
+      ? ` on ${formatDateTime(order.cancelledAt)}`
+      : "";
+    return {
+      title: "Order cancelled",
+      statusLabel: "Cancelled",
+      statusClass: "bg-muted text-muted-foreground",
+      message:
+        order.cancellationReason === "serviceability_review_timeout"
+          ? `This order was cancelled under the previous review policy${cancelledDate}. No payment is due.`
+          : `AARAJ cancelled this order before dispatch${cancelledDate}. No payment is due.`,
+    };
+  }
+
+  if (order.status === "rejected") {
+    return {
+      title: "Delivery unavailable",
+      statusLabel: "Order closed",
+      statusClass: "bg-muted text-muted-foreground",
+      message:
+        "We’re unable to deliver to this address, so the order was closed. No payment is due.",
+    };
+  }
+
+  if (order.fulfillmentStatus === "delivered") {
+    return {
+      title: "Delivered",
+      statusLabel: "Complete",
+      statusClass: "bg-muted text-foreground",
+      message: "Your order is recorded as delivered.",
+    };
+  }
+
+  if (order.fulfillmentStatus === "partially_delivered") {
+    return {
+      title: "Partially delivered",
+      statusLabel: "In progress",
+      statusClass: "bg-muted text-foreground",
+      message: "Part of your order has been delivered.",
+    };
+  }
+
+  if (order.fulfillmentStatus === "returned") {
+    return {
+      title: "Order returned",
+      statusLabel: "Returned",
+      statusClass: "bg-muted text-muted-foreground",
+      message: "The courier has returned this order to AARAJ.",
+    };
+  }
+
+  if (order.fulfillmentStatus === "delivery_failed") {
+    return {
+      title: "Delivery issue",
+      statusLabel: "Reviewing next step",
+      statusClass:
+        "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+      message:
+        "A delivery attempt was unsuccessful. AARAJ is reviewing the next step.",
+    };
+  }
+
+  if (order.dispatch) {
+    return {
+      title: "Order dispatched",
+      statusLabel: "With courier",
+      statusClass: "bg-muted text-foreground",
+      message: `Handed to ${order.dispatch.deliveryOperator} on ${formatDateTime(order.dispatch.dispatchedAt)}.`,
+    };
+  }
+
+  if (order.serviceability === "pending_manual_review") {
+    return {
+      title: "Order received",
+      statusLabel: "Delivery review in progress",
+      statusClass:
+        "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+      message:
+        "We’re checking whether delivery is available to your address. Your order is not yet confirmed for dispatch.",
+    };
+  }
+
+  if (order.serviceability === "serviceable") {
+    return {
+      title: "Delivery confirmed",
+      statusLabel: "Preparing for dispatch",
+      statusClass: "bg-muted text-foreground",
+      message: "We’re preparing your order for dispatch.",
+    };
+  }
+
+  return {
+    title: "Order update",
+    statusLabel: "In progress",
+    statusClass: "bg-muted text-foreground",
+    message: "Your order status is being updated.",
+  };
+}
+
+function getSettlementSummary(order: Order) {
+  if (order.status === "cancelled" || order.status === "rejected") {
+    return {
+      label: "Order total",
+      detail: "Cash on Delivery · Nothing is payable",
+      amount: formatBdtPrice({ amountBdt: order.totalBdt }),
+    };
+  }
+
+  if (order.collectionStatus === "collected") {
+    return {
+      label: "COD collected",
+      detail: "Collection recorded",
+      amount: formatBdtPrice({
+        amountBdt: order.collectedAmountBdt ?? order.codAmountDueBdt,
+      }),
+    };
+  }
+
+  if (order.collectionStatus === "discrepancy") {
+    return {
+      label: "Collection under review",
+      detail: "AARAJ is reconciling the collected amount",
+      amount: formatBdtPrice({
+        amountBdt: order.collectedAmountBdt ?? order.codAmountDueBdt,
+      }),
+    };
+  }
+
+  return {
+    label: "Total due on delivery",
+    detail: "Cash on Delivery · Uncollected; no payment was taken at checkout",
+    amount: formatBdtPrice({ amountBdt: order.codAmountDueBdt }),
+  };
+}
+
 function DataRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-wrap justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd>{value}</dd>
+      <dd className="text-right">{value}</dd>
     </div>
   );
 }

@@ -1438,10 +1438,9 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/\/orders\/[0-9a-f-]{36}$/i);
   await expect(page.getByTestId("order-reference")).toBeVisible();
   const customerOrderStatus = page.getByRole("status").filter({
-    hasText: "awaiting manual delivery serviceability review",
+    hasText: "We’re checking whether delivery is available to your address.",
   });
   await expect(customerOrderStatus).toBeVisible();
-  await expect(customerOrderStatus).toContainText("after 7 days");
   await expect(
     page.getByText("Cash on Delivery", { exact: true }),
   ).toBeVisible();
@@ -1499,9 +1498,6 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.goto(`/admin/orders/${customerOrderId}`);
   await expect(
     page.getByRole("heading", { name: "Manual serviceability review" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Review within 7 days of Order creation.", { exact: false }),
   ).toBeVisible();
   await expect(page.getByText("Integration Customer")).toBeVisible();
   await page.getByLabel("Decision note").fill("Courier does not cover area");

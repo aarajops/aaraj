@@ -4,8 +4,8 @@ import { OrderIdSchema } from "@aaraj/contracts";
 import { CustomerOrderDetails } from "@/features/orders/customer-order-details";
 
 export const metadata: Metadata = {
-  title: "Order details",
-  description: "View your Aaraj COD Order and delivery status.",
+  title: "Order status",
+  description: "View your Aaraj order and delivery status.",
   robots: { index: false, follow: false },
 };
 

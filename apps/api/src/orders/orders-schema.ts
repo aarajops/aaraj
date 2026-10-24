@@ -73,6 +73,7 @@ export const customerOrder = ordersSchema.table(
     }),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     fulfillmentOutcomeReason: text("fulfillment_outcome_reason"),
+    // The timeout value remains for Orders cancelled before migration 0047.
     cancellationReason: text("cancellation_reason").$type<
       "serviceability_review_timeout" | "staff_cancelled"
     >(),
@@ -98,11 +99,6 @@ export const customerOrder = ordersSchema.table(
     uniqueIndex("order_quote_uidx").on(table.quoteId),
     index("order_customer_created_idx").on(table.customerId, table.createdAt),
     index("order_status_created_idx").on(table.status, table.createdAt),
-    index("order_pending_review_deadline_idx")
-      .on(table.createdAt, table.id)
-      .where(
-        sql`${table.status} = 'awaiting_confirmation' and ${table.serviceability} = 'pending_manual_review'`,
-      ),
     index("order_serviceability_created_idx").on(
       table.serviceability,
       table.createdAt,

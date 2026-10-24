@@ -260,7 +260,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
         {order.status === "cancelled" && (
           <p className="mt-6 rounded-xl border border-border p-5 text-sm">
             {order.cancellationReason === "serviceability_review_timeout"
-              ? "Automatically cancelled because serviceability was not reviewed by its deadline. The stock reservation was released."
+              ? "Automatically cancelled under the previous review policy. The stock reservation was released."
               : "Cancelled by authorized staff before dispatch. The stock reservation was released."}
           </p>
         )}
@@ -278,9 +278,6 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
                 Confirm the destination can be served. Marking it unserviceable
                 rejects the Order and releases its stock reservation. Do not
                 enter customer contact or address details in the decision note.
-                Review within 7 days of Order creation. If it is still pending
-                after 7 days, the system cancels it and releases the stock
-                reservation.
               </p>
               {error && (
                 <p className="mt-4 text-sm text-destructive" role="alert">

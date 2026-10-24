@@ -13,7 +13,6 @@ import {
   OrderManagementListSchema,
   OrderSchema,
   MAX_LIST_OFFSET,
-  ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS,
   type CheckoutAddressInput,
   type CreateOrderInput,
   type Order,
@@ -42,7 +41,6 @@ import {
   eq,
   ilike,
   inArray,
-  notInArray,
   sql,
 } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
@@ -75,15 +73,6 @@ import type {
 const ORDER_GUEST_COOKIE_PREFIX = "aaraj_order_";
 const ORDER_ATTEMPT_COOKIE_PREFIX = "aaraj_order_attempt_";
 const MAX_ORDER_LINES = 50;
-
-class ServiceabilityExpiryTransitionError extends Error {
-  constructor(
-    readonly orderId: string,
-    options: { cause: unknown },
-  ) {
-    super("Order serviceability expiry transition failed.", options);
-  }
-}
 
 type OrderRow = typeof customerOrder.$inferSelect;
 type IdempotencyRow = typeof orderIdempotency.$inferSelect;
@@ -895,14 +884,15 @@ export class OrdersService implements OrdersPathaoPort {
             eq(customerOrder.id, row.id),
             eq(customerOrder.status, "awaiting_confirmation"),
             eq(customerOrder.serviceability, "pending_manual_review"),
-            sql`${customerOrder.createdAt} > clock_timestamp() - ${ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS} * interval '1 hour'`,
           ),
         )
         .returning({ id: customerOrder.id });
 
       if (!reviewed) {
-        await this.cancelExpiredServiceabilityReview(transaction, row);
-        return;
+        throw new ConflictException(
+          "This Order changed before the serviceability review was completed.",
+          { errorCode: "ORDER_REVIEW_ALREADY_COMPLETED" },
+        );
       }
 
       if (input.outcome === "unserviceable") {
@@ -1321,103 +1311,6 @@ export class OrdersService implements OrdersPathaoPort {
       });
     });
     return this.getForManagement(orderId);
-  }
-
-  async expirePendingServiceabilityReviews(batchSize = 50): Promise<number> {
-    if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) {
-      throw new RangeError("Serviceability expiry batch size must be 1–500.");
-    }
-
-    let cancelledCount = 0;
-    const excludedOrderIds: string[] = [];
-    for (let attempt = 0; attempt < batchSize; attempt += 1) {
-      let cancelled: boolean;
-      try {
-        cancelled = await this.database.db.transaction(async (transaction) => {
-          const [row] = await transaction
-            .select({
-              id: customerOrder.id,
-              reservationId: customerOrder.reservationId,
-            })
-            .from(customerOrder)
-            .where(
-              and(
-                eq(customerOrder.status, "awaiting_confirmation"),
-                eq(customerOrder.serviceability, "pending_manual_review"),
-                sql`${customerOrder.createdAt} <= clock_timestamp() - ${ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS} * interval '1 hour'`,
-                excludedOrderIds.length
-                  ? notInArray(customerOrder.id, excludedOrderIds)
-                  : undefined,
-              ),
-            )
-            .orderBy(asc(customerOrder.createdAt), asc(customerOrder.id))
-            .limit(1)
-            .for("update", { skipLocked: true });
-          if (!row) return false;
-          try {
-            return await this.cancelExpiredServiceabilityReview(
-              transaction,
-              row,
-            );
-          } catch (cause) {
-            throw new ServiceabilityExpiryTransitionError(row.id, { cause });
-          }
-        });
-      } catch (error) {
-        if (!(error instanceof ServiceabilityExpiryTransitionError))
-          throw error;
-        excludedOrderIds.push(error.orderId);
-        this.logger.error("An expired COD Order could not be cancelled.");
-        continue;
-      }
-      if (!cancelled) break;
-      cancelledCount += 1;
-    }
-    return cancelledCount;
-  }
-
-  private async cancelExpiredServiceabilityReview(
-    transaction: AuditTransaction,
-    row: Pick<OrderRow, "id" | "reservationId">,
-  ): Promise<boolean> {
-    const [cancelled] = await transaction
-      .update(customerOrder)
-      .set({
-        status: "cancelled",
-        fulfillmentStatus: "cancelled",
-        cancellationReason: "serviceability_review_timeout",
-        cancelledAt: sql`clock_timestamp()`,
-        updatedAt: sql`clock_timestamp()`,
-      })
-      .where(
-        and(
-          eq(customerOrder.id, row.id),
-          eq(customerOrder.status, "awaiting_confirmation"),
-          eq(customerOrder.serviceability, "pending_manual_review"),
-          sql`${customerOrder.createdAt} <= clock_timestamp() - ${ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS} * interval '1 hour'`,
-        ),
-      )
-      .returning({ cancelledAt: customerOrder.cancelledAt });
-    if (!cancelled?.cancelledAt) return false;
-
-    await this.inventory.releaseWithinTransaction(transaction, {
-      commandId: randomUUID(),
-      reservationId: row.reservationId,
-    });
-    await this.audit.append(transaction, {
-      actorType: "service",
-      eventType: "commerce.cod_order_manual_review_timeout_cancelled",
-      subjectType: "order",
-      subjectId: row.id,
-      occurredAt: cancelled.cancelledAt,
-      reason: "Serviceability was not reviewed within 7 days.",
-      metadata: {
-        cancellationReason: "serviceability_review_timeout",
-        reviewDeadlineHours: ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS,
-        reservationId: row.reservationId,
-      },
-    });
-    return true;
   }
 
   private async resolveAddress(

@@ -11,7 +11,6 @@ export { OrderReferenceSchema } from "./order-reference.js";
 
 export const ORDER_PHONE_POLICY = "BD_MOBILE_E164_V1" as const;
 export const ORDER_GUEST_ACCESS_DAYS = 30;
-export const ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS = 168;
 export const ORDER_CURRENCY = "BDT" as const;
 
 export const CheckoutAddressInputSchema = z.strictObject({
@@ -183,6 +182,7 @@ export const OrderSchema = z.strictObject({
   }),
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   codAmountDueBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  // Keep the former timeout reason so pre-0047 cancelled Orders remain readable.
   cancellationReason: z
     .enum(["serviceability_review_timeout", "staff_cancelled"])
     .nullable(),

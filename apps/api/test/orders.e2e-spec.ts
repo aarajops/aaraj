@@ -4,13 +4,11 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
-import { ConflictException } from "@nestjs/common";
 import request from "supertest";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { afterEach, beforeEach, vi } from "vitest";
 import {
   API_V1_BASE_PATH,
-  ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS,
   type BangladeshGeography,
   type CreateOrderInput,
 } from "@aaraj/contracts";
@@ -465,7 +463,7 @@ describe("COD Orders and checkout", () => {
     return { requests, state, fetchMock };
   }
 
-  async function setOrderAge(orderId: string, ageHours: number, seconds = 0) {
+  async function setOrderAge(orderId: string, ageHours: number) {
     await database.db.transaction(async (transaction) => {
       await transaction.execute(
         sql`ALTER TABLE orders.order_header DISABLE TRIGGER order_header_protect_update`,
@@ -473,7 +471,7 @@ describe("COD Orders and checkout", () => {
       try {
         await transaction.execute(sql`
           WITH fixture_time AS (
-            SELECT clock_timestamp() - ${ageHours} * interval '1 hour' + ${seconds} * interval '1 second' AS created_at
+            SELECT clock_timestamp() - ${ageHours} * interval '1 hour' AS created_at
           )
           UPDATE orders.order_header AS order_row
           SET created_at = fixture_time.created_at,
@@ -490,15 +488,7 @@ describe("COD Orders and checkout", () => {
     });
   }
 
-  async function setReviewDeadlineOffset(orderId: string, seconds: number) {
-    await setOrderAge(
-      orderId,
-      ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS,
-      seconds,
-    );
-  }
-
-  async function createLegacy48HourCancellation(fixture: {
+  async function createLegacyTimeoutCancellation(fixture: {
     id: string;
     reservationId: string;
   }) {
@@ -515,7 +505,7 @@ describe("COD Orders and checkout", () => {
           cancelled_at: string | Date;
         }>(sql`
           WITH fixture_time AS (
-            SELECT clock_timestamp() - interval '48 hours' AS created_at
+            SELECT clock_timestamp() - interval '1 hour' AS created_at
           )
           UPDATE orders.order_header AS order_row
           SET created_at = fixture_time.created_at,
@@ -543,10 +533,9 @@ describe("COD Orders and checkout", () => {
           subjectType: "order",
           subjectId: fixture.id,
           occurredAt: cancelledAt,
-          reason: "Serviceability was not reviewed within 48 hours.",
+          reason: "Legacy automatic cancellation record.",
           metadata: {
             cancellationReason: "serviceability_review_timeout",
-            reviewDeadlineHours: 48,
             reservationId: fixture.reservationId,
           },
         });
@@ -1432,10 +1421,6 @@ describe("COD Orders and checkout", () => {
     expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(
       before.quantityOnHand - 1,
     );
-    expect(
-      await app.get(OrdersService).expirePendingServiceabilityReviews(),
-    ).toBe(0);
-
     const afterOrder = await orderById(fixture.id);
     expect(afterOrder).toMatchObject({
       addressCiphertext: original?.addressCiphertext,
@@ -2869,7 +2854,7 @@ describe("COD Orders and checkout", () => {
     });
   });
 
-  it("does not dispatch rejected or expired Orders", async () => {
+  it("does not dispatch rejected or pending-review Orders", async () => {
     const rejectedFixture = await createGuestOrder(2);
     const [rejection, concurrentDispatch] = await Promise.all([
       request(app.getHttpServer())
@@ -2888,16 +2873,14 @@ describe("COD Orders and checkout", () => {
       0,
     );
 
-    const expiredFixture = await createGuestOrder(2);
-    await setReviewDeadlineOffset(expiredFixture.id, 0);
-    const [expiredDispatch, expiredCount] = await Promise.all([
-      dispatchOrder(expiredFixture.id, staff.cookie),
-      app.get(OrdersService).expirePendingServiceabilityReviews(),
-    ]);
-    expect(expiredDispatch.status).toBe(409);
-    expect(expiredCount).toBe(1);
-    expect((await stockFor(expiredFixture.variantId)).quantityOnHand).toBe(2);
-    expect((await stockFor(expiredFixture.variantId)).quantityReserved).toBe(0);
+    const pendingFixture = await createGuestOrder(2);
+    const pendingDispatch = await dispatchOrder(pendingFixture.id, staff.cookie);
+    expect(pendingDispatch.status).toBe(409);
+    expect((await orderById(pendingFixture.id))?.status).toBe(
+      "awaiting_confirmation",
+    );
+    expect((await stockFor(pendingFixture.variantId)).quantityOnHand).toBe(2);
+    expect((await stockFor(pendingFixture.variantId)).quantityReserved).toBe(1);
   });
 
   it("uses separate guest Order cookies for multiple Orders and never extends access on reads", async () => {
@@ -2957,72 +2940,13 @@ describe("COD Orders and checkout", () => {
     ).toBe(expiresBefore);
   });
 
-  it("keeps pending review Orders pending after 48 hours", async () => {
+  it("allows staff to review an old pending order and keeps stock reserved", async () => {
     const fixture = await createGuestOrder();
-    await setOrderAge(fixture.id, 48);
+    await setOrderAge(fixture.id, 365 * 24);
 
-    expect(
-      await app.get(OrdersService).expirePendingServiceabilityReviews(),
-    ).toBe(0);
-    expect((await orderById(fixture.id))?.status).toBe("awaiting_confirmation");
+    const stillPending = await orderById(fixture.id);
+    expect(stillPending?.status).toBe("awaiting_confirmation");
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
-  });
-
-  it("keeps a pending Order immediately before the seven-day deadline", async () => {
-    const fixture = await createGuestOrder();
-    await setReviewDeadlineOffset(fixture.id, 30);
-
-    expect(
-      await app.get(OrdersService).expirePendingServiceabilityReviews(),
-    ).toBe(0);
-    expect((await orderById(fixture.id))?.status).toBe("awaiting_confirmation");
-    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
-  });
-
-  it("expires at the seven-day PostgreSQL deadline and records 168 hours", async () => {
-    const fixture = await createGuestOrder();
-    await setReviewDeadlineOffset(fixture.id, 0);
-    const orders = app.get(OrdersService);
-
-    expect(await orders.expirePendingServiceabilityReviews()).toBe(1);
-    const stored = await orderById(fixture.id);
-    expect(stored).toMatchObject({
-      status: "cancelled",
-      cancellationReason: "serviceability_review_timeout",
-    });
-    const deadlineCheck = await database.db.execute<{ valid: boolean }>(sql`
-      SELECT cancelled_at >= created_at + ${ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS} * interval '1 hour' AS valid
-      FROM orders.order_header
-      WHERE id = ${fixture.id}::uuid
-    `);
-    expect(deadlineCheck.rows[0]?.valid).toBe(true);
-    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
-    expect(await orders.expirePendingServiceabilityReviews()).toBe(0);
-    const releaseCommands = await database.db
-      .select()
-      .from(inventoryReservationCommand)
-      .where(
-        eq(inventoryReservationCommand.reservationId, fixture.reservationId),
-      );
-    expect(
-      releaseCommands.filter((command) => command.operation === "release"),
-    ).toHaveLength(1);
-    const timeoutEvents = await database.db
-      .select()
-      .from(auditEvent)
-      .where(eq(auditEvent.subjectId, fixture.id));
-    expect(
-      timeoutEvents.find(
-        (event) =>
-          event.eventType ===
-          "commerce.cod_order_manual_review_timeout_cancelled",
-      )?.metadata,
-    ).toMatchObject({ reviewDeadlineHours: 168 });
-  });
-
-  it("turns staff review at or after the deadline into the expiry outcome", async () => {
-    const fixture = await createGuestOrder();
-    await setReviewDeadlineOffset(fixture.id, -1);
 
     const reviewed = await app
       .get(OrdersService)
@@ -3031,72 +2955,16 @@ describe("COD Orders and checkout", () => {
         reason: "Destination can be served",
       });
 
-    expect(reviewed.status).toBe("cancelled");
-    expect(reviewed.cancellationReason).toBe("serviceability_review_timeout");
-    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
-    expect(
-      await app.get(OrdersService).expirePendingServiceabilityReviews(),
-    ).toBe(0);
+    expect(reviewed.status).toBe("confirmed");
+    expect(reviewed.cancellationReason).toBeNull();
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
   });
 
-  it.each(["confirmed", "rejected"] as const)(
-    "prevents a direct database %s transition after the review deadline",
-    async (status) => {
-      const fixture = await createGuestOrder();
-      await setReviewDeadlineOffset(fixture.id, -1);
-      const reviewValues =
-        status === "confirmed"
-          ? {
-              status,
-              serviceability: "serviceable" as const,
-              fulfillmentStatus: "awaiting_dispatch" as const,
-            }
-          : {
-              status,
-              serviceability: "unserviceable" as const,
-              fulfillmentStatus: "cancelled" as const,
-            };
-
-      let transitionError: unknown;
-      try {
-        await database.db
-          .update(customerOrder)
-          .set(reviewValues)
-          .where(eq(customerOrder.id, fixture.id));
-      } catch (error) {
-        transitionError = error;
-      }
-      expect(transitionError).toMatchObject({
-        cause: {
-          message: expect.stringContaining(
-            "Staff serviceability review must be completed before 7 days",
-          ),
-        },
-      });
-      expect((await orderById(fixture.id))?.status).toBe(
-        "awaiting_confirmation",
-      );
-      expect(
-        (
-          await app
-            .get(OrdersService)
-            .reviewServiceability(fixture.id, staff.id, {
-              outcome: status === "confirmed" ? "serviceable" : "unserviceable",
-              reason: "The review deadline has passed",
-            })
-        ).status,
-      ).toBe("cancelled");
-    },
-  );
-
-  it("does not restore a legacy Order cancelled under the 48-hour policy", async () => {
+  it("preserves a historical serviceability-timeout Order", async () => {
     const fixture = await createGuestOrder();
-    await createLegacy48HourCancellation(fixture);
+    await createLegacyTimeoutCancellation(fixture);
     const before = await orderById(fixture.id);
 
-    expect(
-      await app.get(OrdersService).expirePendingServiceabilityReviews(),
-    ).toBe(0);
     const after = await orderById(fixture.id);
     expect(after?.status).toBe("cancelled");
     expect(after?.cancelledAt).toEqual(before?.cancelledAt);
@@ -3117,179 +2985,6 @@ describe("COD Orders and checkout", () => {
     expect(visibleOrder.body.status).toBe("cancelled");
   });
 
-  it("expires a pending Order after restart, releases stock once, and exposes cancellation to its guest", async () => {
-    const fixture = await createGuestOrder();
-    await setReviewDeadlineOffset(fixture.id, -1);
-    const beforeExpiry = await orderById(fixture.id);
-
-    // A fresh API process and worker have no in-memory knowledge of this Order.
-    await database.onApplicationShutdown();
-    const { stdout } = await execFileAsync(
-      process.execPath,
-      [
-        fileURLToPath(
-          new URL("./order-expiry-worker-process.mjs", import.meta.url),
-        ),
-      ],
-      { env: process.env, timeout: 15_000 },
-    );
-    expect(stdout.trim()).toBe("1");
-    expect(
-      await app.get(OrdersService).expirePendingServiceabilityReviews(),
-    ).toBe(0);
-
-    const visibleOrder = await request(app.getHttpServer())
-      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}`)
-      .set("Cookie", fixture.cookie)
-      .expect(200);
-    expect(visibleOrder.body).toMatchObject({
-      status: "cancelled",
-      serviceability: "pending_manual_review",
-      fulfillmentStatus: "cancelled",
-      cancellationReason: "serviceability_review_timeout",
-      cancelledAt: expect.any(String),
-    });
-    const afterExpiry = await orderById(fixture.id);
-    expect(afterExpiry).toMatchObject({
-      addressCiphertext: beforeExpiry?.addressCiphertext,
-      guestAccessTokenHash: beforeExpiry?.guestAccessTokenHash,
-      guestAccessExpiresAt: beforeExpiry?.guestAccessExpiresAt,
-      merchandiseGrossBdt: beforeExpiry?.merchandiseGrossBdt,
-      deliveryAmountBdt: beforeExpiry?.deliveryAmountBdt,
-      totalBdt: beforeExpiry?.totalBdt,
-      codAmountDueBdt: beforeExpiry?.codAmountDueBdt,
-      deliverySnapshot: beforeExpiry?.deliverySnapshot,
-    });
-    const restoredStock = await stockFor(fixture.variantId);
-    expect(restoredStock.quantityReserved).toBe(0);
-    expect(restoredStock.quantityOnHand).toBe(2);
-    expect(restoredStock.quantityOnHand - restoredStock.quantityReserved).toBe(
-      2,
-    );
-    const releaseCommands = await database.db
-      .select()
-      .from(inventoryReservationCommand)
-      .where(
-        eq(inventoryReservationCommand.reservationId, fixture.reservationId),
-      );
-    expect(
-      releaseCommands.filter((command) => command.operation === "release"),
-    ).toHaveLength(1);
-    const timeoutEvents = await database.db
-      .select()
-      .from(auditEvent)
-      .where(eq(auditEvent.subjectId, fixture.id));
-    const timeoutTransitions = timeoutEvents.filter(
-      (event) =>
-        event.eventType ===
-        "commerce.cod_order_manual_review_timeout_cancelled",
-    );
-    expect(timeoutTransitions).toHaveLength(1);
-    const [timeoutEvent] = timeoutTransitions;
-    expect(timeoutEvent?.occurredAt.getTime()).toBe(
-      afterExpiry?.cancelledAt?.getTime(),
-    );
-    expect(timeoutEvent?.metadata).toMatchObject({
-      reviewDeadlineHours: ORDER_SERVICEABILITY_REVIEW_DEADLINE_HOURS,
-    });
-    const [reservation] = await database.db
-      .select()
-      .from(inventoryStockReservation)
-      .where(eq(inventoryStockReservation.id, fixture.reservationId));
-    expect(reservation?.status).toBe("released");
-  });
-
-  it("allows staff approval before the deadline and leaves its reservation held", async () => {
-    const fixture = await createGuestOrder();
-    await setReviewDeadlineOffset(fixture.id, 30);
-
-    const reviewed = await app
-      .get(OrdersService)
-      .reviewServiceability(fixture.id, staff.id, {
-        outcome: "serviceable",
-        reason: "Destination can be served",
-      });
-    expect(reviewed.status).toBe("confirmed");
-    expect(reviewed.cancellationReason).toBeNull();
-    await setReviewDeadlineOffset(fixture.id, -1);
-    expect(
-      await app.get(OrdersService).expirePendingServiceabilityReviews(),
-    ).toBe(0);
-    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
-    expect((await orderById(fixture.id))?.status).toBe("confirmed");
-  });
-
-  it.each(["serviceable", "unserviceable"] as const)(
-    "serializes %s staff review against timeout so an expired Order has one final outcome",
-    async (outcome) => {
-      const fixture = await createGuestOrder();
-      await setReviewDeadlineOffset(fixture.id, -1);
-      const orders = app.get(OrdersService);
-      const [review, expiryCount] = await Promise.allSettled([
-        orders.reviewServiceability(fixture.id, staff.id, {
-          outcome,
-          reason:
-            outcome === "serviceable"
-              ? "Destination can be served"
-              : "Courier does not cover area",
-        }),
-        orders.expirePendingServiceabilityReviews(),
-      ]);
-
-      expect(expiryCount.status).toBe("fulfilled");
-      expect((await orderById(fixture.id))?.status).toBe("cancelled");
-      if (review.status === "fulfilled") {
-        expect(review.value.status).toBe("cancelled");
-      } else {
-        expect(review.reason).toBeInstanceOf(ConflictException);
-      }
-      expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
-      const releaseCommands = await database.db
-        .select()
-        .from(inventoryReservationCommand)
-        .where(
-          eq(inventoryReservationCommand.reservationId, fixture.reservationId),
-        );
-      expect(
-        releaseCommands.filter((command) => command.operation === "release"),
-      ).toHaveLength(1);
-      const timeoutEvents = await database.db
-        .select()
-        .from(auditEvent)
-        .where(eq(auditEvent.subjectId, fixture.id));
-      expect(
-        timeoutEvents.filter(
-          (event) =>
-            event.eventType ===
-            "commerce.cod_order_manual_review_timeout_cancelled",
-        ),
-      ).toHaveLength(1);
-    },
-  );
-
-  it("claims duplicate expiry work once across concurrent worker transactions", async () => {
-    const fixture = await createGuestOrder();
-    await setReviewDeadlineOffset(fixture.id, -1);
-    const orders = app.get(OrdersService);
-    const counts = await Promise.all([
-      orders.expirePendingServiceabilityReviews(),
-      orders.expirePendingServiceabilityReviews(),
-      orders.expirePendingServiceabilityReviews(),
-    ]);
-
-    expect(counts.reduce((sum, count) => sum + count, 0)).toBe(1);
-    expect((await orderById(fixture.id))?.status).toBe("cancelled");
-    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
-    const releaseCommands = await database.db
-      .select()
-      .from(inventoryReservationCommand)
-      .where(
-        eq(inventoryReservationCommand.reservationId, fixture.reservationId),
-      );
-    expect(
-      releaseCommands.filter((command) => command.operation === "release"),
-    ).toHaveLength(1);
-  });
 });
 
 function setCookieHeaders(headers: Record<string, unknown>): string[] {

@@ -695,15 +695,10 @@ test("customer Order page explains serviceability timeout cancellation", async (
   await page.goto(`/orders/${orderId}`);
   await expect(
     page.getByRole("status").filter({
-      hasText: "automatically cancelled because delivery serviceability",
+      hasText: "cancelled under the previous review policy",
     }),
-  ).toContainText(
-    "automatically cancelled because delivery serviceability was not reviewed by its deadline",
-  );
-  await expect(page.getByText("Not payable; Order closed")).toBeVisible();
-  await expect(
-    page.getByText("stock reservation was released", { exact: false }),
   ).toBeVisible();
+  await expect(page.getByText("Nothing is payable")).toBeVisible();
 });
 
 function variantField(page: Page, index: number, label: string) {
