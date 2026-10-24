@@ -30,7 +30,9 @@ export function proxy(request: NextRequest) {
       "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.in.stape.io https://www.facebook.com",
     )}`,
     `font-src 'self'${storefrontOnly("https://fonts.gstatic.com data:")}`,
-    `frame-src 'self'${storefrontOnly("https://www.googletagmanager.com")}`,
+    `frame-src 'self'${storefrontOnly(
+      "https://www.googletagmanager.com https://*.in.stape.io",
+    )}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
