@@ -3,6 +3,16 @@ import { sendGTMEvent } from "@next/third-parties/google";
 export type EcommerceEvent =
   "view_item" | "add_to_cart" | "begin_checkout" | "purchase";
 
+type MetaStandardEventName =
+  "ViewContent" | "AddToCart" | "InitiateCheckout" | "Purchase";
+
+const metaEventNameByEcommerceEvent = {
+  view_item: "ViewContent",
+  add_to_cart: "AddToCart",
+  begin_checkout: "InitiateCheckout",
+  purchase: "Purchase",
+} as const satisfies Record<EcommerceEvent, MetaStandardEventName>;
+
 export type EcommerceItem = {
   item_id?: string;
   item_name: string;
@@ -76,5 +86,10 @@ export function sendEcommerceEvent(
   if (typeof window === "undefined") return;
   const stableEventId = eventId ?? window.crypto.randomUUID();
   sendGTMEvent({ ecommerce: null });
-  sendGTMEvent({ event, event_id: stableEventId, ecommerce });
+  sendGTMEvent({
+    event,
+    meta_event_name: metaEventNameByEcommerceEvent[event],
+    event_id: stableEventId,
+    ecommerce,
+  });
 }
