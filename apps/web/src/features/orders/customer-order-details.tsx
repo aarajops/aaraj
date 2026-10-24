@@ -51,22 +51,26 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
       return;
     }
     purchaseTracked.current = order.id;
-    sendEcommerceEvent("purchase", {
-      transaction_id: order.reference,
-      currency: order.currency,
-      value: order.merchandiseGrossBdt,
-      shipping: order.delivery.grossAmountBdt,
-      items: order.lines.map((line) =>
-        variantEcommerceItem({
-          variantId: line.variantId,
-          itemName: line.productName,
-          color: line.color,
-          sizeLabel: line.sizeLabel,
-          price: line.unitPriceBdt,
-          quantity: line.quantity,
-        }),
-      ),
-    }, order.id);
+    sendEcommerceEvent(
+      "purchase",
+      {
+        transaction_id: order.reference,
+        currency: order.currency,
+        value: order.merchandiseGrossBdt,
+        shipping: order.delivery.grossAmountBdt,
+        items: order.lines.map((line) =>
+          variantEcommerceItem({
+            variantId: line.variantId,
+            itemName: line.productName,
+            color: line.color,
+            sizeLabel: line.sizeLabel,
+            price: line.unitPriceBdt,
+            quantity: line.quantity,
+          }),
+        ),
+      },
+      order.id,
+    );
   }, [order]);
 
   useEffect(() => {

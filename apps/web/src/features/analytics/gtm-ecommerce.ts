@@ -1,10 +1,7 @@
 import { sendGTMEvent } from "@next/third-parties/google";
 
 export type EcommerceEvent =
-  | "view_item"
-  | "add_to_cart"
-  | "begin_checkout"
-  | "purchase";
+  "view_item" | "add_to_cart" | "begin_checkout" | "purchase";
 
 export type EcommerceItem = {
   item_id?: string;

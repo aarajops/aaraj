@@ -100,9 +100,7 @@ export function ProductPurchase({
           item_id: viewItemId,
           item_name: productName,
           ...(viewItemVariant ? { item_variant: viewItemVariant } : {}),
-          ...(viewItemPriceBdt !== null
-            ? { price: viewItemPriceBdt }
-            : {}),
+          ...(viewItemPriceBdt !== null ? { price: viewItemPriceBdt } : {}),
           quantity: 1,
         },
       ],
