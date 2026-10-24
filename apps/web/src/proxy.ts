@@ -24,7 +24,7 @@ export function proxy(request: NextRequest) {
     )}`,
     ...(!isAdmin && !isDevelopment ? ["style-src-attr 'unsafe-inline'"] : []),
     `img-src 'self' blob: data:${storefrontOnly(
-      "https://www.googletagmanager.com https://*.google-analytics.com https://ssl.gstatic.com https://www.gstatic.com https://www.facebook.com",
+      "https://www.googletagmanager.com https://*.google-analytics.com https://*.in.stape.io https://ssl.gstatic.com https://www.gstatic.com https://www.facebook.com",
     )}`,
     `connect-src 'self'${storefrontOnly(
       "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.in.stape.io https://www.facebook.com",
