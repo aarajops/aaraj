@@ -5,6 +5,9 @@ import {
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
 } from "../common/pagination.js";
+import { OrderReferenceSchema } from "./order-reference.js";
+
+export { OrderReferenceSchema } from "./order-reference.js";
 
 export const ORDER_PHONE_POLICY = "BD_MOBILE_E164_V1" as const;
 export const ORDER_GUEST_ACCESS_DAYS = 30;
@@ -143,7 +146,7 @@ export type OrderAddress = z.infer<typeof OrderAddressSchema>;
 
 export const OrderSchema = z.strictObject({
   id: OrderIdSchema,
-  reference: z.string().regex(/^AA-[0-9A-F]{12}$/),
+  reference: OrderReferenceSchema,
   currency: z.literal(ORDER_CURRENCY),
   status: z.enum([
     "awaiting_confirmation",
@@ -192,7 +195,7 @@ export type Order = z.infer<typeof OrderSchema>;
 
 export const OrderCreatedSchema = z.strictObject({
   id: OrderIdSchema,
-  reference: z.string().regex(/^AA-[0-9A-F]{12}$/),
+  reference: OrderReferenceSchema,
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   codAmountDueBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   status: z.enum([
@@ -228,7 +231,7 @@ export const OrderManagementListSchema = z.strictObject({
   rows: z.array(
     z.strictObject({
       id: OrderIdSchema,
-      reference: z.string().regex(/^AA-[0-9A-F]{12}$/),
+      reference: OrderReferenceSchema,
       status: z.enum([
         "awaiting_confirmation",
         "confirmed",

@@ -177,7 +177,8 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
         <p className="mt-7 text-sm font-semibold tracking-[0.18em] text-primary">
           AARAJ ORDER REVIEW
         </p>
-        <h1 className="mt-2 text-3xl font-semibold">{order.reference}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Order ID</p>
+        <h1 className="mt-1 text-3xl font-semibold">{order.reference}</h1>
         <section className="mt-6 grid gap-5 rounded-2xl border border-border p-5 sm:grid-cols-2 sm:p-7">
           <div>
             <h2 className="font-semibold">Order state</h2>

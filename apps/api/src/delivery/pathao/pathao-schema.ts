@@ -120,7 +120,7 @@ export const pathaoBooking = deliverySchema.table(
     ),
     check(
       "pathao_booking_reference_check",
-      sql`${table.merchantOrderId} ~ '^AA-[0-9A-F]{12}$'`,
+      sql`${table.merchantOrderId} ~ '^(AA-[0-9A-F]{12}|ORD-[0-9]{3}-[0-9]{5})$'`,
     ),
     check(
       "pathao_booking_fingerprint_check",

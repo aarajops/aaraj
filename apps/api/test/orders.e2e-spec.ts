@@ -681,7 +681,7 @@ describe("COD Orders and checkout", () => {
       key,
     ).expect(201);
     expect(response.body).toMatchObject({
-      reference: expect.stringMatching(/^AA-[0-9A-F]{12}$/),
+      reference: expect.stringMatching(/^ORD-[0-9]{3}-[0-9]{5}$/),
       status: "awaiting_confirmation",
       serviceability: "pending_manual_review",
       paymentMethod: "cod",

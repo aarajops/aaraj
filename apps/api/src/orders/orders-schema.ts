@@ -110,7 +110,7 @@ export const customerOrder = ordersSchema.table(
     uniqueIndex("order_dispatch_command_uidx").on(table.dispatchCommandId),
     check(
       "order_reference_check",
-      sql`${table.reference} ~ '^AA-[0-9A-F]{12}$'`,
+      sql`${table.reference} ~ '^(AA-[0-9A-F]{12}|ORD-[0-9]{3}-[0-9]{5})$'`,
     ),
     check(
       "order_owner_check",
@@ -160,6 +160,24 @@ export const customerOrder = ordersSchema.table(
     check(
       "order_address_ciphertext_check",
       sql`(${table.addressCiphertext} like 'v1.%' or ${table.addressCiphertext} like 'v2.%')`,
+    ),
+  ],
+);
+
+export const orderReferenceCounter = ordersSchema.table(
+  "order_reference_counter",
+  {
+    year: integer("year").primaryKey(),
+    lastNumber: integer("last_number").notNull(),
+  },
+  (table) => [
+    check(
+      "order_reference_counter_year_check",
+      sql`${table.year} between 1 and 9999`,
+    ),
+    check(
+      "order_reference_counter_number_check",
+      sql`${table.lastNumber} between 1 and 99999`,
     ),
   ],
 );

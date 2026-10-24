@@ -18,5 +18,6 @@
   "0042_delivery_zone_tariffs.sql": "compatible",
   "0043_remove_tax_feature.sql": "maintenance",
   "0044_access_user_directory_indexes.sql": "maintenance",
-  "0045_order_lifecycle_and_quote_cleanup.sql": "maintenance"
+  "0045_order_lifecycle_and_quote_cleanup.sql": "maintenance",
+  "0046_yearly_order_references.sql": "compatible"
 }

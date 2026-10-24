@@ -29,7 +29,7 @@ export function OrdersManager({
     () =>
       columnHelper.columns([
         columnHelper.accessor("reference", {
-          header: "Reference",
+          header: "Order ID",
           cell: ({ getValue }) => (
             <span className="font-medium">{getValue()}</span>
           ),
@@ -128,7 +128,7 @@ export function OrdersManager({
             },
           ]}
           itemName="orders"
-          searchPlaceholder="Order reference"
+          searchPlaceholder="Order ID"
           onRefresh={() => startTransition(() => router.refresh())}
           isRefreshing={refreshing}
           hasMore={initialPage.hasMore}

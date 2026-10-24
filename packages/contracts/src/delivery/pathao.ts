@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OrderReferenceSchema } from "../orders/order-reference.js";
 
 export const PathaoDeliveryTypeSchema = z.union([z.literal(48), z.literal(12)]);
 export type PathaoDeliveryType = z.infer<typeof PathaoDeliveryTypeSchema>;
@@ -158,10 +159,7 @@ export const PathaoManagementIssueSchema = z.strictObject({
   id: z.uuid(),
   kind: z.enum(["booking", "webhook"]),
   orderId: z.uuid().nullable(),
-  orderReference: z
-    .string()
-    .regex(/^AA-[0-9A-F]{12}$/)
-    .nullable(),
+  orderReference: OrderReferenceSchema.nullable(),
   consignmentId: z.string().min(1).max(120).nullable(),
   merchantOrderId: z.string().min(1).max(100).nullable(),
   storeId: z.number().int().positive().max(2_147_483_647).nullable(),

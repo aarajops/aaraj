@@ -56,6 +56,7 @@ const runtimeTableGrants = [
   ["orders", "order_header", ["SELECT", "INSERT", "UPDATE"]],
   ["orders", "order_line", ["SELECT", "INSERT"]],
   ["orders", "idempotency", ["SELECT", "INSERT"]],
+  ["orders", "order_reference_counter", ["SELECT", "INSERT", "UPDATE"]],
   ["orders", "pathao_booking_claim", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
 ] as const;
 const runtimeColumnGrants = [
@@ -412,6 +413,9 @@ async function main(): Promise<void> {
     await runtimePool.query('SELECT 1 FROM "orders"."order_header" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "orders"."order_line" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "orders"."idempotency" LIMIT 0');
+    await runtimePool.query(
+      'SELECT 1 FROM "orders"."order_reference_counter" LIMIT 0',
+    );
     const quotePrivileges = await runtimePool.query<{
       can_insert: boolean;
       can_update: boolean;

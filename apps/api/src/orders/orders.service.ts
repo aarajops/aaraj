@@ -64,6 +64,7 @@ import {
   customerOrder,
   customerOrderLine,
   orderIdempotency,
+  orderReferenceCounter,
   orderPathaoBookingClaim,
 } from "./orders-schema.js";
 import type {
@@ -169,7 +170,6 @@ export class OrdersService implements OrdersPathaoPort {
     }
 
     const orderId = randomUUID();
-    const reference = `AA-${randomBytes(6).toString("hex").toUpperCase()}`;
     const guestCredential =
       owner.kind === "guest"
         ? signedCookies[guestOrderAttemptCookieName(idempotencyKey)]
@@ -209,6 +209,25 @@ export class OrdersService implements OrdersPathaoPort {
         }
 
         await this.quotes.lockAndValidateForOrderCheckout(transaction, quote);
+
+        const [counter] = await transaction
+          .insert(orderReferenceCounter)
+          .values({
+            year: sql<number>`extract(year from now() at time zone 'Asia/Dhaka')::integer`,
+            lastNumber: 1,
+          })
+          .onConflictDoUpdate({
+            target: orderReferenceCounter.year,
+            set: {
+              lastNumber: sql`${orderReferenceCounter.lastNumber} + 1`,
+            },
+          })
+          .returning({
+            year: orderReferenceCounter.year,
+            number: orderReferenceCounter.lastNumber,
+          });
+        if (!counter) throw new Error("Order reference allocation failed.");
+        const reference = formatOrderReference(counter.year, counter.number);
 
         const reservation = await this.inventory.reserveWithinTransaction(
           transaction,
@@ -1531,6 +1550,10 @@ export class OrdersService implements OrdersPathaoPort {
       guestAccessExpiresAt: row.guestAccessExpiresAt?.toISOString() ?? null,
     });
   }
+}
+
+function formatOrderReference(year: number, number: number) {
+  return `ORD-${String(year % 1000).padStart(3, "0")}-${String(number).padStart(5, "0")}`;
 }
 
 export function guestOrderCookieName(orderId: string): string {

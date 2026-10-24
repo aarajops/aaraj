@@ -112,7 +112,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
           </p>
         ) : (
           <section className="mt-7 rounded-2xl border border-border p-5 sm:p-7">
-            <p className="text-sm text-muted-foreground">Order reference</p>
+            <p className="text-sm text-muted-foreground">Order ID</p>
             <p
               className="mt-1 text-2xl font-semibold"
               data-testid="order-reference"
