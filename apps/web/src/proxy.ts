@@ -6,7 +6,7 @@ export function proxy(request: NextRequest) {
   const isDevelopment = process.env.NODE_ENV === "development";
   const isAdmin = request.nextUrl.pathname.startsWith("/admin");
   const hasStorefrontGtm =
-    !isAdmin && Boolean(getGtmIdForRequestHost(request.nextUrl.host));
+    !isAdmin && Boolean(getGtmIdForRequestHost(request.headers.get("host")));
   const storefrontOnly = (sources: string) =>
     hasStorefrontGtm ? ` ${sources}` : "";
   const csp = [
