@@ -41,6 +41,9 @@ authorization, or deployment have been verified.
   auth/CSRF origin checks and canonical metadata; the storefront also receives
   only its internal API origin and other non-secret runtime settings. Rotate
   PM2 logs with logrotate.
+- The storefront loads `GTM-N28C5K72` only in production requests whose host
+  matches the HTTPS origin in `CLIENT_URL`; localhost, CI, and other hosts do
+  not load the live container or receive its CSP allowlist.
 - Keep release directories owned by `aaraj-deploy:aaraj-code` mode `2750`;
   application and migration identities receive read-only group access. The
   deployment account extracts and activates releases without a root installer.

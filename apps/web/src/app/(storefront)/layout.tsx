@@ -4,6 +4,7 @@ import { SiteHeader } from "@/app/_components/site-header";
 import { StoreFooter } from "@/app/_components/store-footer";
 import { CartProvider } from "@/features/cart/cart-provider";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
+import { getGtmIdForRequestHost } from "@/lib/gtm-config";
 
 export default async function StorefrontLayout({
   children,
@@ -15,12 +16,11 @@ export default async function StorefrontLayout({
     headers(),
   ]);
   const nonce = requestHeaders.get("x-nonce") ?? undefined;
+  const gtmId = getGtmIdForRequestHost(requestHeaders.get("host"));
 
   return (
     <>
-      {process.env.NODE_ENV === "production" ? (
-        <GoogleTagManager gtmId="GTM-N28C5K72" nonce={nonce} />
-      ) : null}
+      {gtmId ? <GoogleTagManager gtmId={gtmId} nonce={nonce} /> : null}
       <style nonce={nonce}>
         {`.storefront-theme{--background:${settings.backgroundColor};--brand:${settings.brandColor}}`}
       </style>

@@ -1,10 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getGtmIdForRequestHost } from "@/lib/gtm-config";
 
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDevelopment = process.env.NODE_ENV === "development";
   const isAdmin = request.nextUrl.pathname.startsWith("/admin");
-  const storefrontOnly = (sources: string) => (isAdmin ? "" : ` ${sources}`);
+  const hasStorefrontGtm =
+    !isAdmin && Boolean(getGtmIdForRequestHost(request.nextUrl.host));
+  const storefrontOnly = (sources: string) =>
+    hasStorefrontGtm ? ` ${sources}` : "";
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${
@@ -23,7 +27,7 @@ export function proxy(request: NextRequest) {
       "https://www.googletagmanager.com https://*.google-analytics.com https://ssl.gstatic.com https://www.gstatic.com",
     )}`,
     `connect-src 'self'${storefrontOnly(
-      "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com",
+      "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.in.stape.io",
     )}`,
     `font-src 'self'${storefrontOnly("https://fonts.gstatic.com data:")}`,
     `frame-src 'self'${storefrontOnly("https://www.googletagmanager.com")}`,

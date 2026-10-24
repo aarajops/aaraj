@@ -1,22 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("production storefront serves routes, rewrites, and the strict CSP", async ({
+test("localhost E2E keeps the live GTM container disabled", async ({
   page,
 }) => {
-  const gtmUrl = "https://www.googletagmanager.com/gtm.js?id=GTM-N28C5K72";
-  const gtmRequests: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().startsWith(gtmUrl)) {
-      gtmRequests.push(request.url());
-    }
-  });
-  const gtmRequest = page.waitForRequest((request) =>
-    request.url().startsWith(gtmUrl),
-  );
   const homeResponse = await page.goto("/");
   expect(homeResponse?.status()).toBe(200);
-  await gtmRequest;
-  expect(gtmRequests).toHaveLength(1);
   expect(await page.title()).toBe("Aaraj | Products");
 
   const headers = homeResponse!.headers();
@@ -26,8 +14,9 @@ test("production storefront serves routes, rewrites, and the strict CSP", async 
   expect(contentSecurityPolicy).toContain("script-src-elem");
   expect(contentSecurityPolicy).toContain("connect-src");
   expect(contentSecurityPolicy).toContain("frame-src");
-  expect(contentSecurityPolicy).toContain("https://www.googletagmanager.com");
-  expect(contentSecurityPolicy).toContain("https://*.google-analytics.com");
+  expect(contentSecurityPolicy).not.toContain("googletagmanager.com");
+  expect(contentSecurityPolicy).not.toContain("google-analytics.com");
+  expect(contentSecurityPolicy).not.toContain("in.stape.io");
   expect(contentSecurityPolicy).toContain("style-src-attr 'unsafe-inline'");
   expect(contentSecurityPolicy).not.toMatch(
     /script-src(?:-elem)?[^;]*'unsafe-(?:eval|inline)'/,
@@ -38,8 +27,8 @@ test("production storefront serves routes, rewrites, and the strict CSP", async 
   expect(nonce).toBeTruthy();
   const homeHtml = await homeResponse!.text();
   expect(homeHtml).toContain(`nonce="${nonce}"`);
-  expect(homeHtml).toContain("GTM-N28C5K72");
-  expect(homeHtml).toContain("gtm.js?id=");
+  expect(homeHtml).not.toContain("GTM-N28C5K72");
+  expect(homeHtml).not.toContain("gtm.js?id=");
   const themeStyle = await page.locator("style").evaluateAll((elements) => {
     const element = elements.find((style) =>
       style.textContent?.includes("--background:"),
