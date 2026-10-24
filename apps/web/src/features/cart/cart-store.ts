@@ -1,6 +1,10 @@
 import { createStore } from "zustand/vanilla";
 import type { Cart, CartMergeResult } from "@aaraj/contracts";
 import {
+  cartItem,
+  sendEcommerceEvent,
+} from "@/features/analytics/gtm-ecommerce";
+import {
   CartRequestError,
   fetchCart,
   clearCart as clearCartRequest,
@@ -74,6 +78,10 @@ export function createCartStore() {
     setLine: async (variantId, quantity) => {
       if (!get().isReady) await get().refresh();
       if (get().error && !get().isReady) return false;
+      const previousLine = get().cart.lines.find(
+        (line) => line.variantId === variantId,
+      );
+      const previousQuantity = previousLine?.quantity ?? 0;
       set({ isMutating: true, error: null });
       try {
         const cart = await setCartLine(
@@ -82,6 +90,17 @@ export function createCartStore() {
           get().cart.revision,
         );
         set({ cart, isReady: true, error: null, errorCode: null });
+        const currentLine = cart.lines.find(
+          (line) => line.variantId === variantId,
+        );
+        if (currentLine && quantity > previousQuantity) {
+          const delta = quantity - previousQuantity;
+          sendEcommerceEvent("add_to_cart", {
+            currency: cart.currency,
+            value: currentLine.product.unitPriceBdt * delta,
+            items: [cartItem(currentLine, delta)],
+          });
+        }
         return true;
       } catch (error) {
         set({

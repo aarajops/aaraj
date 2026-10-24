@@ -24,21 +24,27 @@ import { formatBdtPrice } from "@/lib/currency";
 import { catalogMeasurementLabels } from "@/features/catalog/size-guide-labels";
 import { CircleHelp } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { sendEcommerceEvent } from "@/features/analytics/gtm-ecommerce";
 
 type ProductVariant = CatalogProductDetail["variants"][number];
 
 export function ProductPurchase({
+  productId,
+  productName,
   variants,
   sizeGuide,
   initialColor,
   initialSize,
 }: {
+  productId: string;
+  productName: string;
   variants: ProductVariant[];
   sizeGuide: CatalogSizeGuide | null;
   initialColor?: string;
   initialSize?: string;
 }) {
+  const viewedProductId = useRef<string | null>(null);
   const searchParams = useSearchParams();
   const colors = uniqueOptions(variants.map(({ color }) => color));
   const color =
@@ -75,6 +81,33 @@ export function ProductPurchase({
       : prices.length > 1
         ? `${formatBdtPrice({ amountBdt: prices[0]! })}–${formatBdtPrice({ amountBdt: prices.at(-1)! })}`
         : null;
+  const viewItemPriceBdt =
+    selectedVariant?.price.amountBdt ??
+    (prices.length === 1 ? prices[0]! : null);
+  const viewItemVariant = selectedVariant
+    ? `${selectedVariant.color} / ${selectedVariant.sizeLabel}`
+    : undefined;
+  const viewItemId = selectedVariant?.id ?? productId;
+
+  useEffect(() => {
+    if (viewedProductId.current === productId) return;
+    viewedProductId.current = productId;
+    sendEcommerceEvent("view_item", {
+      currency: "BDT",
+      ...(viewItemPriceBdt !== null ? { value: viewItemPriceBdt } : {}),
+      items: [
+        {
+          item_id: viewItemId,
+          item_name: productName,
+          ...(viewItemVariant ? { item_variant: viewItemVariant } : {}),
+          ...(viewItemPriceBdt !== null
+            ? { price: viewItemPriceBdt }
+            : {}),
+          quantity: 1,
+        },
+      ],
+    });
+  }, [productId, productName, viewItemId, viewItemPriceBdt, viewItemVariant]);
 
   function selectColor(nextColor: string) {
     const nextSizes = getSizeOptions(variants, nextColor, sizeOrder);

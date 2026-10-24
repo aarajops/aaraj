@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { Minus, Plus, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -25,6 +25,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { CartQuote } from "@/features/cart/cart-quote";
 import { useCartStore } from "@/features/cart/cart-provider";
 import { formatBdtPrice } from "@/lib/currency";
+import {
+  cartItem,
+  cartValue,
+  sendEcommerceEvent,
+} from "@/features/analytics/gtm-ecommerce";
 import {
   createCodOrder,
   OrderRequestError,
@@ -72,6 +77,7 @@ function SinglePageCheckout({
   const [quote, setQuote] = useState<AuthoritativeQuote | null>(null);
   const [quotePending, setQuotePending] = useState(Boolean(initialQuoteId));
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const checkoutEventSent = useRef(false);
   const {
     register,
     handleSubmit,
@@ -80,6 +86,16 @@ function SinglePageCheckout({
     resolver: zodResolver(checkoutFormSchema),
     defaultValues: initialForm,
   });
+
+  useEffect(() => {
+    if (!ready || cart.lines.length === 0 || checkoutEventSent.current) return;
+    checkoutEventSent.current = true;
+    sendEcommerceEvent("begin_checkout", {
+      currency: cart.currency,
+      value: cartValue(cart.lines),
+      items: cart.lines.map((line) => cartItem(line)),
+    });
+  }, [cart, ready]);
 
   const receiveCurrentQuote = useCallback((next: AuthoritativeQuote | null) => {
     setQuote(next);

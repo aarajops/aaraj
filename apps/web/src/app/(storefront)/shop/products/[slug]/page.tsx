@@ -168,6 +168,8 @@ export default async function ProductPage({
             <ProductPurchase
               initialColor={initialColor}
               initialSize={initialSize}
+              productId={product.id}
+              productName={product.name}
               sizeGuide={product.sizeGuide}
               variants={product.variants}
             />

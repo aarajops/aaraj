@@ -15,7 +15,7 @@ export function proxy(request: NextRequest) {
       isDevelopment ? " 'unsafe-eval'" : ""
     }`,
     `script-src-elem 'self' 'nonce-${nonce}'${storefrontOnly(
-      "https://www.googletagmanager.com https://tagmanager.google.com",
+      "https://www.googletagmanager.com https://tagmanager.google.com https://connect.facebook.net",
     )}`,
     `style-src 'self' ${
       isDevelopment ? "'unsafe-inline'" : `'nonce-${nonce}'`
@@ -24,13 +24,15 @@ export function proxy(request: NextRequest) {
     )}`,
     ...(!isAdmin && !isDevelopment ? ["style-src-attr 'unsafe-inline'"] : []),
     `img-src 'self' blob: data:${storefrontOnly(
-      "https://www.googletagmanager.com https://*.google-analytics.com https://ssl.gstatic.com https://www.gstatic.com",
+      "https://www.googletagmanager.com https://*.google-analytics.com https://ssl.gstatic.com https://www.gstatic.com https://www.facebook.com",
     )}`,
     `connect-src 'self'${storefrontOnly(
-      "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.in.stape.io",
+      "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.in.stape.io https://www.facebook.com",
     )}`,
     `font-src 'self'${storefrontOnly("https://fonts.gstatic.com data:")}`,
-    `frame-src 'self'${storefrontOnly("https://www.googletagmanager.com")}`,
+    `frame-src 'self'${storefrontOnly(
+      "https://www.googletagmanager.com",
+    )}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

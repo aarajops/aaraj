@@ -27,7 +27,9 @@ export function AddToCart({ variantId }: { variantId: string | null }) {
     const existingQuantity =
       cart.lines.find((line) => line.variantId === variantId)?.quantity ?? 0;
     const added = await setLine(variantId, existingQuantity + 1);
-    if (added) setCartSheetOpen(true);
+    if (added) {
+      setCartSheetOpen(true);
+    }
   }
 
   async function clearUnreadableCart() {

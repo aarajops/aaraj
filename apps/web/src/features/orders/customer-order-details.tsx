@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Order } from "@aaraj/contracts";
 import { formatBdtPrice } from "@/lib/currency";
@@ -8,12 +8,17 @@ import { formatDateTime } from "@/lib/date-time";
 import { fetchOrder, OrderRequestError } from "./orders-client";
 import { getPathaoCustomerTracking } from "./pathao-client";
 import type { PathaoCustomerTracking } from "@aaraj/contracts";
+import {
+  sendEcommerceEvent,
+  variantEcommerceItem,
+} from "@/features/analytics/gtm-ecommerce";
 
 export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tracking, setTracking] = useState<PathaoCustomerTracking | null>(null);
   const [trackingUnavailable, setTrackingUnavailable] = useState(false);
+  const purchaseTracked = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -36,6 +41,33 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
       active = false;
     };
   }, [orderId]);
+
+  useEffect(() => {
+    if (
+      !order ||
+      !["awaiting_confirmation", "confirmed"].includes(order.status) ||
+      purchaseTracked.current === order.id
+    ) {
+      return;
+    }
+    purchaseTracked.current = order.id;
+    sendEcommerceEvent("purchase", {
+      transaction_id: order.reference,
+      currency: order.currency,
+      value: order.merchandiseGrossBdt,
+      shipping: order.delivery.grossAmountBdt,
+      items: order.lines.map((line) =>
+        variantEcommerceItem({
+          variantId: line.variantId,
+          itemName: line.productName,
+          color: line.color,
+          sizeLabel: line.sizeLabel,
+          price: line.unitPriceBdt,
+          quantity: line.quantity,
+        }),
+      ),
+    }, order.id);
+  }, [order]);
 
   useEffect(() => {
     let active = true;
