@@ -155,10 +155,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
             </header>
 
             <section aria-labelledby="order-items-heading" className="py-6">
-              <h2
-                className="text-sm font-semibold"
-                id="order-items-heading"
-              >
+              <h2 className="text-sm font-semibold" id="order-items-heading">
                 Items
               </h2>
               <ul className="mt-3 divide-y divide-border border-y border-border">

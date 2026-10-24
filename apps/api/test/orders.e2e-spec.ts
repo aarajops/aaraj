@@ -2874,7 +2874,10 @@ describe("COD Orders and checkout", () => {
     );
 
     const pendingFixture = await createGuestOrder(2);
-    const pendingDispatch = await dispatchOrder(pendingFixture.id, staff.cookie);
+    const pendingDispatch = await dispatchOrder(
+      pendingFixture.id,
+      staff.cookie,
+    );
     expect(pendingDispatch.status).toBe(409);
     expect((await orderById(pendingFixture.id))?.status).toBe(
       "awaiting_confirmation",
@@ -2984,7 +2987,6 @@ describe("COD Orders and checkout", () => {
       .expect(200);
     expect(visibleOrder.body.status).toBe("cancelled");
   });
-
 });
 
 function setCookieHeaders(headers: Record<string, unknown>): string[] {

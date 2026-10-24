@@ -34,15 +34,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  ilike,
-  inArray,
-  sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import { AuditService } from "../platform/audit/audit.service.js";
