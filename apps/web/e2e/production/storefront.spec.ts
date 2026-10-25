@@ -82,7 +82,7 @@ test("localhost E2E keeps the live GTM container disabled", async ({
     '<meta name="twitter:image:alt" content="Aaraj logo"',
   );
   expect(crawlerHead).toContain('rel="icon"');
-  expect(crawlerHead).toContain('href="/icon/64"');
+  expect(crawlerHead).toMatch(/href="\/icon\/64(?:\?[^"]*)?"/);
   expect(crawlerHead).toContain('rel="manifest" href="/manifest.webmanifest"');
   expect(crawlerHead).toContain('rel="apple-touch-icon"');
 
