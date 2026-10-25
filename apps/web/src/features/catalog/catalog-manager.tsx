@@ -57,6 +57,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
@@ -684,8 +692,8 @@ export function CatalogManager({
                         Color and size variants
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        Each row is one sellable color and size with its own
-                        SKU.
+                        Each row is a sellable color and size. Use a unique SKU;
+                        prices are whole BDT (0 for free items).
                       </p>
                     </div>
                     <Button
@@ -705,152 +713,211 @@ export function CatalogManager({
                       Add variant
                     </Button>
                   </div>
-                  {variantFields.map((variant, index) => (
-                    <fieldset
-                      className="grid gap-3 rounded-lg bg-background/70 p-3 sm:grid-cols-2"
-                      key={variant.id}
-                    >
-                      <legend className="sr-only">Variant {index + 1}</legend>
-                      <div className="space-y-1 text-sm">
-                        <label htmlFor={`variant-${index}-sku`}>SKU</label>
-                        <Input
-                          id={`variant-${index}-sku`}
-                          aria-describedby={
-                            errors.variants?.[index]?.sku
-                              ? `variant-${index}-sku-error`
-                              : undefined
-                          }
-                          aria-invalid={Boolean(errors.variants?.[index]?.sku)}
-                          className={fieldClassName}
-                          maxLength={100}
-                          required
-                          {...register(`variants.${index}.sku` as const)}
-                        />
-                        {errors.variants?.[index]?.sku && (
-                          <FieldError id={`variant-${index}-sku-error`}>
-                            {errors.variants[index].sku.message}
-                          </FieldError>
-                        )}
-                      </div>
-                      <div className="space-y-1 text-sm">
-                        <label htmlFor={`variant-${index}-color`}>Color</label>
-                        <Input
-                          id={`variant-${index}-color`}
-                          aria-describedby={
-                            errors.variants?.[index]?.color
-                              ? `variant-${index}-color-error`
-                              : undefined
-                          }
-                          aria-invalid={Boolean(
-                            errors.variants?.[index]?.color,
-                          )}
-                          className={fieldClassName}
-                          maxLength={80}
-                          required
-                          {...register(`variants.${index}.color` as const)}
-                        />
-                        {errors.variants?.[index]?.color && (
-                          <FieldError id={`variant-${index}-color-error`}>
-                            {errors.variants[index].color.message}
-                          </FieldError>
-                        )}
-                      </div>
-                      <div className="space-y-1 text-sm">
-                        <label htmlFor={`variant-${index}-size`}>Size</label>
-                        <Input
-                          id={`variant-${index}-size`}
-                          aria-describedby={
-                            errors.variants?.[index]?.sizeLabel
-                              ? `variant-${index}-size-error`
-                              : undefined
-                          }
-                          aria-invalid={Boolean(
-                            errors.variants?.[index]?.sizeLabel,
-                          )}
-                          className={fieldClassName}
-                          maxLength={40}
-                          required
-                          {...register(`variants.${index}.sizeLabel` as const)}
-                        />
-                        {errors.variants?.[index]?.sizeLabel && (
-                          <FieldError id={`variant-${index}-size-error`}>
-                            {errors.variants[index].sizeLabel.message}
-                          </FieldError>
-                        )}
-                      </div>
-                      <div className="space-y-1 text-sm">
-                        <label htmlFor={`variant-${index}-price`}>
-                          Price (BDT)
-                        </label>
-                        <Input
-                          id={`variant-${index}-price`}
-                          aria-describedby={
-                            errors.variants?.[index]?.priceBdt
-                              ? `variant-${index}-price-error variant-${index}-price-help`
-                              : `variant-${index}-price-help`
-                          }
-                          aria-invalid={Boolean(
-                            errors.variants?.[index]?.priceBdt,
-                          )}
-                          className={fieldClassName}
-                          inputMode="numeric"
-                          maxLength={10}
-                          placeholder="1999"
-                          {...register(`variants.${index}.priceBdt` as const)}
-                        />
-                        {errors.variants?.[index]?.priceBdt && (
-                          <FieldError id={`variant-${index}-price-error`}>
-                            {errors.variants[index].priceBdt.message}
-                          </FieldError>
-                        )}
-                        <span
-                          className="block text-xs text-muted-foreground"
-                          id={`variant-${index}-price-help`}
-                        >
-                          Enter whole BDT only. Use 0 for a free product.
-                          Required to publish.
-                        </span>
-                      </div>
-                      <div className="space-y-1 text-sm">
-                        <label htmlFor={`variant-${index}-gtin`}>
-                          GTIN{" "}
-                          <span className="font-normal text-muted-foreground">
-                            (optional)
-                          </span>
-                        </label>
-                        <Input
-                          id={`variant-${index}-gtin`}
-                          aria-describedby={
-                            errors.variants?.[index]?.gtin
-                              ? `variant-${index}-gtin-error`
-                              : undefined
-                          }
-                          aria-invalid={Boolean(errors.variants?.[index]?.gtin)}
-                          className={fieldClassName}
-                          inputMode="numeric"
-                          maxLength={14}
-                          {...register(`variants.${index}.gtin` as const)}
-                        />
-                        {errors.variants?.[index]?.gtin && (
-                          <FieldError id={`variant-${index}-gtin-error`}>
-                            {errors.variants[index].gtin.message}
-                          </FieldError>
-                        )}
-                      </div>
-                      <Button
-                        className="h-auto justify-self-start px-2 py-1 text-sm text-destructive"
-                        type="button"
-                        variant="ghost"
-                        onClick={() => removeVariant(index)}
-                      >
-                        Remove variant
-                      </Button>
-                    </fieldset>
-                  ))}
                   {variantFields.length === 0 && (
                     <p className="text-sm text-muted-foreground">
                       No variants added. Add them before publishing.
                     </p>
+                  )}
+                  {variantFields.length > 0 && (
+                    <div className="rounded-md border">
+                      <Table
+                        className="min-w-max"
+                        scrollRegionLabel="Scrollable product variants"
+                      >
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead scope="col">SKU</TableHead>
+                            <TableHead scope="col">Color</TableHead>
+                            <TableHead scope="col">Size</TableHead>
+                            <TableHead scope="col">Price (BDT)</TableHead>
+                            <TableHead scope="col">GTIN (optional)</TableHead>
+                            <TableHead className="text-right" scope="col">
+                              Actions
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {variantFields.map((variant, index) => (
+                            <TableRow
+                              aria-label={`Variant ${index + 1}`}
+                              key={variant.id}
+                            >
+                              <TableCell className="min-w-40 align-top">
+                                <label
+                                  className="sr-only"
+                                  htmlFor={`variant-${index}-sku`}
+                                >
+                                  SKU
+                                </label>
+                                <Input
+                                  id={`variant-${index}-sku`}
+                                  aria-describedby={
+                                    errors.variants?.[index]?.sku
+                                      ? `variant-${index}-sku-error`
+                                      : undefined
+                                  }
+                                  aria-invalid={Boolean(
+                                    errors.variants?.[index]?.sku,
+                                  )}
+                                  maxLength={100}
+                                  required
+                                  {...register(
+                                    `variants.${index}.sku` as const,
+                                  )}
+                                />
+                                {errors.variants?.[index]?.sku && (
+                                  <FieldError id={`variant-${index}-sku-error`}>
+                                    {errors.variants[index].sku.message}
+                                  </FieldError>
+                                )}
+                              </TableCell>
+                              <TableCell className="min-w-36 align-top">
+                                <label
+                                  className="sr-only"
+                                  htmlFor={`variant-${index}-color`}
+                                >
+                                  Color
+                                </label>
+                                <Input
+                                  id={`variant-${index}-color`}
+                                  aria-describedby={
+                                    errors.variants?.[index]?.color
+                                      ? `variant-${index}-color-error`
+                                      : undefined
+                                  }
+                                  aria-invalid={Boolean(
+                                    errors.variants?.[index]?.color,
+                                  )}
+                                  maxLength={80}
+                                  required
+                                  {...register(
+                                    `variants.${index}.color` as const,
+                                  )}
+                                />
+                                {errors.variants?.[index]?.color && (
+                                  <FieldError
+                                    id={`variant-${index}-color-error`}
+                                  >
+                                    {errors.variants[index].color.message}
+                                  </FieldError>
+                                )}
+                              </TableCell>
+                              <TableCell className="min-w-28 align-top">
+                                <label
+                                  className="sr-only"
+                                  htmlFor={`variant-${index}-size`}
+                                >
+                                  Size
+                                </label>
+                                <Input
+                                  id={`variant-${index}-size`}
+                                  aria-describedby={
+                                    errors.variants?.[index]?.sizeLabel
+                                      ? `variant-${index}-size-error`
+                                      : undefined
+                                  }
+                                  aria-invalid={Boolean(
+                                    errors.variants?.[index]?.sizeLabel,
+                                  )}
+                                  maxLength={40}
+                                  required
+                                  {...register(
+                                    `variants.${index}.sizeLabel` as const,
+                                  )}
+                                />
+                                {errors.variants?.[index]?.sizeLabel && (
+                                  <FieldError
+                                    id={`variant-${index}-size-error`}
+                                  >
+                                    {errors.variants[index].sizeLabel.message}
+                                  </FieldError>
+                                )}
+                              </TableCell>
+                              <TableCell className="min-w-36 align-top">
+                                <label
+                                  className="sr-only"
+                                  htmlFor={`variant-${index}-price`}
+                                >
+                                  Price (BDT)
+                                </label>
+                                <Input
+                                  id={`variant-${index}-price`}
+                                  aria-describedby={
+                                    errors.variants?.[index]?.priceBdt
+                                      ? `variant-${index}-price-error product-variant-price-help`
+                                      : "product-variant-price-help"
+                                  }
+                                  aria-invalid={Boolean(
+                                    errors.variants?.[index]?.priceBdt,
+                                  )}
+                                  inputMode="numeric"
+                                  maxLength={10}
+                                  placeholder="1999"
+                                  {...register(
+                                    `variants.${index}.priceBdt` as const,
+                                  )}
+                                />
+                                {errors.variants?.[index]?.priceBdt && (
+                                  <FieldError
+                                    id={`variant-${index}-price-error`}
+                                  >
+                                    {errors.variants[index].priceBdt.message}
+                                  </FieldError>
+                                )}
+                              </TableCell>
+                              <TableCell className="min-w-36 align-top">
+                                <label
+                                  className="sr-only"
+                                  htmlFor={`variant-${index}-gtin`}
+                                >
+                                  GTIN (optional)
+                                </label>
+                                <Input
+                                  id={`variant-${index}-gtin`}
+                                  aria-describedby={
+                                    errors.variants?.[index]?.gtin
+                                      ? `variant-${index}-gtin-error`
+                                      : undefined
+                                  }
+                                  aria-invalid={Boolean(
+                                    errors.variants?.[index]?.gtin,
+                                  )}
+                                  inputMode="numeric"
+                                  maxLength={14}
+                                  {...register(
+                                    `variants.${index}.gtin` as const,
+                                  )}
+                                />
+                                {errors.variants?.[index]?.gtin && (
+                                  <FieldError
+                                    id={`variant-${index}-gtin-error`}
+                                  >
+                                    {errors.variants[index].gtin.message}
+                                  </FieldError>
+                                )}
+                              </TableCell>
+                              <TableCell className="align-top text-right">
+                                <Button
+                                  aria-label={`Remove variant ${index + 1}`}
+                                  className="text-destructive"
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => removeVariant(index)}
+                                >
+                                  Remove
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                  {variantFields.length > 0 && (
+                    <FieldDescription id="product-variant-price-help">
+                      Use whole BDT amounts; required to publish. Use 0 for a
+                      free item.
+                    </FieldDescription>
                   )}
                   {errors.variants?.root?.message && (
                     <FieldError id="product-variants-error">

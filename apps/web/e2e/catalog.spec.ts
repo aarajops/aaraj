@@ -740,6 +740,6 @@ test("customer Order page explains serviceability timeout cancellation", async (
 
 function variantField(page: Page, index: number, label: string) {
   return page
-    .getByRole("group", { name: `Variant ${index}` })
+    .getByRole("row", { name: `Variant ${index}` })
     .getByLabel(label, { exact: true });
 }
