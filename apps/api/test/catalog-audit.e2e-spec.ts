@@ -956,12 +956,16 @@ describe("catalog and security audit", () => {
       )
       .set("Cookie", owner.cookie)
       .expect(200);
-    expect(categoryAuditPage.body.events).toHaveLength(2);
+    expect(categoryAuditPage.body.events).toHaveLength(3);
     expect(
       categoryAuditPage.body.events.map(
         (event: { subjectType: string }) => event.subjectType,
       ),
-    ).toEqual(["catalog_category", "catalog_category"]);
+    ).toEqual([
+      "catalog_category",
+      "catalog_category",
+      "catalog_category",
+    ]);
     expect(page.body.events).toHaveLength(1);
     expect(page.body.nextCursor).toEqual(expect.any(String));
     expect(() =>
