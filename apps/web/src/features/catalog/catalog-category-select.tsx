@@ -59,7 +59,7 @@ export function CatalogCategorySelect({
         );
         if (!result.success) throw new Error("Invalid category options");
         if (!active) return;
-        setCategories(result.data.categories.filter(({ isLeaf }) => isLeaf));
+        setCategories(result.data.categories);
         setLoadState("ready");
       })
       .catch(() => {
@@ -70,12 +70,13 @@ export function CatalogCategorySelect({
     };
   }, []);
 
+  const productCategories = categories.filter(({ isLeaf }) => isLeaf);
   const emptyLabel =
     loadState === "loading"
       ? "Loading categories…"
-      : categories.length
+      : productCategories.length
         ? "Choose a category"
-        : "No product categories available";
+        : "No active product categories available";
 
   return (
     <Field>
@@ -83,11 +84,13 @@ export function CatalogCategorySelect({
         {label}
       </FieldLabel>
       <Select
-        disabled={loadState !== "ready" || categories.length === 0}
+        disabled={loadState !== "ready" || productCategories.length === 0}
         items={[
           { label: emptyLabel, value: null },
           ...categories.map((category) => ({
-            label: category.path,
+            label: category.isLeaf
+              ? category.path
+              : `${category.path} (category group)`,
             value: category.id,
           })),
         ]}
@@ -119,8 +122,14 @@ export function CatalogCategorySelect({
         <SelectContent>
           <SelectItem value={null}>{emptyLabel}</SelectItem>
           {categories.map((category) => (
-            <SelectItem key={category.id} value={category.id}>
-              {category.path}
+            <SelectItem
+              key={category.id}
+              value={category.id}
+              disabled={!category.isLeaf}
+            >
+              {category.isLeaf
+                ? category.path
+                : `${category.path} (category group)`}
             </SelectItem>
           ))}
         </SelectContent>
@@ -133,10 +142,16 @@ export function CatalogCategorySelect({
           Product categories could not be loaded. Try again later.
         </FieldError>
       )}
-      {loadState === "ready" && categories.length === 0 && (
+      {loadState === "ready" && productCategories.length === 0 && (
         <FieldDescription>
           An administrator needs to add an active leaf category before this item
           can be assigned.
+        </FieldDescription>
+      )}
+      {loadState === "ready" && productCategories.length > 0 && (
+        <FieldDescription>
+          Parent categories are groups. Choose a leaf category for the product
+          or size guide.
         </FieldDescription>
       )}
     </Field>

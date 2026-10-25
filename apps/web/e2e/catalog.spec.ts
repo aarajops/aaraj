@@ -123,6 +123,14 @@ test("staff manages reusable size guides and apparel products safely", async ({
     page.getByRole("heading", { name: "Create size guide", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill("Aaraj Classic Tee");
+  await page.getByRole("combobox", { name: "Product category" }).click();
+  await expect(
+    page.getByRole("option", { name: "Clothing (category group)" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("option", { name: "Clothing / T-shirts" }),
+  ).toBeEnabled();
+  await page.keyboard.press("Escape");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional)").fill("Regular");
   await chooseSelectOption(page, "Enter measurements in", "Inches (in)");
