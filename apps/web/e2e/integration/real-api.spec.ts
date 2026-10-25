@@ -403,7 +403,7 @@ test("admin updates public storefront settings through to the rendered header", 
 
   await page.getByRole("tab", { name: "Store", exact: true }).click();
   await page.getByLabel("Store name").fill("AARAJ Festive Edit");
-  await page.getByLabel("Show announcement banner").check();
+  await page.getByRole("switch", { name: "Announcement banner" }).click();
   await page
     .getByLabel("Announcement text")
     .fill("Step into the festive season with AARAJ");
@@ -823,7 +823,7 @@ test("admin uploads and publishes a catalog banner through to the storefront", a
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.getByRole("button", { name: "Next promotion" }).click();
-  await expect(page.locator('[aria-live="polite"]')).toHaveText("Slide 2 of 2");
+  await expect(page.getByText("Slide 2 of 2", { exact: true })).toBeVisible();
 });
 
 test("catalog operator configures a product through to storefront visibility", async ({
@@ -1503,7 +1503,7 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("heading", { name: "Orders", level: 1 }),
   ).toBeVisible();
   const customerOrderRow = page.getByRole("row").filter({
-    has: page.getByRole("link", { name: "Review" }).first(),
+    has: page.getByRole("link", { name: orderReference }),
   });
   await expect(customerOrderRow).toContainText("Pending Manual Review");
   const managedOrderResponse = await page.request.get(
