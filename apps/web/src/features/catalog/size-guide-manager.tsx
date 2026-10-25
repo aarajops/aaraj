@@ -22,6 +22,7 @@ import { CatalogCategorySelect } from "@/features/catalog/catalog-category-selec
 import { catalogMeasurementLabels } from "@/features/catalog/size-guide-labels";
 import {
   blankGuideForm,
+  formatMeasurementInput,
   guideFormSchema,
   toSizeGuideFormState,
   type GuideForm,
@@ -45,6 +46,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 const keys = CatalogMeasurementKeySchema.options;
 const inputClassName =
@@ -105,10 +114,12 @@ export function SizeGuideManager({
       current.keys.forEach((key) => {
         setValue(
           `rows.${index}.values.${key}`,
-          convertCatalogMeasurementValue(
-            row.values[key] ?? "",
-            current.inputUnit,
-            inputUnit,
+          formatMeasurementInput(
+            convertCatalogMeasurementValue(
+              row.values[key] ?? "",
+              current.inputUnit,
+              inputUnit,
+            ),
           ),
           { shouldDirty: true },
         );
@@ -455,88 +466,135 @@ export function SizeGuideManager({
                       Add size
                     </Button>
                   </div>
-                  {rowFields.map((row, index) => (
-                    <fieldset
-                      className="space-y-3 rounded-xl border border-border bg-background/70 p-4"
-                      key={row.id}
-                    >
-                      <legend className="sr-only">Size row {index + 1}</legend>
-                      <div className="space-y-1 text-sm font-medium">
-                        <label htmlFor={`size-label-${index}`}>
-                          Size label
-                        </label>
-                        <Input
-                          aria-describedby={
-                            errors.rows?.[index]?.sizeLabel
-                              ? `size-label-${index}-error`
-                              : undefined
-                          }
-                          aria-invalid={Boolean(
-                            errors.rows?.[index]?.sizeLabel,
-                          )}
-                          className={inputClassName}
-                          id={`size-label-${index}`}
-                          maxLength={40}
-                          required
-                          {...register(`rows.${index}.sizeLabel` as const)}
-                          placeholder="Example: M or One Size"
-                        />
-                        {errors.rows?.[index]?.sizeLabel && (
-                          <FieldError id={`size-label-${index}-error`}>
-                            {errors.rows[index].sizeLabel.message}
-                          </FieldError>
-                        )}
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {selectedKeys.map((key) => (
-                          <div className="space-y-1 text-sm" key={key}>
-                            <label htmlFor={`size-${index}-${key}`}>
-                              {catalogMeasurementLabels[key]} ({inputUnit})
-                            </label>
-                            <Input
-                              aria-describedby={
-                                errors.rows?.[index]?.values?.[key]
-                                  ? `size-${index}-${key}-error`
-                                  : undefined
-                              }
-                              aria-invalid={Boolean(
-                                errors.rows?.[index]?.values?.[key],
-                              )}
-                              className={inputClassName}
-                              id={`size-${index}-${key}`}
-                              inputMode="decimal"
-                              max="9999.999"
-                              min="0.001"
-                              required
-                              step="0.001"
-                              type="number"
-                              {...register(
-                                `rows.${index}.values.${key}` as const,
-                              )}
-                            />
-                            {errors.rows?.[index]?.values?.[key] && (
-                              <FieldError id={`size-${index}-${key}-error`}>
-                                {errors.rows[index].values[key].message}
-                              </FieldError>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <Button
-                        className="h-auto px-2 py-1 text-sm text-destructive"
-                        type="button"
-                        variant="ghost"
-                        onClick={() => removeRow(index)}
-                      >
-                        Remove size
-                      </Button>
-                    </fieldset>
-                  ))}
                   {rowFields.length === 0 && (
                     <p className="text-sm text-muted-foreground">
                       Add each size sold for this guide. “One Size” is a valid
                       label.
                     </p>
+                  )}
+                  {rowFields.length > 0 && (
+                    <div className="rounded-md border">
+                      <Table
+                        className="min-w-max"
+                        scrollRegionLabel="Scrollable size guide measurements"
+                      >
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead scope="col">Size label</TableHead>
+                            {selectedKeys.map((key) => (
+                              <TableHead key={key} scope="col">
+                                {catalogMeasurementLabels[key]} ({inputUnit})
+                              </TableHead>
+                            ))}
+                            <TableHead className="text-right" scope="col">
+                              Actions
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {rowFields.map((row, index) => (
+                            <TableRow key={row.id}>
+                              <TableCell className="min-w-40 align-top">
+                                <label
+                                  className="sr-only"
+                                  htmlFor={`size-label-${index}`}
+                                >
+                                  Size label, row {index + 1}
+                                </label>
+                                <Input
+                                  aria-describedby={
+                                    errors.rows?.[index]?.sizeLabel
+                                      ? `size-label-${index}-error`
+                                      : undefined
+                                  }
+                                  aria-invalid={Boolean(
+                                    errors.rows?.[index]?.sizeLabel,
+                                  )}
+                                  id={`size-label-${index}`}
+                                  maxLength={40}
+                                  placeholder="e.g. M"
+                                  required
+                                  {...register(
+                                    `rows.${index}.sizeLabel` as const,
+                                  )}
+                                />
+                                {errors.rows?.[index]?.sizeLabel && (
+                                  <FieldError id={`size-label-${index}-error`}>
+                                    {errors.rows[index].sizeLabel.message}
+                                  </FieldError>
+                                )}
+                              </TableCell>
+                              {selectedKeys.map((key) => {
+                                const fieldName =
+                                  `rows.${index}.values.${key}` as const;
+                                const fieldRegistration = register(fieldName);
+                                const fieldId = `size-${index}-${key}`;
+                                const fieldError =
+                                  errors.rows?.[index]?.values?.[key];
+
+                                return (
+                                  <TableCell
+                                    className="min-w-40 align-top"
+                                    key={key}
+                                  >
+                                    <label
+                                      className="sr-only"
+                                      htmlFor={fieldId}
+                                    >
+                                      {`${catalogMeasurementLabels[key]} (${inputUnit}), size row ${index + 1}`}
+                                    </label>
+                                    <Input
+                                      aria-describedby={
+                                        fieldError
+                                          ? `${fieldId}-error`
+                                          : undefined
+                                      }
+                                      aria-invalid={Boolean(fieldError)}
+                                      id={fieldId}
+                                      inputMode="decimal"
+                                      max="9999.999"
+                                      min="0.001"
+                                      required
+                                      step="0.001"
+                                      type="number"
+                                      {...fieldRegistration}
+                                      onBlur={(event) => {
+                                        const value = event.currentTarget.value;
+                                        void fieldRegistration.onBlur(event);
+                                        const formattedValue =
+                                          formatMeasurementInput(value);
+                                        if (formattedValue !== value) {
+                                          setValue(fieldName, formattedValue, {
+                                            shouldDirty: true,
+                                            shouldValidate: true,
+                                          });
+                                        }
+                                      }}
+                                    />
+                                    {fieldError && (
+                                      <FieldError id={`${fieldId}-error`}>
+                                        {fieldError.message}
+                                      </FieldError>
+                                    )}
+                                  </TableCell>
+                                );
+                              })}
+                              <TableCell className="align-top text-right">
+                                <Button
+                                  aria-label={`Remove size row ${index + 1}`}
+                                  className="text-destructive"
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => removeRow(index)}
+                                >
+                                  Remove
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                   {errors.rows?.root?.message && (
                     <FieldError id="guide-rows-error">

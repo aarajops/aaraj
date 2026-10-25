@@ -40,6 +40,17 @@ export type GuideSubmission =
   | { id: null; input: CatalogSizeGuideCreateInput }
   | { id: string; input: CatalogSizeGuideUpdateInput };
 
+export function formatMeasurementInput(value: string): string {
+  if (!/^\d+(?:\.\d+)?$/.test(value)) return value;
+
+  const decimalIndex = value.indexOf(".");
+  if (decimalIndex === -1) return value;
+
+  const whole = value.slice(0, decimalIndex);
+  const fraction = value.slice(decimalIndex + 1).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+
 function toGuideSubmission(form: GuideForm): GuideSubmission {
   const input = {
     name: form.name.trim(),
@@ -150,7 +161,10 @@ export function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
     rows: guide.rows.map((row) => ({
       sizeLabel: row.sizeLabel,
       values: Object.fromEntries(
-        row.measurements.map(({ key, valueCm }) => [key, valueCm]),
+        row.measurements.map(({ key, valueCm }) => [
+          key,
+          formatMeasurementInput(valueCm),
+        ]),
       ),
     })),
   };
