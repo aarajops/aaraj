@@ -1571,17 +1571,15 @@ test("catalog operator configures a product through to storefront visibility", a
     }),
   ).toBeVisible();
   await expect(
-    page.getByText("COD due on delivery", { exact: true }),
+    page.getByText("Total due on delivery", { exact: true }),
   ).toBeVisible();
   const pathaoTracking = page.getByRole("region", {
-    name: "Pathao delivery tracking",
+    name: "Courier tracking",
   });
   await expect(pathaoTracking).toHaveCount(0);
-  await expect(
-    page.getByRole("status").filter({
-      hasText: "Delivery and COD collection are tracked separately",
-    }),
-  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(
+    "Handed to Integration Dispatch Desk on",
+  );
 
   await page.goto(`/admin/orders/${customerOrderId}`);
   await expect(
@@ -1615,7 +1613,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("status").filter({ hasText: "recorded as delivered" }),
   ).toBeVisible();
-  await expect(page.getByText("Collected", { exact: true })).toBeVisible();
+  await expect(page.getByText("COD collected", { exact: true })).toBeVisible();
 
   await page.goto("/admin");
   await page.locator("summary[aria-label^='Account menu for']").click();

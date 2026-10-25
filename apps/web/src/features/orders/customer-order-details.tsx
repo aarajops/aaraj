@@ -186,6 +186,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                 Payment
               </h2>
               <dl className="mt-3 grid gap-2 text-sm">
+                <DataRow label="Payment method" value="Cash on Delivery" />
                 <DataRow
                   label="Delivery fee"
                   value={formatBdtPrice({
@@ -468,7 +469,7 @@ function getSettlementSummary(order: Order) {
 
   return {
     label: "Total due on delivery",
-    detail: "Cash on Delivery · Uncollected; no payment was taken at checkout",
+    detail: "Uncollected; no payment was taken at checkout",
     amount: formatBdtPrice({ amountBdt: order.codAmountDueBdt }),
   };
 }
