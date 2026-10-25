@@ -17,18 +17,16 @@ export default async function StorefrontSettingsPage() {
   const categoryOptions = await getPublicCatalogCategories();
 
   return (
-    <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10">
-      <div className="mx-auto w-full max-w-4xl">
-        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-          AARAJ ADMIN
+    <main className="flex-1 bg-background px-4 py-7 text-foreground sm:px-8 sm:py-10">
+      <div className="container mx-auto">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Settings
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
           Storefront settings
         </h1>
-        <p className="mt-3 max-w-2xl text-muted-foreground">
-          Manage store branding, the announcement banner, public contact
-          details, social links, homepage categories, header navigation, and
-          footer content.
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+          Manage the details customers see on your store.
         </p>
         <StorefrontSettingsManager categoryOptions={categoryOptions} />
       </div>

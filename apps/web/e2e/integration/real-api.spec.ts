@@ -9,6 +9,16 @@ function variantField(page: Page, index: number, label: string) {
     .getByLabel(label, { exact: true });
 }
 
+async function chooseAssetFile(
+  page: Page,
+  buttonName: string,
+  file: { name: string; mimeType: string; buffer: Buffer },
+) {
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: buttonName, exact: true }).click();
+  await (await fileChooserPromise).setFiles(file);
+}
+
 const brandPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
   "base64",
@@ -324,23 +334,23 @@ test("admin updates public storefront settings through to the rendered header", 
   ).toBeVisible();
 
   const saveSettings = page.getByRole("button", {
-    name: "Save storefront settings",
+    name: "Save changes",
   });
+  await page.getByRole("tab", { name: "Store", exact: true }).click();
   const initialStoreName = await page.getByLabel("Store name").inputValue();
   await expect(saveSettings).toBeDisabled();
   await page.getByLabel("Store name").fill(`${initialStoreName} temporary`);
   await expect(saveSettings).toBeEnabled();
   await page.getByLabel("Store name").fill(initialStoreName);
   await expect(saveSettings).toBeDisabled();
-  await page.getByLabel("Storefront logo lockup").setInputFiles({
+  await page.getByRole("tab", { name: "Brand", exact: true }).click();
+  await chooseAssetFile(page, "Choose store logo file", {
     name: "store-logo.png",
     mimeType: "image/png",
     buffer: brandPng,
   });
   await page.getByRole("button", { name: "Upload logo" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Logo uploaded and published.",
-  );
+  await expect(page.getByText("Logo uploaded", { exact: true })).toBeVisible();
 
   const logoOnlySettings = await page.request
     .get("/api/v1/storefront/settings")
@@ -361,39 +371,52 @@ test("admin updates public storefront settings through to the rendered header", 
   expect(logoOnlyShareImage).toBeTruthy();
   expect(new URL(logoOnlyShareImage!).pathname).toBe(logoOnlySettings.logo.src);
 
-  await page.getByLabel("Square brand icon").setInputFiles({
+  await chooseAssetFile(page, "Choose brand icon file", {
     name: "store-brand-icon.png",
     mimeType: "image/png",
     buffer: brandIconPng,
   });
-  await page.getByRole("button", { name: "Upload brand icon" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Brand icon uploaded and published.",
-  );
+  await page.getByRole("button", { name: "Upload icon" }).click();
+  await expect(
+    page.getByText("Brand icon uploaded", { exact: true }),
+  ).toBeVisible();
 
-  await page.getByLabel("Small browser favicon override").setInputFiles({
+  await chooseAssetFile(page, "Choose favicon file", {
     name: "store-favicon.png",
     mimeType: "image/png",
     buffer: brandPng,
   });
   await page.getByRole("button", { name: "Upload favicon" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Favicon uploaded and published.",
-  );
+  await expect(
+    page.getByText("Favicon uploaded", { exact: true }),
+  ).toBeVisible();
 
-  await page.getByLabel("Social sharing image").setInputFiles({
+  await chooseAssetFile(page, "Choose social sharing image file", {
     name: "social-preview.png",
     mimeType: "image/png",
     buffer: brandPng,
   });
-  await page.getByRole("button", { name: "Upload social image" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Social image uploaded and published.",
-  );
+  await page.getByRole("button", { name: "Upload image" }).click();
+  await expect(
+    page.getByText("Social image uploaded", { exact: true }),
+  ).toBeVisible();
 
+  await page.getByRole("tab", { name: "Store", exact: true }).click();
   await page.getByLabel("Store name").fill("AARAJ Festive Edit");
+  await page.getByLabel("Show announcement banner").check();
+  await page
+    .getByLabel("Announcement text")
+    .fill("Step into the festive season with AARAJ");
+  await page.getByLabel("Customer support phone").fill("+8801712345678");
+  await page.getByLabel("Customer support email").fill("help@aaraj.example");
+  await page.getByLabel("Business address").fill("Dhaka, Bangladesh");
+  await page.getByLabel("Instagram URL").fill("https://instagram.com/aaraj");
+
+  await page.getByRole("tab", { name: "Brand", exact: true }).click();
   await page.getByLabel("Brand color").fill("#8c2b2b");
   await page.getByLabel("Background color").fill("#f8f8f8fa");
+
+  await page.getByRole("tab", { name: "SEO", exact: true }).click();
   await page
     .getByLabel("Site title")
     .fill("AARAJ Festive Edit | Modern fashion");
@@ -403,14 +426,8 @@ test("admin updates public storefront settings through to the rendered header", 
   await page
     .getByLabel("Social image description")
     .fill("AARAJ seasonal collection against a warm background");
-  await page.getByLabel("Show announcement banner").check();
-  await page
-    .getByLabel("Announcement text")
-    .fill("Step into the festive season with AARAJ");
-  await page.getByLabel("Customer support phone").fill("+8801712345678");
-  await page.getByLabel("Customer support email").fill("help@aaraj.example");
-  await page.getByLabel("Business address").fill("Dhaka, Bangladesh");
-  await page.getByLabel("Instagram URL").fill("https://instagram.com/aaraj");
+
+  await page.getByRole("tab", { name: "Content", exact: true }).click();
   await page.getByRole("button", { name: "Add about us link" }).click();
   await page.locator("#footer-about-0-label").fill("Contact us");
   await page.locator("#footer-about-0-href").fill("/contact");
@@ -421,11 +438,9 @@ test("admin updates public storefront settings through to the rendered header", 
   await expect(
     page.getByRole("combobox", { name: "Catalog category" }),
   ).toContainText(headerCategoryName);
-  await page.getByRole("button", { name: "Save storefront settings" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect(
-    page.getByRole("status").filter({
-      hasText: "Storefront settings saved.",
-    }),
+    page.getByText("Storefront settings saved", { exact: true }),
   ).toBeVisible();
 
   const publicSettingsResponse = await page.request.get(

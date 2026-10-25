@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ApiErrorResponseSchema,
@@ -11,7 +11,16 @@ import {
   type StorefrontSettings,
   type StorefrontSettingsUpdate,
 } from "@aaraj/contracts";
+import {
+  ArrowDown,
+  ArrowUp,
+  ImagePlus,
+  LoaderCircle,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +31,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import { hasDirtyFieldsExcept } from "@/lib/form-dirty-state";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
@@ -70,7 +82,7 @@ export function StorefrontSettingsManager({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("brand");
   const {
     control,
     register,
@@ -140,9 +152,9 @@ export function StorefrontSettingsManager({
     useWatch({ control, name: "headerNavigation" }) ?? [];
   const announcementEnabled =
     useWatch({ control, name: "announcementEnabled" }) ?? false;
-  const announcementText =
-    useWatch({ control, name: "announcementText" }) ?? "";
   const siteName = useWatch({ control, name: "siteName" }) ?? "";
+  const brandColor = useWatch({ control, name: "brandColor" }) ?? "";
+  const backgroundColor = useWatch({ control, name: "backgroundColor" }) ?? "";
   const changed =
     settings && hasDirtyFieldsExcept(dirtyFields, ["expectedVersion"]);
   const logoInput = useRef<HTMLInputElement>(null);
@@ -189,8 +201,6 @@ export function StorefrontSettingsManager({
   async function save(input: StorefrontSettingsUpdate) {
     if (!settings || saving || !changed) return;
     setSaving(true);
-    setError(null);
-    setNotice(null);
     try {
       const response = await updateManagedStorefrontSettings(input);
       const body: unknown = await response.json().catch(() => null);
@@ -205,13 +215,14 @@ export function StorefrontSettingsManager({
       }
       setSettings(result.data);
       reset(toStorefrontSettingsDraft(result.data));
-      setNotice("Storefront settings saved.");
+      toast.add({ title: "Storefront settings saved", type: "success" });
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Storefront settings could not be saved.",
-      );
+      toast.add({
+        title: "Could not save storefront settings",
+        description:
+          saveError instanceof Error ? saveError.message : "Please try again.",
+        type: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -229,8 +240,6 @@ export function StorefrontSettingsManager({
             : socialImageFile;
     if (!file) return;
     setUploading(kind);
-    setError(null);
-    setNotice(null);
     try {
       const response = await uploadStorefrontBrandAsset(
         kind,
@@ -262,13 +271,20 @@ export function StorefrontSettingsManager({
         setSocialImageFile(null);
         if (socialImageInput.current) socialImageInput.current.value = "";
       }
-      setNotice(`${assetLabels[kind]} uploaded and published.`);
+      toast.add({
+        title: `${assetLabels[kind]} uploaded`,
+        description: "Your storefront image is now live.",
+        type: "success",
+      });
     } catch (uploadError) {
-      setError(
-        uploadError instanceof Error
-          ? uploadError.message
-          : `The ${kind} could not be uploaded.`,
-      );
+      toast.add({
+        title: `Could not upload ${assetLabels[kind].toLowerCase()}`,
+        description:
+          uploadError instanceof Error
+            ? uploadError.message
+            : "Please try again.",
+        type: "error",
+      });
     } finally {
       setUploading(null);
     }
@@ -277,8 +293,6 @@ export function StorefrontSettingsManager({
   async function clearAsset(kind: StorefrontBrandAssetKind) {
     if (!settings || uploading || clearing) return;
     setClearing(kind);
-    setError(null);
-    setNotice(null);
     try {
       const response = await clearStorefrontBrandAsset(kind, settings.version);
       const body: unknown = await response.json().catch(() => null);
@@ -293,13 +307,20 @@ export function StorefrontSettingsManager({
       }
       setSettings(result.data);
       setValue("expectedVersion", result.data.version, { shouldDirty: false });
-      setNotice(`${assetLabels[kind]} removed.`);
+      toast.add({
+        title: `${assetLabels[kind]} removed`,
+        description: "Your storefront has been updated.",
+        type: "success",
+      });
     } catch (clearError) {
-      setError(
-        clearError instanceof Error
-          ? clearError.message
-          : `The ${kind} could not be removed.`,
-      );
+      toast.add({
+        title: `Could not remove ${assetLabels[kind].toLowerCase()}`,
+        description:
+          clearError instanceof Error
+            ? clearError.message
+            : "Please try again.",
+        type: "error",
+      });
     } finally {
       setClearing(null);
     }
@@ -351,823 +372,771 @@ export function StorefrontSettingsManager({
     ({ id }) => !configuredCategoryIds.has(id),
   );
 
+  function showValidationErrors(formErrors: typeof errors) {
+    const fields = Object.keys(formErrors);
+    if (
+      fields.some((field) =>
+        [
+          "headerNavigation",
+          "homepageCategoryIds",
+          "homepageCategoriesEnabled",
+          "footerDescription",
+          "footerLinkGroups",
+          "footerCategoryIds",
+        ].includes(field),
+      )
+    ) {
+      setActiveTab("content");
+    } else if (
+      fields.some((field) =>
+        [
+          "siteName",
+          "announcementEnabled",
+          "announcementText",
+          "supportPhone",
+          "supportEmail",
+          "businessAddress",
+          "socialLinks",
+        ].includes(field),
+      )
+    ) {
+      setActiveTab("contact");
+    } else if (
+      fields.some((field) =>
+        ["seoTitle", "seoDescription", "socialImageAlt"].includes(field),
+      )
+    ) {
+      setActiveTab("seo");
+    } else {
+      setActiveTab("brand");
+    }
+  }
+
   return (
-    <section className="mt-8 rounded-2xl border border-border p-5 sm:p-7">
-      <h2 className="text-xl font-semibold">Storefront configuration</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Manage the public identity, contact information, header navigation,
-        social links, and storefront footer.
-      </p>
+    <section className="mt-8 overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-5 py-5 sm:px-6">
+        <h2 className="text-lg font-semibold">Store configuration</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Update your brand, storefront content, contact details, and search
+          appearance.
+        </p>
+      </div>
 
       {error && (
         <p
-          className="mt-5 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+          className="mx-5 mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive sm:mx-6"
           role="alert"
         >
           {error}
         </p>
       )}
-      {notice && (
+      {loading ? (
         <p
-          className="mt-5 rounded-lg border border-emerald-600/30 bg-emerald-600/10 p-3 text-sm"
+          className="px-5 py-8 text-sm text-muted-foreground sm:px-6"
           role="status"
         >
-          {notice}
-        </p>
-      )}
-
-      {loading ? (
-        <p className="mt-6" role="status">
-          Loading storefront settings…
+          Loading settings…
         </p>
       ) : settings ? (
         <form
-          className="mt-6 grid gap-8"
+          className="grid"
           noValidate
-          onSubmit={handleSubmit(save, () => setNotice(null))}
+          onSubmit={handleSubmit(save, showValidationErrors)}
         >
-          {Object.keys(errors).length > 0 && (
-            <ul
-              className="grid gap-1 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-              role="alert"
+          <div className="grid gap-5 px-5 py-5 sm:px-6">
+            {Object.keys(errors).length > 0 && (
+              <ul
+                className="grid gap-1 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                {collectFieldErrorMessages(errors).map((message, index) => (
+                  <li key={`${message}-${index}`}>{message}</li>
+                ))}
+              </ul>
+            )}
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => {
+                if (typeof value === "string") setActiveTab(value);
+              }}
             >
-              {collectFieldErrorMessages(errors).map((message, index) => (
-                <li key={`${message}-${index}`}>{message}</li>
-              ))}
-            </ul>
-          )}
-          <section
-            aria-labelledby="brand-assets-heading"
-            className="grid gap-5"
-          >
-            <div>
-              <h3 className="text-lg font-semibold" id="brand-assets-heading">
-                Brand assets
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Upload PNG, JPEG, or WebP files up to 5 MB. Images are
-                normalized before publication; SVG files are not accepted.
-              </p>
-            </div>
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              <Field>
-                <FieldLabel htmlFor="storefront-logo">
-                  Storefront logo lockup
-                </FieldLabel>
-                <Input
-                  ref={logoInput}
-                  accept="image/png,image/jpeg,image/webp"
-                  id="storefront-logo"
-                  type="file"
-                  onChange={(event) =>
-                    setLogoFile(event.currentTarget.files?.[0] ?? null)
-                  }
-                />
-                {settings.logo ? (
-                  <Image
-                    alt="Current store logo preview"
-                    className="max-h-16 max-w-56 object-contain"
-                    height={settings.logo.height}
-                    src={settings.logo.src}
-                    unoptimized
-                    width={settings.logo.width}
-                  />
-                ) : (
-                  <FieldDescription>No logo uploaded.</FieldDescription>
-                )}
-                <FieldDescription>
-                  Wide brand artwork shown in the storefront header and footer.
-                </FieldDescription>
-                {logoFile && (
-                  <FieldDescription>Selected: {logoFile.name}</FieldDescription>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={
-                      !logoFile || uploading !== null || clearing !== null
-                    }
-                    type="button"
-                    onClick={() => void uploadAsset("logo")}
+              <TabsList aria-label="Storefront settings sections">
+                <TabsTrigger value="brand">Brand</TabsTrigger>
+                <TabsTrigger value="contact">Store</TabsTrigger>
+                <TabsTrigger value="content">Content</TabsTrigger>
+                <TabsTrigger value="seo">SEO</TabsTrigger>
+              </TabsList>
+              <TabsContent keepMounted value="brand">
+                <div className="grid gap-7">
+                  <section
+                    aria-labelledby="brand-assets-heading"
+                    className="grid gap-4"
                   >
-                    {uploading === "logo" ? "Uploading…" : "Upload logo"}
-                  </Button>
-                  {settings.logo && (
-                    <Button
-                      disabled={uploading !== null || clearing !== null}
-                      type="button"
-                      variant="outline"
-                      onClick={() => void clearAsset("logo")}
-                    >
-                      {clearing === "logo" ? "Removing…" : "Remove logo"}
-                    </Button>
-                  )}
-                </div>
-              </Field>
+                    <SectionHeading
+                      id="brand-assets-heading"
+                      title="Brand assets"
+                      description="Add the images customers see across your store and when they share a link."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Up to 5 MB per image · formats vary by asset
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                      <AssetUploadCard
+                        title="Store logo"
+                        description="Wide header and footer artwork. PNG, JPEG or WebP."
+                        accept="image/png,image/jpeg,image/webp"
+                        inputRef={logoInput}
+                        current={settings.logo}
+                        file={logoFile}
+                        uploadLabel="Upload logo"
+                        uploading={uploading === "logo"}
+                        clearing={clearing === "logo"}
+                        disabled={uploading !== null || clearing !== null}
+                        onFileChange={setLogoFile}
+                        onUpload={() => void uploadAsset("logo")}
+                        onClear={() => void clearAsset("logo")}
+                      />
+                      <AssetUploadCard
+                        title="Brand icon"
+                        description="Square PNG or WebP. 1024 × 1024 source recommended."
+                        accept="image/png,image/webp"
+                        inputRef={brandIconInput}
+                        current={settings.brandIcon}
+                        file={brandIconFile}
+                        uploadLabel="Upload icon"
+                        uploading={uploading === "brandIcon"}
+                        clearing={clearing === "brandIcon"}
+                        disabled={uploading !== null || clearing !== null}
+                        onFileChange={setBrandIconFile}
+                        onUpload={() => void uploadAsset("brandIcon")}
+                        onClear={() => void clearAsset("brandIcon")}
+                      />
+                      <AssetUploadCard
+                        title="Favicon"
+                        description="Optional 64 × 64 browser tab icon. Brand icon is the default."
+                        accept="image/png,image/jpeg,image/webp"
+                        inputRef={faviconInput}
+                        current={settings.favicon}
+                        file={faviconFile}
+                        uploadLabel="Upload favicon"
+                        uploading={uploading === "favicon"}
+                        clearing={clearing === "favicon"}
+                        disabled={uploading !== null || clearing !== null}
+                        onFileChange={setFaviconFile}
+                        onUpload={() => void uploadAsset("favicon")}
+                        onClear={() => void clearAsset("favicon")}
+                      />
+                      <AssetUploadCard
+                        title="Social sharing image"
+                        description="Landscape image for link previews. Published at 1200 × 630."
+                        accept="image/png,image/jpeg,image/webp"
+                        inputRef={socialImageInput}
+                        current={settings.socialImage}
+                        file={socialImageFile}
+                        uploadLabel="Upload image"
+                        uploading={uploading === "socialImage"}
+                        clearing={clearing === "socialImage"}
+                        disabled={uploading !== null || clearing !== null}
+                        onFileChange={setSocialImageFile}
+                        onUpload={() => void uploadAsset("socialImage")}
+                        onClear={() => void clearAsset("socialImage")}
+                      />
+                    </div>
+                  </section>
 
-              <Field>
-                <FieldLabel htmlFor="storefront-brand-icon">
-                  Square brand icon
-                </FieldLabel>
-                <Input
-                  ref={brandIconInput}
-                  accept="image/png,image/webp"
-                  id="storefront-brand-icon"
-                  type="file"
-                  onChange={(event) =>
-                    setBrandIconFile(event.currentTarget.files?.[0] ?? null)
-                  }
-                />
-                {settings.brandIcon ? (
-                  <Image
-                    alt="Current square brand icon preview"
-                    className="size-16 rounded border border-border bg-background object-contain"
-                    height={settings.brandIcon.height}
-                    src={settings.brandIcon.src}
-                    unoptimized
-                    width={settings.brandIcon.width}
-                  />
-                ) : (
-                  <FieldDescription>No brand icon uploaded.</FieldDescription>
-                )}
-                <FieldDescription>
-                  Used for generated browser and app icons. Upload a square,
-                  transparent PNG or WebP; a 1024 × 1024 source is recommended.
-                </FieldDescription>
-                {brandIconFile && (
-                  <FieldDescription>
-                    Selected: {brandIconFile.name}
-                  </FieldDescription>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={
-                      !brandIconFile || uploading !== null || clearing !== null
-                    }
-                    type="button"
-                    onClick={() => void uploadAsset("brandIcon")}
+                  <section
+                    aria-labelledby="storefront-appearance-heading"
+                    className="grid gap-5 rounded-xl border border-border p-4 sm:p-5"
                   >
-                    {uploading === "brandIcon"
-                      ? "Uploading…"
-                      : "Upload brand icon"}
-                  </Button>
-                  {settings.brandIcon && (
-                    <Button
-                      disabled={uploading !== null || clearing !== null}
-                      type="button"
-                      variant="outline"
-                      onClick={() => void clearAsset("brandIcon")}
-                    >
-                      {clearing === "brandIcon"
-                        ? "Removing…"
-                        : "Remove brand icon"}
-                    </Button>
-                  )}
-                </div>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="storefront-favicon">
-                  Small browser favicon override
-                </FieldLabel>
-                <Input
-                  ref={faviconInput}
-                  accept="image/png,image/jpeg,image/webp"
-                  id="storefront-favicon"
-                  type="file"
-                  onChange={(event) =>
-                    setFaviconFile(event.currentTarget.files?.[0] ?? null)
-                  }
-                />
-                {settings.favicon ? (
-                  <Image
-                    alt="Current favicon preview"
-                    className="size-16 rounded border border-border object-contain"
-                    height={settings.favicon.height}
-                    src={settings.favicon.src}
-                    unoptimized
-                    width={settings.favicon.width}
-                  />
-                ) : (
-                  <FieldDescription>No favicon uploaded.</FieldDescription>
-                )}
-                <FieldDescription>
-                  Optional 64 × 64 override for browser tabs. The square brand
-                  icon is used when this is empty.
-                </FieldDescription>
-                {faviconFile && (
-                  <FieldDescription>
-                    Selected: {faviconFile.name}
-                  </FieldDescription>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={
-                      !faviconFile || uploading !== null || clearing !== null
-                    }
-                    type="button"
-                    onClick={() => void uploadAsset("favicon")}
-                  >
-                    {uploading === "favicon" ? "Uploading…" : "Upload favicon"}
-                  </Button>
-                  {settings.favicon && (
-                    <Button
-                      disabled={uploading !== null || clearing !== null}
-                      type="button"
-                      variant="outline"
-                      onClick={() => void clearAsset("favicon")}
-                    >
-                      {clearing === "favicon" ? "Removing…" : "Remove favicon"}
-                    </Button>
-                  )}
-                </div>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="storefront-social-image">
-                  Social sharing image
-                </FieldLabel>
-                <Input
-                  ref={socialImageInput}
-                  accept="image/png,image/jpeg,image/webp"
-                  id="storefront-social-image"
-                  type="file"
-                  onChange={(event) =>
-                    setSocialImageFile(event.currentTarget.files?.[0] ?? null)
-                  }
-                />
-                {settings.socialImage ? (
-                  <Image
-                    alt={
-                      settings.socialImageAlt ?? "Current social image preview"
-                    }
-                    className="aspect-[1200/630] w-full max-w-64 rounded border border-border object-cover"
-                    height={settings.socialImage.height}
-                    src={settings.socialImage.src}
-                    unoptimized
-                    width={settings.socialImage.width}
-                  />
-                ) : (
-                  <FieldDescription>No social image uploaded.</FieldDescription>
-                )}
-                <FieldDescription>
-                  Published as a 1200 × 630 JPEG for link previews.
-                </FieldDescription>
-                {socialImageFile && (
-                  <FieldDescription>
-                    Selected: {socialImageFile.name}
-                  </FieldDescription>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={
-                      !socialImageFile ||
-                      uploading !== null ||
-                      clearing !== null
-                    }
-                    type="button"
-                    onClick={() => void uploadAsset("socialImage")}
-                  >
-                    {uploading === "socialImage"
-                      ? "Uploading…"
-                      : "Upload social image"}
-                  </Button>
-                  {settings.socialImage && (
-                    <Button
-                      disabled={uploading !== null || clearing !== null}
-                      type="button"
-                      variant="outline"
-                      onClick={() => void clearAsset("socialImage")}
-                    >
-                      {clearing === "socialImage"
-                        ? "Removing…"
-                        : "Remove social image"}
-                    </Button>
-                  )}
-                </div>
-              </Field>
-            </div>
-          </section>
-
-          <section
-            aria-labelledby="storefront-appearance-heading"
-            className="grid gap-5"
-          >
-            <div>
-              <h3
-                className="text-lg font-semibold"
-                id="storefront-appearance-heading"
-              >
-                Storefront appearance
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Configure the storefront surface and brand accent colors.
-                Background color also fills generated app icons; brand color is
-                used by browser and installed-app chrome.
-              </p>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="storefront-brand-color">
-                Brand color
-              </FieldLabel>
-              <Input
-                id="storefront-brand-color"
-                autoComplete="off"
-                maxLength={9}
-                pattern="#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?"
-                placeholder="#7b2220"
-                required
-                spellCheck={false}
-                {...register("brandColor")}
-              />
-              <FieldDescription>
-                Sets the storefront brand accent and web app manifest theme
-                color. Enter #RRGGBB or #RRGGBBAA.
-              </FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="storefront-background-color">
-                Background color
-              </FieldLabel>
-              <Input
-                id="storefront-background-color"
-                autoComplete="off"
-                maxLength={9}
-                pattern="#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?"
-                placeholder="#fafafafa"
-                required
-                spellCheck={false}
-                {...register("backgroundColor")}
-              />
-              <FieldDescription>
-                Enter a CSS hexadecimal color: #RRGGBB or #RRGGBBAA.
-              </FieldDescription>
-            </Field>
-          </section>
-
-          <section
-            aria-labelledby="seo-defaults-heading"
-            className="grid gap-5"
-          >
-            <div>
-              <h3 className="text-lg font-semibold" id="seo-defaults-heading">
-                SEO and sharing defaults
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Used on the storefront home page and as defaults for pages that
-                do not define their own metadata. Product pages use their own
-                product details.
-              </p>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="storefront-seo-title">Site title</FieldLabel>
-              <Input
-                id="storefront-seo-title"
-                maxLength={160}
-                placeholder={`${siteName || "AARAJ"} | Products`}
-                {...register("seoTitle")}
-              />
-              <FieldDescription>
-                Optional title shown in search and link previews. Leave blank to
-                use the store name. Search engines may shorten or rewrite
-                titles.
-              </FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="storefront-seo-description">
-                Site description
-              </FieldLabel>
-              <Textarea
-                id="storefront-seo-description"
-                maxLength={500}
-                placeholder={`Browse products from ${siteName || "AARAJ"}.`}
-                {...register("seoDescription")}
-              />
-              <FieldDescription>
-                Optional page summary. Leave blank to use a store-name-based
-                description. Search engines may choose a different snippet.
-              </FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="storefront-social-image-alt">
-                Social image description
-              </FieldLabel>
-              <Input
-                id="storefront-social-image-alt"
-                maxLength={250}
-                {...register("socialImageAlt")}
-              />
-              <FieldDescription>
-                Describe the social image for assistive technology and link
-                previews. Leave blank to use the store name.
-              </FieldDescription>
-            </Field>
-          </section>
-
-          <section
-            aria-labelledby="store-identity-heading"
-            className="grid gap-5"
-          >
-            <div>
-              <h3 className="text-lg font-semibold" id="store-identity-heading">
-                Store identity and contact
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Public details appear in the storefront header and footer.
-              </p>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="storefront-site-name">Store name</FieldLabel>
-              <Input
-                id="storefront-site-name"
-                autoComplete="organization"
-                maxLength={80}
-                required
-                {...register("siteName")}
-              />
-              <FieldDescription>
-                Used as the storefront brand name and page title.
-              </FieldDescription>
-            </Field>
-
-            <Field>
-              <div className="flex items-center gap-3">
-                <input
-                  id="storefront-announcement-enabled"
-                  className="size-4 accent-primary"
-                  type="checkbox"
-                  {...register("announcementEnabled")}
-                />
-                <FieldLabel htmlFor="storefront-announcement-enabled">
-                  Show announcement banner
-                </FieldLabel>
-              </div>
-              <Textarea
-                id="storefront-announcement-text"
-                aria-label="Announcement text"
-                maxLength={160}
-                placeholder="Step into the festive season with AARAJ"
-                {...register("announcementText")}
-              />
-              <FieldDescription>
-                Plain text only, up to 160 characters.
-              </FieldDescription>
-            </Field>
-
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="storefront-support-phone">
-                  Customer support phone
-                </FieldLabel>
-                <Input
-                  id="storefront-support-phone"
-                  autoComplete="tel"
-                  inputMode="tel"
-                  maxLength={16}
-                  pattern="\+[1-9][0-9]{7,14}"
-                  placeholder="+8801XXXXXXXXX"
-                  {...register("supportPhone")}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="storefront-support-email">
-                  Customer support email
-                </FieldLabel>
-                <Input
-                  id="storefront-support-email"
-                  autoComplete="email"
-                  maxLength={254}
-                  type="email"
-                  {...register("supportEmail")}
-                />
-              </Field>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="storefront-business-address">
-                Business address
-              </FieldLabel>
-              <Textarea
-                id="storefront-business-address"
-                autoComplete="street-address"
-                maxLength={500}
-                {...register("businessAddress")}
-              />
-            </Field>
-          </section>
-
-          <section
-            aria-labelledby="social-links-heading"
-            className="grid gap-5"
-          >
-            <div>
-              <h3 className="text-lg font-semibold" id="social-links-heading">
-                Social links
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Only secure URLs from the selected social network are accepted.
-              </p>
-            </div>
-            <div className="grid gap-5 md:grid-cols-2">
-              {socialFields.map(([key, label]) => (
-                <Field key={key}>
-                  <FieldLabel htmlFor={`storefront-social-${key}`}>
-                    {label}
-                  </FieldLabel>
-                  <Input
-                    id={`storefront-social-${key}`}
-                    autoComplete="url"
-                    maxLength={2048}
-                    placeholder={`https://${key === "x" ? "x.com" : `${key}.com`}/…`}
-                    type="url"
-                    {...register(`socialLinks.${key}`)}
-                  />
-                </Field>
-              ))}
-            </div>
-          </section>
-
-          <section
-            aria-labelledby="header-navigation-heading"
-            className="grid gap-5 border-t border-border pt-6"
-          >
-            <div>
-              <h3
-                className="text-lg font-semibold"
-                id="header-navigation-heading"
-              >
-                Header navigation
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Select active catalog categories for the header.
-              </p>
-            </div>
-
-            <ol className="grid gap-4">
-              {headerNavigation.map((item, index) => {
-                const otherCategoryIds = new Set(
-                  headerNavigation
-                    .filter((_, candidateIndex) => candidateIndex !== index)
-                    .map(({ categoryId }) => categoryId),
-                );
-                const selectedCategory = categoryOptions.find(
-                  ({ id }) => id === item.categoryId,
-                );
-                const categoryOptionsForItem = categoryOptions.filter(
-                  ({ id }) =>
-                    id === item.categoryId || !otherCategoryIds.has(id),
-                );
-                const categorySelectItems = [
-                  ...(!selectedCategory
-                    ? [
-                        {
-                          value: item.categoryId,
-                          label: "Unavailable category",
-                        },
-                      ]
-                    : []),
-                  ...categoryOptionsForItem.map(({ id, path }) => ({
-                    label: path,
-                    value: id,
-                  })),
-                ];
-
-                return (
-                  <li
-                    className="grid gap-3 rounded-lg border border-border p-4"
-                    key={headerNavigationFields[index]?.id ?? index}
-                  >
-                    <Field>
-                      <FieldLabel htmlFor={`header-category-${index}`}>
-                        Catalog category
-                      </FieldLabel>
-                      <Select
-                        items={categorySelectItems}
-                        value={item.categoryId}
-                        onValueChange={(categoryId) => {
-                          if (!categoryId) return;
-                          updateHeaderNavigationItem(index, {
-                            type: "category",
-                            categoryId,
-                          });
-                        }}
+                    <div>
+                      <h3
+                        className="font-semibold"
+                        id="storefront-appearance-heading"
                       >
-                        <SelectTrigger id={`header-category-${index}`}>
-                          <SelectValue placeholder="Choose a category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {!selectedCategory && (
-                            <SelectItem value={item.categoryId}>
-                              Unavailable category
-                            </SelectItem>
-                          )}
-                          {categoryOptionsForItem.map(({ id, path }) => (
-                            <SelectItem key={id} value={id}>
-                              {path}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {!selectedCategory && (
+                        Appearance
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Set the brand accent and page background colors.
+                      </p>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel
+                          className="flex items-center justify-between"
+                          htmlFor="storefront-brand-color"
+                        >
+                          Brand color
+                          <span
+                            aria-hidden="true"
+                            className="size-5 rounded-md border border-border"
+                            style={{ backgroundColor: brandColor || undefined }}
+                          />
+                        </FieldLabel>
+                        <Input
+                          id="storefront-brand-color"
+                          autoComplete="off"
+                          maxLength={9}
+                          pattern="#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?"
+                          placeholder="#7b2220"
+                          required
+                          spellCheck={false}
+                          {...register("brandColor")}
+                        />
                         <FieldDescription>
-                          This category is inactive or unavailable. Remove it,
-                          or choose an active category.
+                          Hex value such as #7b2220.
                         </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel
+                          className="flex items-center justify-between"
+                          htmlFor="storefront-background-color"
+                        >
+                          Background color
+                          <span
+                            aria-hidden="true"
+                            className="size-5 rounded-md border border-border"
+                            style={{
+                              backgroundColor: backgroundColor || undefined,
+                            }}
+                          />
+                        </FieldLabel>
+                        <Input
+                          id="storefront-background-color"
+                          autoComplete="off"
+                          maxLength={9}
+                          pattern="#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?"
+                          placeholder="#fafafafa"
+                          required
+                          spellCheck={false}
+                          {...register("backgroundColor")}
+                        />
+                        <FieldDescription>
+                          Hex value such as #fafafa.
+                        </FieldDescription>
+                      </Field>
+                    </div>
+                  </section>
+                </div>
+              </TabsContent>
+
+              <TabsContent keepMounted value="seo">
+                <div className="grid gap-7">
+                  <section
+                    aria-labelledby="seo-defaults-heading"
+                    className="grid gap-5 rounded-xl border border-border p-4 sm:p-5"
+                  >
+                    <div>
+                      <h3
+                        className="text-lg font-semibold"
+                        id="seo-defaults-heading"
+                      >
+                        Search and sharing
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Defaults for search results and link previews.
+                      </p>
+                    </div>
+                    <Field>
+                      <FieldLabel htmlFor="storefront-seo-title">
+                        Site title
+                      </FieldLabel>
+                      <Input
+                        id="storefront-seo-title"
+                        maxLength={160}
+                        placeholder={`${siteName || "AARAJ"} | Products`}
+                        {...register("seoTitle")}
+                      />
+                      <FieldDescription>
+                        Leave blank to use the store name.
+                      </FieldDescription>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="storefront-seo-description">
+                        Site description
+                      </FieldLabel>
+                      <Textarea
+                        id="storefront-seo-description"
+                        maxLength={500}
+                        placeholder={`Browse products from ${siteName || "AARAJ"}.`}
+                        {...register("seoDescription")}
+                      />
+                      <FieldDescription>
+                        Leave blank to use the default store description.
+                      </FieldDescription>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="storefront-social-image-alt">
+                        Social image description
+                      </FieldLabel>
+                      <Input
+                        id="storefront-social-image-alt"
+                        maxLength={250}
+                        {...register("socialImageAlt")}
+                      />
+                      <FieldDescription>
+                        Describe the social image for accessibility.
+                      </FieldDescription>
+                    </Field>
+                  </section>
+                </div>
+              </TabsContent>
+
+              <TabsContent keepMounted value="contact">
+                <div className="grid gap-7">
+                  <section
+                    aria-labelledby="store-identity-heading"
+                    className="grid gap-5 rounded-xl border border-border p-4 sm:p-5"
+                  >
+                    <div>
+                      <h3
+                        className="text-lg font-semibold"
+                        id="store-identity-heading"
+                      >
+                        Store identity
+                      </h3>
+                    </div>
+                    <Field>
+                      <FieldLabel htmlFor="storefront-site-name">
+                        Store name
+                      </FieldLabel>
+                      <Input
+                        id="storefront-site-name"
+                        autoComplete="organization"
+                        maxLength={80}
+                        required
+                        {...register("siteName")}
+                      />
+                      <FieldDescription>
+                        Shown across your storefront.
+                      </FieldDescription>
+                    </Field>
+
+                    <Field>
+                      <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3">
+                        <div className="grid gap-0.5">
+                          <FieldLabel htmlFor="storefront-announcement-enabled">
+                            Announcement banner
+                          </FieldLabel>
+                          <FieldDescription>
+                            Show a short message at the top of your store.
+                          </FieldDescription>
+                        </div>
+                        <Switch
+                          id="storefront-announcement-enabled"
+                          checked={announcementEnabled}
+                          onCheckedChange={(enabled) =>
+                            setValue("announcementEnabled", enabled, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
+                          }
+                        />
+                      </div>
+                      {announcementEnabled && (
+                        <>
+                          <Textarea
+                            id="storefront-announcement-text"
+                            aria-label="Announcement text"
+                            maxLength={160}
+                            placeholder="Step into the festive season with AARAJ"
+                            {...register("announcementText")}
+                          />
+                          <FieldDescription>
+                            Plain text · up to 160 characters.
+                          </FieldDescription>
+                        </>
                       )}
                     </Field>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        aria-label={`Move header item ${index + 1} up`}
-                        disabled={index === 0}
-                        type="button"
-                        variant="outline"
-                        onClick={() =>
-                          moveHeaderNavigationItem(index, index - 1)
-                        }
-                      >
-                        Move up
-                      </Button>
-                      <Button
-                        aria-label={`Move header item ${index + 1} down`}
-                        disabled={index === headerNavigation.length - 1}
-                        type="button"
-                        variant="outline"
-                        onClick={() =>
-                          moveHeaderNavigationItem(index, index + 1)
-                        }
-                      >
-                        Move down
-                      </Button>
-                      <Button
-                        aria-label={`Remove header item ${index + 1}`}
-                        type="button"
-                        variant="outline"
-                        onClick={() => removeHeaderNavigationItem(index)}
-                      >
-                        Remove
-                      </Button>
+
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="storefront-support-phone">
+                          Customer support phone
+                        </FieldLabel>
+                        <Input
+                          id="storefront-support-phone"
+                          autoComplete="tel"
+                          inputMode="tel"
+                          maxLength={16}
+                          pattern="\+[1-9][0-9]{7,14}"
+                          placeholder="+8801XXXXXXXXX"
+                          {...register("supportPhone")}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="storefront-support-email">
+                          Customer support email
+                        </FieldLabel>
+                        <Input
+                          id="storefront-support-email"
+                          autoComplete="email"
+                          maxLength={254}
+                          type="email"
+                          {...register("supportEmail")}
+                        />
+                      </Field>
                     </div>
-                  </li>
-                );
-              })}
-            </ol>
+                    <Field>
+                      <FieldLabel htmlFor="storefront-business-address">
+                        Business address
+                      </FieldLabel>
+                      <Textarea
+                        id="storefront-business-address"
+                        autoComplete="street-address"
+                        maxLength={500}
+                        {...register("businessAddress")}
+                      />
+                    </Field>
+                  </section>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="storefront-add-header-category">
-                  Add an active category
-                </FieldLabel>
-                <Select
-                  value={null}
-                  onValueChange={(categoryId) => {
-                    if (categoryId) addHeaderCategory(categoryId);
-                  }}
-                  disabled={availableCategories.length === 0}
-                >
-                  <SelectTrigger id="storefront-add-header-category">
-                    <SelectValue
-                      placeholder={
-                        availableCategories.length > 0
-                          ? "Choose a category…"
-                          : "No additional active categories"
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableCategories.map(({ id, path }) => (
-                      <SelectItem key={id} value={id}>
-                        {path}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
-          </section>
-
-          <HomepageCategorySettings
-            categories={categoryOptions}
-            selectedCategoryIds={homepageCategoryIds}
-            enabled={homepageCategoriesEnabled}
-            onEnabledChange={(enabled) =>
-              setValue("homepageCategoriesEnabled", enabled, {
-                shouldDirty: true,
-                shouldValidate: true,
-              })
-            }
-            onCategoryAdd={addHomepageCategory}
-            onCategoryRemove={removeHomepageCategory}
-          />
-
-          <section
-            aria-labelledby="footer-content-heading"
-            className="grid gap-5"
-          >
-            <div>
-              <h3 className="text-lg font-semibold" id="footer-content-heading">
-                Footer content
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Configure category links and the About Us and Policies columns.
-              </p>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="storefront-footer-description">
-                Footer description
-              </FieldLabel>
-              <Textarea
-                id="storefront-footer-description"
-                maxLength={500}
-                {...register("footerDescription")}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="storefront-footer-category">
-                Footer categories
-              </FieldLabel>
-              <Select
-                value={null}
-                onValueChange={(categoryId) => {
-                  if (categoryId) addFooterCategory(categoryId);
-                }}
-              >
-                <SelectTrigger id="storefront-footer-category">
-                  <SelectValue placeholder="Add a catalog category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categoryOptions
-                    .filter(({ id }) => !footerCategoryIds.includes(id))
-                    .map(({ id, path }) => (
-                      <SelectItem key={id} value={id}>
-                        {path}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <FieldDescription>
-                Categories follow catalog order and show published product
-                counts.
-              </FieldDescription>
-              {footerCategoryIds.length > 0 && (
-                <ul className="flex flex-wrap gap-2">
-                  {footerCategoryIds.map((categoryId) => {
-                    const category = categoryOptions.find(
-                      ({ id }) => id === categoryId,
-                    );
-                    return (
-                      <li
-                        className="inline-flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm"
-                        key={categoryId}
+                  <section
+                    aria-labelledby="social-links-heading"
+                    className="grid gap-5 rounded-xl border border-border p-4 sm:p-5"
+                  >
+                    <div>
+                      <h3
+                        className="text-lg font-semibold"
+                        id="social-links-heading"
                       >
-                        <span>{category?.path ?? "Unavailable category"}</span>
-                        <Button
-                          aria-label={`Remove ${category?.path ?? "unavailable category"} from footer`}
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFooterCategory(categoryId)}
+                        Social links
+                      </h3>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      {socialFields.map(([key, label]) => (
+                        <Field key={key}>
+                          <FieldLabel htmlFor={`storefront-social-${key}`}>
+                            {label}
+                          </FieldLabel>
+                          <Input
+                            id={`storefront-social-${key}`}
+                            autoComplete="url"
+                            maxLength={2048}
+                            placeholder={`https://${key === "x" ? "x.com" : `${key}.com`}/…`}
+                            type="url"
+                            {...register(`socialLinks.${key}`)}
+                          />
+                        </Field>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </TabsContent>
+
+              <TabsContent keepMounted value="content">
+                <div className="grid gap-7">
+                  <section
+                    aria-labelledby="header-navigation-heading"
+                    className="grid gap-5 rounded-xl border border-border p-4 sm:p-5"
+                  >
+                    <div>
+                      <h3
+                        className="text-lg font-semibold"
+                        id="header-navigation-heading"
+                      >
+                        Header navigation
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Select active catalog categories for the header.
+                      </p>
+                    </div>
+
+                    <ol className="grid gap-3">
+                      {headerNavigation.length === 0 && (
+                        <li className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+                          No header categories added yet.
+                        </li>
+                      )}
+                      {headerNavigation.map((item, index) => {
+                        const otherCategoryIds = new Set(
+                          headerNavigation
+                            .filter(
+                              (_, candidateIndex) => candidateIndex !== index,
+                            )
+                            .map(({ categoryId }) => categoryId),
+                        );
+                        const selectedCategory = categoryOptions.find(
+                          ({ id }) => id === item.categoryId,
+                        );
+                        const categoryOptionsForItem = categoryOptions.filter(
+                          ({ id }) =>
+                            id === item.categoryId || !otherCategoryIds.has(id),
+                        );
+                        const categorySelectItems = [
+                          ...(!selectedCategory
+                            ? [
+                                {
+                                  value: item.categoryId,
+                                  label: "Unavailable category",
+                                },
+                              ]
+                            : []),
+                          ...categoryOptionsForItem.map(({ id, path }) => ({
+                            label: path,
+                            value: id,
+                          })),
+                        ];
+
+                        return (
+                          <li
+                            className="grid gap-3 rounded-lg border border-border p-4"
+                            key={headerNavigationFields[index]?.id ?? index}
+                          >
+                            <Field>
+                              <FieldLabel htmlFor={`header-category-${index}`}>
+                                Catalog category
+                              </FieldLabel>
+                              <Select
+                                items={categorySelectItems}
+                                value={item.categoryId}
+                                onValueChange={(categoryId) => {
+                                  if (!categoryId) return;
+                                  updateHeaderNavigationItem(index, {
+                                    type: "category",
+                                    categoryId,
+                                  });
+                                }}
+                              >
+                                <SelectTrigger id={`header-category-${index}`}>
+                                  <SelectValue placeholder="Choose a category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {!selectedCategory && (
+                                    <SelectItem value={item.categoryId}>
+                                      Unavailable category
+                                    </SelectItem>
+                                  )}
+                                  {categoryOptionsForItem.map(
+                                    ({ id, path }) => (
+                                      <SelectItem key={id} value={id}>
+                                        {path}
+                                      </SelectItem>
+                                    ),
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              {!selectedCategory && (
+                                <FieldDescription>
+                                  This category is inactive or unavailable.
+                                  Remove it, or choose an active category.
+                                </FieldDescription>
+                              )}
+                            </Field>
+                            <div className="flex items-center gap-1">
+                              <span className="mr-auto text-xs text-muted-foreground">
+                                Item {index + 1}
+                              </span>
+                              <Button
+                                aria-label={`Move header item ${index + 1} up`}
+                                className="text-muted-foreground"
+                                disabled={index === 0}
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() =>
+                                  moveHeaderNavigationItem(index, index - 1)
+                                }
+                              >
+                                <ArrowUp />
+                              </Button>
+                              <Button
+                                aria-label={`Move header item ${index + 1} down`}
+                                className="text-muted-foreground"
+                                disabled={index === headerNavigation.length - 1}
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() =>
+                                  moveHeaderNavigationItem(index, index + 1)
+                                }
+                              >
+                                <ArrowDown />
+                              </Button>
+                              <Button
+                                aria-label={`Remove header item ${index + 1}`}
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={() =>
+                                  removeHeaderNavigationItem(index)
+                                }
+                              >
+                                <Trash2 />
+                              </Button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="storefront-add-header-category">
+                          Add an active category
+                        </FieldLabel>
+                        <Select
+                          value={null}
+                          onValueChange={(categoryId) => {
+                            if (categoryId) addHeaderCategory(categoryId);
+                          }}
+                          disabled={availableCategories.length === 0}
                         >
-                          Remove
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Field>
+                          <SelectTrigger id="storefront-add-header-category">
+                            <SelectValue
+                              placeholder={
+                                availableCategories.length > 0
+                                  ? "Choose a category…"
+                                  : "No additional active categories"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableCategories.map(({ id, path }) => (
+                              <SelectItem key={id} value={id}>
+                                {path}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+                  </section>
 
-            <FooterLinkGroupFields
-              append={appendAboutLink}
-              fields={aboutLinkFields}
-              group="about"
-              links={footerLinkGroups.about}
-              register={register}
-              remove={removeAboutLink}
-            />
-            <FooterLinkGroupFields
-              append={appendPolicyLink}
-              fields={policyLinkFields}
-              group="policies"
-              links={footerLinkGroups.policies}
-              register={register}
-              remove={removePolicyLink}
-            />
-          </section>
+                  <HomepageCategorySettings
+                    categories={categoryOptions}
+                    selectedCategoryIds={homepageCategoryIds}
+                    enabled={homepageCategoriesEnabled}
+                    onEnabledChange={(enabled) =>
+                      setValue("homepageCategoriesEnabled", enabled, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    onCategoryAdd={addHomepageCategory}
+                    onCategoryRemove={removeHomepageCategory}
+                  />
 
-          <section className="grid gap-4 border-t border-border pt-6">
-            <div>
+                  <section
+                    aria-labelledby="footer-content-heading"
+                    className="grid gap-5 rounded-xl border border-border p-4 sm:p-5"
+                  >
+                    <div>
+                      <h3
+                        className="text-lg font-semibold"
+                        id="footer-content-heading"
+                      >
+                        Footer content
+                      </h3>
+                    </div>
+                    <Field>
+                      <FieldLabel htmlFor="storefront-footer-description">
+                        Footer description
+                      </FieldLabel>
+                      <Textarea
+                        id="storefront-footer-description"
+                        maxLength={500}
+                        {...register("footerDescription")}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="storefront-footer-category">
+                        Footer categories
+                      </FieldLabel>
+                      <Select
+                        value={null}
+                        onValueChange={(categoryId) => {
+                          if (categoryId) addFooterCategory(categoryId);
+                        }}
+                      >
+                        <SelectTrigger id="storefront-footer-category">
+                          <SelectValue placeholder="Add a catalog category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categoryOptions
+                            .filter(({ id }) => !footerCategoryIds.includes(id))
+                            .map(({ id, path }) => (
+                              <SelectItem key={id} value={id}>
+                                {path}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <FieldDescription>
+                        Categories follow the catalog order.
+                      </FieldDescription>
+                      {footerCategoryIds.length > 0 && (
+                        <ul className="flex flex-wrap gap-2">
+                          {footerCategoryIds.map((categoryId) => {
+                            const category = categoryOptions.find(
+                              ({ id }) => id === categoryId,
+                            );
+                            return (
+                              <li
+                                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/30 py-1 pl-3 pr-1 text-sm"
+                                key={categoryId}
+                              >
+                                <span>
+                                  {category?.path ?? "Unavailable category"}
+                                </span>
+                                <Button
+                                  aria-label={`Remove ${category?.path ?? "unavailable category"} from footer`}
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="rounded-full text-muted-foreground"
+                                  onClick={() =>
+                                    removeFooterCategory(categoryId)
+                                  }
+                                >
+                                  <X />
+                                </Button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </Field>
+
+                    <FooterLinkGroupFields
+                      append={appendAboutLink}
+                      fields={aboutLinkFields}
+                      group="about"
+                      links={footerLinkGroups.about}
+                      register={register}
+                      remove={removeAboutLink}
+                    />
+                    <FooterLinkGroupFields
+                      append={appendPolicyLink}
+                      fields={policyLinkFields}
+                      group="policies"
+                      links={footerLinkGroups.policies}
+                      register={register}
+                      remove={removePolicyLink}
+                    />
+                  </section>
+                </div>
+              </TabsContent>
+            </Tabs>
+            <div className="sticky bottom-0 z-10 -mx-5 mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card/95 px-5 py-4 backdrop-blur sm:-mx-6 sm:px-6">
+              <div aria-live="polite" className="text-sm text-muted-foreground">
+                {changed ? "Unsaved changes" : null}
+              </div>
               <Button
                 disabled={
-                  saving ||
-                  uploading !== null ||
-                  clearing !== null ||
-                  !changed ||
-                  (announcementEnabled && !announcementText.trim())
+                  saving || uploading !== null || clearing !== null || !changed
                 }
                 type="submit"
               >
-                {saving ? "Saving…" : "Save storefront settings"}
+                {saving ? (
+                  <>
+                    <LoaderCircle className="animate-spin" /> Saving…
+                  </>
+                ) : (
+                  "Save changes"
+                )}
               </Button>
             </div>
-          </section>
+          </div>
         </form>
       ) : null}
     </section>
@@ -1181,6 +1150,156 @@ function responseMessage(body: unknown, fallback: string): string {
     return "These settings changed in another session. Reload this page and apply your change again.";
   }
   return getApiErrorMessage(body, fallback);
+}
+
+function SectionHeading({
+  id,
+  title,
+  description,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div>
+      <h3 className="font-semibold" id={id}>
+        {title}
+      </h3>
+      {description && (
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      )}
+    </div>
+  );
+}
+
+type StorefrontAssetPreview = NonNullable<StorefrontSettings["logo"]>;
+
+function AssetUploadCard({
+  title,
+  description,
+  accept,
+  inputRef,
+  current,
+  file,
+  uploadLabel,
+  uploading,
+  clearing,
+  disabled,
+  onFileChange,
+  onUpload,
+  onClear,
+}: {
+  title: string;
+  description: string;
+  accept: string;
+  inputRef: RefObject<HTMLInputElement | null>;
+  current: StorefrontAssetPreview | null;
+  file: File | null;
+  uploadLabel: string;
+  uploading: boolean;
+  clearing: boolean;
+  disabled: boolean;
+  onFileChange: (file: File | null) => void;
+  onUpload: () => void;
+  onClear: () => void;
+}) {
+  const inputId = `storefront-asset-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+  return (
+    <Card className="h-full border-0 bg-muted/20 shadow-none ring-1 ring-border">
+      <CardHeader className="px-4 pt-4">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        <p className="min-h-10 text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+      </CardHeader>
+      <CardContent className="grid gap-3 px-4 pb-4">
+        <div className="flex h-24 items-center justify-center overflow-hidden rounded-lg border border-border bg-background p-3">
+          {current ? (
+            <Image
+              alt={`${title} preview`}
+              className="max-h-full max-w-full object-contain"
+              height={current.height}
+              src={current.src}
+              unoptimized
+              width={current.width}
+            />
+          ) : (
+            <div className="grid justify-items-center gap-1 text-muted-foreground">
+              <ImagePlus aria-hidden="true" className="size-5" />
+              <span className="text-xs">No image</span>
+            </div>
+          )}
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <Input
+            ref={inputRef}
+            accept={accept}
+            aria-hidden="true"
+            className="sr-only"
+            id={inputId}
+            tabIndex={-1}
+            type="file"
+            onChange={(event) =>
+              onFileChange(event.currentTarget.files?.[0] ?? null)
+            }
+          />
+          <Button
+            aria-label={`Choose ${title.toLowerCase()} file`}
+            className="min-w-0 flex-1"
+            disabled={disabled}
+            type="button"
+            variant="outline"
+            onClick={() => inputRef.current?.click()}
+          >
+            <ImagePlus />
+            <span className="truncate">Choose file</span>
+          </Button>
+          {current && (
+            <Button
+              aria-label={`Remove ${title.toLowerCase()}`}
+              className="text-muted-foreground hover:text-destructive"
+              disabled={disabled}
+              size="icon"
+              type="button"
+              variant="ghost"
+              onClick={onClear}
+            >
+              {clearing ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Trash2 />
+              )}
+            </Button>
+          )}
+        </div>
+        {file && (
+          <p
+            className="truncate text-xs text-muted-foreground"
+            title={file.name}
+          >
+            {file.name}
+          </p>
+        )}
+        <Button
+          className="w-full"
+          disabled={!file || disabled}
+          size="sm"
+          type="button"
+          onClick={onUpload}
+        >
+          {uploading ? (
+            <>
+              <LoaderCircle className="animate-spin" /> Uploading…
+            </>
+          ) : (
+            uploadLabel
+          )}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 function collectFieldErrorMessages(value: unknown): string[] {
@@ -1228,10 +1347,10 @@ function FooterLinkGroupFields({
           const fieldName = `footerLinkGroups.${group}.${index}` as const;
           return (
             <div
-              className="grid items-end gap-3 rounded-lg border border-border p-4 md:grid-cols-[1fr_2fr_auto]"
+              className="grid items-end gap-3 rounded-lg border border-border p-4 md:grid-cols-4"
               key={fields[index]?.id ?? index}
             >
-              <Field>
+              <Field className="md:col-span-1">
                 <FieldLabel htmlFor={`footer-${group}-${index}-label`}>
                   Link label
                 </FieldLabel>
@@ -1241,7 +1360,7 @@ function FooterLinkGroupFields({
                   {...register(`${fieldName}.label`)}
                 />
               </Field>
-              <Field>
+              <Field className="md:col-span-2">
                 <FieldLabel htmlFor={`footer-${group}-${index}-href`}>
                   Link URL
                 </FieldLabel>
@@ -1255,10 +1374,12 @@ function FooterLinkGroupFields({
               <Button
                 aria-label={`Remove ${title} link ${index + 1}`}
                 type="button"
-                variant="outline"
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-destructive md:justify-self-end"
                 onClick={() => remove(index)}
               >
-                Remove
+                <Trash2 />
               </Button>
             </div>
           );

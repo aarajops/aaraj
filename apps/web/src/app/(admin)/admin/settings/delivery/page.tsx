@@ -15,7 +15,7 @@ export default async function DeliverySettingsPage() {
 
   return (
     <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10">
-      <div className="mx-auto w-full max-w-5xl">
+      <div className="container mx-auto">
         <p className="text-sm font-semibold tracking-[0.18em] text-primary">
           AARAJ ADMIN
         </p>
