@@ -9,10 +9,26 @@ import {
   type CatalogManagedProductDetail,
   type CatalogMedia,
 } from "@aaraj/contracts";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   deleteCatalogProductMedia,
   fetchManagedProductMedia,
@@ -22,6 +38,7 @@ import {
   getApiErrorMessage,
   readApiErrorResponse,
 } from "@/lib/api-error-response";
+import { RefreshCw, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 type VariantOption = Pick<
@@ -48,6 +65,7 @@ type Operation = `upload:${string}` | `delete:${string}` | "refresh" | null;
 
 const fileFieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium";
+const allVariantsValue = "all";
 
 interface MediaListResult {
   media: CatalogMedia[] | null;
@@ -101,7 +119,6 @@ export function CatalogMediaManager({
   const [isUnavailable, setIsUnavailable] = useState(false);
   const [operation, setOperation] = useState<Operation>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [selectedUploads, setSelectedUploads] = useState<SelectedUpload[]>([]);
   const [variantId, setVariantId] = useState("");
   const mediaIsLoading = isLoading || loadedProductId !== productId;
@@ -113,6 +130,7 @@ export function CatalogMediaManager({
   const hasPendingUploadCommands = selectedUploads.some(
     (upload) => upload.draft !== undefined,
   );
+  const activeVariants = variants.filter((variant) => variant.isActive);
 
   const loadMedia = useCallback(async () => {
     setIsLoading(true);
@@ -185,7 +203,6 @@ export function CatalogMediaManager({
     );
     setOperation("upload:batch");
     setProblem(null);
-    setNotice(null);
 
     const failures = new Map<string, SelectedUpload>();
     let nextIndex = 0;
@@ -256,9 +273,10 @@ export function CatalogMediaManager({
       setSelectedUploads(remaining);
 
       if (completed > 0) {
-        setNotice(
-          `${completed} upload${completed === 1 ? " was" : "s were"} saved. Check each image's status below.`,
-        );
+        toast.add({
+          title: `${completed} image${completed === 1 ? "" : "s"} uploaded`,
+          type: "success",
+        });
       }
       if (remaining.length > 0) {
         setProblem(
@@ -266,7 +284,6 @@ export function CatalogMediaManager({
         );
       } else {
         setVariantId("");
-        if (completed === 0) setNotice("No upload commands needed processing.");
       }
     } finally {
       setOperation(null);
@@ -282,7 +299,6 @@ export function CatalogMediaManager({
     };
     setOperation(`upload:${item.id}`);
     setProblem(null);
-    setNotice(null);
     try {
       const response = await uploadCatalogProductMedia(productId, draft, file);
       if (!response.ok) {
@@ -301,7 +317,7 @@ export function CatalogMediaManager({
         return;
       }
       await loadMedia();
-      setNotice("Upload recovery completed.");
+      toast.add({ title: "Image upload recovered", type: "success" });
     } catch {
       await loadMedia();
       setProblem("Could not reach the API. Retry with the same original file.");
@@ -313,7 +329,6 @@ export function CatalogMediaManager({
   async function deleteMedia(item: CatalogMedia) {
     setOperation(`delete:${item.id}`);
     setProblem(null);
-    setNotice(null);
     try {
       const response = await deleteCatalogProductMedia(productId, item.id, {});
       if (!response.ok) {
@@ -326,7 +341,7 @@ export function CatalogMediaManager({
         return;
       }
 
-      setNotice("Media deletion completed.");
+      toast.add({ title: "Image deleted", type: "success" });
       await loadMedia();
     } catch {
       await loadMedia();
@@ -341,307 +356,304 @@ export function CatalogMediaManager({
   return (
     <Card
       aria-labelledby="product-media-heading"
-      className="gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7"
+      className="gap-0 p-0"
       role="region"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold" id="product-media-heading">
-            Product media
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Originals stay private. Processed images appear on public product
-            pages only after the product is published.
-          </p>
-        </div>
-        <Button
-          disabled={operation !== null || mediaIsLoading}
-          onClick={() => {
-            setProblem(null);
-            setOperation("refresh");
-            void loadMedia().finally(() => setOperation(null));
-          }}
-          type="button"
-          variant="outline"
+      <CardHeader className="px-6 pt-6 sm:px-7 sm:pt-7">
+        <CardTitle
+          aria-level={2}
+          id="product-media-heading"
+          role="heading"
+          className="text-xl font-semibold"
         >
-          Refresh media
-        </Button>
-      </div>
-
-      {problem && (
-        <p
-          className="mt-5 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {problem}
-        </p>
-      )}
-      {notice && (
-        <p
-          className="mt-5 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
-          role="status"
-        >
-          {notice}
-        </p>
-      )}
-
-      <form
-        className="mt-6 grid gap-4 rounded-xl border border-border p-4 sm:p-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void uploadSelectedFiles();
-        }}
-      >
-        <div>
-          <h3 className="font-medium">Upload images</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            JPEG, PNG, or WebP. Maximum size:{" "}
-            {formatBytes(MAX_CATALOG_MEDIA_UPLOAD_BYTES)}.
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Up to {MAX_CATALOG_PRODUCT_MEDIA} media records per product,
-            including pending and rejected uploads.
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Select up to {remainingMediaSlots} more image
-            {remainingMediaSlots === 1 ? "" : "s"}. Uploads run concurrently
-            with a bounded limit.
-          </p>
-        </div>
-
-        <Field>
-          <FieldLabel htmlFor="catalog-media-file">Image files</FieldLabel>
-          <Input
-            accept="image/jpeg,image/png,image/webp"
-            aria-describedby="catalog-media-file-help"
-            className={fileFieldClassName}
-            disabled={
-              operation !== null ||
-              hasPendingUploadCommands ||
-              mediaLimitReached ||
-              remainingMediaSlots === 0
-            }
-            id="catalog-media-file"
-            multiple
-            onChange={(event) => {
-              const files = Array.from(event.currentTarget.files ?? []);
-              const acceptedFiles = files.slice(0, remainingMediaSlots);
-              setSelectedUploads((current) => [
-                ...current,
-                ...acceptedFiles.map((file) => ({
-                  id: crypto.randomUUID(),
-                  file,
-                  altText: "",
-                })),
-              ]);
-              if (acceptedFiles.length < files.length) {
-                setProblem(
-                  `Only ${remainingMediaSlots} more image${remainingMediaSlots === 1 ? " can" : "s can"} be selected for this product.`,
-                );
-              } else {
-                setProblem(null);
-              }
-              event.currentTarget.value = "";
-            }}
-            type="file"
-          />
-          <FieldDescription id="catalog-media-file-help">
-            The server checks the actual file content. The filename and browser
-            MIME type are not trusted. Enter alt text for each image.
-          </FieldDescription>
-        </Field>
-
-        {selectedUploads.length > 0 && (
-          <ul className="grid gap-3" aria-label="Selected images">
-            {selectedUploads.map((upload) => (
-              <li
-                className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
-                key={upload.id}
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {upload.file.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatBytes(upload.file.size)}
-                  </p>
-                  <Input
-                    aria-label={`Alt text for ${upload.file.name}`}
-                    className="mt-2 h-9"
-                    disabled={operation !== null || upload.draft !== undefined}
-                    maxLength={500}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value;
-                      setSelectedUploads((current) =>
-                        current.map((candidate) =>
-                          candidate.id === upload.id
-                            ? { ...candidate, altText: value }
-                            : candidate,
-                        ),
-                      );
-                    }}
-                    placeholder="Describe this image"
-                    required={!upload.draft}
-                    value={upload.draft?.altText ?? upload.altText}
-                  />
-                  {upload.error && (
-                    <p className="mt-2 text-sm text-destructive" role="alert">
-                      {upload.error}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  aria-label={`Remove ${upload.file.name}`}
-                  className="justify-self-start sm:justify-self-end"
-                  disabled={operation !== null}
-                  onClick={() =>
-                    setSelectedUploads((current) =>
-                      current.filter((candidate) => candidate.id !== upload.id),
-                    )
-                  }
-                  type="button"
-                  variant="outline"
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <Field>
-          <FieldLabel htmlFor="catalog-media-variant">
-            Variant association (optional)
-          </FieldLabel>
-          <select
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            disabled={operation !== null || hasPendingUploadCommands}
-            id="catalog-media-variant"
-            onChange={(event) => setVariantId(event.currentTarget.value)}
-            value={variantId}
+          Product media
+        </CardTitle>
+        <CardDescription>
+          Original files stay private. Storefront images appear after
+          publishing.
+        </CardDescription>
+        <CardAction className="flex flex-wrap items-center gap-2">
+          <Badge
+            aria-label={`${media.length} of ${MAX_CATALOG_PRODUCT_MEDIA} images used`}
+            variant="secondary"
           >
-            <option value="">All product variants</option>
-            {variants
-              .filter((variant) => variant.isActive)
-              .map((variant) => (
-                <option key={variant.id} value={variant.id}>
-                  {variant.color} · {variant.sizeLabel}
-                </option>
-              ))}
-          </select>
-        </Field>
+            {media.length} / {MAX_CATALOG_PRODUCT_MEDIA}
+          </Badge>
+          <Button
+            disabled={operation !== null || mediaIsLoading}
+            onClick={() => {
+              setProblem(null);
+              setOperation("refresh");
+              void loadMedia().finally(() => setOperation(null));
+            }}
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="Refresh product media"
+          >
+            <RefreshCw aria-hidden="true" />
+            Refresh
+          </Button>
+        </CardAction>
+      </CardHeader>
 
-        <Button
-          className="justify-self-start"
-          disabled={
-            operation !== null ||
-            selectedUploads.length === 0 ||
-            mediaLimitReached ||
-            selectedUploads.every(
-              (upload) => upload.draft !== undefined && !upload.retryable,
-            )
-          }
-          type="submit"
+      <CardContent className="grid gap-5 px-6 pb-6 sm:px-7 sm:pb-7">
+        {problem && (
+          <p
+            className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+            role="alert"
+          >
+            {problem}
+          </p>
+        )}
+        <form
+          className="grid gap-4 border-t border-border pt-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void uploadSelectedFiles();
+          }}
         >
-          {operation?.startsWith("upload:")
-            ? "Uploading images…"
-            : selectedUploads.some((upload) => upload.draft !== undefined)
-              ? "Retry remaining uploads"
-              : "Upload images"}
-        </Button>
-      </form>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <h3 className="font-medium">Add images</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                JPEG, PNG, or WebP · up to{" "}
+                {formatBytes(MAX_CATALOG_MEDIA_UPLOAD_BYTES)} each
+              </p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {remainingMediaSlots} image{" "}
+              {remainingMediaSlots === 1 ? "slot" : "slots"} available
+            </p>
+          </div>
 
-      <section aria-labelledby="uploaded-media-heading" className="mt-7">
-        <h3 className="font-medium" id="uploaded-media-heading">
-          Uploaded media
-        </h3>
-        {mediaIsLoading ? (
-          <p className="mt-3 text-sm text-muted-foreground" role="status">
-            Loading product media…
-          </p>
-        ) : isUnavailable ? null : media.length === 0 ? (
-          <p className="mt-3 rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
-            No media has been uploaded for this product.
-          </p>
-        ) : (
-          <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
-            {media.map((item) => (
-              <li
-                className="grid gap-4 p-4 sm:grid-cols-[1fr_auto]"
-                key={item.id}
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="font-medium">Image {item.sortOrder + 1}</h4>
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs capitalize text-muted-foreground">
-                      {mediaStatusLabel(item.status)}
-                    </span>
-                  </div>
-                  <p className="mt-1 break-words text-sm">{item.altText}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {item.contentType} · {formatBytes(item.sizeBytes)}
-                    {item.variantId
-                      ? ` · ${variantLabel(variants, item.variantId)}`
-                      : " · All variants"}
-                  </p>
-                  {item.status === "quarantined" && (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Private source; choose the original file to resume
-                      processing.
+          <Field>
+            <FieldLabel htmlFor="catalog-media-file">Image files</FieldLabel>
+            <Input
+              accept="image/jpeg,image/png,image/webp"
+              aria-describedby="catalog-media-file-help"
+              className={fileFieldClassName}
+              disabled={
+                operation !== null ||
+                hasPendingUploadCommands ||
+                mediaLimitReached ||
+                remainingMediaSlots === 0
+              }
+              id="catalog-media-file"
+              multiple
+              onChange={(event) => {
+                const files = Array.from(event.currentTarget.files ?? []);
+                const acceptedFiles = files.slice(0, remainingMediaSlots);
+                setSelectedUploads((current) => [
+                  ...current,
+                  ...acceptedFiles.map((file) => ({
+                    id: crypto.randomUUID(),
+                    file,
+                    altText: "",
+                  })),
+                ]);
+                if (acceptedFiles.length < files.length) {
+                  setProblem(
+                    `Only ${remainingMediaSlots} more image${remainingMediaSlots === 1 ? " can" : "s can"} be selected for this product.`,
+                  );
+                } else {
+                  setProblem(null);
+                }
+                event.currentTarget.value = "";
+              }}
+              type="file"
+            />
+            <FieldDescription id="catalog-media-file-help">
+              Enter alt text for each selected image.
+            </FieldDescription>
+          </Field>
+
+          {selectedUploads.length > 0 && (
+            <ul
+              className="divide-y divide-border rounded-lg border border-border"
+              aria-label="Selected images"
+            >
+              {selectedUploads.map((upload) => (
+                <li className="grid gap-3 p-3 sm:grid-cols-2" key={upload.id}>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {upload.file.name}
                     </p>
-                  )}
-                  {item.status === "processing" && (
-                    <p className="mt-2 text-sm text-warning">
-                      Processing is incomplete. Choose the same original file to
-                      safely retry.
+                    <p className="text-xs text-muted-foreground">
+                      {formatBytes(upload.file.size)}
                     </p>
-                  )}
-                  {item.status === "rejected" && (
-                    <p className="mt-2 text-sm text-warning">
-                      This file could not be decoded as a supported image.
-                      Delete it and upload a valid JPEG, PNG, or WebP file.
-                    </p>
-                  )}
-                  {item.status === "ready" && (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Processed WebP renditions are ready. Only published
-                      products expose them.
-                    </p>
-                  )}
-                  {(item.status === "uploading" ||
-                    item.status === "quarantined" ||
-                    item.status === "processing") && (
-                    <div className="mt-3 grid gap-2">
-                      <p className="text-sm text-warning">
-                        Choose the same original file; the API verifies that its
-                        content matches the recorded upload command.
+                    <Input
+                      aria-label={`Alt text for ${upload.file.name}`}
+                      className="mt-2 h-9"
+                      disabled={
+                        operation !== null || upload.draft !== undefined
+                      }
+                      maxLength={500}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setSelectedUploads((current) =>
+                          current.map((candidate) =>
+                            candidate.id === upload.id
+                              ? { ...candidate, altText: value }
+                              : candidate,
+                          ),
+                        );
+                      }}
+                      placeholder="Describe this image"
+                      required={!upload.draft}
+                      value={upload.draft?.altText ?? upload.altText}
+                    />
+                    {upload.error && (
+                      <p className="mt-2 text-sm text-destructive" role="alert">
+                        {upload.error}
                       </p>
-                      <Input
-                        accept="image/jpeg,image/png,image/webp"
-                        aria-label={`Choose original file to retry ${item.altText}`}
-                        className={fileFieldClassName}
-                        disabled={operation !== null}
-                        onChange={(event) => {
-                          const file = event.currentTarget.files?.[0];
-                          event.currentTarget.value = "";
-                          if (file) void retryPendingUpload(item, file);
-                        }}
-                        type="file"
-                      />
-                    </div>
-                  )}
-                  {item.status === "deleting" && (
-                    <p className="mt-2 text-sm text-warning">
-                      Deletion is pending and can be retried safely.
-                    </p>
-                  )}
-                </div>
+                    )}
+                  </div>
+                  <Button
+                    aria-label={`Remove ${upload.file.name}`}
+                    className="sm:col-start-2 sm:justify-self-end"
+                    disabled={operation !== null}
+                    onClick={() =>
+                      setSelectedUploads((current) =>
+                        current.filter(
+                          (candidate) => candidate.id !== upload.id,
+                        ),
+                      )
+                    }
+                    type="button"
+                    variant="outline"
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
 
-                <div className="flex min-w-48 flex-col gap-2 sm:items-end">
-                  {(item.status === "quarantined" ||
-                    item.status === "ready" ||
-                    item.status === "rejected") && (
-                    <>
+          <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+            <Field>
+              <FieldLabel htmlFor="catalog-media-variant">
+                Variant association
+              </FieldLabel>
+              <Select
+                disabled={operation !== null || hasPendingUploadCommands}
+                onValueChange={(value) =>
+                  setVariantId(value === allVariantsValue ? "" : (value ?? ""))
+                }
+                value={variantId || allVariantsValue}
+              >
+                <SelectTrigger id="catalog-media-variant">
+                  <SelectValue placeholder="All product variants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={allVariantsValue}>
+                    All product variants
+                  </SelectItem>
+                  {activeVariants.map((variant) => (
+                    <SelectItem key={variant.id} value={variant.id}>
+                      {variant.color} · {variant.sizeLabel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Button
+              className="sm:justify-self-end"
+              disabled={
+                operation !== null ||
+                selectedUploads.length === 0 ||
+                mediaLimitReached ||
+                selectedUploads.every(
+                  (upload) => upload.draft !== undefined && !upload.retryable,
+                )
+              }
+              type="submit"
+            >
+              <Upload aria-hidden="true" />
+              {operation?.startsWith("upload:")
+                ? "Uploading images…"
+                : selectedUploads.some((upload) => upload.draft !== undefined)
+                  ? "Retry remaining uploads"
+                  : "Upload images"}
+            </Button>
+          </div>
+        </form>
+
+        <section
+          aria-labelledby="uploaded-media-heading"
+          className="grid gap-3 border-t border-border pt-5"
+        >
+          <h3 className="font-medium" id="uploaded-media-heading">
+            Uploaded images
+          </h3>
+          {mediaIsLoading ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              Loading product media…
+            </p>
+          ) : isUnavailable ? null : media.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+              No media has been uploaded for this product.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {media.map((item) => (
+                <li
+                  className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4"
+                  key={item.id}
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-medium">
+                        Image {item.sortOrder + 1}
+                      </h4>
+                      <Badge
+                        className={mediaStatusClassName(item.status)}
+                        variant="outline"
+                      >
+                        {mediaStatusLabel(item.status)}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 break-words text-sm">{item.altText}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {item.contentType} · {formatBytes(item.sizeBytes)}
+                      {item.variantId
+                        ? ` · ${variantLabel(variants, item.variantId)}`
+                        : " · All variants"}
+                    </p>
+                    {item.status === "rejected" && (
+                      <p className="mt-2 text-sm text-warning">
+                        Unsupported or invalid image. Delete it and upload a
+                        valid JPEG, PNG, or WebP file.
+                      </p>
+                    )}
+                    {(item.status === "uploading" ||
+                      item.status === "quarantined" ||
+                      item.status === "processing") && (
+                      <div className="mt-3 grid gap-2">
+                        <p className="text-sm text-muted-foreground">
+                          Select the original file to retry.
+                        </p>
+                        <Input
+                          accept="image/jpeg,image/png,image/webp"
+                          aria-label={`Choose original file to retry ${item.altText}`}
+                          className={fileFieldClassName}
+                          disabled={operation !== null}
+                          onChange={(event) => {
+                            const file = event.currentTarget.files?.[0];
+                            event.currentTarget.value = "";
+                            if (file) void retryPendingUpload(item, file);
+                          }}
+                          type="file"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:items-end">
+                    {(item.status === "quarantined" ||
+                      item.status === "ready" ||
+                      item.status === "rejected") && (
                       <Button
                         disabled={operation !== null}
                         onClick={() => void deleteMedia(item)}
@@ -652,40 +664,56 @@ export function CatalogMediaManager({
                           ? "Deleting…"
                           : "Delete media"}
                       </Button>
-                    </>
-                  )}
-                  {item.status === "deleting" && (
-                    <Button
-                      disabled={operation !== null}
-                      onClick={() => void deleteMedia(item)}
-                      type="button"
-                      variant="outline"
-                    >
-                      {operation === `delete:${item.id}`
-                        ? "Deleting…"
-                        : "Retry deletion"}
-                    </Button>
-                  )}
-                  {(item.status === "uploading" ||
-                    item.status === "processing") && (
-                    <p className="text-right text-xs text-muted-foreground">
-                      Finish or retry processing before deleting.
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                    )}
+                    {item.status === "deleting" && (
+                      <Button
+                        disabled={operation !== null}
+                        onClick={() => void deleteMedia(item)}
+                        type="button"
+                        variant="outline"
+                      >
+                        {operation === `delete:${item.id}`
+                          ? "Deleting…"
+                          : "Retry deletion"}
+                      </Button>
+                    )}
+                    {(item.status === "uploading" ||
+                      item.status === "processing") && (
+                      <p className="text-sm text-muted-foreground">
+                        Retry processing before deletion.
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </CardContent>
     </Card>
   );
+}
+
+function mediaStatusClassName(status: CatalogMedia["status"]): string {
+  switch (status) {
+    case "ready":
+      return "border-success/30 bg-success/10 text-success";
+    case "rejected":
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    case "uploading":
+    case "processing":
+    case "deleting":
+      return "border-warning/30 bg-warning/10 text-warning";
+    case "quarantined":
+    case "deleted":
+      return "";
+  }
 }
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KiB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+  return `${Number((bytes / (1024 * 1024)).toFixed(1))} MiB`;
 }
 
 function mediaStatusLabel(status: CatalogMedia["status"]): string {
