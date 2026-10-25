@@ -961,11 +961,7 @@ describe("catalog and security audit", () => {
       categoryAuditPage.body.events.map(
         (event: { subjectType: string }) => event.subjectType,
       ),
-    ).toEqual([
-      "catalog_category",
-      "catalog_category",
-      "catalog_category",
-    ]);
+    ).toEqual(["catalog_category", "catalog_category", "catalog_category"]);
     expect(page.body.events).toHaveLength(1);
     expect(page.body.nextCursor).toEqual(expect.any(String));
     expect(() =>
