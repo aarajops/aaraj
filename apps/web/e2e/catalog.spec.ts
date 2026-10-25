@@ -130,7 +130,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("option", { name: "Clothing / T-shirts", exact: true }),
   ).toBeEnabled();
-  await chooseSelectOption(page, "Guide category", "Clothing");
+  await page.getByRole("option", { name: "Clothing", exact: true }).click();
   await page.getByLabel("Fit (optional)").fill("Regular");
   await chooseSelectOption(page, "Enter measurements in", "Inches (in)");
   await page.getByRole("button", { name: "Add size" }).click();
