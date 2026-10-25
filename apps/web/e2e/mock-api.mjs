@@ -1058,6 +1058,13 @@ function isActiveCategory(categoryId) {
   return Boolean(category?.isActive);
 }
 
+function isActiveLeafCategory(categoryId) {
+  return (
+    isActiveCategory(categoryId) &&
+    !categories.some(({ parentId }) => parentId === categoryId)
+  );
+}
+
 function isCategoryOrDescendant(categoryId, ancestorId) {
   const visited = new Set();
   let current = categories.find(({ id }) => id === categoryId);
