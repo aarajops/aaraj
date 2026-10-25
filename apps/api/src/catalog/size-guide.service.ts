@@ -12,7 +12,7 @@ import {
 import type {
   CatalogMeasurementKey,
   CatalogMeasurementUnit,
-  CatalogSizeGuide,
+  CatalogSizeGuideManagement,
   CatalogSizeGuideCreateInput,
   CatalogSizeGuideListQuery,
   CatalogSizeGuidePage,
@@ -48,7 +48,7 @@ import {
   loadCategoryReferences,
   requireActiveCategory,
 } from "./catalog-category.helpers.js";
-import { loadCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
+import { loadManagedCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
 
 @Injectable()
 export class SizeGuideService {
@@ -161,7 +161,7 @@ export class SizeGuideService {
   async findForManagement(
     actor: AccessPrincipal,
     guideId: string,
-  ): Promise<CatalogSizeGuide> {
+  ): Promise<CatalogSizeGuideManagement> {
     await this.authorization.authorize(CatalogPolicy, "manage", actor);
     return this.database.db.transaction(async (transaction) => {
       const [guide] = await transaction
@@ -170,7 +170,7 @@ export class SizeGuideService {
         .where(eq(catalogSizeGuide.id, guideId))
         .limit(1);
       if (!guide) throw new NotFoundException("Size guide not found");
-      return loadCatalogSizeGuide(transaction, guide);
+      return loadManagedCatalogSizeGuide(transaction, guide);
     });
   }
 
@@ -192,6 +192,7 @@ export class SizeGuideService {
             categoryId: input.categoryId,
             fit: input.fit ?? null,
             measurementBasis: input.measurementBasis,
+            inputUnit: input.inputUnit,
           })
           .returning();
         if (!guide) throw new Error("Size guide insert returned no row.");
@@ -209,7 +210,7 @@ export class SizeGuideService {
             sizeCount: input.rows.length,
           },
         });
-        return loadCatalogSizeGuide(transaction, guide);
+        return loadManagedCatalogSizeGuide(transaction, guide);
       } catch (error) {
         if (isUniqueViolation(error)) {
           throw new ConflictException(
@@ -250,6 +251,7 @@ export class SizeGuideService {
           categoryId: input.categoryId,
           fit: input.fit ?? null,
           measurementBasis: input.measurementBasis,
+          inputUnit: input.inputUnit,
           updatedAt: new Date(),
         })
         .where(eq(catalogSizeGuide.id, guideId))
@@ -276,7 +278,7 @@ export class SizeGuideService {
             sizeCount: input.rows.length,
           },
         });
-        return loadCatalogSizeGuide(transaction, updated);
+        return loadManagedCatalogSizeGuide(transaction, updated);
       } catch (error) {
         if (isUniqueViolation(error)) {
           throw new ConflictException(

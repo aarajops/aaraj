@@ -1,0 +1,2 @@
+ALTER TABLE "catalog"."size_guide" ADD COLUMN "input_unit" text DEFAULT 'cm' NOT NULL;--> statement-breakpoint
+ALTER TABLE "catalog"."size_guide" ADD CONSTRAINT "size_guide_input_unit_check" CHECK ("catalog"."size_guide"."input_unit" in ('cm', 'in'));

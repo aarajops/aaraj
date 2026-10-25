@@ -350,6 +350,11 @@ describe("catalog and security audit", () => {
       .expect(201);
     const guideId = guide.body.id as string;
     expect(guide.body.category.id).toBe(parentCategory.body.id);
+    expect(guide.body.inputUnit).toBe("in");
+    expect(guide.body.rows[0].measurements).toContainEqual({
+      key: "chest_width",
+      valueCm: "50.800",
+    });
     await request(app.getHttpServer())
       .patch(`/api/v1/catalog/categories/${parentCategory.body.id}`)
       .set("Cookie", owner.cookie)

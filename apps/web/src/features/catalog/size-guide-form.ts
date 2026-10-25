@@ -1,8 +1,10 @@
 import {
+  convertCatalogMeasurementValue,
   CatalogMeasurementKeySchema,
   CatalogSizeGuideCreateSchema,
   type CatalogMeasurementKey,
-  type CatalogSizeGuide,
+  type CatalogMeasurementUnit,
+  type CatalogSizeGuideManagement,
   type CatalogSizeGuideCreateInput,
   type CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
@@ -20,7 +22,7 @@ export interface GuideForm {
   categoryId: string;
   fit: string;
   measurementBasis: "garment" | "body";
-  inputUnit: "cm" | "in";
+  inputUnit: CatalogMeasurementUnit;
   keys: CatalogMeasurementKey[];
   rows: GuideRowDraft[];
 }
@@ -149,21 +151,25 @@ export const guideFormSchema = z
   })
   .transform(toGuideSubmission);
 
-export function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
+export function toSizeGuideFormState(
+  guide: CatalogSizeGuideManagement,
+): GuideForm {
   return {
     id: guide.id,
     name: guide.name,
     categoryId: guide.category.id,
     fit: guide.fit ?? "",
     measurementBasis: guide.measurementBasis,
-    inputUnit: "cm",
+    inputUnit: guide.inputUnit,
     keys: guide.rows[0]?.measurements.map(({ key }) => key) ?? [],
     rows: guide.rows.map((row) => ({
       sizeLabel: row.sizeLabel,
       values: Object.fromEntries(
         row.measurements.map(({ key, valueCm }) => [
           key,
-          formatMeasurementInput(valueCm),
+          formatMeasurementInput(
+            convertCatalogMeasurementValue(valueCm, "cm", guide.inputUnit),
+          ),
         ]),
       ),
     })),

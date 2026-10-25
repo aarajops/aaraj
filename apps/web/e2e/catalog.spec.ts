@@ -146,6 +146,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.locator("#size-1-body_length").fill("29.000");
   await page.getByRole("button", { name: "Create guide" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/size-guides$/);
+  await page.getByRole("link", { name: "Edit Aaraj Classic Tee" }).click();
+  await expect(page).toHaveURL(/\/admin\/catalog\/size-guides\/.+\/edit$/);
+  await expect(
+    page.getByRole("combobox", { name: "Enter measurements in" }),
+  ).toContainText("Inches (in)");
+  await expect(page.locator("#size-0-chest_width")).toHaveValue("20");
+  await expect(page.locator("#size-0-body_length")).toHaveValue("28");
   await page.goto("/admin/catalog");
   await expect(
     page.getByRole("heading", { name: "Catalog management" }),

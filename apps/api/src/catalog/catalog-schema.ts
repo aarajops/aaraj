@@ -86,6 +86,7 @@ export const catalogSizeGuide = catalogSchema.table(
     measurementBasis: text("measurement_basis")
       .$type<"garment" | "body">()
       .notNull(),
+    inputUnit: text("input_unit").$type<"cm" | "in">().notNull().default("cm"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -102,6 +103,10 @@ export const catalogSizeGuide = catalogSchema.table(
     check(
       "size_guide_measurement_basis_check",
       sql`${table.measurementBasis} in ('garment', 'body')`,
+    ),
+    check(
+      "size_guide_input_unit_check",
+      sql`${table.inputUnit} in ('cm', 'in')`,
     ),
   ],
 );

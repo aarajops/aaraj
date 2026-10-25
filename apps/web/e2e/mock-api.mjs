@@ -1056,6 +1056,7 @@ function makeGuide(input, createdAt) {
     ),
     fit: input.fit ?? null,
     measurementBasis: input.measurementBasis,
+    inputUnit: input.inputUnit,
     rows: input.rows.map((row, sortOrder) => ({
       id: randomUUID(),
       sizeLabel: row.sizeLabel,
@@ -1199,6 +1200,7 @@ function categoryMatches(categoryId, slug) {
 }
 
 function productDetail(product, management = false) {
+  const guide = sizeGuides.find(({ id }) => id === product.sizeGuideId);
   return {
     ...summary(product),
     ...(management
@@ -1221,8 +1223,14 @@ function productDetail(product, management = false) {
               price: variant.price,
             },
       ),
-    sizeGuide: sizeGuides.find(({ id }) => id === product.sizeGuideId) ?? null,
+    sizeGuide: guide ? withoutInputUnit(guide) : null,
   };
+}
+
+function withoutInputUnit(guide) {
+  const publicGuide = { ...guide };
+  delete publicGuide.inputUnit;
+  return publicGuide;
 }
 
 function summary(product) {

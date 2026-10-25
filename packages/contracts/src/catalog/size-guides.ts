@@ -82,6 +82,13 @@ export const CatalogSizeGuideSchema = z.strictObject({
 });
 export type CatalogSizeGuide = z.infer<typeof CatalogSizeGuideSchema>;
 
+export const CatalogSizeGuideManagementSchema = CatalogSizeGuideSchema.extend({
+  inputUnit: CatalogMeasurementUnitSchema,
+});
+export type CatalogSizeGuideManagement = z.infer<
+  typeof CatalogSizeGuideManagementSchema
+>;
+
 export const CatalogSizeGuideSummarySchema = z.strictObject({
   id: z.uuid(),
   name: z.string().min(1).max(120),

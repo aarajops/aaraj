@@ -3,10 +3,10 @@
 import {
   convertCatalogMeasurementValue,
   CatalogMeasurementKeySchema,
-  CatalogSizeGuideSchema,
+  CatalogSizeGuideManagementSchema,
   type CatalogMeasurementKey,
   type CatalogCategory,
-  type CatalogSizeGuide,
+  type CatalogSizeGuideManagement,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
 } from "@aaraj/contracts";
@@ -67,7 +67,7 @@ export function SizeGuideManager({
 }: {
   view?: "list" | "create" | "edit";
   initialPage?: CatalogSizeGuidePage;
-  initialGuide?: CatalogSizeGuide;
+  initialGuide?: CatalogSizeGuideManagement;
   query: CatalogSizeGuideListQuery;
   categoryOptions?: CatalogCategory[];
 }) {
@@ -144,7 +144,9 @@ export function SizeGuideManager({
         );
         return;
       }
-      const result = CatalogSizeGuideSchema.safeParse(await response.json());
+      const result = CatalogSizeGuideManagementSchema.safeParse(
+        await response.json(),
+      );
       if (!result.success) {
         setErrorMessage("The server returned an invalid size guide.");
         return;
@@ -239,8 +241,7 @@ export function SizeGuideManager({
                       : "Create a size guide"}
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Measurements are stored in centimeters. You can enter them
-                    in cm or inches.
+                    Choose the unit used by your source size chart.
                   </p>
                 </div>
                 <Link
