@@ -41,11 +41,17 @@ export const CatalogPriceRangeSchema = z
   .refine(({ minPriceBdt, maxPriceBdt }) => minPriceBdt <= maxPriceBdt);
 export type CatalogPriceRange = z.infer<typeof CatalogPriceRangeSchema>;
 
+export const CATALOG_PRODUCT_SLUG_MAX_LENGTH = 120;
+
 export const CatalogProductSlugSchema = z
   .string()
   .min(1)
-  .max(120)
+  .max(CATALOG_PRODUCT_SLUG_MAX_LENGTH)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+
+export const CatalogProductSlugSuggestionSchema = z.strictObject({
+  slug: CatalogProductSlugSchema,
+});
 
 export const CatalogProductVariantInputSchema = z.strictObject({
   sku: z.string().trim().min(1).max(100),
@@ -131,7 +137,7 @@ export type CatalogManagedProductDetail = z.infer<
 >;
 
 const CatalogProductFieldsSchema = z.strictObject({
-  slug: CatalogProductSlugSchema,
+  slug: CatalogProductSlugSchema.optional(),
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(5000).nullable().optional(),
   audience: CatalogAudienceSchema,
@@ -143,6 +149,13 @@ const CatalogProductFieldsSchema = z.strictObject({
   variants: z.array(CatalogProductVariantInputSchema).max(200).optional(),
   isPublished: z.boolean().optional(),
 });
+
+export const CatalogProductSlugSuggestionQuerySchema = z.strictObject({
+  name: CatalogProductFieldsSchema.shape.name,
+});
+export type CatalogProductSlugSuggestionQuery = z.infer<
+  typeof CatalogProductSlugSuggestionQuerySchema
+>;
 
 export const CatalogProductCreateSchema = CatalogProductFieldsSchema.extend({
   reason: z.string().trim().min(3).max(500).optional(),

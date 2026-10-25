@@ -30,7 +30,6 @@ export type CategorySubmission =
 function toCategorySubmission(form: CategoryFormDraft): CategorySubmission {
   const fields = {
     name: form.name.trim(),
-    slug: form.slug.trim(),
     parentId: form.parentId || null,
   };
 
@@ -39,6 +38,7 @@ function toCategorySubmission(form: CategoryFormDraft): CategorySubmission {
       id: form.id,
       input: {
         ...fields,
+        slug: form.slug.trim(),
         isActive: form.isActive,
       } satisfies CatalogCategoryUpdateInput,
     };
@@ -46,7 +46,10 @@ function toCategorySubmission(form: CategoryFormDraft): CategorySubmission {
 
   return {
     id: null,
-    input: fields satisfies CatalogCategoryCreateInput,
+    input: {
+      ...fields,
+      ...(form.slug.trim() ? { slug: form.slug.trim() } : {}),
+    } satisfies CatalogCategoryCreateInput,
   };
 }
 

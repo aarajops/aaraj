@@ -3,11 +3,15 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   convertCatalogMeasurementValue,
   CatalogProductCreateSchema,
+  CatalogProductSlugSuggestionQuerySchema,
   CatalogPublishedProductListQuerySchema,
   CatalogProductUpdateSchema,
   CatalogSizeGuideCreateSchema,
   CatalogCategoryCreateSchema,
+  CatalogCategorySlugSuggestionQuerySchema,
   CatalogCategoryUpdateSchema,
+  CATALOG_CATEGORY_SLUG_MAX_LENGTH,
+  CATALOG_PRODUCT_SLUG_MAX_LENGTH,
   InventoryListQuerySchema,
   OrderListQuerySchema,
   PathaoManagementBookingSummariesQuerySchema,
@@ -444,6 +448,32 @@ const server = createServer(async (request, response) => {
   }
 
   if (
+    url.pathname === "/api/v1/catalog/categories/slug-suggestion" &&
+    method === "GET"
+  ) {
+    if (!requireCategoryAdmin(request, response)) return;
+    const parsed = CatalogCategorySlugSuggestionQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams),
+    );
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid category name",
+      });
+      return;
+    }
+    send(response, 200, {
+      slug: availableSlug(
+        parsed.data.name,
+        categories.map(({ slug }) => slug),
+        CATALOG_CATEGORY_SLUG_MAX_LENGTH,
+        "category",
+      ),
+    });
+    return;
+  }
+
+  if (
     url.pathname === "/api/v1/catalog/categories/manage" &&
     method === "GET"
   ) {
@@ -465,10 +495,19 @@ const server = createServer(async (request, response) => {
       return;
     }
     const input = parsed.data;
-    if (categories.some(({ slug }) => slug === input.slug)) {
+    const slug =
+      input.slug ??
+      availableSlug(
+        input.name,
+        categories.map(({ slug: existingSlug }) => existingSlug),
+        CATALOG_CATEGORY_SLUG_MAX_LENGTH,
+        "category",
+      );
+    if (categories.some(({ slug: existingSlug }) => existingSlug === slug)) {
       send(response, 409, {
         statusCode: 409,
         message: "Category slug already in use.",
+        errorCode: "CATALOG_CATEGORY_SLUG_TAKEN",
       });
       return;
     }
@@ -482,11 +521,7 @@ const server = createServer(async (request, response) => {
       });
       return;
     }
-    const category = makeCategory(
-      input.name,
-      input.slug,
-      input.parentId ?? null,
-    );
+    const category = makeCategory(input.name, slug, input.parentId ?? null);
     categories.push(category);
     send(
       response,
@@ -522,6 +557,7 @@ const server = createServer(async (request, response) => {
       send(response, 409, {
         statusCode: 409,
         message: "Category slug already in use.",
+        errorCode: "CATALOG_CATEGORY_SLUG_TAKEN",
       });
       return;
     }
@@ -719,6 +755,32 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (
+    url.pathname === "/api/v1/catalog/products/slug-suggestion" &&
+    method === "GET"
+  ) {
+    if (!requireStaff(request, response)) return;
+    const parsed = CatalogProductSlugSuggestionQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams),
+    );
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid product name",
+      });
+      return;
+    }
+    send(response, 200, {
+      slug: availableSlug(
+        parsed.data.name,
+        products.map(({ slug }) => slug),
+        CATALOG_PRODUCT_SLUG_MAX_LENGTH,
+        "product",
+      ),
+    });
+    return;
+  }
+
   const managedProductPath = url.pathname.match(
     /^\/api\/v1\/catalog\/products\/manage\/([^/]+)$/,
   );
@@ -778,10 +840,19 @@ const server = createServer(async (request, response) => {
       return;
     }
     const body = parsed.data;
-    if (products.some((product) => product.slug === body.slug)) {
+    const slug =
+      body.slug ??
+      availableSlug(
+        body.name,
+        products.map((product) => product.slug),
+        CATALOG_PRODUCT_SLUG_MAX_LENGTH,
+        "product",
+      );
+    if (products.some((product) => product.slug === slug)) {
       send(response, 409, {
         statusCode: 409,
         message: "A product with this slug already exists",
+        errorCode: "CATALOG_PRODUCT_SLUG_TAKEN",
       });
       return;
     }
@@ -802,7 +873,7 @@ const server = createServer(async (request, response) => {
     const now = new Date().toISOString();
     const product = {
       id: randomUUID(),
-      slug: body.slug,
+      slug,
       name: body.name,
       description: body.description ?? null,
       audience: body.audience,
@@ -889,6 +960,7 @@ const server = createServer(async (request, response) => {
       send(response, 409, {
         statusCode: 409,
         message: "A product with this slug already exists",
+        errorCode: "CATALOG_PRODUCT_SLUG_TAKEN",
       });
       return;
     }
@@ -1002,6 +1074,26 @@ function sizeGuideSummary(guide) {
     sizeLabels: guide.rows.map(({ sizeLabel }) => sizeLabel),
     updatedAt: guide.updatedAt,
   };
+}
+
+function availableSlug(name, existingSlugs, maxLength, fallback) {
+  const normalized = name
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const base =
+    normalized
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, maxLength)
+      .replace(/-+$/g, "") || fallback;
+  const used = new Set(existingSlugs);
+  for (let suffix = 1; ; suffix += 1) {
+    const ending = suffix === 1 ? "" : `-${suffix}`;
+    const prefix = base.slice(0, maxLength - ending.length).replace(/-+$/g, "");
+    const slug = `${prefix}${ending}`;
+    if (!used.has(slug)) return slug;
+  }
 }
 
 function makeCategory(name, slug, parentId = null) {

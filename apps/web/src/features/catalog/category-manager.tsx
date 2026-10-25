@@ -1,6 +1,11 @@
 "use client";
 
-import { CatalogCategorySchema, type CatalogCategory } from "@aaraj/contracts";
+import {
+  CATALOG_CATEGORY_SLUG_MAX_LENGTH,
+  CatalogCategorySchema,
+  CatalogCategorySlugSuggestionSchema,
+  type CatalogCategory,
+} from "@aaraj/contracts";
 import Image from "next/image";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -8,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   createCatalogCategory,
+  suggestCatalogCategorySlug,
   uploadCatalogCategoryImage,
   updateCatalogCategory,
 } from "@/features/catalog/catalog-client";
@@ -66,6 +72,10 @@ export function CategoryManager({
     control,
     register,
     handleSubmit,
+    getFieldState,
+    getValues,
+    setError,
+    setValue,
     formState: { errors, isSubmitting, dirtyFields },
   } = useForm<CategoryFormDraft, unknown, CategorySubmission>({
     resolver: zodResolver(categoryFormSchema),
@@ -78,6 +88,35 @@ export function CategoryManager({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
+  const slugSuggestionRequestId = useRef(0);
+
+  async function suggestCategorySlug(name: string) {
+    const normalizedName = name.trim();
+    if (editingId || dirtyFields.slug || !normalizedName) return;
+
+    const requestId = ++slugSuggestionRequestId.current;
+    try {
+      const response = await suggestCatalogCategorySlug(normalizedName);
+      if (!response.ok) return;
+      const result = CatalogCategorySlugSuggestionSchema.safeParse(
+        await response.json(),
+      );
+      if (
+        !result.success ||
+        requestId !== slugSuggestionRequestId.current ||
+        getValues("name").trim() !== normalizedName ||
+        getFieldState("slug").isDirty
+      ) {
+        return;
+      }
+      setValue("slug", result.data.slug, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+    } catch {
+      // The create endpoint generates the slug if a suggestion is unavailable.
+    }
+  }
 
   async function uploadCategoryImage() {
     const file = imageInput.current?.files?.[0];
@@ -108,15 +147,26 @@ export function CategoryManager({
     setErrorMessage(null);
 
     try {
-      const response =
-        submission.id === null
-          ? await createCatalogCategory(submission.input)
-          : await updateCatalogCategory(submission.id, submission.input);
+      let response: Response;
+      if (submission.id === null) {
+        const input = { ...submission.input };
+        if (!getFieldState("slug").isDirty) delete input.slug;
+        response = await createCatalogCategory(input);
+      } else {
+        response = await updateCatalogCategory(submission.id, submission.input);
+      }
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
+        const message = getApiErrorMessage(problem);
+        if (problem?.errorCode === "CATALOG_CATEGORY_SLUG_TAKEN") {
+          setError("slug", {
+            type: "server",
+            message: message ?? "That category slug is already in use.",
+          });
+          return;
+        }
         setErrorMessage(
-          getApiErrorMessage(problem) ??
-            "The API returned an unreadable error response.",
+          message ?? "The API returned an unreadable error response.",
         );
         return;
       }
@@ -220,7 +270,10 @@ export function CategoryManager({
                     id="category-name"
                     maxLength={80}
                     required
-                    {...register("name")}
+                    {...register("name", {
+                      onBlur: (event) =>
+                        void suggestCategorySlug(event.currentTarget.value),
+                    })}
                   />
                   {errors.name && (
                     <FieldError id="category-name-error">
@@ -239,8 +292,7 @@ export function CategoryManager({
                     aria-invalid={Boolean(errors.slug)}
                     className={fieldClassName}
                     id="category-slug"
-                    maxLength={100}
-                    required
+                    maxLength={CATALOG_CATEGORY_SLUG_MAX_LENGTH}
                     {...register("slug")}
                   />
                   {errors.slug && (
@@ -249,8 +301,9 @@ export function CategoryManager({
                     </FieldError>
                   )}
                   <FieldDescription id="category-slug-description">
-                    Used in storefront URLs; keep it stable once products use
-                    it.
+                    {view === "edit"
+                      ? "Used in storefront URLs. Keep it stable once in use."
+                      : "Suggested from the name. Edit it if needed."}
                   </FieldDescription>
                 </Field>
                 <Field>

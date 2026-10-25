@@ -91,7 +91,6 @@ function prepareProductSubmission(
     };
   });
   const fields = {
-    slug: form.slug.trim(),
     name: form.name.trim(),
     description: form.description.trim() || null,
     categoryId: form.categoryId || null,
@@ -109,6 +108,7 @@ function prepareProductSubmission(
       id: form.id,
       input: {
         ...fields,
+        slug: form.slug.trim(),
         audience: form.audience || null,
       } satisfies CatalogProductUpdateInput,
       variantDraftIndices,
@@ -119,6 +119,7 @@ function prepareProductSubmission(
     id: null,
     input: {
       ...fields,
+      ...(form.slug.trim() ? { slug: form.slug.trim() } : {}),
       audience: form.audience as Exclude<Audience, "">,
     } satisfies CatalogProductCreateInput,
     variantDraftIndices,

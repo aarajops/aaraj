@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   StandardSchemaValidationPipe,
   UploadedFile,
   UseGuards,
@@ -27,9 +28,11 @@ import {
   CatalogCategoryIdSchema,
   CatalogMediaSha256Schema,
   CatalogCategoryUpdateSchema,
+  CatalogCategorySlugSuggestionQuerySchema,
   MAX_CATALOG_MEDIA_UPLOAD_BYTES,
   type CatalogCategoryCreateInput,
   type CatalogCategoryUpdateInput,
+  type CatalogCategorySlugSuggestionQuery,
 } from "@aaraj/contracts";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
 import { CategoryService } from "./category.service.js";
@@ -76,6 +79,17 @@ export class CategoryController {
   @Header("Cache-Control", "no-store")
   listForManagement(@Session() session: UserSession) {
     return this.categories.listForManagement(session.user);
+  }
+
+  @Get("slug-suggestion")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  suggestSlug(
+    @Session() session: UserSession,
+    @Query({ schema: CatalogCategorySlugSuggestionQuerySchema })
+    query: CatalogCategorySlugSuggestionQuery,
+  ) {
+    return this.categories.suggestSlug(session.user, query.name);
   }
 
   @Post()

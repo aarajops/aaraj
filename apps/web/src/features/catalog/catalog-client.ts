@@ -21,6 +21,14 @@ export function fetchCatalogCategories(): Promise<Response> {
   });
 }
 
+export function suggestCatalogCategorySlug(name: string): Promise<Response> {
+  const search = new URLSearchParams({ name });
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/categories/slug-suggestion?${search}`,
+    { cache: "no-store", credentials: "same-origin" },
+  );
+}
+
 export function createCatalogCategory(
   input: CatalogCategoryCreateInput,
 ): Promise<Response> {
@@ -107,6 +115,14 @@ export function createCatalogProduct(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export function suggestCatalogProductSlug(name: string): Promise<Response> {
+  const search = new URLSearchParams({ name });
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/slug-suggestion?${search}`,
+    { cache: "no-store", credentials: "same-origin" },
+  );
 }
 
 export function updateCatalogProduct(

@@ -24,6 +24,7 @@ import type {
 } from "@aaraj/contracts";
 import {
   API_V1_BASE_PATH,
+  CATALOG_PRODUCT_SLUG_MAX_LENGTH,
   CatalogMediaDerivativesSchema,
   MAX_CATALOG_PRODUCT_MEDIA,
 } from "@aaraj/contracts";
@@ -77,6 +78,11 @@ import {
   requireActiveLeafCategory,
 } from "./catalog-category.helpers.js";
 import { loadCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
+import {
+  catalogSlugBase,
+  catalogSlugCandidate,
+  findAvailableCatalogSlug,
+} from "./catalog-slug.js";
 
 @Injectable()
 export class CatalogService {
@@ -721,6 +727,23 @@ export class CatalogService {
     });
   }
 
+  async suggestSlug(actor: AccessPrincipal, name: string) {
+    await this.authorization.authorize(CatalogPolicy, "manage", actor);
+    const slug = await findAvailableCatalogSlug(name, {
+      maxLength: CATALOG_PRODUCT_SLUG_MAX_LENGTH,
+      fallback: "product",
+      isTaken: async (candidate) => {
+        const [existing] = await this.database.db
+          .select({ id: catalogProduct.id })
+          .from(catalogProduct)
+          .where(eq(catalogProduct.slug, candidate))
+          .limit(1);
+        return Boolean(existing);
+      },
+    });
+    return { slug };
+  }
+
   async create(actor: AccessPrincipal, input: CatalogProductCreateInput) {
     const created = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
@@ -741,13 +764,22 @@ export class CatalogService {
           await requireSizeGuide(transaction, values.sizeGuideId, false);
         }
 
-        const [product] = await transaction
-          .insert(catalogProduct)
-          .values({
-            ...values,
-            isPublished: input.isPublished ?? false,
-          })
-          .returning();
+        const productValues = {
+          ...values,
+          isPublished: input.isPublished ?? false,
+        };
+        const [product] = input.slug
+          ? await transaction
+              .insert(catalogProduct)
+              .values({ ...productValues, slug: input.slug })
+              .returning()
+          : [
+              await insertProductWithGeneratedSlug(
+                transaction,
+                productValues,
+                input.name,
+              ),
+            ];
         if (!product) throw new Error("Product insert returned no row.");
         const insertedVariants = variants.length
           ? await insertVariants(transaction, product.id, variants)
@@ -1386,7 +1418,6 @@ function lowestActiveVariantPrice(
 }
 
 function toProductPersistenceValues(input: CatalogProductCreateInput): {
-  slug: string;
   name: string;
   description: string | null;
   audience: "men" | "women" | "unisex";
@@ -1397,7 +1428,6 @@ function toProductPersistenceValues(input: CatalogProductCreateInput): {
   sizeGuideId: string | null;
 } {
   return {
-    slug: input.slug,
     name: input.name,
     description: input.description ?? null,
     audience: input.audience,
@@ -1407,6 +1437,31 @@ function toProductPersistenceValues(input: CatalogProductCreateInput): {
     careInstructions: input.careInstructions ?? null,
     sizeGuideId: input.sizeGuideId ?? null,
   };
+}
+
+async function insertProductWithGeneratedSlug(
+  transaction: AuditTransaction,
+  values: Omit<typeof catalogProduct.$inferInsert, "slug">,
+  name: string,
+): Promise<typeof catalogProduct.$inferSelect> {
+  const base = catalogSlugBase(
+    name,
+    CATALOG_PRODUCT_SLUG_MAX_LENGTH,
+    "product",
+  );
+  for (let suffix = 1; ; suffix += 1) {
+    const slug = catalogSlugCandidate(
+      base,
+      suffix,
+      CATALOG_PRODUCT_SLUG_MAX_LENGTH,
+    );
+    const [product] = await transaction
+      .insert(catalogProduct)
+      .values({ ...values, slug })
+      .onConflictDoNothing({ target: catalogProduct.slug })
+      .returning();
+    if (product) return product;
+  }
 }
 
 function combinationKey(color: string, sizeLabel: string): string {
@@ -1451,7 +1506,9 @@ function isUniqueViolation(error: unknown): boolean {
 function uniqueConflict(error: unknown): ConflictException {
   const constraint = postgresError(error)?.constraint;
   if (constraint === "product_slug_uidx") {
-    return new ConflictException("A product with this slug already exists");
+    return new ConflictException("A product with this slug already exists", {
+      errorCode: "CATALOG_PRODUCT_SLUG_TAKEN",
+    });
   }
   if (constraint === "product_variant_sku_uidx") {
     return new ConflictException("A variant with this SKU already exists");

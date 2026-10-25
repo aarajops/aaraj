@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  CATALOG_PRODUCT_SLUG_MAX_LENGTH,
+  CatalogProductSlugSuggestionSchema,
   CatalogProductPageSchema,
   CatalogProductSchema,
   CatalogSizeGuidePageSchema,
@@ -18,6 +20,7 @@ import {
   createCatalogProduct,
   fetchManagedSizeGuides,
   fetchManagedProducts,
+  suggestCatalogProductSlug,
   updateCatalogProduct,
 } from "@/features/catalog/catalog-client";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
@@ -101,6 +104,10 @@ export function CatalogManager({
     control,
     register,
     handleSubmit,
+    getFieldState,
+    getValues,
+    setError,
+    setValue,
     formState: { errors, isSubmitting, dirtyFields },
   } = useForm<ProductForm, unknown, ProductSubmission>({
     resolver: zodResolver(productFormSchema),
@@ -126,10 +133,39 @@ export function CatalogManager({
     null,
   );
   const productLoadRequestId = useRef(0);
+  const slugSuggestionRequestId = useRef(0);
   const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
   const [sizeGuideLoadError, setSizeGuideLoadError] = useState<string | null>(
     null,
   );
+
+  async function suggestProductSlug(name: string) {
+    const normalizedName = name.trim();
+    if (editingId || dirtyFields.slug || !normalizedName) return;
+
+    const requestId = ++slugSuggestionRequestId.current;
+    try {
+      const response = await suggestCatalogProductSlug(normalizedName);
+      if (!response.ok) return;
+      const result = CatalogProductSlugSuggestionSchema.safeParse(
+        await response.json(),
+      );
+      if (
+        !result.success ||
+        requestId !== slugSuggestionRequestId.current ||
+        getValues("name").trim() !== normalizedName ||
+        getFieldState("slug").isDirty
+      ) {
+        return;
+      }
+      setValue("slug", result.data.slug, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+    } catch {
+      // The create endpoint generates the slug if a suggestion is unavailable.
+    }
+  }
 
   const loadProducts = useCallback(async () => {
     const requestId = ++productLoadRequestId.current;
@@ -220,17 +256,28 @@ export function CatalogManager({
     setErrorCode(null);
 
     try {
-      const response =
-        submission.id === null
-          ? await createCatalogProduct(submission.input)
-          : await updateCatalogProduct(submission.id, submission.input);
+      let response: Response;
+      if (submission.id === null) {
+        const input = { ...submission.input };
+        if (!getFieldState("slug").isDirty) delete input.slug;
+        response = await createCatalogProduct(input);
+      } else {
+        response = await updateCatalogProduct(submission.id, submission.input);
+      }
 
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
+        const message = getApiErrorMessage(problem);
+        if (problem?.errorCode === "CATALOG_PRODUCT_SLUG_TAKEN") {
+          setError("slug", {
+            type: "server",
+            message: message ?? "That product slug is already in use.",
+          });
+          return;
+        }
         setErrorCode(problem?.errorCode ?? null);
         setFormErrorMessage(
-          getApiErrorMessage(problem) ??
-            "The API returned an unreadable error response.",
+          message ?? "The API returned an unreadable error response.",
         );
         return;
       }
@@ -406,7 +453,10 @@ export function CatalogManager({
                     id="product-name"
                     maxLength={160}
                     required
-                    {...register("name")}
+                    {...register("name", {
+                      onBlur: (event) =>
+                        void suggestProductSlug(event.currentTarget.value),
+                    })}
                   />
                   {errors.name && (
                     <FieldError id="product-name-error">
@@ -427,15 +477,14 @@ export function CatalogManager({
                         ? "slug-error product-slug-description"
                         : "product-slug-description"
                     }
-                    maxLength={120}
-                    required
+                    maxLength={CATALOG_PRODUCT_SLUG_MAX_LENGTH}
                     {...register("slug")}
                   />
                   {slugError && (
                     <FieldError id="slug-error">{slugError}</FieldError>
                   )}
                   <FieldDescription id="product-slug-description">
-                    Use lowercase letters, numbers, and single hyphens.
+                    Suggested from the name. Edit it if needed.
                   </FieldDescription>
                 </Field>
 

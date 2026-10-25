@@ -2,12 +2,18 @@ import { z } from "zod";
 import { API_V1_BASE_PATH } from "../platform/api-version.js";
 import { CATALOG_MEDIA_RENDITIONS } from "./media.js";
 
+export const CATALOG_CATEGORY_SLUG_MAX_LENGTH = 100;
+
 export const CatalogCategorySlugSchema = z
   .string()
   .trim()
   .min(1)
-  .max(100)
+  .max(CATALOG_CATEGORY_SLUG_MAX_LENGTH)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+
+export const CatalogCategorySlugSuggestionSchema = z.strictObject({
+  slug: CatalogCategorySlugSchema,
+});
 
 export const CatalogCategoryReferenceSchema = z.strictObject({
   id: z.uuid(),
@@ -61,10 +67,18 @@ export type CatalogCategoryOptions = z.infer<
 
 export const CatalogCategoryCreateSchema = z.strictObject({
   name: z.string().trim().min(1).max(80),
-  slug: CatalogCategorySlugSchema,
+  slug: CatalogCategorySlugSchema.optional(),
   parentId: z.uuid().nullable().optional(),
   reason: z.string().trim().min(3).max(500).optional(),
 });
+
+export const CatalogCategorySlugSuggestionQuerySchema = z.strictObject({
+  name: CatalogCategoryCreateSchema.shape.name,
+});
+export type CatalogCategorySlugSuggestionQuery = z.infer<
+  typeof CatalogCategorySlugSuggestionQuerySchema
+>;
+
 export type CatalogCategoryCreateInput = z.input<
   typeof CatalogCategoryCreateSchema
 >;

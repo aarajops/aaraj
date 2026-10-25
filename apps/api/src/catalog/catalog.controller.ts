@@ -30,12 +30,14 @@ import {
   CatalogMediaUploadInputSchema,
   CatalogPublishedProductListQuerySchema,
   CatalogProductSlugSchema,
+  CatalogProductSlugSuggestionQuerySchema,
   CatalogProductUpdateSchema,
   MAX_CATALOG_MEDIA_UPLOAD_BYTES,
   type CatalogMediaDeleteInput,
   type CatalogMediaUploadInput,
   type CatalogProductCreateInput,
   type CatalogProductListQuery,
+  type CatalogProductSlugSuggestionQuery,
   type CatalogPublishedProductListQuery,
   type CatalogProductUpdateInput,
 } from "@aaraj/contracts";
@@ -143,6 +145,17 @@ export class CatalogController {
   @Header("Cache-Control", "no-store")
   getPublishedFilters() {
     return this.catalog.getPublishedProductFilterOptions();
+  }
+
+  @Get("slug-suggestion")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  suggestSlug(
+    @Session() session: UserSession,
+    @Query({ schema: CatalogProductSlugSuggestionQuerySchema })
+    query: CatalogProductSlugSuggestionQuery,
+  ) {
+    return this.catalog.suggestSlug(session.user, query.name);
   }
 
   @Get(":slug")

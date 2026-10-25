@@ -18,6 +18,7 @@ import type {
 } from "@aaraj/contracts";
 import {
   API_V1_BASE_PATH,
+  CATALOG_CATEGORY_SLUG_MAX_LENGTH,
   CatalogCategoryImageSchema,
   MAX_CATALOG_MEDIA_DERIVATIVE_BYTES,
 } from "@aaraj/contracts";
@@ -39,6 +40,7 @@ import {
   InvalidCatalogImageError,
 } from "./media/catalog-image-processor.js";
 import { isCategoryOrDescendant } from "./catalog-category.helpers.js";
+import { findAvailableCatalogSlug } from "./catalog-slug.js";
 import {
   validateCatalogImageUpload,
   type CatalogMediaUploadFile,
@@ -246,6 +248,27 @@ export class CategoryService {
     return { categories: toCategories(rows) };
   }
 
+  async suggestSlug(actor: AccessPrincipal, name: string) {
+    await this.authorization.authorize(
+      CatalogPolicy,
+      "manageCategories",
+      actor,
+    );
+    const slug = await findAvailableCatalogSlug(name, {
+      maxLength: CATALOG_CATEGORY_SLUG_MAX_LENGTH,
+      fallback: "category",
+      isTaken: async (candidate) => {
+        const [existing] = await this.database.db
+          .select({ id: catalogCategory.id })
+          .from(catalogCategory)
+          .where(eq(catalogCategory.slug, candidate))
+          .limit(1);
+        return Boolean(existing);
+      },
+    });
+    return { slug };
+  }
+
   async create(actor: AccessPrincipal, input: CatalogCategoryCreateInput) {
     const created = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
@@ -263,13 +286,23 @@ export class CategoryService {
       }
       const parentId = input.parentId ?? null;
       if (parentId) await requireActiveParent(transaction, parentId);
+      const slug =
+        input.slug ??
+        (await findAvailableCatalogSlug(input.name, {
+          maxLength: CATALOG_CATEGORY_SLUG_MAX_LENGTH,
+          fallback: "category",
+          isTaken: async (candidate) =>
+            categories.some(
+              ({ slug: existingSlug }) => existingSlug === candidate,
+            ),
+        }));
 
       try {
         const [category] = await transaction
           .insert(catalogCategory)
           .values({
             name: input.name,
-            slug: input.slug,
+            slug,
             parentId,
           })
           .returning();
@@ -292,7 +325,9 @@ export class CategoryService {
         );
       } catch (error) {
         if (isUniqueViolation(error)) {
-          throw new ConflictException("That category slug is already in use.");
+          throw new ConflictException("That category slug is already in use.", {
+            errorCode: "CATALOG_CATEGORY_SLUG_TAKEN",
+          });
         }
         throw error;
       }
@@ -389,7 +424,9 @@ export class CategoryService {
         ).find(({ id }) => id === updated.id);
       } catch (error) {
         if (isUniqueViolation(error)) {
-          throw new ConflictException("That category slug is already in use.");
+          throw new ConflictException("That category slug is already in use.", {
+            errorCode: "CATALOG_CATEGORY_SLUG_TAKEN",
+          });
         }
         throw error;
       }
