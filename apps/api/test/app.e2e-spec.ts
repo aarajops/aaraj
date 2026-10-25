@@ -74,18 +74,19 @@ describe("AppController (e2e)", () => {
       in: "cookie",
       name: "better-auth.session_token",
     });
-    expect(
+    const createProductSchema =
       response.body.paths["/api/v1/catalog/products"].post.requestBody.content[
         "application/json"
-      ].schema,
-    ).toMatchObject({
+      ].schema;
+    expect(createProductSchema).toMatchObject({
       type: "object",
-      required: expect.arrayContaining(["slug", "name"]),
+      required: expect.arrayContaining(["name", "audience"]),
       properties: {
         slug: { type: "string" },
         name: { type: "string" },
       },
     });
+    expect(createProductSchema.required).not.toContain("slug");
   });
 
   afterAll(async () => {
