@@ -20,5 +20,6 @@
   "0044_access_user_directory_indexes.sql": "maintenance",
   "0045_order_lifecycle_and_quote_cleanup.sql": "maintenance",
   "0046_yearly_order_references.sql": "compatible",
-  "0047_remove_serviceability_review_expiry.sql": "maintenance"
+  "0047_remove_serviceability_review_expiry.sql": "maintenance",
+  "0048_size_guide_input_unit.sql": "compatible"
 }
