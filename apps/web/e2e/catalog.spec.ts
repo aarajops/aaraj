@@ -124,9 +124,11 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
   await page.getByLabel("Guide name").fill("Aaraj Classic Tee");
   await page.getByRole("combobox", { name: "Guide category" }).click();
-  await expect(page.getByRole("option", { name: "Clothing" })).toBeEnabled();
   await expect(
-    page.getByRole("option", { name: "Clothing / T-shirts" }),
+    page.getByRole("option", { name: "Clothing", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("option", { name: "Clothing / T-shirts", exact: true }),
   ).toBeEnabled();
   await chooseSelectOption(page, "Guide category", "Clothing");
   await page.getByLabel("Fit (optional)").fill("Regular");
