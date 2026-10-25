@@ -31,8 +31,7 @@ export function HomepageCategorySettings({
 }) {
   const selectedIds = new Set(selectedCategoryIds);
   const availableIds = new Set(categories.map(({ id }) => id));
-  const artworkCategories = categories.filter(({ image }) => Boolean(image));
-  const availableCategories = artworkCategories.filter(
+  const availableCategories = categories.filter(
     ({ id }) => !selectedIds.has(id),
   );
   const selectedCategories = [
@@ -79,9 +78,11 @@ export function HomepageCategorySettings({
           <SelectTrigger id="homepage-category-select">
             <SelectValue
               placeholder={
-                artworkCategories.length === 0
-                  ? "No category artwork available"
-                  : "All artwork categories are selected"
+                availableCategories.length > 0
+                  ? "Choose a category…"
+                  : categories.length > 0
+                    ? "All active categories are selected"
+                    : "No active categories available"
               }
             />
           </SelectTrigger>
@@ -94,7 +95,8 @@ export function HomepageCategorySettings({
           </SelectContent>
         </Select>
         <FieldDescription>
-          Add artwork from{" "}
+          Categories without artwork use a text tile on the homepage. Add
+          artwork from{" "}
           <Link
             className="text-primary underline-offset-4 hover:underline"
             href="/admin/catalog/categories"

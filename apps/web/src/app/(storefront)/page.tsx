@@ -66,8 +66,7 @@ export default async function Home({
   ]);
   const homepageCategories = settings.homepageCategoriesEnabled
     ? (productFilters?.categories.filter(
-        ({ id, image }) =>
-          settings.homepageCategoryIds.includes(id) && Boolean(image),
+        ({ id }) => settings.homepageCategoryIds.includes(id),
       ) ?? [])
     : [];
 
