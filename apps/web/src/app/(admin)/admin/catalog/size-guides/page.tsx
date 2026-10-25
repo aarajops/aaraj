@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SizeGuideManager } from "@/features/catalog/size-guide-manager";
 import {
-  getPublicCatalogCategories,
+  getManagedCategoryOptions,
   getManagedSizeGuides,
   parseCatalogSizeGuidePageQuery,
   type CatalogPageSearchParams,
@@ -19,13 +19,14 @@ export default async function StaffSizeGuidesPage({
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
   const query = parseCatalogSizeGuidePageQuery(await searchParams);
-  const [result, categoryOptions] = await Promise.all([
+  const [result, categoriesResult] = await Promise.all([
     getManagedSizeGuides(query),
-    getPublicCatalogCategories(),
+    getManagedCategoryOptions(),
   ]);
-  if ("kind" in result) {
-    const isUnauthenticated = result.kind === "unauthenticated";
-    const isForbidden = result.kind === "forbidden";
+  if ("kind" in result || "kind" in categoriesResult) {
+    const loadError = "kind" in result ? result.kind : categoriesResult.kind;
+    const isUnauthenticated = loadError === "unauthenticated";
+    const isForbidden = loadError === "forbidden";
     return (
       <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
         <div className="mx-auto max-w-3xl">
@@ -71,7 +72,7 @@ export default async function StaffSizeGuidesPage({
     <SizeGuideManager
       key={JSON.stringify(query)}
       initialPage={result.page}
-      categoryOptions={categoryOptions}
+      categoryOptions={categoriesResult.categories}
       query={query}
     />
   );

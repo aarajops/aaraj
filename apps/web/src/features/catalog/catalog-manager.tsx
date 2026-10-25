@@ -6,7 +6,7 @@ import {
   CatalogProductPageSchema,
   CatalogProductSchema,
   CatalogSizeGuidePageSchema,
-  type CatalogCategoryOption,
+  type CatalogCategory,
   type CatalogManagedProductDetail,
   type CatalogProductListQuery,
   type CatalogProductPage,
@@ -76,7 +76,7 @@ export function CatalogManager({
   initialSizeGuides?: SizeGuideOption[];
   initialSizeGuidesHasMore?: boolean;
   initialSizeGuidesNextOffset?: number | null;
-  categoryOptions?: CatalogCategoryOption[];
+  categoryOptions?: CatalogCategory[];
   query: CatalogProductListQuery;
 }) {
   const router = useRouter();
@@ -115,6 +115,7 @@ export function CatalogManager({
       ? toProductFormState(initialProduct)
       : blankProductForm,
   });
+  const productNameField = register("name");
   const {
     fields: variantFields,
     append: appendVariant,
@@ -453,10 +454,11 @@ export function CatalogManager({
                     id="product-name"
                     maxLength={160}
                     required
-                    {...register("name", {
-                      onBlur: (event) =>
-                        void suggestProductSlug(event.currentTarget.value),
-                    })}
+                    {...productNameField}
+                    onBlur={(event) => {
+                      void productNameField.onBlur(event);
+                      void suggestProductSlug(event.currentTarget.value);
+                    }}
                   />
                   {errors.name && (
                     <FieldError id="product-name-error">
@@ -579,6 +581,7 @@ export function CatalogManager({
                       <CatalogCategorySelect
                         id="product-category"
                         label="Product category"
+                        categories={categoryOptions}
                         required={isPublished}
                         errorMessage={fieldState.error?.message}
                         value={field.value}

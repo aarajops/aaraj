@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { CatalogManager } from "@/features/catalog/catalog-manager";
 import {
+  getManagedCategoryOptions,
   getManagedProduct,
   getManagedSizeGuides,
-  getPublicCatalogCategories,
   parseCatalogPageQuery,
 } from "@/features/catalog/catalog-queries";
 
@@ -20,10 +20,10 @@ export default async function EditCatalogProductPage({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  const [product, guides, categoryOptions] = await Promise.all([
+  const [product, guides, categoriesResult] = await Promise.all([
     getManagedProduct(productId),
     getManagedSizeGuides({ limit: 100, offset: 0 }),
-    getPublicCatalogCategories(),
+    getManagedCategoryOptions(),
   ]);
 
   if ("kind" in product) {
@@ -86,12 +86,36 @@ export default async function EditCatalogProductPage({
     );
   }
 
+  if ("kind" in categoriesResult) {
+    return (
+      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
+        <div className="mx-auto max-w-3xl">
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Edit product
+          </h1>
+          <p
+            className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
+            role="alert"
+          >
+            Categories could not be loaded. Please try again.
+          </p>
+          <Link
+            className="mt-5 inline-flex text-primary underline"
+            href="/admin/catalog"
+          >
+            Back to products
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <CatalogManager
       key={product.product.id}
       view="edit"
       initialProduct={product.product}
-      categoryOptions={categoryOptions}
+      categoryOptions={categoriesResult.categories}
       initialSizeGuides={guides.page.guides}
       initialSizeGuidesHasMore={guides.page.hasMore}
       initialSizeGuidesNextOffset={guides.page.nextOffset}

@@ -244,6 +244,17 @@ export class CategoryService {
       "manageCategories",
       actor,
     );
+    return this.loadCategoryList();
+  }
+
+  async listOptionsForManagement(
+    actor: AccessPrincipal,
+  ): Promise<CatalogCategoryList> {
+    await this.authorization.authorize(CatalogPolicy, "manage", actor);
+    return this.loadCategoryList();
+  }
+
+  private async loadCategoryList(): Promise<CatalogCategoryList> {
     const rows = await this.database.db.select().from(catalogCategory);
     return { categories: toCategories(rows) };
   }

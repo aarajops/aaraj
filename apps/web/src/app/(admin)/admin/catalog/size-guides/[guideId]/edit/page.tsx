@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { CatalogSizeGuideIdSchema } from "@aaraj/contracts";
 import { SizeGuideManager } from "@/features/catalog/size-guide-manager";
 import {
+  getManagedCategoryOptions,
   getManagedSizeGuide,
   parseCatalogSizeGuidePageQuery,
 } from "@/features/catalog/catalog-queries";
@@ -21,13 +22,17 @@ export default async function EditSizeGuidePage({
   const { guideId } = await params;
   if (!CatalogSizeGuideIdSchema.safeParse(guideId).success) notFound();
 
-  const result = await getManagedSizeGuide(guideId);
+  const [result, categoriesResult] = await Promise.all([
+    getManagedSizeGuide(guideId),
+    getManagedCategoryOptions(),
+  ]);
   if ("kind" in result && result.kind === "not-found") notFound();
-  if ("kind" in result) {
+  if ("kind" in result || "kind" in categoriesResult) {
+    const loadError = "kind" in result ? result.kind : categoriesResult.kind;
     const message =
-      result.kind === "unauthenticated"
+      loadError === "unauthenticated"
         ? "Sign in with an Aaraj staff account to edit size guides."
-        : result.kind === "forbidden"
+        : loadError === "forbidden"
           ? "Your account does not have permission to manage the catalog."
           : "Size guide details could not be loaded. Please try again.";
 
@@ -46,12 +51,12 @@ export default async function EditSizeGuidePage({
           <Link
             className="mt-5 inline-flex text-primary underline"
             href={
-              result.kind === "unauthenticated"
+              loadError === "unauthenticated"
                 ? "/account"
                 : "/admin/catalog/size-guides"
             }
           >
-            {result.kind === "unauthenticated"
+            {loadError === "unauthenticated"
               ? "Go to your account"
               : "Back to size guides"}
           </Link>
@@ -65,6 +70,7 @@ export default async function EditSizeGuidePage({
       key={result.guide.id}
       view="edit"
       initialGuide={result.guide}
+      categoryOptions={categoriesResult.categories}
       query={parseCatalogSizeGuidePageQuery({})}
     />
   );

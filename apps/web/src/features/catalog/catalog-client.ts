@@ -14,13 +14,6 @@ import type {
   CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
 
-export function fetchCatalogCategories(): Promise<Response> {
-  return fetch(`${API_V1_BASE_PATH}/catalog/categories`, {
-    cache: "no-store",
-    credentials: "same-origin",
-  });
-}
-
 export function suggestCatalogCategorySlug(name: string): Promise<Response> {
   const search = new URLSearchParams({ name });
   return fetch(

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SizeGuideManager } from "@/features/catalog/size-guide-manager";
 import {
+  getManagedCategoryOptions,
   getManagedSizeGuides,
   parseCatalogSizeGuidePageQuery,
 } from "@/features/catalog/catalog-queries";
@@ -13,12 +14,16 @@ export const metadata: Metadata = {
 
 export default async function CreateSizeGuidePage() {
   const query = parseCatalogSizeGuidePageQuery({});
-  const result = await getManagedSizeGuides(query);
-  if ("kind" in result) {
+  const [result, categoriesResult] = await Promise.all([
+    getManagedSizeGuides(query),
+    getManagedCategoryOptions(),
+  ]);
+  if ("kind" in result || "kind" in categoriesResult) {
+    const loadError = "kind" in result ? result.kind : categoriesResult.kind;
     const message =
-      result.kind === "unauthenticated"
+      loadError === "unauthenticated"
         ? "Sign in with an Aaraj staff account to create size guides."
-        : result.kind === "forbidden"
+        : loadError === "forbidden"
           ? "Your account does not have permission to manage the catalog."
           : "Size guide setup could not be loaded. Please try again.";
 
@@ -34,7 +39,7 @@ export default async function CreateSizeGuidePage() {
           >
             {message}
           </p>
-          {result.kind === "unauthenticated" ? (
+          {loadError === "unauthenticated" ? (
             <Link
               className="mt-5 inline-flex text-primary underline"
               href="/account"
@@ -55,6 +60,11 @@ export default async function CreateSizeGuidePage() {
   }
 
   return (
-    <SizeGuideManager view="create" initialPage={result.page} query={query} />
+    <SizeGuideManager
+      view="create"
+      initialPage={result.page}
+      categoryOptions={categoriesResult.categories}
+      query={query}
+    />
   );
 }

@@ -5,7 +5,7 @@ import {
   CatalogMeasurementKeySchema,
   CatalogSizeGuideSchema,
   type CatalogMeasurementKey,
-  type CatalogCategoryOption,
+  type CatalogCategory,
   type CatalogSizeGuide,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
@@ -69,7 +69,7 @@ export function SizeGuideManager({
   initialPage?: CatalogSizeGuidePage;
   initialGuide?: CatalogSizeGuide;
   query: CatalogSizeGuideListQuery;
-  categoryOptions?: CatalogCategoryOption[];
+  categoryOptions?: CatalogCategory[];
 }) {
   const router = useRouter();
   const guides = initialPage?.guides ?? [];
@@ -283,6 +283,7 @@ export function SizeGuideManager({
                       <CatalogCategorySelect
                         id="guide-category"
                         label="Guide category"
+                        categories={categoryOptions}
                         allowParentCategories
                         required
                         errorMessage={fieldState.error?.message}

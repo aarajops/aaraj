@@ -81,6 +81,13 @@ export class CategoryController {
     return this.categories.listForManagement(session.user);
   }
 
+  @Get("options/manage")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  listOptionsForManagement(@Session() session: UserSession) {
+    return this.categories.listOptionsForManagement(session.user);
+  }
+
   @Get("slug-suggestion")
   @ApiCookieAuth()
   @Header("Cache-Control", "no-store")

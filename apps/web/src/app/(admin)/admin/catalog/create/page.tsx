@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CatalogManager } from "@/features/catalog/catalog-manager";
 import {
-  getPublicCatalogCategories,
+  getManagedCategoryOptions,
   getManagedSizeGuides,
   parseCatalogPageQuery,
 } from "@/features/catalog/catalog-queries";
@@ -13,15 +13,16 @@ export const metadata: Metadata = {
 };
 
 export default async function CreateCatalogProductPage() {
-  const [guides, categoryOptions] = await Promise.all([
+  const [guides, categoriesResult] = await Promise.all([
     getManagedSizeGuides({ limit: 100, offset: 0 }),
-    getPublicCatalogCategories(),
+    getManagedCategoryOptions(),
   ]);
-  if ("kind" in guides) {
+  if ("kind" in guides || "kind" in categoriesResult) {
+    const loadError = "kind" in guides ? guides.kind : categoriesResult.kind;
     const message =
-      guides.kind === "unauthenticated"
+      loadError === "unauthenticated"
         ? "Sign in with an Aaraj staff account to create products."
-        : guides.kind === "forbidden"
+        : loadError === "forbidden"
           ? "Your account does not have permission to manage the catalog."
           : "Product setup could not be loaded. Please try again.";
 
@@ -37,7 +38,7 @@ export default async function CreateCatalogProductPage() {
           >
             {message}
           </p>
-          {guides.kind === "unauthenticated" ? (
+          {loadError === "unauthenticated" ? (
             <Link
               className="mt-5 inline-flex text-primary underline"
               href="/account"
@@ -60,7 +61,7 @@ export default async function CreateCatalogProductPage() {
   return (
     <CatalogManager
       view="create"
-      categoryOptions={categoryOptions}
+      categoryOptions={categoriesResult.categories}
       initialSizeGuides={guides.page.guides}
       initialSizeGuidesHasMore={guides.page.hasMore}
       initialSizeGuidesNextOffset={guides.page.nextOffset}

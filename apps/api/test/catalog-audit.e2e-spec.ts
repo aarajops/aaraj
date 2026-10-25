@@ -158,6 +158,17 @@ describe("catalog and security audit", () => {
       .get("/api/v1/catalog/categories/manage")
       .set("Cookie", staff.cookie)
       .expect(403);
+    const staffCategories = await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories/options/manage")
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(
+      CatalogCategoryListSchema.safeParse(staffCategories.body).success,
+    ).toBe(true);
+    await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories/options/manage")
+      .set("Cookie", customer.cookie)
+      .expect(403);
     await request(app.getHttpServer())
       .post("/api/v1/catalog/categories")
       .set("Cookie", staff.cookie)
@@ -1352,8 +1363,18 @@ describe("catalog and security audit", () => {
       .get("/api/v1/catalog/categories/manage")
       .expect(401);
     await request(app.getHttpServer())
-      .get("/api/v1/catalog/categories/manage")
+      .get("/api/v1/catalog/categories/options/manage")
+      .expect(401);
+    const staffManaged = await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories/options/manage")
       .set("Cookie", staff.cookie)
-      .expect(403);
+      .expect(200);
+    expect(staffManaged.body.categories.length).toBeGreaterThan(500);
+    expect(
+      staffManaged.body.categories.some(
+        ({ slug, isActive }: { slug: string; isActive: boolean }) =>
+          slug === inactiveFiller.slug && !isActive,
+      ),
+    ).toBe(true);
   }, 30_000);
 });

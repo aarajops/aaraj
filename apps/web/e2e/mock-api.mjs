@@ -61,7 +61,8 @@ const tshirtCategory = makeCategory(
   "t-shirts",
   clothingCategory.id,
 );
-const categories = [clothingCategory, tshirtCategory];
+const sweatwearCategory = makeCategory("Sweatwear", "sweatwear");
+const categories = [clothingCategory, tshirtCategory, sweatwearCategory];
 const sizeGuides = Array.from({ length: 100 }, (_, index) =>
   makeGuide(
     {
@@ -478,6 +479,15 @@ const server = createServer(async (request, response) => {
     method === "GET"
   ) {
     if (!requireCategoryAdmin(request, response)) return;
+    send(response, 200, { categories: refreshCategoryTree() });
+    return;
+  }
+
+  if (
+    url.pathname === "/api/v1/catalog/categories/options/manage" &&
+    method === "GET"
+  ) {
+    if (!requireStaff(request, response)) return;
     send(response, 200, { categories: refreshCategoryTree() });
     return;
   }

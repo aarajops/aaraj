@@ -130,6 +130,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("option", { name: "Clothing / T-shirts", exact: true }),
   ).toBeEnabled();
+  await expect(
+    page.getByRole("option", { name: "Sweatwear", exact: true }),
+  ).toBeEnabled();
   await page.getByRole("option", { name: "Clothing", exact: true }).click();
   await page.getByLabel("Fit (optional)").fill("Regular");
   await chooseSelectOption(page, "Enter measurements in", "Inches (in)");
@@ -148,7 +151,19 @@ test("staff manages reusable size guides and apparel products safely", async ({
     page.getByRole("heading", { name: "Catalog management" }),
   ).toBeVisible();
   await page.goto("/admin/catalog/create");
-  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
+  await page.getByRole("combobox", { name: "Product category" }).click();
+  await expect(
+    page.getByRole("option", { name: "Clothing", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("option", { name: "Clothing / T-shirts", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("option", { name: "Sweatwear", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("option", { name: "Clothing / T-shirts", exact: true })
+    .click();
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Load 100 more size guides" }).click();
   await page.getByRole("combobox", { name: "Reusable size guide" }).click();

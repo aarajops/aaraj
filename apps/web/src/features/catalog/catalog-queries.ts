@@ -283,10 +283,18 @@ export type ManagedSizeGuidesResult =
   | { kind: "unauthenticated" | "forbidden" | "unavailable" };
 
 export async function getManagedCategories() {
+  return getCatalogCategoryList("manage");
+}
+
+export async function getManagedCategoryOptions() {
+  return getCatalogCategoryList("options/manage");
+}
+
+async function getCatalogCategoryList(path: "manage" | "options/manage") {
   try {
     const cookie = (await headers()).get("cookie");
     const response = await fetch(
-      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/categories/manage`,
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/categories/${path}`,
       {
         ...(cookie ? { headers: { cookie } } : {}),
         cache: "no-store",

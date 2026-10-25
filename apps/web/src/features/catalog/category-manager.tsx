@@ -83,6 +83,7 @@ export function CategoryManager({
       ? toCategoryFormState(initialCategory)
       : emptyCategoryForm,
   });
+  const categoryNameField = register("name");
   const editingId = useWatch({ control, name: "id" });
   const hasCategoryChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -270,10 +271,11 @@ export function CategoryManager({
                     id="category-name"
                     maxLength={80}
                     required
-                    {...register("name", {
-                      onBlur: (event) =>
-                        void suggestCategorySlug(event.currentTarget.value),
-                    })}
+                    {...categoryNameField}
+                    onBlur={(event) => {
+                      void categoryNameField.onBlur(event);
+                      void suggestCategorySlug(event.currentTarget.value);
+                    }}
                   />
                   {errors.name && (
                     <FieldError id="category-name-error">

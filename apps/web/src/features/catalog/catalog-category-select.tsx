@@ -1,11 +1,7 @@
 "use client";
 
-import {
-  CatalogCategoryOptionsSchema,
-  type CatalogCategoryOption,
-} from "@aaraj/contracts";
-import { useEffect, useState, type Ref } from "react";
-import { fetchCatalogCategories } from "@/features/catalog/catalog-client";
+import type { CatalogCategory } from "@aaraj/contracts";
+import type { Ref } from "react";
 import {
   Field,
   FieldDescription,
@@ -27,6 +23,7 @@ export function CatalogCategorySelect({
   id,
   label,
   value,
+  categories,
   allowParentCategories = false,
   required = false,
   errorMessage,
@@ -38,6 +35,7 @@ export function CatalogCategorySelect({
   id: string;
   label: string;
   value: string;
+  categories: CatalogCategory[];
   allowParentCategories?: boolean;
   required?: boolean;
   errorMessage?: string;
@@ -46,43 +44,14 @@ export function CatalogCategorySelect({
   onBlur?: () => void;
   onChange: (categoryId: string) => void;
 }) {
-  const [categories, setCategories] = useState<CatalogCategoryOption[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
-    "loading",
+  const assignableCategories = categories.filter(
+    ({ isActive, isLeaf }) => isActive && (allowParentCategories || isLeaf),
   );
-
-  useEffect(() => {
-    let active = true;
-    void fetchCatalogCategories()
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Category options unavailable");
-        const result = CatalogCategoryOptionsSchema.safeParse(
-          await response.json(),
-        );
-        if (!result.success) throw new Error("Invalid category options");
-        if (!active) return;
-        setCategories(result.data.categories);
-        setLoadState("ready");
-      })
-      .catch(() => {
-        if (active) setLoadState("error");
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const selectableCategories = allowParentCategories
-    ? categories
-    : categories.filter(({ isLeaf }) => isLeaf);
-  const emptyLabel =
-    loadState === "loading"
-      ? "Loading categories…"
-      : selectableCategories.length
-        ? "Choose a category"
-        : allowParentCategories
-          ? "No active categories available"
-          : "No active product categories available";
+  const emptyLabel = assignableCategories.length
+    ? "Choose a category"
+    : allowParentCategories
+      ? "No active categories available"
+      : "No active product categories available";
 
   return (
     <Field>
@@ -90,12 +59,17 @@ export function CatalogCategorySelect({
         {label}
       </FieldLabel>
       <Select
-        disabled={loadState !== "ready" || selectableCategories.length === 0}
+        disabled={categories.length === 0}
         items={[
           { label: emptyLabel, value: null },
-          ...selectableCategories.map((category) => ({
-            label: category.path,
+          ...categories.map((category) => ({
+            label: category.isActive
+              ? category.path
+              : `${category.path} (inactive)`,
             value: category.id,
+            disabled:
+              !category.isActive ||
+              (!allowParentCategories && !category.isLeaf),
           })),
         ]}
         name={name}
@@ -109,14 +83,7 @@ export function CatalogCategorySelect({
           className={fieldClassName}
           id={id}
           aria-labelledby={`${id}-label`}
-          aria-describedby={
-            [
-              errorMessage ? `${id}-error` : null,
-              loadState === "error" ? `${id}-load-error` : null,
-            ]
-              .filter(Boolean)
-              .join(" ") || undefined
-          }
+          aria-describedby={errorMessage ? `${id}-error` : undefined}
           aria-invalid={Boolean(errorMessage)}
           ref={triggerRef}
           onBlur={onBlur}
@@ -125,9 +92,18 @@ export function CatalogCategorySelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={null}>{emptyLabel}</SelectItem>
-          {selectableCategories.map((category) => (
-            <SelectItem key={category.id} value={category.id}>
-              {category.path}
+          {categories.map((category) => (
+            <SelectItem
+              key={category.id}
+              value={category.id}
+              disabled={
+                !category.isActive ||
+                (!allowParentCategories && !category.isLeaf)
+              }
+            >
+              {category.isActive
+                ? category.path
+                : `${category.path} (inactive)`}
             </SelectItem>
           ))}
         </SelectContent>
@@ -135,26 +111,25 @@ export function CatalogCategorySelect({
       {errorMessage && (
         <FieldError id={`${id}-error`}>{errorMessage}</FieldError>
       )}
-      {loadState === "error" && (
-        <FieldError id={`${id}-load-error`}>
-          Categories could not be loaded. Try again later.
-        </FieldError>
-      )}
-      {loadState === "ready" && selectableCategories.length === 0 && (
+      {assignableCategories.length === 0 && (
         <FieldDescription>
           {allowParentCategories
             ? "An administrator needs to add an active category before this guide can be assigned."
             : "An administrator needs to add an active leaf category before this product can be assigned."}
         </FieldDescription>
       )}
-      {allowParentCategories &&
-        loadState === "ready" &&
-        selectableCategories.length > 0 && (
-          <FieldDescription>
-            A guide is available for products in this category and its
-            subcategories.
-          </FieldDescription>
-        )}
+      {!allowParentCategories && assignableCategories.length > 0 && (
+        <FieldDescription>
+          Choose an active leaf category. Parent categories are shown for
+          context.
+        </FieldDescription>
+      )}
+      {allowParentCategories && assignableCategories.length > 0 && (
+        <FieldDescription>
+          A guide is available for products in this category and its
+          subcategories.
+        </FieldDescription>
+      )}
     </Field>
   );
 }
