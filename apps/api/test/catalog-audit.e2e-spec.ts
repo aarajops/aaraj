@@ -314,7 +314,7 @@ describe("catalog and security audit", () => {
       .set("Origin", origin)
       .send({
         name: "Aaraj classic T-shirt",
-        categoryId,
+        categoryId: parentCategory.body.id,
         fit: "Regular",
         measurementBasis: "garment",
         inputUnit: "in",
@@ -338,8 +338,9 @@ describe("catalog and security audit", () => {
       })
       .expect(201);
     const guideId = guide.body.id as string;
+    expect(guide.body.category.id).toBe(parentCategory.body.id);
     await request(app.getHttpServer())
-      .patch(`/api/v1/catalog/categories/${categoryId}`)
+      .patch(`/api/v1/catalog/categories/${parentCategory.body.id}`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({ isActive: false, reason: "Reject category still in use" })
@@ -351,19 +352,19 @@ describe("catalog and security audit", () => {
       .send({
         name: "Long sleeve T-shirts",
         slug: "long-sleeve-t-shirts",
-        parentId: categoryId,
-        reason: "A referenced leaf cannot become a parent",
+        parentId: parentCategory.body.id,
+        reason: "Add a child beneath a shared size guide",
       })
-      .expect(409);
+      .expect(201);
     await request(app.getHttpServer())
       .patch(`/api/v1/catalog/categories/${unusedCategory.body.id}`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
       .send({
-        parentId: categoryId,
-        reason: "A referenced leaf cannot receive a child",
+        parentId: parentCategory.body.id,
+        reason: "Move a category beneath a shared size guide",
       })
-      .expect(409);
+      .expect(200);
     expect(guide.body.rows[0].measurements).toEqual(
       expect.arrayContaining([
         { key: "chest_width", valueCm: "50.800" },

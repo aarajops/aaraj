@@ -271,7 +271,8 @@ export function SizeGuideManager({
                     render={({ field, fieldState }) => (
                       <CatalogCategorySelect
                         id="guide-category"
-                        label="Product category"
+                        label="Guide category"
+                        allowParentCategories
                         required
                         errorMessage={fieldState.error?.message}
                         value={field.value}

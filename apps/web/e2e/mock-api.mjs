@@ -635,10 +635,10 @@ const server = createServer(async (request, response) => {
       });
       return;
     }
-    if (!isActiveLeafCategory(parsed.data.categoryId)) {
+    if (!isActiveCategory(parsed.data.categoryId)) {
       send(response, 400, {
         statusCode: 400,
-        message: "Choose an active leaf product category.",
+        message: "Choose an active category.",
       });
       return;
     }
@@ -669,10 +669,10 @@ const server = createServer(async (request, response) => {
     const candidate = makeGuide(parsed.data, guide.createdAt);
     candidate.id = guide.id;
     candidate.updatedAt = new Date().toISOString();
-    if (!isActiveLeafCategory(parsed.data.categoryId)) {
+    if (!isActiveCategory(parsed.data.categoryId)) {
       send(response, 400, {
         statusCode: 400,
-        message: "Choose an active leaf product category.",
+        message: "Choose an active category.",
       });
       return;
     }
@@ -1053,12 +1053,22 @@ function categoryReference(category) {
   return { id, name, slug, parentId };
 }
 
-function isActiveLeafCategory(categoryId) {
+function isActiveCategory(categoryId) {
   const category = categories.find(({ id }) => id === categoryId);
-  return Boolean(
-    category?.isActive &&
-    !categories.some(({ parentId }) => parentId === categoryId),
-  );
+  return Boolean(category?.isActive);
+}
+
+function isCategoryOrDescendant(categoryId, ancestorId) {
+  const visited = new Set();
+  let current = categories.find(({ id }) => id === categoryId);
+  while (current && !visited.has(current.id)) {
+    if (current.id === ancestorId) return true;
+    visited.add(current.id);
+    current = current.parentId
+      ? categories.find(({ id }) => id === current.parentId)
+      : null;
+  }
+  return false;
 }
 
 function categoryMatches(categoryId, slug) {
@@ -1130,7 +1140,7 @@ function isPublishable(product, variants, guide) {
     guide &&
     variants.length > 0 &&
     variants.every((variant) => variant.price !== null) &&
-    product.category.id === guide.category.id &&
+    isCategoryOrDescendant(product.category.id, guide.category.id) &&
     normalize(product.fit ?? "") === normalize(guide.fit ?? "") &&
     variants.every((variant) =>
       guide.rows.some(

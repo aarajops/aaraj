@@ -70,6 +70,8 @@ import type {
 } from "./catalog-cart.port.js";
 import { CategoryService } from "./category.service.js";
 import {
+  isCategoryOrDescendant,
+  loadCategoryParentMap,
   loadCategoryReference,
   loadCategoryReferences,
   requireActiveLeafCategory,
@@ -999,8 +1001,15 @@ async function validatePublishability(
   }
 
   const guide = await requireSizeGuide(transaction, product.sizeGuideId, true);
+  const categoryMatches =
+    product.categoryId === guide.categoryId ||
+    isCategoryOrDescendant(
+      product.categoryId,
+      guide.categoryId,
+      await loadCategoryParentMap(transaction),
+    );
   if (
-    product.categoryId !== guide.categoryId ||
+    !categoryMatches ||
     normalizeOptional(product.fit) !== normalizeOptional(guide.fit)
   ) {
     throw new BadRequestException(

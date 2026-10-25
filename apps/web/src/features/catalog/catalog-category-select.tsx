@@ -27,6 +27,7 @@ export function CatalogCategorySelect({
   id,
   label,
   value,
+  allowParentCategories = false,
   required = false,
   errorMessage,
   name,
@@ -37,6 +38,7 @@ export function CatalogCategorySelect({
   id: string;
   label: string;
   value: string;
+  allowParentCategories?: boolean;
   required?: boolean;
   errorMessage?: string;
   name?: string;
@@ -70,13 +72,17 @@ export function CatalogCategorySelect({
     };
   }, []);
 
-  const productCategories = categories.filter(({ isLeaf }) => isLeaf);
+  const selectableCategories = allowParentCategories
+    ? categories
+    : categories.filter(({ isLeaf }) => isLeaf);
   const emptyLabel =
     loadState === "loading"
       ? "Loading categories…"
-      : productCategories.length
+      : selectableCategories.length
         ? "Choose a category"
-        : "No active product categories available";
+        : allowParentCategories
+          ? "No active categories available"
+          : "No active product categories available";
 
   return (
     <Field>
@@ -84,13 +90,11 @@ export function CatalogCategorySelect({
         {label}
       </FieldLabel>
       <Select
-        disabled={loadState !== "ready" || productCategories.length === 0}
+        disabled={loadState !== "ready" || selectableCategories.length === 0}
         items={[
           { label: emptyLabel, value: null },
-          ...categories.map((category) => ({
-            label: category.isLeaf
-              ? category.path
-              : `${category.path} (category group)`,
+          ...selectableCategories.map((category) => ({
+            label: category.path,
             value: category.id,
           })),
         ]}
@@ -121,15 +125,9 @@ export function CatalogCategorySelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={null}>{emptyLabel}</SelectItem>
-          {categories.map((category) => (
-            <SelectItem
-              key={category.id}
-              value={category.id}
-              disabled={!category.isLeaf}
-            >
-              {category.isLeaf
-                ? category.path
-                : `${category.path} (category group)`}
+          {selectableCategories.map((category) => (
+            <SelectItem key={category.id} value={category.id}>
+              {category.path}
             </SelectItem>
           ))}
         </SelectContent>
@@ -139,21 +137,24 @@ export function CatalogCategorySelect({
       )}
       {loadState === "error" && (
         <FieldError id={`${id}-load-error`}>
-          Product categories could not be loaded. Try again later.
+          Categories could not be loaded. Try again later.
         </FieldError>
       )}
-      {loadState === "ready" && productCategories.length === 0 && (
+      {loadState === "ready" && selectableCategories.length === 0 && (
         <FieldDescription>
-          An administrator needs to add an active leaf category before this item
-          can be assigned.
+          {allowParentCategories
+            ? "An administrator needs to add an active category before this guide can be assigned."
+            : "An administrator needs to add an active leaf category before this product can be assigned."}
         </FieldDescription>
       )}
-      {loadState === "ready" && productCategories.length > 0 && (
-        <FieldDescription>
-          Parent categories are groups. Choose a leaf category for the product
-          or size guide.
-        </FieldDescription>
-      )}
+      {allowParentCategories &&
+        loadState === "ready" &&
+        selectableCategories.length > 0 && (
+          <FieldDescription>
+            A guide is available for products in this category and its
+            subcategories.
+          </FieldDescription>
+        )}
     </Field>
   );
 }

@@ -38,6 +38,7 @@ import {
   processCatalogImage,
   InvalidCatalogImageError,
 } from "./media/catalog-image-processor.js";
+import { isCategoryOrDescendant } from "./catalog-category.helpers.js";
 import {
   validateCatalogImageUpload,
   type CatalogMediaUploadFile,
@@ -348,6 +349,14 @@ export class CategoryService {
         next.isActive !== current.isActive;
       if (!changed)
         return toCategories(categories).find(({ id }) => id === current.id);
+      if (next.parentId !== current.parentId) {
+        await ensurePublishedSizeGuideAssignmentsRemainValid(
+          transaction,
+          categories,
+          current.id,
+          next.parentId,
+        );
+      }
 
       try {
         const [updated] = await transaction
@@ -511,8 +520,8 @@ async function requireActiveParent(
     .select({ id: catalogCategory.id, isActive: catalogCategory.isActive })
     .from(catalogCategory)
     .where(eq(catalogCategory.id, parentId))
-    // This conflicts with the row lock taken while assigning products and
-    // size guides, keeping the leaf-only assignment rule consistent.
+    // Serialize parent changes with product category assignments. Products
+    // must remain assigned to leaf categories.
     .for("update")
     .limit(1);
   if (!parent) throw new NotFoundException("Parent category not found");
@@ -582,14 +591,43 @@ async function ensureCategoryCanBeParent(
     .from(catalogProduct)
     .where(eq(catalogProduct.categoryId, categoryId))
     .limit(1);
-  const [guide] = await transaction
-    .select({ id: catalogSizeGuide.id })
-    .from(catalogSizeGuide)
-    .where(eq(catalogSizeGuide.categoryId, categoryId))
-    .limit(1);
-  if (product || guide) {
+  if (product) {
     throw new ConflictException(
-      "Move its products and size guides before adding a child category.",
+      "Move its products before adding a child category.",
+    );
+  }
+}
+
+async function ensurePublishedSizeGuideAssignmentsRemainValid(
+  transaction: AuditTransaction,
+  categories: CategoryRow[],
+  movedCategoryId: string,
+  nextParentId: string | null,
+) {
+  const publishedProducts = await transaction
+    .select({
+      categoryId: catalogProduct.categoryId,
+      guideCategoryId: catalogSizeGuide.categoryId,
+    })
+    .from(catalogProduct)
+    .innerJoin(
+      catalogSizeGuide,
+      eq(catalogSizeGuide.id, catalogProduct.sizeGuideId),
+    )
+    .where(eq(catalogProduct.isPublished, true));
+  const currentParentIds = new Map(
+    categories.map(({ id, parentId }) => [id, parentId]),
+  );
+  const nextParentIds = new Map(currentParentIds);
+  nextParentIds.set(movedCategoryId, nextParentId);
+  const invalidatesGuide = publishedProducts.some(
+    ({ categoryId, guideCategoryId }) =>
+      isCategoryOrDescendant(categoryId, movedCategoryId, currentParentIds) &&
+      !isCategoryOrDescendant(categoryId, guideCategoryId, nextParentIds),
+  );
+  if (invalidatesGuide) {
+    throw new ConflictException(
+      "Move published products to matching size guides before changing this category hierarchy.",
     );
   }
 }

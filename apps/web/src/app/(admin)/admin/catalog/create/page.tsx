@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CatalogManager } from "@/features/catalog/catalog-manager";
 import {
+  getPublicCatalogCategories,
   getManagedSizeGuides,
   parseCatalogPageQuery,
 } from "@/features/catalog/catalog-queries";
@@ -12,7 +13,10 @@ export const metadata: Metadata = {
 };
 
 export default async function CreateCatalogProductPage() {
-  const guides = await getManagedSizeGuides({ limit: 100, offset: 0 });
+  const [guides, categoryOptions] = await Promise.all([
+    getManagedSizeGuides({ limit: 100, offset: 0 }),
+    getPublicCatalogCategories(),
+  ]);
   if ("kind" in guides) {
     const message =
       guides.kind === "unauthenticated"
@@ -56,6 +60,7 @@ export default async function CreateCatalogProductPage() {
   return (
     <CatalogManager
       view="create"
+      categoryOptions={categoryOptions}
       initialSizeGuides={guides.page.guides}
       initialSizeGuidesHasMore={guides.page.hasMore}
       initialSizeGuidesNextOffset={guides.page.nextOffset}

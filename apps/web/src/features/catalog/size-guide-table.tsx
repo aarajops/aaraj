@@ -35,6 +35,10 @@ export function SizeGuideTable({
     "limit" | "offset" | "hasMore" | "nextOffset"
   > | null;
 }) {
+  const categoryPaths = useMemo(
+    () => new Map(categoryOptions.map(({ id, path }) => [id, path])),
+    [categoryOptions],
+  );
   const columns = useMemo(
     () =>
       columnHelper.columns([
@@ -49,7 +53,9 @@ export function SizeGuideTable({
         columnHelper.display({
           id: "category",
           header: "Category",
-          cell: ({ row }) => row.original.category.name,
+          cell: ({ row }) =>
+            categoryPaths.get(row.original.category.id) ??
+            row.original.category.name,
         }),
         columnHelper.display({
           id: "fit",
@@ -85,7 +91,7 @@ export function SizeGuideTable({
           ),
         }),
       ]),
-    [],
+    [categoryPaths],
   );
 
   return (
@@ -103,9 +109,10 @@ export function SizeGuideTable({
           label: "Category",
           allLabel: "All categories",
           value: query.categoryId ?? "",
-          options: categoryOptions
-            .filter(({ isLeaf }) => isLeaf)
-            .map(({ id, path }) => ({ value: id, label: path })),
+          options: categoryOptions.map(({ id, path }) => ({
+            value: id,
+            label: path,
+          })),
         },
         {
           name: "measurementBasis",

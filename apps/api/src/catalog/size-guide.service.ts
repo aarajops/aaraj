@@ -43,8 +43,10 @@ import {
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
 import {
+  isCategoryOrDescendant,
+  loadCategoryParentMap,
   loadCategoryReferences,
-  requireActiveLeafCategory,
+  requireActiveCategory,
 } from "./catalog-category.helpers.js";
 import { loadCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
 
@@ -182,7 +184,7 @@ export class SizeGuideService {
         transaction,
       );
       try {
-        await requireActiveLeafCategory(transaction, input.categoryId);
+        await requireActiveCategory(transaction, input.categoryId);
         const [guide] = await transaction
           .insert(catalogSizeGuide)
           .values({
@@ -239,7 +241,7 @@ export class SizeGuideService {
         .for("update")
         .limit(1);
       if (!current) throw new NotFoundException("Size guide not found");
-      await requireActiveLeafCategory(transaction, input.categoryId);
+      await requireActiveCategory(transaction, input.categoryId);
 
       const [updated] = await transaction
         .update(catalogSizeGuide)
@@ -354,12 +356,22 @@ async function ensurePublishedProductsRemainValid(
         eq(catalogProduct.isPublished, true),
       ),
     );
+  const categoryParentIds = products.some(
+    ({ categoryId }) => categoryId !== guide.categoryId,
+  )
+    ? await loadCategoryParentMap(transaction)
+    : new Map<string, string | null>();
   const allowedSizes = new Set(
     guideRows.map(({ sizeLabel }) => normalize(sizeLabel)),
   );
   for (const product of products) {
     if (
-      product.categoryId !== guide.categoryId ||
+      (product.categoryId !== guide.categoryId &&
+        !isCategoryOrDescendant(
+          product.categoryId,
+          guide.categoryId,
+          categoryParentIds,
+        )) ||
       normalizeOptional(product.fit) !== normalizeOptional(guide.fit)
     ) {
       throw new BadRequestException(

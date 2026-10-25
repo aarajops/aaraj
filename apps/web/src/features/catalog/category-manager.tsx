@@ -167,7 +167,8 @@ export function CategoryManager({
               : "Product categories"}
         </h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Products and size guides use active leaf categories.
+          Products use leaf categories. Size guides can cover a category and its
+          subcategories.
         </p>
 
         {errorMessage && (

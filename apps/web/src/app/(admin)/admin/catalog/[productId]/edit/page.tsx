@@ -5,6 +5,7 @@ import { CatalogManager } from "@/features/catalog/catalog-manager";
 import {
   getManagedProduct,
   getManagedSizeGuides,
+  getPublicCatalogCategories,
   parseCatalogPageQuery,
 } from "@/features/catalog/catalog-queries";
 
@@ -19,9 +20,10 @@ export default async function EditCatalogProductPage({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  const [product, guides] = await Promise.all([
+  const [product, guides, categoryOptions] = await Promise.all([
     getManagedProduct(productId),
     getManagedSizeGuides({ limit: 100, offset: 0 }),
+    getPublicCatalogCategories(),
   ]);
 
   if ("kind" in product) {
@@ -89,6 +91,7 @@ export default async function EditCatalogProductPage({
       key={product.product.id}
       view="edit"
       initialProduct={product.product}
+      categoryOptions={categoryOptions}
       initialSizeGuides={guides.page.guides}
       initialSizeGuidesHasMore={guides.page.hasMore}
       initialSizeGuidesNextOffset={guides.page.nextOffset}

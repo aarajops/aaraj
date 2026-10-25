@@ -12,7 +12,7 @@ const setupSteps = [
   {
     title: "Build categories",
     description:
-      "Create the active category tree first. Products and size guides use active leaf categories.",
+      "Create the active category tree first. Products use leaf categories; size guides can cover a category and its subcategories.",
     href: "/admin/catalog/categories",
     action: "Manage categories",
   },

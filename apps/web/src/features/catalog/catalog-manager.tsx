@@ -247,10 +247,20 @@ export function CatalogManager({
     }
   }
 
+  const categoriesById = new Map(
+    categoryOptions.map((category) => [category.id, category]),
+  );
+  const applicableCategoryIds = new Set<string>();
+  const visitedCategoryIds = new Set<string>();
+  let currentCategoryId: string | null = categoryId;
+  while (currentCategoryId && !visitedCategoryIds.has(currentCategoryId)) {
+    applicableCategoryIds.add(currentCategoryId);
+    visitedCategoryIds.add(currentCategoryId);
+    currentCategoryId = categoriesById.get(currentCategoryId)?.parentId ?? null;
+  }
   const compatibleGuides = sizeGuides.filter(
     (guide) =>
-      categoryId &&
-      guide.category.id === categoryId &&
+      applicableCategoryIds.has(guide.category.id) &&
       (guide.fit ?? "").trim().toLowerCase() === fit.trim().toLowerCase(),
   );
 

@@ -903,7 +903,7 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("heading", { name: "Create size guide", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill(guideName);
-  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
+  await chooseSelectOption(page, "Guide category", "Clothing");
   await page.getByLabel("Fit (optional)").fill("Regular");
   await chooseSelectOption(page, "Enter measurements in", "Inches (in)");
   await page.getByRole("button", { name: "Add size" }).click();

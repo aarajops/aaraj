@@ -7,7 +7,7 @@ import { catalogCategory } from "./catalog-schema.js";
 
 type CatalogQuery = ReturnType<typeof getDrizzleDatabase> | AuditTransaction;
 
-export async function requireActiveLeafCategory(
+export async function requireActiveCategory(
   transaction: AuditTransaction,
   categoryId: string,
 ) {
@@ -15,27 +15,57 @@ export async function requireActiveLeafCategory(
     .select()
     .from(catalogCategory)
     .where(eq(catalogCategory.id, categoryId))
-    // Serialize assigning an item with adding a child under this category.
-    // Otherwise both transactions could observe it as a leaf and commit an
-    // invalid product/size-guide-to-parent assignment.
+    // Serialize active-state changes with category assignments.
     .for("update")
     .limit(1);
   if (!category) throw new NotFoundException("Category not found");
   if (!category.isActive) {
-    throw new BadRequestException("Select an active product category.");
+    throw new BadRequestException("Select an active category.");
   }
+  return category;
+}
 
+export async function requireActiveLeafCategory(
+  transaction: AuditTransaction,
+  categoryId: string,
+) {
+  const category = await requireActiveCategory(transaction, categoryId);
   const [child] = await transaction
     .select({ id: catalogCategory.id })
     .from(catalogCategory)
     .where(eq(catalogCategory.parentId, category.id))
     .limit(1);
   if (child) {
-    throw new BadRequestException(
-      "Products and size guides must use a leaf category.",
-    );
+    throw new BadRequestException("Products must use a leaf category.");
   }
   return category;
+}
+
+export async function loadCategoryParentMap(
+  transaction: CatalogQuery,
+): Promise<Map<string, string | null>> {
+  const categories = await transaction
+    .select({
+      id: catalogCategory.id,
+      parentId: catalogCategory.parentId,
+    })
+    .from(catalogCategory);
+  return new Map(categories.map(({ id, parentId }) => [id, parentId]));
+}
+
+export function isCategoryOrDescendant(
+  categoryId: string | null,
+  ancestorId: string,
+  parentIds: ReadonlyMap<string, string | null>,
+): boolean {
+  const visited = new Set<string>();
+  let currentId = categoryId;
+  while (currentId && !visited.has(currentId)) {
+    if (currentId === ancestorId) return true;
+    visited.add(currentId);
+    currentId = parentIds.get(currentId) ?? null;
+  }
+  return false;
 }
 
 export async function loadCategoryReferences(
