@@ -6,11 +6,10 @@ import {
   type ReactNode,
   type SubmitEvent,
 } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { RowData } from "@tanstack/react-table";
 import { RefreshCw, Search } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   InputGroup,
@@ -30,6 +29,13 @@ import {
   DataTable,
   type DataTableColumnDef,
 } from "@/components/ui/data-table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export { createDataTableColumnHelper };
 
@@ -42,6 +48,12 @@ export type AdminDataTableFilter = {
 };
 
 type TableQuery = Readonly<Record<string, string | number | undefined>>;
+type AdminDataTablePage = {
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+};
 
 type AdminDataTableProps<TData extends RowData & { id: string }> = {
   ariaLabel: string;
@@ -50,13 +62,12 @@ type AdminDataTableProps<TData extends RowData & { id: string }> = {
   pathname: string;
   query: TableQuery;
   itemName: string;
-  searchPlaceholder: string;
+  searchPlaceholder: string | null;
   emptyMessage?: ReactNode;
   filters?: AdminDataTableFilter[];
   onRefresh: () => void;
   isRefreshing?: boolean;
-  hasMore: boolean;
-  nextOffset: number | null;
+  page: AdminDataTablePage | null;
   className?: string;
 };
 
@@ -72,8 +83,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   filters = [],
   onRefresh,
   isRefreshing = false,
-  hasMore,
-  nextOffset,
+  page,
   className,
 }: AdminDataTableProps<TData>) {
   const router = useRouter();
@@ -88,17 +98,14 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
     searchDraftState.queryKey === queryKey
       ? searchDraftState.value
       : searchValue;
-  const limit = Number(query.limit) || 50;
-  const offset = Number(query.offset) || 0;
-  const previousOffset = Math.max(0, offset - limit);
-  const hasPrevious = offset > 0;
-  const pageSizes = [...new Set([25, 50, 100, limit])].sort(
-    (left, right) => left - right,
-  );
+  const offset = page?.offset ?? 0;
+  const previousOffset = page ? Math.max(0, offset - page.limit) : 0;
+  const hasPrevious = page !== null && offset > 0;
 
   function navigate(updates: TableQuery, resetOffset = true) {
     const nextQuery: Record<string, string | number | undefined> = {
       ...query,
+      ...(page ? { limit: page.limit } : {}),
       search: searchDraft.trim() || undefined,
       ...updates,
     };
@@ -132,10 +139,16 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   function pageHref(nextOffset: number) {
     const nextQuery = new URLSearchParams();
     for (const [name, value] of Object.entries(query)) {
-      if (value !== undefined && value !== "" && name !== "offset") {
+      if (
+        value !== undefined &&
+        value !== "" &&
+        name !== "offset" &&
+        name !== "limit"
+      ) {
         nextQuery.set(name, String(value));
       }
     }
+    if (page) nextQuery.set("limit", String(page.limit));
     if (nextOffset > 0) nextQuery.set("offset", String(nextOffset));
     const search = nextQuery.toString();
     return search ? `${pathname}?${search}` : pathname;
@@ -152,37 +165,39 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   return (
     <div className={cn("rounded-xl border border-border bg-card", className)}>
       <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-4">
-        <form
-          aria-label={`Search ${itemName}`}
-          className="flex min-w-60 flex-1 gap-2 sm:max-w-xl"
-          onSubmit={submitSearch}
-        >
-          <InputGroup className="h-9">
-            <InputGroupAddon>
-              <Search aria-hidden="true" />
-            </InputGroupAddon>
-            <InputGroupInput
-              aria-label={`Search ${itemName}`}
-              autoComplete="off"
-              name="search"
-              placeholder={searchPlaceholder}
-              type="search"
-              value={searchDraft}
-              onChange={(event) =>
-                setSearchDraftState({ queryKey, value: event.target.value })
-              }
-            />
-            <InputGroupAddon align="inline-end">
-              <InputGroupButton
-                aria-label={`Apply ${itemName} search`}
-                type="submit"
-                variant="ghost"
-              >
+        {searchPlaceholder !== null && (
+          <form
+            aria-label={`Search ${itemName}`}
+            className="flex min-w-60 flex-1 gap-2"
+            onSubmit={submitSearch}
+          >
+            <InputGroup className="h-9">
+              <InputGroupAddon>
                 <Search aria-hidden="true" />
-              </InputGroupButton>
-            </InputGroupAddon>
-          </InputGroup>
-        </form>
+              </InputGroupAddon>
+              <InputGroupInput
+                aria-label={`Search ${itemName}`}
+                autoComplete="off"
+                name="search"
+                placeholder={searchPlaceholder}
+                type="search"
+                value={searchDraft}
+                onChange={(event) =>
+                  setSearchDraftState({ queryKey, value: event.target.value })
+                }
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton
+                  aria-label={`Apply ${itemName} search`}
+                  type="submit"
+                  variant="ghost"
+                >
+                  <Search aria-hidden="true" />
+                </InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
+          </form>
+        )}
 
         {filters.map((filter) => (
           <Select
@@ -200,7 +215,13 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
               aria-label={filter.label}
               className="h-9 w-full sm:w-44"
             >
-              <SelectValue />
+              <SelectValue>
+                {filter.value
+                  ? (filter.options.find(
+                      (option) => option.value === filter.value,
+                    )?.label ?? filter.value)
+                  : (filter.allLabel ?? `All ${filter.label.toLowerCase()}`)}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent align="start">
               <SelectItem value="all">
@@ -258,83 +279,53 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
         }
       />
 
-      {(data.length > 0 || hasPrevious || (hasMore && nextOffset === null)) && (
-        <nav
-          aria-label={`${ariaLabel} pagination`}
-          className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border px-4 py-4"
-        >
-          {data.length > 0 && (
-            <p aria-live="polite" className="text-sm text-muted-foreground">
-              Showing {offset + 1}–{offset + data.length} {itemName}
-            </p>
-          )}
-
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {data.length > 0 && (hasPrevious || hasMore) && (
-              <>
-                <label
-                  className="text-sm text-muted-foreground"
-                  htmlFor={`${ariaLabel.toLowerCase().replaceAll(" ", "-")}-page-size`}
-                >
-                  Rows per page
-                </label>
-                <Select
-                  value={String(limit)}
-                  onValueChange={(value) => {
-                    if (typeof value === "string") {
-                      navigate({ limit: Number(value) });
-                    }
-                  }}
-                >
-                  <SelectTrigger
-                    className="h-9 w-20"
-                    id={`${ariaLabel.toLowerCase().replaceAll(" ", "-")}-page-size`}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    {pageSizes.map((pageSize) => (
-                      <SelectItem key={pageSize} value={String(pageSize)}>
-                        {pageSize}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
+      {page &&
+        (data.length > 0 ||
+          hasPrevious ||
+          (page.hasMore && page.nextOffset === null)) && (
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border px-4 py-4">
+            {data.length > 0 && (
+              <p aria-live="polite" className="text-sm text-muted-foreground">
+                Showing {offset + 1}–{offset + data.length} {itemName}
+              </p>
             )}
 
-            {hasPrevious && (
-              <Link
-                aria-label={`Previous ${itemName} page`}
-                className={buttonVariants({ size: "lg", variant: "outline" })}
-                href={pageHref(previousOffset)}
-                rel="prev"
-                scroll={false}
-              >
-                Previous
-              </Link>
-            )}
-            {nextOffset !== null && (
-              <Link
-                aria-label={`Next ${itemName} page`}
-                className={buttonVariants({ size: "lg", variant: "outline" })}
-                href={pageHref(nextOffset)}
-                rel="next"
-                scroll={false}
-              >
-                Next
-              </Link>
+            <Pagination
+              aria-label={`${ariaLabel} pagination`}
+              className="mx-0 w-auto"
+            >
+              <PaginationContent>
+                {hasPrevious && (
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href={pageHref(previousOffset)}
+                      rel="prev"
+                      scroll={false}
+                      text="Previous"
+                    />
+                  </PaginationItem>
+                )}
+                {page.nextOffset !== null && (
+                  <PaginationItem>
+                    <PaginationNext
+                      href={pageHref(page.nextOffset)}
+                      rel="next"
+                      scroll={false}
+                      text="Next"
+                    />
+                  </PaginationItem>
+                )}
+              </PaginationContent>
+            </Pagination>
+
+            {page.hasMore && page.nextOffset === null && (
+              <p className="basis-full text-sm text-warning" role="status">
+                More {itemName} exist, but this list has reached the maximum
+                supported offset.
+              </p>
             )}
           </div>
-
-          {hasMore && nextOffset === null && (
-            <p className="basis-full text-sm text-warning" role="status">
-              More {itemName} exist, but this list has reached the maximum
-              supported offset.
-            </p>
-          )}
-        </nav>
-      )}
+        )}
     </div>
   );
 }

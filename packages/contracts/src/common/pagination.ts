@@ -23,8 +23,10 @@ export const OffsetPaginationQuerySchema = z.strictObject({
 });
 
 export const OffsetPaginationMetadataSchema = z.strictObject({
+  limit: z.number().int().min(1).max(MAX_LIST_PAGE_SIZE),
+  offset: z.number().int().min(0).max(MAX_LIST_OFFSET),
   hasMore: z.boolean(),
-  nextOffset: z.number().int().nonnegative().nullable(),
+  nextOffset: z.number().int().min(0).max(MAX_LIST_OFFSET).nullable(),
 });
 
 export const CursorPaginationMetadataSchema = z.strictObject({

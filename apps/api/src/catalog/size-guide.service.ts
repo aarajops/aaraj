@@ -146,6 +146,8 @@ export class SizeGuideService {
         sizeLabels: rowsByGuide.get(guide.id) ?? [],
         updatedAt: guide.updatedAt.toISOString(),
       })),
+      limit: query.limit,
+      offset: query.offset,
       hasMore,
       nextOffset:
         hasMore && candidateNextOffset <= MAX_LIST_OFFSET

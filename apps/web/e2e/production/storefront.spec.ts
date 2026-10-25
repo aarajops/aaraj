@@ -63,11 +63,6 @@ test("localhost E2E keeps the live GTM container disabled", async ({
   expect(adminPolicy).not.toContain("google-analytics.com");
   expect(adminPolicy).not.toContain("style-src-attr");
 
-  const faviconResponse = await page.request.get("/favicon.ico");
-  expect(faviconResponse.status()).toBe(200);
-  expect(faviconResponse.headers()["content-type"]).toContain("image/svg+xml");
-  expect(await faviconResponse.text()).toContain("<svg");
-
   const crawlerResponse = await page.request.get("/", {
     headers: { "User-Agent": "facebookexternalhit/1.1" },
   });
@@ -86,6 +81,8 @@ test("localhost E2E keeps the live GTM container disabled", async ({
   expect(crawlerHead).toContain(
     '<meta name="twitter:image:alt" content="Aaraj logo"',
   );
+  expect(crawlerHead).toContain('rel="icon"');
+  expect(crawlerHead).toContain('href="/icon/64"');
   expect(crawlerHead).toContain('rel="manifest" href="/manifest.webmanifest"');
   expect(crawlerHead).toContain('rel="apple-touch-icon"');
 

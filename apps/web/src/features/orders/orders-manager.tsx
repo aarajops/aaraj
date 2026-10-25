@@ -1,103 +1,121 @@
 "use client";
 
-import { useMemo, useTransition } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { OrderListQuery, OrderManagementList } from "@aaraj/contracts";
-import { buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/date-time";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
 import { formatBdtPrice } from "@/lib/currency";
-import { PathaoIssuesPanel } from "./pathao-issues-panel";
+import type { ManagedOrderRow, ManagedOrdersPage } from "./orders-view-model";
 
-const columnHelper =
-  createDataTableColumnHelper<OrderManagementList["rows"][number]>();
+const columnHelper = createDataTableColumnHelper<ManagedOrderRow>();
 
 export function OrdersManager({
   initialPage,
   query,
 }: {
-  initialPage: OrderManagementList;
+  initialPage: ManagedOrdersPage;
   query: OrderListQuery;
 }) {
   const router = useRouter();
-  const [refreshing, startTransition] = useTransition();
-  const columns = useMemo(
-    () =>
-      columnHelper.columns([
-        columnHelper.accessor("reference", {
-          header: "Order ID",
-          cell: ({ getValue }) => (
-            <span className="font-medium">{getValue()}</span>
-          ),
-        }),
-        columnHelper.display({
-          id: "status",
-          header: "Status",
-          cell: ({ row }) => (
-            <span className="whitespace-normal">
-              {`${humanize(row.original.status)} · ${humanize(row.original.fulfillmentStatus)} · COD ${humanize(row.original.collectionStatus)}`}
-            </span>
-          ),
-        }),
-        columnHelper.accessor("serviceability", {
-          header: "Delivery review",
-          cell: ({ getValue }) => humanize(getValue()),
-        }),
-        columnHelper.display({
-          id: "codDue",
-          header: "COD due",
-          meta: {
-            align: "right",
-            numeric: true,
-          },
-          cell: ({ row }) =>
-            row.original.status === "cancelled" ||
-            row.original.status === "rejected"
-              ? "Not payable"
-              : formatBdtPrice({ amountBdt: row.original.totalBdt }),
-        }),
-        columnHelper.accessor("createdAt", {
-          header: "Created",
-          cell: ({ getValue }) => formatDateTime(getValue()),
-        }),
-        columnHelper.display({
-          id: "review",
-          header: "Actions",
-          meta: { align: "right" },
-          cell: ({ row }) => (
+
+  const columns = useMemo(() => {
+    return columnHelper.columns([
+      columnHelper.display({
+        id: "order",
+        header: "Order",
+        cell: ({ row }) => (
+          <div className="grid gap-1">
             <Link
-              className={buttonVariants({ size: "lg", variant: "link" })}
+              className="rounded-sm font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
               href={`/admin/orders/${row.original.id}`}
               prefetch={false}
             >
-              Review
+              {row.original.reference}
             </Link>
-          ),
-        }),
-      ]),
-    [],
-  );
+            <span className="text-xs text-muted-foreground">
+              {formatDateTime(row.original.createdAt)}
+            </span>
+          </div>
+        ),
+      }),
+      columnHelper.display({
+        id: "status",
+        header: "Order status",
+        cell: ({ row }) => (
+          <div className="grid gap-1">
+            <Badge variant={orderStatusVariant(row.original.status)}>
+              {humanize(row.original.status)}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              {humanize(row.original.fulfillmentStatus)}
+            </span>
+          </div>
+        ),
+      }),
+      columnHelper.accessor("serviceability", {
+        header: "Serviceability",
+        cell: ({ getValue }) => {
+          const serviceability = getValue();
+          return (
+            <Badge variant={serviceabilityVariant(serviceability)}>
+              {humanize(serviceability)}
+            </Badge>
+          );
+        },
+      }),
+      columnHelper.display({
+        id: "delivery",
+        header: "Delivery",
+        cell: ({ row }) => (
+          <CourierStatus
+            deliveryProvider={row.original.deliveryProvider}
+            summary={row.original.pathaoSummary}
+            available={initialPage.pathaoSummaryAvailable}
+          />
+        ),
+      }),
+      columnHelper.display({
+        id: "codDue",
+        header: "COD due",
+        meta: {
+          align: "right",
+          numeric: true,
+        },
+        cell: ({ row }) => (
+          <div className="grid gap-1">
+            {row.original.status === "cancelled" ||
+            row.original.status === "rejected" ? (
+              <span className="text-muted-foreground">Not payable</span>
+            ) : (
+              formatBdtPrice({ amountBdt: row.original.codAmountDueBdt })
+            )}
+            <span className="text-xs text-muted-foreground">
+              {humanize(row.original.collectionStatus)}
+            </span>
+          </div>
+        ),
+      }),
+    ]);
+  }, [initialPage.pathaoSummaryAvailable]);
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-10 text-foreground sm:px-8 sm:py-12">
+    <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10">
       <div className="container mx-auto">
-        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
+        <p className="text-sm font-semibold tracking-widest text-primary">
           AARAJ ADMIN
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Orders</h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Verify delivery serviceability before dispatch. Address details are
-          restricted to authorized order views. Held stock stays reserved until
-          dispatch or staff cancellation; use the fulfillment filter to review
-          Orders awaiting dispatch.
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Orders</h1>
+        <p className="mt-1 text-muted-foreground">
+          Review order status, delivery checks, and dispatch.
         </p>
-        <PathaoIssuesPanel />
         <AdminDataTable
-          className="mt-8"
+          className="mt-5"
           ariaLabel="Orders"
           columns={columns}
           data={initialPage.rows}
@@ -128,15 +146,75 @@ export function OrdersManager({
             },
           ]}
           itemName="orders"
-          searchPlaceholder="Order ID"
-          onRefresh={() => startTransition(() => router.refresh())}
-          isRefreshing={refreshing}
-          hasMore={initialPage.hasMore}
-          nextOffset={initialPage.nextOffset}
+          searchPlaceholder="Search order ID"
+          onRefresh={() => router.refresh()}
+          page={initialPage}
         />
       </div>
     </main>
   );
+}
+
+function CourierStatus({
+  deliveryProvider,
+  summary,
+  available,
+}: {
+  deliveryProvider: "manual" | "pathao" | null;
+  summary: ManagedOrderRow["pathaoSummary"];
+  available: boolean;
+}) {
+  if (deliveryProvider === "pathao" && !available) {
+    return <span className="text-sm text-muted-foreground">Unavailable</span>;
+  }
+  if (
+    summary?.hasUnresolvedWebhookIssue ||
+    summary?.status === "outcome_unknown" ||
+    summary?.status === "reconciliation_required" ||
+    summary?.trackingProgress === "reconciliation_required"
+  ) {
+    return <Badge variant="destructive">Needs review</Badge>;
+  }
+  if (summary?.status === "submitting") {
+    return <Badge variant="outline">Booking</Badge>;
+  }
+  if (summary?.status === "booked") {
+    return (
+      <div className="grid gap-1">
+        <Badge variant="secondary">
+          {humanize(summary.trackingProgress ?? "booked")}
+        </Badge>
+        {summary.consignmentId && (
+          <span className="text-xs text-muted-foreground">
+            {summary.consignmentId}
+          </span>
+        )}
+      </div>
+    );
+  }
+  if (deliveryProvider === "pathao") {
+    return <Badge variant="secondary">Not booked</Badge>;
+  }
+  if (deliveryProvider === "manual") {
+    return <Badge variant="outline">Manual delivery</Badge>;
+  }
+  return <span className="text-sm text-muted-foreground">Not assigned</span>;
+}
+
+function orderStatusVariant(
+  status: OrderManagementList["rows"][number]["status"],
+): "default" | "secondary" | "destructive" {
+  if (status === "cancelled" || status === "rejected") return "destructive";
+  if (status === "confirmed") return "default";
+  return "secondary";
+}
+
+function serviceabilityVariant(
+  status: OrderManagementList["rows"][number]["serviceability"],
+): "secondary" | "outline" | "destructive" {
+  if (status === "unserviceable") return "destructive";
+  if (status === "pending_manual_review") return "outline";
+  return "secondary";
 }
 
 export function humanize(value: string): string {

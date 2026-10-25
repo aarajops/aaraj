@@ -74,6 +74,8 @@ export class InventoryService {
 
     return {
       variants,
+      limit: query.limit,
+      offset: query.offset,
       hasMore: catalogPage.hasMore,
       nextOffset:
         catalogPage.hasMore && candidateNextOffset <= MAX_LIST_OFFSET

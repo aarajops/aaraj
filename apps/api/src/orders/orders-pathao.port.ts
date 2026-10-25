@@ -22,6 +22,11 @@ export type PathaoFulfillmentSnapshot = {
 export type PathaoBookingClaimStatus =
   "submitting" | "booked" | "outcome_unknown" | "reconciliation_required";
 
+export type PathaoBookingClaimSnapshot = {
+  orderId: string;
+  status: PathaoBookingClaimStatus;
+};
+
 export type PathaoBookingClaimUpdate = {
   orderId: string;
   commandId: string;
@@ -36,6 +41,9 @@ export interface OrdersPathaoPort {
   getPathaoBookingClaimStatus(
     orderId: string,
   ): Promise<PathaoBookingClaimStatus | null>;
+  getPathaoBookingClaimStatuses(
+    orderIds: readonly string[],
+  ): Promise<PathaoBookingClaimSnapshot[]>;
   getPathaoBookingSnapshot(
     orderId: string,
   ): Promise<PathaoOrderBookingSnapshot>;

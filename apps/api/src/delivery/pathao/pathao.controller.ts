@@ -9,6 +9,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   SignedCookies,
   UnauthorizedException,
   UseGuards,
@@ -24,9 +25,13 @@ import {
 import { StandardSchemaValidationPipe } from "@nestjs/common";
 import {
   OrderIdSchema,
+  PathaoManagementBookingSummariesQuerySchema,
+  PathaoManagementIssuesQuerySchema,
   PathaoBookingInputSchema,
   PathaoManualReconciliationInputSchema,
   PathaoWebhookResolutionInputSchema,
+  type PathaoManagementBookingSummariesQuery,
+  type PathaoManagementIssuesQuery,
   type PathaoBookingInput,
   type PathaoManualReconciliationInput,
   type PathaoWebhookResolutionInput,
@@ -50,6 +55,15 @@ export class PathaoManagementController {
     return this.pathao.listActiveStores();
   }
 
+  @Get("orders")
+  @Header("Cache-Control", "no-store")
+  getBookingSummaries(
+    @Query({ schema: PathaoManagementBookingSummariesQuerySchema })
+    query: PathaoManagementBookingSummariesQuery,
+  ) {
+    return this.pathao.getManagementBookingSummaries(query.orderIds);
+  }
+
   @Get("orders/:orderId")
   @Header("Cache-Control", "no-store")
   getBooking(@Param("orderId", { schema: OrderIdSchema }) orderId: string) {
@@ -58,8 +72,11 @@ export class PathaoManagementController {
 
   @Get("issues")
   @Header("Cache-Control", "no-store")
-  getIssues() {
-    return this.pathao.getManagementIssues();
+  getIssues(
+    @Query({ schema: PathaoManagementIssuesQuerySchema })
+    query: PathaoManagementIssuesQuery,
+  ) {
+    return this.pathao.getManagementIssues(query);
   }
 
   @Post("orders/:orderId/book")

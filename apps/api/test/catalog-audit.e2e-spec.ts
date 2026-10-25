@@ -6,6 +6,7 @@ import {
   CatalogCategoryListSchema,
   CatalogCategoryOptionsSchema,
   CatalogProductFilterOptionsSchema,
+  DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
 } from "@aaraj/contracts";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
@@ -95,6 +96,8 @@ describe("catalog and security audit", () => {
       .expect(200)
       .expect({
         products: [],
+        limit: DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
+        offset: 0,
         hasMore: false,
         nextOffset: null,
         filters: {
@@ -467,6 +470,8 @@ describe("catalog and security audit", () => {
       .expect(200)
       .expect({
         products: [],
+        limit: DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
+        offset: 0,
         hasMore: false,
         nextOffset: null,
         filters: {

@@ -201,10 +201,9 @@ export function UsersManager({
                 ? "No matching users. Clear the search to browse all accounts."
                 : "No accounts yet."
             }
-            hasMore={page.hasMore}
+            page={page}
             isRefreshing={isRefreshing || busyUserId !== null}
             itemName="users"
-            nextOffset={page.nextOffset}
             onRefresh={() => startRefresh(() => router.refresh())}
             pathname="/admin/users"
             query={query}

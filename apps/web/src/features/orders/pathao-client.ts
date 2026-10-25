@@ -9,7 +9,6 @@ import {
   PathaoBookingOptionsSchema,
   PathaoBookingSchema,
   PathaoCustomerTrackingSchema,
-  PathaoManagementIssuesSchema,
   PathaoManualReconciliationInputSchema,
   PathaoWebhookResolutionInputSchema,
   PathaoWebhookResolutionResultSchema,
@@ -45,14 +44,6 @@ export async function getPathaoBooking(orderId: string) {
     { cache: "no-store", credentials: "same-origin" },
   );
   return read(response, PathaoBookingManagementSchema);
-}
-
-export async function getPathaoManagementIssues() {
-  const response = await fetch(
-    `${API_V1_BASE_PATH}/delivery/pathao/manage/issues`,
-    { cache: "no-store", credentials: "same-origin" },
-  );
-  return read(response, PathaoManagementIssuesSchema);
 }
 
 export async function resolvePathaoWebhookIssue(

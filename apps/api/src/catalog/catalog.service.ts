@@ -1330,6 +1330,8 @@ function toProductPage(
   const candidateNextOffset = query.offset + products.length;
   return {
     products,
+    limit: query.limit,
+    offset: query.offset,
     hasMore,
     nextOffset:
       hasMore && candidateNextOffset <= MAX_LIST_OFFSET

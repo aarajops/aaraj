@@ -20,8 +20,6 @@ export function CategoryTable({
 }: {
   categories: CatalogCategory[];
   query: {
-    limit: number;
-    offset: number;
     search?: string;
     status?: "active" | "inactive";
     kind?: "parent" | "leaf";
@@ -105,17 +103,11 @@ export function CategoryTable({
       )
     );
   });
-  const visibleCategories = filteredCategories.slice(
-    query.offset,
-    query.offset + query.limit,
-  );
-  const nextOffset = query.offset + visibleCategories.length;
-  const hasMore = nextOffset < filteredCategories.length;
   return (
     <AdminDataTable
       ariaLabel="Product categories"
       columns={columns}
-      data={visibleCategories}
+      data={filteredCategories}
       pathname="/admin/catalog/categories"
       query={query}
       itemName="categories"
@@ -144,8 +136,7 @@ export function CategoryTable({
       ]}
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
-      hasMore={hasMore}
-      nextOffset={hasMore ? nextOffset : null}
+      page={null}
     />
   );
 }

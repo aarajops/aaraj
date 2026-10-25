@@ -15,6 +15,7 @@ import {
 } from "vitest";
 import {
   API_V1_BASE_PATH,
+  DEFAULT_LIST_PAGE_SIZE,
   DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
   DEFAULT_STOREFRONT_HEADER_NAVIGATION_CONFIG,
 } from "@aaraj/contracts";
@@ -834,6 +835,8 @@ describe("storefront settings", () => {
       .expect(200);
     expect(initial.body).toEqual({
       banners: [],
+      limit: DEFAULT_LIST_PAGE_SIZE,
+      offset: 0,
       hasMore: false,
       nextOffset: null,
     });

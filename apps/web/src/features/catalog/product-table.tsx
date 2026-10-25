@@ -5,6 +5,7 @@ import type {
   CatalogCategoryOption,
   CatalogProduct,
   CatalogProductListQuery,
+  CatalogProductPage,
 } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -23,8 +24,10 @@ type ProductTableProps = {
   query: CatalogProductListQuery;
   onRefresh: () => void;
   isRefreshing: boolean;
-  hasMore: boolean;
-  nextOffset: number | null;
+  page: Pick<
+    CatalogProductPage,
+    "limit" | "offset" | "hasMore" | "nextOffset"
+  > | null;
 };
 
 export function ProductTable({
@@ -33,8 +36,7 @@ export function ProductTable({
   query,
   onRefresh,
   isRefreshing,
-  hasMore,
-  nextOffset,
+  page,
 }: ProductTableProps) {
   const columns = useMemo(
     () =>
@@ -135,8 +137,7 @@ export function ProductTable({
       ]}
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
-      hasMore={hasMore}
-      nextOffset={nextOffset}
+      page={page}
     />
   );
 }

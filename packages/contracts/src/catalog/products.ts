@@ -307,8 +307,7 @@ export type CatalogProductFilterOptions = z.infer<
 
 export const CatalogPublishedProductPageSchema = z.strictObject({
   products: CatalogPublishedProductListItemSchema.array(),
-  hasMore: OffsetPaginationMetadataSchema.shape.hasMore,
-  nextOffset: OffsetPaginationMetadataSchema.shape.nextOffset,
+  ...OffsetPaginationMetadataSchema.shape,
   filters: CatalogProductFilterOptionsSchema,
 });
 export type CatalogPublishedProductPage = z.infer<

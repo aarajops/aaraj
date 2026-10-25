@@ -1160,6 +1160,10 @@ describe("COD Orders and checkout", () => {
       expect(firstPage.body.rows.map((row: { id: string }) => row.id)).toEqual(
         expectedIds.slice(0, 50),
       );
+      expect(firstPage.body.rows[0]).toMatchObject({
+        deliveryProvider: sourceOrder.deliveryProvider,
+        codAmountDueBdt: sourceOrder.codAmountDueBdt,
+      });
 
       const secondPage = await request(app.getHttpServer())
         .get(`${API_V1_BASE_PATH}/orders/manage`)
@@ -2250,7 +2254,6 @@ describe("COD Orders and checkout", () => {
     expect(issues.body.issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          kind: "webhook",
           orderId: fixture.id,
           orderReference: order.reference,
           consignmentId,
@@ -2260,16 +2263,25 @@ describe("COD Orders and checkout", () => {
           errorCode: "PATHAO_ORDER_IDENTITY_MISMATCH",
         }),
         expect.objectContaining({
-          kind: "webhook",
           consignmentId: `${consignmentId}-WRONG`,
           status: "unmatched",
         }),
         expect.objectContaining({
-          kind: "webhook",
           event: "order.unknown-delivery-outcome",
           status: "reconciliation_required",
         }),
       ]),
+    );
+    const summaries = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/orders`)
+      .set("Cookie", staff.cookie)
+      .query({ orderIds: fixture.id })
+      .expect(200);
+    expect(summaries.body).toContainEqual(
+      expect.objectContaining({
+        orderId: fixture.id,
+        hasUnresolvedWebhookIssue: true,
+      }),
     );
 
     const [issue] = await database.db
@@ -2497,7 +2509,6 @@ describe("COD Orders and checkout", () => {
       .expect(200);
     expect(issues.body.issues).toContainEqual(
       expect.objectContaining({
-        kind: "webhook",
         orderId: null,
         consignmentId: "PATHAO-TEST-MANUAL-01",
         status: "unmatched",

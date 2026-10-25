@@ -35,8 +35,7 @@ export function InventoryManager({
           className="mt-8"
           variants={page.variants}
           query={query}
-          hasMore={page.hasMore}
-          nextOffset={page.nextOffset}
+          page={page}
           onRefresh={() => startTransition(() => router.refresh())}
           isRefreshing={isRefreshing}
         />

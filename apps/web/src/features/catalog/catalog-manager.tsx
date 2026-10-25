@@ -87,8 +87,16 @@ export function CatalogManager({
   const [nextSizeGuideOffset, setNextSizeGuideOffset] = useState(
     initialSizeGuidesNextOffset ?? null,
   );
-  const [hasMore, setHasMore] = useState(initialPage?.hasMore ?? false);
-  const [nextOffset, setNextOffset] = useState(initialPage?.nextOffset ?? null);
+  const [productPage, setProductPage] = useState(() =>
+    initialPage
+      ? {
+          limit: initialPage.limit,
+          offset: initialPage.offset,
+          hasMore: initialPage.hasMore,
+          nextOffset: initialPage.nextOffset,
+        }
+      : null,
+  );
   const {
     control,
     register,
@@ -146,8 +154,12 @@ export function CatalogManager({
       if (!result.success) throw new Error("Catalog response was invalid.");
 
       setProducts(result.data.products);
-      setHasMore(result.data.hasMore);
-      setNextOffset(result.data.nextOffset);
+      setProductPage({
+        limit: result.data.limit,
+        offset: result.data.offset,
+        hasMore: result.data.hasMore,
+        nextOffset: result.data.nextOffset,
+      });
       setProductRefreshError(null);
     } catch {
       if (requestId === productLoadRequestId.current) {
@@ -340,8 +352,7 @@ export function CatalogManager({
                   query={query}
                   onRefresh={() => void loadProducts()}
                   isRefreshing={isRefreshing}
-                  hasMore={hasMore}
-                  nextOffset={nextOffset}
+                  page={productPage}
                 />
               </div>
             </section>

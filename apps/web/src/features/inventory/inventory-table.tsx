@@ -2,7 +2,11 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import type { InventoryListQuery, InventoryVariant } from "@aaraj/contracts";
+import type {
+  InventoryListQuery,
+  InventoryVariant,
+  InventoryVariantPage,
+} from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -16,16 +20,17 @@ const columnHelper = createDataTableColumnHelper<InventoryVariant>();
 export function InventoryTable({
   variants,
   query,
-  hasMore,
-  nextOffset,
+  page,
   onRefresh,
   isRefreshing = false,
   className,
 }: {
   variants: InventoryVariant[];
   query: InventoryListQuery;
-  hasMore: boolean;
-  nextOffset: number | null;
+  page: Pick<
+    InventoryVariantPage,
+    "limit" | "offset" | "hasMore" | "nextOffset"
+  >;
   onRefresh: () => void;
   isRefreshing?: boolean;
   className?: string;
@@ -129,8 +134,7 @@ export function InventoryTable({
       searchPlaceholder="Product, SKU, color, or size"
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
-      hasMore={hasMore}
-      nextOffset={nextOffset}
+      page={page}
     />
   );
 }

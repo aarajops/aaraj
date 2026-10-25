@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  MAX_LIST_PAGE_SIZE,
+  OffsetPaginationMetadataSchema,
+  OffsetPaginationQuerySchema,
+} from "../common/pagination.js";
 import { OrderReferenceSchema } from "../orders/order-reference.js";
 
 export const PathaoDeliveryTypeSchema = z.union([z.literal(48), z.literal(12)]);
@@ -33,6 +38,20 @@ export const PathaoBookingStatusSchema = z.enum([
   "reconciliation_required",
 ]);
 
+export const PathaoTrackingProgressSchema = z.enum([
+  "booked",
+  "pickup",
+  "in_transit",
+  "out_for_delivery",
+  "delivered",
+  "partial_delivery",
+  "delivery_failed",
+  "returning",
+  "returned",
+  "on_hold",
+  "reconciliation_required",
+]);
+
 export const PathaoBookingSchema = z.strictObject({
   orderId: z.uuid(),
   environment: z.enum(["sandbox", "live"]),
@@ -53,23 +72,37 @@ export const PathaoBookingSchema = z.strictObject({
     .nullable(),
   reconciliationReason: z.string().min(3).max(500).nullable(),
   reconciledAt: z.iso.datetime().nullable(),
-  trackingProgress: z.enum([
-    "booked",
-    "pickup",
-    "in_transit",
-    "out_for_delivery",
-    "delivered",
-    "partial_delivery",
-    "delivery_failed",
-    "returning",
-    "returned",
-    "on_hold",
-    "reconciliation_required",
-  ]),
+  trackingProgress: PathaoTrackingProgressSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
 export type PathaoBooking = z.infer<typeof PathaoBookingSchema>;
+
+export const PathaoManagementBookingSummarySchema = z.strictObject({
+  orderId: z.uuid(),
+  status: PathaoBookingStatusSchema.nullable(),
+  trackingProgress: PathaoTrackingProgressSchema.nullable(),
+  consignmentId: z.string().min(1).max(120).nullable(),
+  hasUnresolvedWebhookIssue: z.boolean(),
+});
+export type PathaoManagementBookingSummary = z.infer<
+  typeof PathaoManagementBookingSummarySchema
+>;
+
+export const PathaoManagementBookingSummariesQuerySchema = z.strictObject({
+  orderIds: z
+    .string()
+    .transform((value) => value.split(","))
+    .pipe(z.array(z.uuid()).min(1).max(MAX_LIST_PAGE_SIZE))
+    .refine((orderIds) => new Set(orderIds).size === orderIds.length),
+});
+export type PathaoManagementBookingSummariesQuery = z.infer<
+  typeof PathaoManagementBookingSummariesQuerySchema
+>;
+
+export const PathaoManagementBookingSummariesSchema = z
+  .array(PathaoManagementBookingSummarySchema)
+  .max(MAX_LIST_PAGE_SIZE);
 
 export const PathaoWebhookObservationSchema = z.strictObject({
   event: z.string().min(1).max(80),
@@ -99,19 +132,7 @@ export type PathaoWebhookObservation = z.infer<
 
 export const PathaoCustomerBookingSchema = z.strictObject({
   consignmentId: z.string().min(1).max(120),
-  trackingProgress: z.enum([
-    "booked",
-    "pickup",
-    "in_transit",
-    "out_for_delivery",
-    "delivered",
-    "partial_delivery",
-    "delivery_failed",
-    "returning",
-    "returned",
-    "on_hold",
-    "reconciliation_required",
-  ]),
+  trackingProgress: PathaoTrackingProgressSchema,
   createdAt: z.iso.datetime(),
 });
 
@@ -157,15 +178,14 @@ export type PathaoManualReconciliationInput = z.infer<
 
 export const PathaoManagementIssueSchema = z.strictObject({
   id: z.uuid(),
-  kind: z.enum(["booking", "webhook"]),
   orderId: z.uuid().nullable(),
   orderReference: OrderReferenceSchema.nullable(),
   consignmentId: z.string().min(1).max(120).nullable(),
   merchantOrderId: z.string().min(1).max(100).nullable(),
   storeId: z.number().int().positive().max(2_147_483_647).nullable(),
-  event: z.string().min(1).max(80).nullable(),
+  event: z.string().min(1).max(80),
   providerStatus: z.string().max(100).nullable(),
-  status: z.string().min(1).max(40),
+  status: z.enum(["reconciliation_required", "unmatched"]),
   errorCode: z
     .string()
     .regex(/^PATHAO_[A-Z0-9_]+$/)
@@ -176,11 +196,16 @@ export const PathaoManagementIssueSchema = z.strictObject({
 export type PathaoManagementIssue = z.infer<typeof PathaoManagementIssueSchema>;
 
 export const PathaoManagementIssuesSchema = z.strictObject({
-  issues: z.array(PathaoManagementIssueSchema).max(200),
-  truncated: z.boolean(),
+  issues: z.array(PathaoManagementIssueSchema),
+  ...OffsetPaginationMetadataSchema.shape,
 });
 export type PathaoManagementIssues = z.infer<
   typeof PathaoManagementIssuesSchema
+>;
+
+export const PathaoManagementIssuesQuerySchema = OffsetPaginationQuerySchema;
+export type PathaoManagementIssuesQuery = z.infer<
+  typeof PathaoManagementIssuesQuerySchema
 >;
 
 export const PathaoWebhookResolutionInputSchema = z.discriminatedUnion(

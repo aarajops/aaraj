@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { DEFAULT_LIST_PAGE_SIZE } from "@aaraj/contracts";
 import { OrdersManager } from "@/features/orders/orders-manager";
 import {
   getManagedOrders,
   parseOrdersPageQuery,
   type OrdersPageSearchParams,
 } from "@/features/orders/orders-queries";
+import { getPathaoBookingSummariesForOrders } from "@/features/orders/pathao-queries";
+import { composeManagedOrdersPage } from "@/features/orders/orders-view-model";
 
 export const metadata: Metadata = {
   title: "Order management",
@@ -29,7 +32,7 @@ export default async function AdminOrdersPage({
           : "Orders unavailable";
     return (
       <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-12 text-foreground sm:px-8">
-        <div className="mx-auto max-w-3xl">
+        <div className="container mx-auto">
           <p className="text-sm font-semibold tracking-[0.18em] text-primary">
             AARAJ STAFF
           </p>
@@ -59,7 +62,11 @@ export default async function AdminOrdersPage({
       </main>
     );
   }
-  return <OrdersManager initialPage={result.value} query={query} />;
+  const summaries = await getPathaoBookingSummariesForOrders(
+    result.value.rows.map((row) => row.id),
+  );
+  const page = composeManagedOrdersPage(result.value, summaries);
+  return <OrdersManager initialPage={page} query={query} />;
 }
 
 function ordersPageHref(query: {
@@ -69,7 +76,9 @@ function ordersPageHref(query: {
   fulfillmentStatus?: string;
 }): string {
   const params = new URLSearchParams();
-  if (query.limit !== 50) params.set("limit", String(query.limit));
+  if (query.limit !== DEFAULT_LIST_PAGE_SIZE) {
+    params.set("limit", String(query.limit));
+  }
   if (query.offset > 0) params.set("offset", String(query.offset));
   if (query.search) params.set("search", query.search);
   if (query.fulfillmentStatus) {

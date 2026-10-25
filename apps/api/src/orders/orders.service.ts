@@ -47,6 +47,7 @@ import {
 import { QuoteService } from "../quote/quote.service.js";
 import type {
   OrdersPathaoPort,
+  PathaoBookingClaimSnapshot,
   PathaoFulfillmentSnapshot,
   PathaoOrderBookingSnapshot,
 } from "./orders-pathao.port.js";
@@ -511,7 +512,9 @@ export class OrdersService implements OrdersPathaoPort {
         fulfillmentStatus: customerOrder.fulfillmentStatus,
         collectionStatus: customerOrder.collectionStatus,
         serviceability: customerOrder.serviceability,
+        deliveryProvider: customerOrder.deliveryProvider,
         totalBdt: customerOrder.totalBdt,
+        codAmountDueBdt: customerOrder.codAmountDueBdt,
         createdAt: customerOrder.createdAt,
       })
       .from(customerOrder)
@@ -617,6 +620,19 @@ export class OrdersService implements OrdersPathaoPort {
       .where(eq(orderPathaoBookingClaim.orderId, orderId))
       .limit(1);
     return claim?.status ?? null;
+  }
+
+  async getPathaoBookingClaimStatuses(
+    orderIds: readonly string[],
+  ): Promise<PathaoBookingClaimSnapshot[]> {
+    if (orderIds.length === 0) return [];
+    return this.database.db
+      .select({
+        orderId: orderPathaoBookingClaim.orderId,
+        status: orderPathaoBookingClaim.status,
+      })
+      .from(orderPathaoBookingClaim)
+      .where(inArray(orderPathaoBookingClaim.orderId, [...orderIds]));
   }
 
   async beginPathaoBookingClaim(

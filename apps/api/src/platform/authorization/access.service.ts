@@ -113,6 +113,8 @@ export class AccessService {
       const candidateNextOffset = query.offset + users.length;
       const page: AccessUserPage = {
         users,
+        limit: query.limit,
+        offset: query.offset,
         hasMore,
         nextOffset:
           hasMore && candidateNextOffset <= MAX_LIST_OFFSET

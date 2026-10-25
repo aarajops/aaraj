@@ -236,7 +236,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
       await route.fulfill({
         status: 200,
         headers: { "x-e2e-response": "older" },
-        json: { products: [], hasMore: false, nextOffset: null },
+        json: {
+          products: [],
+          limit: 50,
+          offset: 0,
+          hasMore: false,
+          nextOffset: null,
+        },
       });
       return;
     }
@@ -393,14 +399,16 @@ test("staff manages reusable size guides and apparel products safely", async ({
       'section[aria-labelledby="managed-products-heading"] tbody tr',
     ),
   ).toHaveCount(1);
-  await page.getByRole("link", { name: "Next" }).click();
+  await page.getByRole("link", { name: "Go to next page" }).click();
   await expect(page).toHaveURL(/offset=1/);
   await expect(
     page.locator(
       'section[aria-labelledby="managed-products-heading"] tbody tr',
     ),
   ).toHaveCount(1);
-  await expect(page.getByRole("link", { name: "Previous" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Go to previous page" }),
+  ).toBeVisible();
 
   await page.goto("/?limit=1&offset=0&category=t-shirts");
   await expect(page).toHaveURL(

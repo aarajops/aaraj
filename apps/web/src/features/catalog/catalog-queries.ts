@@ -154,18 +154,11 @@ export function parseCatalogCategoryTableQuery(
       : searchParams.kind === "leaf"
         ? "leaf"
         : undefined;
-  const result = CatalogProductListQuerySchema.safeParse({
-    limit:
-      typeof searchParams.limit === "string" ? searchParams.limit : undefined,
-    offset:
-      typeof searchParams.offset === "string" ? searchParams.offset : undefined,
-    search:
-      typeof searchParams.search === "string" ? searchParams.search : undefined,
-  });
   return {
-    limit: result.success ? result.data.limit : defaultCatalogQuery.limit,
-    offset: result.success ? result.data.offset : 0,
-    search: result.success ? result.data.search : undefined,
+    search:
+      typeof searchParams.search === "string" && searchParams.search.trim()
+        ? searchParams.search.trim()
+        : undefined,
     status: statusParam,
     kind: kindParam,
   };

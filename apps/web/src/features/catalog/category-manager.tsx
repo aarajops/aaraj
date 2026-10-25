@@ -49,14 +49,12 @@ export function CategoryManager({
   view = "list",
   initialCategories,
   initialCategory,
-  query = { limit: 50, offset: 0 },
+  query = {},
 }: {
   view?: "list" | "create" | "edit";
   initialCategories: CatalogCategory[];
   initialCategory?: CatalogCategory;
   query?: {
-    limit: number;
-    offset: number;
     search?: string;
     status?: "active" | "inactive";
     kind?: "parent" | "leaf";

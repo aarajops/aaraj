@@ -5,6 +5,7 @@ import type {
   CatalogCategoryOption,
   CatalogSizeGuideListQuery,
   CatalogSizeGuideSummary,
+  CatalogSizeGuidePage,
 } from "@aaraj/contracts";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -22,16 +23,17 @@ export function SizeGuideTable({
   query,
   onRefresh,
   isRefreshing,
-  hasMore,
-  nextOffset,
+  page,
 }: {
   guides: CatalogSizeGuideSummary[];
   categoryOptions: CatalogCategoryOption[];
   query: CatalogSizeGuideListQuery;
   onRefresh: () => void;
   isRefreshing?: boolean;
-  hasMore: boolean;
-  nextOffset: number | null;
+  page: Pick<
+    CatalogSizeGuidePage,
+    "limit" | "offset" | "hasMore" | "nextOffset"
+  > | null;
 }) {
   const columns = useMemo(
     () =>
@@ -118,8 +120,7 @@ export function SizeGuideTable({
       ]}
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
-      hasMore={hasMore}
-      nextOffset={nextOffset}
+      page={page}
     />
   );
 }

@@ -6,6 +6,7 @@ import type { Permission } from "@aaraj/contracts";
 import {
   Boxes,
   ClipboardList,
+  CircleAlert,
   Truck,
   LayoutDashboard,
   Package,
@@ -62,6 +63,12 @@ const operationsLinks = [
     href: "/admin/orders",
     label: "Orders",
     icon: ClipboardList,
+    permission: "orders.manage",
+  },
+  {
+    href: "/admin/orders/reconciliation",
+    label: "Delivery issues",
+    icon: CircleAlert,
     permission: "orders.manage",
   },
   {

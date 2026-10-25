@@ -10,6 +10,7 @@ import { AuthorizationService } from "@nestjs/authorization";
 import {
   API_V1_BASE_PATH,
   DEFAULT_LIST_PAGE_SIZE,
+  MAX_LIST_OFFSET,
   type PublicStorefrontBanners,
   type ManagedStorefrontBannerAsset,
   type StorefrontBanner,
@@ -186,11 +187,17 @@ export class StorefrontBannersService {
       .offset(query.offset);
     const hasMore = rows.length > query.limit;
     const selected = rows.slice(0, query.limit);
-    const nextOffset = hasMore ? query.offset + selected.length : null;
+    const candidateNextOffset = query.offset + selected.length;
+    const nextOffset =
+      hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+        ? candidateNextOffset
+        : null;
     return {
       banners: selected.map(({ banner, desktop, mobile }) =>
         toManagedBanner(banner, desktop, mobile),
       ),
+      limit: query.limit,
+      offset: query.offset,
       hasMore,
       nextOffset,
     };

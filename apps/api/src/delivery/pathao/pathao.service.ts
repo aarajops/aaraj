@@ -11,7 +11,9 @@ import {
   PathaoBookingOptionsSchema,
   PathaoBookingSchema,
   PathaoCustomerTrackingSchema,
+  PathaoManagementBookingSummariesSchema,
   PathaoManagementIssuesSchema,
+  MAX_LIST_OFFSET,
   PathaoManualReconciliationInputSchema,
   PathaoWebhookResolutionInputSchema,
   PathaoWebhookResolutionResultSchema,
@@ -23,6 +25,7 @@ import {
   type PathaoCustomerTracking,
   type PathaoDeliveryType,
   type PathaoManagementIssues,
+  type PathaoManagementIssuesQuery,
   type PathaoManualReconciliationInput,
   type PathaoWebhookResolutionInput,
   type PathaoWebhookResolutionResult,
@@ -310,6 +313,57 @@ export class PathaoService {
     return row ? toBooking(row) : null;
   }
 
+  async getManagementBookingSummaries(orderIds: readonly string[]) {
+    if (orderIds.length === 0) return [];
+    const [bookings, claims, unresolvedWebhookRows] = await Promise.all([
+      this.database.db
+        .select({
+          orderId: pathaoBooking.orderId,
+          status: pathaoBooking.status,
+          trackingProgress: pathaoBooking.trackingProgress,
+          consignmentId: pathaoBooking.consignmentId,
+        })
+        .from(pathaoBooking)
+        .where(inArray(pathaoBooking.orderId, [...orderIds])),
+      this.orders.getPathaoBookingClaimStatuses(orderIds),
+      this.database.db
+        .selectDistinct({ orderId: pathaoBooking.orderId })
+        .from(pathaoWebhookInbox)
+        .innerJoin(
+          pathaoBooking,
+          eq(pathaoWebhookInbox.bookingId, pathaoBooking.id),
+        )
+        .where(
+          and(
+            inArray(pathaoBooking.orderId, [...orderIds]),
+            eq(pathaoWebhookInbox.processingState, "reconciliation_required"),
+          ),
+        ),
+    ]);
+    const bookingByOrderId = new Map(
+      bookings.map((booking) => [booking.orderId, booking]),
+    );
+    const claimStatusByOrderId = new Map(
+      claims.map((claim) => [claim.orderId, claim.status]),
+    );
+    const ordersWithUnresolvedWebhookIssue = new Set(
+      unresolvedWebhookRows.map(({ orderId }) => orderId),
+    );
+    return PathaoManagementBookingSummariesSchema.parse(
+      orderIds.map((orderId) => {
+        const booking = bookingByOrderId.get(orderId);
+        return {
+          orderId,
+          status: claimStatusByOrderId.get(orderId) ?? booking?.status ?? null,
+          trackingProgress: booking?.trackingProgress ?? null,
+          consignmentId: booking?.consignmentId ?? null,
+          hasUnresolvedWebhookIssue:
+            ordersWithUnresolvedWebhookIssue.has(orderId),
+        };
+      }),
+    );
+  }
+
   async getManagementDetails(
     orderId: string,
   ): Promise<PathaoBookingManagement> {
@@ -329,28 +383,9 @@ export class PathaoService {
     });
   }
 
-  async getManagementIssues(): Promise<PathaoManagementIssues> {
-    const bookings = await this.database.db
-      .select({
-        id: pathaoBooking.id,
-        orderId: pathaoBooking.orderId,
-        merchantOrderId: pathaoBooking.merchantOrderId,
-        storeId: pathaoBooking.storeId,
-        consignmentId: pathaoBooking.consignmentId,
-        status: pathaoBooking.status,
-        errorCode: pathaoBooking.lastErrorCode,
-        providerStatus: pathaoBooking.providerOrderStatus,
-        occurredAt: pathaoBooking.updatedAt,
-      })
-      .from(pathaoBooking)
-      .where(
-        inArray(pathaoBooking.status, [
-          "outcome_unknown",
-          "reconciliation_required",
-        ]),
-      )
-      .orderBy(asc(pathaoBooking.createdAt), asc(pathaoBooking.id))
-      .limit(101);
+  async getManagementIssues(
+    query: PathaoManagementIssuesQuery,
+  ): Promise<PathaoManagementIssues> {
     const observations = await this.database.db
       .select({
         id: pathaoWebhookInbox.id,
@@ -376,52 +411,46 @@ export class PathaoService {
         ]),
       )
       .orderBy(asc(pathaoWebhookInbox.receivedAt), asc(pathaoWebhookInbox.id))
-      .limit(101);
+      .limit(query.limit + 1)
+      .offset(query.offset);
+    const hasMore = observations.length > query.limit;
+    const candidates = observations.slice(0, query.limit).map((row) => ({
+      id: row.id,
+      orderId: row.orderId,
+      consignmentId: row.consignmentId,
+      merchantOrderId: row.merchantOrderId,
+      storeId: row.storeId,
+      event: row.event,
+      status: row.status,
+      errorCode: row.errorCode,
+      providerStatus: row.providerStatus,
+      occurredAt: row.occurredAt.toISOString(),
+    }));
     const orderIds = [
-      ...bookings.map((row) => row.orderId),
-      ...observations.flatMap((row) => (row.orderId ? [row.orderId] : [])),
+      ...new Set(
+        candidates.flatMap((issue) => (issue.orderId ? [issue.orderId] : [])),
+      ),
     ];
     const references = await this.orders.getOrderReferences(orderIds);
     const referenceById = new Map(
       references.map((row) => [row.id, row.reference]),
     );
-    const issues = [
-      ...bookings.slice(0, 100).map((row) => ({
-        id: row.id,
-        kind: "booking" as const,
-        orderId: row.orderId,
-        orderReference: referenceById.get(row.orderId) ?? null,
-        consignmentId: row.consignmentId,
-        merchantOrderId: row.merchantOrderId,
-        storeId: row.storeId,
-        event: null,
-        status: row.status,
-        errorCode: row.errorCode,
-        providerStatus: row.providerStatus,
-        occurredAt: row.occurredAt.toISOString(),
-      })),
-      ...observations.slice(0, 100).map((row) => ({
-        id: row.id,
-        kind: "webhook" as const,
-        orderId: row.orderId,
-        orderReference: row.orderId
-          ? (referenceById.get(row.orderId) ?? null)
-          : null,
-        consignmentId: row.consignmentId,
-        merchantOrderId: row.merchantOrderId,
-        storeId: row.storeId,
-        event: row.event,
-        status: row.status,
-        errorCode: row.errorCode,
-        providerStatus: row.providerStatus,
-        occurredAt: row.occurredAt.toISOString(),
-      })),
-    ]
-      .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
-      .slice(0, 200);
+    const issues = candidates.map((issue) => ({
+      ...issue,
+      orderReference: issue.orderId
+        ? (referenceById.get(issue.orderId) ?? null)
+        : null,
+    }));
+    const candidateNextOffset = query.offset + candidates.length;
     return PathaoManagementIssuesSchema.parse({
       issues,
-      truncated: bookings.length > 100 || observations.length > 100,
+      limit: query.limit,
+      offset: query.offset,
+      hasMore,
+      nextOffset:
+        hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+          ? candidateNextOffset
+          : null,
     });
   }
 

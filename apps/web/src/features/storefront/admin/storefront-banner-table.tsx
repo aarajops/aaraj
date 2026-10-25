@@ -147,8 +147,7 @@ export function StorefrontBannerTable({
             ]}
             onRefresh={() => startTransition(() => router.refresh())}
             isRefreshing={isPending}
-            hasMore={page.hasMore}
-            nextOffset={page.nextOffset}
+            page={page}
           />
         </section>
       </div>

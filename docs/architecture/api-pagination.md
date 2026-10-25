@@ -11,6 +11,8 @@ must use the same API contract and cannot enforce server limits or permissions.
   are rejected as invalid requests.
 - Collection services enforce the requested limit in the database query and
   fetch at most one additional row to determine whether another page exists.
+- Offset-paginated responses return their effective `limit` and `offset`,
+  along with `hasMore` and `nextOffset`, so clients navigate from API metadata.
 - These values are Aaraj's shared policy, not universal values prescribed by a
   standards body. The default of 50 matches the existing audit-list contract;
   the maximum of 100 matches the existing resource bound. Revisit them using
@@ -25,7 +27,8 @@ Feature contracts compose those shared schemas rather than redefining limits.
 Each list contract uses the continuation mechanism suited to that collection:
 
 - Product and size-guide administration currently use `limit` and `offset`,
-  returning named collections with `hasMore` and `nextOffset`. Their query
+  returning the effective `limit` and `offset` with named collections,
+  `hasMore`, and `nextOffset`. Their query
   order must remain deterministic and unique. The current maximum offset is
   100,000; reaching that boundary is reported to the caller rather than
   silently presented as the end of the collection. This ceiling is inherited

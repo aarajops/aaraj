@@ -254,12 +254,16 @@ export const OrderManagementListSchema = z.strictObject({
         "serviceable",
         "unserviceable",
       ]),
+      deliveryProvider: z.enum(["manual", "pathao"]).nullable(),
       totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      codAmountDueBdt: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(Number.MAX_SAFE_INTEGER),
       createdAt: z.iso.datetime(),
     }),
   ),
-  limit: OffsetPaginationQuerySchema.shape.limit,
-  offset: OffsetPaginationQuerySchema.shape.offset,
   ...OffsetPaginationMetadataSchema.shape,
 });
 export type OrderManagementList = z.infer<typeof OrderManagementListSchema>;

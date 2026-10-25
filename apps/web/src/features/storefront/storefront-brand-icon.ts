@@ -1,11 +1,12 @@
 import "server-only";
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type {
   PublicStorefrontSettings,
   StorefrontBrandAsset,
 } from "@aaraj/contracts";
 import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
-import { getStorefrontOrigin } from "@/lib/storefront-origin";
 
 const MAX_BRAND_ASSET_BYTES = 5 * 1024 * 1024;
 
@@ -47,8 +48,11 @@ async function readConfiguredAsset(
   }
 }
 
-function getPublicIconSource(): string {
-  return new URL("/aaraj-icon.svg", getStorefrontOrigin()).toString();
+async function getPublicIconSource(): Promise<string> {
+  const icon = await readFile(
+    path.join(process.cwd(), "public", "aaraj-icon.svg"),
+  );
+  return `data:image/svg+xml;base64,${icon.toString("base64")}`;
 }
 
 export async function getStorefrontBrandIconSource(

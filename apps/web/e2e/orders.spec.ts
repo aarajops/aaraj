@@ -1,5 +1,4 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
-import { chooseSelectOption } from "./select";
 
 async function signInAsStaff(
   context: BrowserContext,
@@ -16,7 +15,7 @@ async function signInAsStaff(
   ]);
 }
 
-test("Orders uses shared pagination with stable URL history and Review links", async ({
+test("Orders uses shared pagination with stable URL history and order links", async ({
   page,
   context,
   baseURL,
@@ -34,26 +33,25 @@ test("Orders uses shared pagination with stable URL history and Review links", a
     table.getByText("AA-000000000001", { exact: true }),
   ).toBeVisible();
   await expect(
-    table.getByRole("link", { name: "Review" }).first(),
+    table.getByRole("link", { name: "AA-000000000001" }),
   ).toHaveAttribute(
     "href",
     "/admin/orders/00000000-0000-4000-8000-000000000001",
   );
-
-  await page.getByRole("link", { name: "Next orders page" }).click();
+  await page.getByRole("link", { name: "Go to next page" }).click();
   await expect(page).toHaveURL(/\/admin\/orders\?limit=50&offset=50$/);
   await expect(table.locator("tbody tr")).toHaveCount(23);
   await expect(
     table.getByText("AA-000000000033", { exact: true }),
   ).toBeVisible();
   await expect(
-    table.getByRole("link", { name: "Review" }).first(),
+    table.getByRole("link", { name: "AA-000000000033" }),
   ).toHaveAttribute(
     "href",
     "/admin/orders/00000000-0000-4000-8000-000000000033",
   );
 
-  await page.getByRole("link", { name: "Previous orders page" }).click();
+  await page.getByRole("link", { name: "Go to previous page" }).click();
   await expect(page).toHaveURL(/\/admin\/orders\?limit=50$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/orders\?limit=50&offset=50$/);
@@ -61,7 +59,7 @@ test("Orders uses shared pagination with stable URL history and Review links", a
   await expect(page).toHaveURL(/\/admin\/orders\?limit=50$/);
 });
 
-test("Orders preserves direct query state, page size, search, empty, and error states", async ({
+test("Orders follows API pagination, search, empty, and error states", async ({
   page,
   context,
   baseURL,
@@ -75,18 +73,23 @@ test("Orders preserves direct query state, page size, search, empty, and error s
     table.getByText("AA-00000000001A", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "Orders pagination" }),
-  ).toContainText("Showing 26–50 orders");
+    page.getByText("Showing 26–50 orders", { exact: true }),
+  ).toBeVisible();
 
-  await chooseSelectOption(page, "Rows per page", "100");
-  await expect(page).toHaveURL(/\/admin\/orders\?limit=100$/);
-  await expect(table.locator("tbody tr")).toHaveCount(73);
+  await expect(
+    page.getByRole("combobox", { name: "Rows per page" }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "Go to next page" }).click();
+  await expect(page).toHaveURL(/\/admin\/orders\?limit=25&offset=50$/);
+  await expect(table.locator("tbody tr")).toHaveCount(23);
+  await page.getByRole("link", { name: "Go to previous page" }).click();
+  await expect(page).toHaveURL(/\/admin\/orders\?limit=25&offset=25$/);
 
   const search = page.getByRole("searchbox", { name: "Search orders" });
   await search.fill("AA-000000000033");
   await page.getByRole("button", { name: "Apply orders search" }).click();
   await expect(page).toHaveURL(
-    /\/admin\/orders\?limit=100&search=AA-000000000033$/,
+    /\/admin\/orders\?limit=25&search=AA-000000000033$/,
   );
   await expect(search).toHaveValue("AA-000000000033");
   await expect(table.locator("tbody tr")).toHaveCount(1);
@@ -95,10 +98,10 @@ test("Orders preserves direct query state, page size, search, empty, and error s
   ).toBeVisible();
 
   await page.goBack();
-  await expect(page).toHaveURL(/\/admin\/orders\?limit=100$/);
+  await expect(page).toHaveURL(/\/admin\/orders\?limit=25&offset=25$/);
   await page.goForward();
   await expect(page).toHaveURL(
-    /\/admin\/orders\?limit=100&search=AA-000000000033$/,
+    /\/admin\/orders\?limit=25&search=AA-000000000033$/,
   );
   await page.reload();
   await expect(search).toHaveValue("AA-000000000033");
@@ -119,4 +122,24 @@ test("Orders preserves direct query state, page size, search, empty, and error s
     "href",
     "/admin/orders?search=AA-FFFFFFFFFFFF",
   );
+});
+
+test("Delivery issues renders its server-loaded exception page", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signInAsStaff(context, baseURL);
+  await page.goto("/admin/orders/reconciliation");
+
+  await expect(
+    page.getByRole("heading", { name: "Delivery issues", level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Webhook exceptions" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No webhook exceptions need attention."),
+  ).toBeVisible();
+  await expect(page.getByText("Loading Pathao issues…")).toHaveCount(0);
 });

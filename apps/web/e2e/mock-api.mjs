@@ -10,6 +10,8 @@ import {
   CatalogCategoryUpdateSchema,
   InventoryListQuerySchema,
   OrderListQuerySchema,
+  PathaoManagementBookingSummariesQuerySchema,
+  PathaoManagementIssuesQuerySchema,
   DEFAULT_LIST_PAGE_SIZE,
   DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
   MAX_LIST_OFFSET,
@@ -98,6 +100,8 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
           ? "unserviceable"
           : "pending_manual_review",
     totalBdt: 1000 + sequence,
+    codAmountDueBdt: 1000 + sequence,
+    deliveryProvider: null,
     createdAt: new Date(
       Date.UTC(2026, 9, 1, 12, 0, 0) - index * 60_000,
     ).toISOString(),
@@ -317,6 +321,8 @@ const server = createServer(async (request, response) => {
     const candidateNextOffset = parsed.data.offset + pageRows.length;
     send(response, 200, {
       variants: pageRows,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
       hasMore,
       nextOffset:
         hasMore && candidateNextOffset <= MAX_LIST_OFFSET
@@ -374,11 +380,57 @@ const server = createServer(async (request, response) => {
   }
 
   if (
+    url.pathname === "/api/v1/delivery/pathao/manage/orders" &&
+    method === "GET"
+  ) {
+    if (!requireStaff(request, response)) return;
+    const parsed = PathaoManagementBookingSummariesQuerySchema.safeParse({
+      orderIds: url.searchParams.get("orderIds") ?? undefined,
+    });
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid Pathao order summary query",
+      });
+      return;
+    }
+    send(
+      response,
+      200,
+      parsed.data.orderIds.map((orderId) => ({
+        orderId,
+        status: null,
+        trackingProgress: null,
+        consignmentId: null,
+        hasUnresolvedWebhookIssue: false,
+      })),
+    );
+    return;
+  }
+
+  if (
     url.pathname === "/api/v1/delivery/pathao/manage/issues" &&
     method === "GET"
   ) {
     if (!requireStaff(request, response)) return;
-    send(response, 200, { issues: [], truncated: false });
+    const parsed = PathaoManagementIssuesQuerySchema.safeParse({
+      limit: url.searchParams.get("limit") ?? undefined,
+      offset: url.searchParams.get("offset") ?? undefined,
+    });
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid Pathao issue pagination query",
+      });
+      return;
+    }
+    send(response, 200, {
+      issues: [],
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      hasMore: false,
+      nextOffset: null,
+    });
     return;
   }
 
@@ -1209,6 +1261,8 @@ function sendPublishedProductPage(response, source, url) {
             .size > 1,
       };
     }),
+    limit: query.limit,
+    offset: query.offset,
     hasMore,
     nextOffset:
       hasMore && candidateNextOffset <= MAX_LIST_OFFSET
@@ -1290,6 +1344,8 @@ function sendPage(response, source, url, key) {
   const candidateNextOffset = offset + pageRows.length;
   send(response, 200, {
     [key]: pageRows,
+    limit,
+    offset,
     hasMore,
     nextOffset:
       hasMore && candidateNextOffset <= MAX_LIST_OFFSET

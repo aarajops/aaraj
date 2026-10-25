@@ -64,8 +64,6 @@ export function SizeGuideManager({
 }) {
   const router = useRouter();
   const guides = initialPage?.guides ?? [];
-  const hasMore = initialPage?.hasMore ?? false;
-  const nextOffset = initialPage?.nextOffset ?? null;
   const {
     control,
     register,
@@ -210,8 +208,7 @@ export function SizeGuideManager({
                   categoryOptions={categoryOptions}
                   query={query}
                   onRefresh={() => router.refresh()}
-                  hasMore={hasMore}
-                  nextOffset={nextOffset}
+                  page={initialPage ?? null}
                 />
               </div>
             </section>

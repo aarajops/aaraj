@@ -32,6 +32,7 @@ const routes = [
     path: "/admin/orders",
     label: "Orders",
     rightAlignedHeader: "COD due",
+    lastHeader: "COD due",
   },
 ] as const;
 
@@ -297,6 +298,8 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
             updatedAt: "2026-10-01T12:00:00.000Z",
           },
         ],
+        limit: 50,
+        offset: 0,
         hasMore: false,
         nextOffset: null,
       },
@@ -333,7 +336,9 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
         .first()
         .evaluate((element) => element.getBoundingClientRect().height);
       expect(firstBodyRowHeight).toBeGreaterThanOrEqual(48);
-      await expect(table.locator("thead th").last()).toHaveText("Actions");
+      await expect(table.locator("thead th").last()).toHaveText(
+        "lastHeader" in route ? route.lastHeader : "Actions",
+      );
 
       if ("rightAlignedHeader" in route) {
         const numericHeader = table.getByRole("columnheader", {
@@ -451,14 +456,14 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
   ).toBeGreaterThan(0);
   await attachScreenshot(page, testInfo, "orders-table-focus-overflow.png");
 
-  const reviewLink = page.getByRole("link", { name: "Review" }).first();
+  const orderLink = page.getByRole("link", { name: "AA-000000000001" });
   await page.keyboard.press("Tab");
-  await expect(reviewLink).toBeFocused();
+  await expect(orderLink).toBeFocused();
   expect(
-    await reviewLink.evaluate((element) => element.matches(":focus-visible")),
+    await orderLink.evaluate((element) => element.matches(":focus-visible")),
   ).toBe(true);
-  await reviewLink.scrollIntoViewIfNeeded();
-  const reviewBounds = await reviewLink.evaluate((element) => {
+  await orderLink.scrollIntoViewIfNeeded();
+  const orderBounds = await orderLink.evaluate((element) => {
     const link = element.getBoundingClientRect();
     const region = element.closest<HTMLElement>(
       "[data-slot='table-container']",
@@ -471,12 +476,12 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
       regionRight: regionBounds?.right ?? 0,
     };
   });
-  expect(reviewBounds.left).toBeGreaterThanOrEqual(reviewBounds.regionLeft - 1);
-  expect(reviewBounds.right).toBeLessThanOrEqual(reviewBounds.regionRight + 1);
+  expect(orderBounds.left).toBeGreaterThanOrEqual(orderBounds.regionLeft - 1);
+  expect(orderBounds.right).toBeLessThanOrEqual(orderBounds.regionRight + 1);
   await attachScreenshot(
     page,
     testInfo,
-    "orders-row-action-keyboard-focus.png",
+    "orders-order-link-keyboard-focus.png",
   );
 });
 
@@ -536,9 +541,8 @@ test("admin table controls retain visible keyboard focus in light and dark theme
       page.getByRole("button", { name: "Apply orders search" }),
     ],
     ["refresh button", page.getByRole("button", { name: "Refresh orders" })],
-    ["page size select", page.getByRole("combobox", { name: "Rows per page" })],
-    ["pagination link", page.getByRole("link", { name: "Next orders page" })],
-    ["row action", page.getByRole("link", { name: "Review" }).first()],
+    ["pagination link", page.getByRole("link", { name: "Go to next page" })],
+    ["order link", page.getByRole("link", { name: "AA-000000000001" })],
     [
       "table scroll region",
       page.getByRole("region", { name: "Scrollable orders table" }),
@@ -622,7 +626,7 @@ test("admin table controls retain visible keyboard focus in light and dark theme
   }
 });
 
-test("category filters and pagination keep URL state and browser history", async ({
+test("category filters keep URL state and browser history", async ({
   page,
   context,
   baseURL,
@@ -638,14 +642,9 @@ test("category filters and pagination keep URL state and browser history", async
 
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
-
-  await page.goto("/admin/catalog/categories?limit=1");
-  await expect(table.locator("tbody tr")).toHaveCount(1);
-  await page.getByRole("link", { name: "Next categories page" }).click();
-  await expect(page).toHaveURL(/limit=1&offset=1$/);
-  await expect(table.locator("tbody tr")).toHaveCount(1);
   await page.goBack();
-  await expect(page).toHaveURL(/limit=1$/);
+  await expect(page).toHaveURL(/kind=parent$/);
+  await expect(table.locator("tbody tr")).toHaveCount(1);
   await page.goForward();
-  await expect(page).toHaveURL(/limit=1&offset=1$/);
+  await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
 });
