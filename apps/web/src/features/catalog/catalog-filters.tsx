@@ -128,9 +128,9 @@ export function CatalogResultsToolbar({
     hasAvailableCatalogFilters(options) || activeFilters.length > 0;
 
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="grid w-full grid-cols-2 items-center gap-3 lg:flex lg:flex-wrap lg:items-end lg:gap-x-3 lg:gap-y-3">
       {showFilters && (
-        <div className="flex justify-end lg:hidden">
+        <div className={`min-w-0 ${allowSort ? "" : "col-span-2"} lg:hidden`}>
           <MobileCatalogFilters
             activeFilterCount={activeFilters.length}
             categoryInPath={categoryInPath}
@@ -140,20 +140,26 @@ export function CatalogResultsToolbar({
           />
         </div>
       )}
-      {activeFilters.length > 0 && (
-        <AppliedFilters
-          activeFilters={activeFilters}
-          categoryInPath={categoryInPath}
-          pathname={pathname}
-          query={currentQuery}
-        />
-      )}
       {allowSort && (
-        <SortControl
-          categoryInPath={categoryInPath}
-          pathname={pathname}
-          query={currentQuery}
-        />
+        <div
+          className={`min-w-0 ${showFilters ? "col-start-2" : "col-span-2"} lg:ml-auto`}
+        >
+          <SortControl
+            categoryInPath={categoryInPath}
+            pathname={pathname}
+            query={currentQuery}
+          />
+        </div>
+      )}
+      {activeFilters.length > 0 && (
+        <div className="col-span-2 min-w-0 lg:basis-full">
+          <AppliedFilters
+            activeFilters={activeFilters}
+            categoryInPath={categoryInPath}
+            pathname={pathname}
+            query={currentQuery}
+          />
+        </div>
       )}
     </div>
   );
@@ -200,7 +206,12 @@ function MobileCatalogFilters({
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
         render={
-          <Button type="button" variant="outline">
+          <Button
+            className="h-10 w-full"
+            size="lg"
+            type="button"
+            variant="outline"
+          >
             <SlidersHorizontal aria-hidden="true" />
             Filters
             {activeFilterCount > 0 && (
@@ -504,7 +515,7 @@ function SortControl({
     <Form
       action={pathname}
       aria-label="Sort products"
-      className="ml-auto"
+      className="w-full lg:w-auto"
       ref={formRef}
       scroll={false}
     >
@@ -513,8 +524,10 @@ function SortControl({
         omit="sort"
         query={query}
       />
-      <Field className="w-36 sm:w-44">
-        <FieldLabel htmlFor={id}>Sort by</FieldLabel>
+      <Field className="w-full sm:w-44">
+        <FieldLabel className="sr-only" htmlFor={id}>
+          Sort by
+        </FieldLabel>
         <Select
           defaultValue={query.sort ?? "newest"}
           items={sortOptions}

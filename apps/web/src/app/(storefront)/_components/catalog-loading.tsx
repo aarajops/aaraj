@@ -95,22 +95,19 @@ export function CatalogLoading() {
             aria-label="Product results"
             className="min-w-0 lg:col-span-3"
           >
-            <div className="flex flex-wrap items-end justify-end gap-4">
+            <div className="flex flex-wrap items-center justify-end gap-4">
               <div className="hidden items-center gap-1 lg:flex">
                 {Array.from({ length: 3 }, (_, index) => (
                   <Skeleton className="size-9 rounded-lg" key={index} />
                 ))}
               </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                  <div className="flex justify-end lg:hidden">
-                    <Skeleton className="h-8 w-24 rounded-lg border border-input bg-muted/50" />
+              <div className="w-full min-w-0 lg:w-auto">
+                <div className="grid w-full grid-cols-2 items-center gap-3 lg:flex lg:flex-wrap lg:items-end lg:gap-x-3 lg:gap-y-3">
+                  <div className="min-w-0 lg:hidden">
+                    <Skeleton className="h-10 w-full rounded-lg border border-input bg-muted/50" />
                   </div>
-                  <div className="ml-auto grid gap-2">
-                    <span className="text-sm font-medium text-foreground">
-                      Sort by
-                    </span>
-                    <Skeleton className="h-10 w-36 rounded-lg sm:w-44" />
+                  <div className="col-start-2 min-w-0 lg:ml-auto">
+                    <Skeleton className="h-10 w-full rounded-lg border border-input bg-muted/50 sm:w-44" />
                   </div>
                 </div>
               </div>

@@ -29,7 +29,7 @@ export function CatalogProductGrid({
 
   return (
     <>
-      <div className="flex flex-wrap items-end justify-end gap-4">
+      <div className="flex flex-wrap items-center justify-end gap-4">
         <div
           aria-label="Maximum product grid columns"
           className="hidden items-center gap-1 lg:flex"
@@ -49,7 +49,7 @@ export function CatalogProductGrid({
             </Button>
           ))}
         </div>
-        <div className="min-w-0">{toolbar}</div>
+        <div className="w-full min-w-0 lg:w-auto">{toolbar}</div>
       </div>
       <ul
         className={`mt-5 grid gap-x-3 gap-y-8 sm:gap-x-4 lg:gap-x-5 ${columnClasses[columns]}`}
