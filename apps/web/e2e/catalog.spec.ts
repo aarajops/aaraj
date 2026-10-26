@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import type { CatalogMedia } from "@aaraj/contracts";
+import { DEFAULT_LIST_PAGE_SIZE, type CatalogMedia } from "@aaraj/contracts";
 import { chooseSelectOption } from "./select";
 
 test("admin sidebar follows permissions and closes after mobile navigation", async ({
@@ -278,7 +278,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
         headers: { "x-e2e-response": "older" },
         json: {
           products: [],
-          limit: 50,
+          limit: DEFAULT_LIST_PAGE_SIZE,
           offset: 0,
           hasMore: false,
           nextOffset: null,

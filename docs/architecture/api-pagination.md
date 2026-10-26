@@ -6,7 +6,8 @@ must use the same API contract and cannot enforce server limits or permissions.
 
 ## Shared page-size policy
 
-- `limit` is optional and defaults to 50.
+- `limit` is optional and defaults to 20 for shared paginated collections. The
+  public product grid has a separate grid-specific default.
 - The API accepts `limit` values from 1 through 100. Values outside that range
   are rejected as invalid requests.
 - Collection services enforce the requested limit in the database query and
@@ -14,10 +15,8 @@ must use the same API contract and cannot enforce server limits or permissions.
 - Offset-paginated responses return their effective `limit` and `offset`,
   along with `hasMore` and `nextOffset`, so clients navigate from API metadata.
 - These values are Aaraj's shared policy, not universal values prescribed by a
-  standards body. The default of 50 matches the existing audit-list contract;
-  the maximum of 100 matches the existing resource bound. Revisit them using
-  production-like payload and query measurements, not endpoint-by-endpoint
-  guesses.
+  standards body. The 20-row default applies consistently to data tables, and
+  the maximum of 100 remains the shared resource bound.
 
 The Zod schemas and constants live in `packages/contracts/src/common/pagination.ts`.
 Feature contracts compose those shared schemas rather than redefining limits.

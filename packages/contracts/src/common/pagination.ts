@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-/** Shared server-side page-size policy for collection endpoints. */
-export const DEFAULT_LIST_PAGE_SIZE = 50;
+/** Shared server-side default page size for paginated collections. */
+export const DEFAULT_LIST_PAGE_SIZE = 20;
 export const MAX_LIST_PAGE_SIZE = 100;
 
 /**

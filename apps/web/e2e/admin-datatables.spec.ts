@@ -7,6 +7,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
+import { DEFAULT_LIST_PAGE_SIZE } from "@aaraj/contracts";
 import { chooseSelectOption } from "./select";
 
 const routes = [
@@ -298,7 +299,7 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
             updatedAt: "2026-10-01T12:00:00.000Z",
           },
         ],
-        limit: 50,
+        limit: DEFAULT_LIST_PAGE_SIZE,
         offset: 0,
         hasMore: false,
         nextOffset: null,

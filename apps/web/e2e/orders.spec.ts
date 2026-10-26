@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
+import { DEFAULT_LIST_PAGE_SIZE } from "@aaraj/contracts";
 
 async function signInAsStaff(
   context: BrowserContext,
@@ -28,7 +29,7 @@ test("Orders uses shared pagination with stable URL history and order links", as
   ).toBeVisible();
   const table = page.getByRole("table", { name: "Orders" });
   await expect(table).toBeVisible();
-  await expect(table.locator("tbody tr")).toHaveCount(50);
+  await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(
     table.getByText("AA-000000000001", { exact: true }),
   ).toBeVisible();
@@ -39,8 +40,12 @@ test("Orders uses shared pagination with stable URL history and order links", as
     "/admin/orders/00000000-0000-4000-8000-000000000001",
   );
   await page.getByRole("link", { name: "Go to next page" }).click();
-  await expect(page).toHaveURL(/\/admin\/orders\?limit=50&offset=50$/);
-  await expect(table.locator("tbody tr")).toHaveCount(23);
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/admin/orders\\?limit=${DEFAULT_LIST_PAGE_SIZE}&offset=${DEFAULT_LIST_PAGE_SIZE}$`,
+    ),
+  );
+  await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(
     table.getByText("AA-000000000033", { exact: true }),
   ).toBeVisible();
@@ -52,11 +57,19 @@ test("Orders uses shared pagination with stable URL history and order links", as
   );
 
   await page.getByRole("link", { name: "Go to previous page" }).click();
-  await expect(page).toHaveURL(/\/admin\/orders\?limit=50$/);
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/orders\\?limit=${DEFAULT_LIST_PAGE_SIZE}$`),
+  );
   await page.goBack();
-  await expect(page).toHaveURL(/\/admin\/orders\?limit=50&offset=50$/);
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/admin/orders\\?limit=${DEFAULT_LIST_PAGE_SIZE}&offset=${DEFAULT_LIST_PAGE_SIZE}$`,
+    ),
+  );
   await page.goForward();
-  await expect(page).toHaveURL(/\/admin\/orders\?limit=50$/);
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/orders\\?limit=${DEFAULT_LIST_PAGE_SIZE}$`),
+  );
 });
 
 test("Orders follows API pagination, search, empty, and error states", async ({
