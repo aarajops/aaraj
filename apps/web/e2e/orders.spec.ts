@@ -30,9 +30,7 @@ test("Orders uses shared pagination with stable URL history and order links", as
   const table = page.getByRole("table", { name: "Orders" });
   await expect(table).toBeVisible();
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
-  await expect(
-    table.getByText("ORD-026-00001", { exact: true }),
-  ).toBeVisible();
+  await expect(table.getByText("ORD-026-00001", { exact: true })).toBeVisible();
   await expect(
     table.getByRole("link", { name: "ORD-026-00001" }),
   ).toHaveAttribute(
@@ -46,9 +44,7 @@ test("Orders uses shared pagination with stable URL history and order links", as
     ),
   );
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
-  await expect(
-    table.getByText("ORD-026-00021", { exact: true }),
-  ).toBeVisible();
+  await expect(table.getByText("ORD-026-00021", { exact: true })).toBeVisible();
   await expect(
     table.getByRole("link", { name: "ORD-026-00021" }),
   ).toHaveAttribute(
@@ -82,9 +78,7 @@ test("Orders follows API pagination, search, empty, and error states", async ({
 
   const table = page.getByRole("table", { name: "Orders" });
   await expect(table.locator("tbody tr")).toHaveCount(25);
-  await expect(
-    table.getByText("ORD-026-00026", { exact: true }),
-  ).toBeVisible();
+  await expect(table.getByText("ORD-026-00026", { exact: true })).toBeVisible();
   await expect(
     page.getByText("Showing 26–50 orders", { exact: true }),
   ).toBeVisible();
@@ -106,9 +100,7 @@ test("Orders follows API pagination, search, empty, and error states", async ({
   );
   await expect(search).toHaveValue("ORD-026-00033");
   await expect(table.locator("tbody tr")).toHaveCount(1);
-  await expect(
-    table.getByText("ORD-026-00033", { exact: true }),
-  ).toBeVisible();
+  await expect(table.getByText("ORD-026-00033", { exact: true })).toBeVisible();
 
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/orders\?limit=25&offset=25$/);
