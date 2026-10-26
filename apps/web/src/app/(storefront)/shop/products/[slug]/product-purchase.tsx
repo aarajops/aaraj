@@ -145,22 +145,30 @@ export function ProductPurchase({
 
       <div className="space-y-5">
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">
-            Color{color ? <span className="font-normal">: {color}</span> : ""}
-          </legend>
-          <div className="flex flex-wrap gap-2">
-            {colors.map((option) => (
-              <Button
-                aria-pressed={sameOption(color, option)}
-                key={option}
-                onClick={() => selectColor(option)}
-                type="button"
-                variant={sameOption(color, option) ? "default" : "outline"}
-              >
-                {option}
-              </Button>
-            ))}
-          </div>
+          {colors.length === 1 ? (
+            <legend className="text-sm font-medium">
+              Color: <span className="font-normal">{colors[0]}</span>
+            </legend>
+          ) : (
+            <>
+              <legend className="text-sm font-medium">Color</legend>
+              <div className="flex flex-wrap gap-2">
+                {colors.map((option) => (
+                  <Button
+                    aria-pressed={sameOption(color, option)}
+                    key={option}
+                    onClick={() => selectColor(option)}
+                    type="button"
+                    variant={
+                      sameOption(color, option) ? "default" : "outline"
+                    }
+                  >
+                    {option}
+                  </Button>
+                ))}
+              </div>
+            </>
+          )}
         </fieldset>
 
         <fieldset className="space-y-2">
