@@ -6,7 +6,7 @@ import {
   CatalogFilters,
   CatalogResultsToolbar,
 } from "@/features/catalog/catalog-filters";
-import { CatalogPagination } from "@/features/catalog/catalog-pagination";
+import { CollectionPagination } from "@/components/collection-pagination";
 import { ProductCard } from "./product-card";
 import { CatalogProductGrid } from "./catalog-product-grid";
 import {
@@ -172,15 +172,14 @@ export async function PublishedProductListing({
           </CatalogProductGrid>
         )}
         {page && (
-          <CatalogPagination
+          <CollectionPagination
             label={listingTitle}
             pathname={pathname}
-            limit={query.limit}
-            offset={query.offset}
-            productCount={page.products.length}
-            hasMore={page.hasMore}
-            nextOffset={page.nextOffset}
-            preservedParams={{
+            page={page}
+            itemCount={page.products.length}
+            itemName="products"
+            showCount={page.hasMore || page.offset > 0}
+            query={{
               search: query.search,
               audience: query.audience,
               category: categorySlug ? undefined : query.category,

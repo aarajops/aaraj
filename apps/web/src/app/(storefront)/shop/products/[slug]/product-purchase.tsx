@@ -159,9 +159,7 @@ export function ProductPurchase({
                     key={option}
                     onClick={() => selectColor(option)}
                     type="button"
-                    variant={
-                      sameOption(color, option) ? "default" : "outline"
-                    }
+                    variant={sameOption(color, option) ? "default" : "outline"}
                   >
                     {option}
                   </Button>

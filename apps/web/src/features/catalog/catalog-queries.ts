@@ -14,6 +14,8 @@ import {
   CatalogPublishedProductPageSchema,
   CatalogProductFilterOptionsSchema,
   CatalogCategoryListSchema,
+  CatalogCategoryManagementListQuerySchema,
+  CatalogCategoryPageSchema,
   CatalogCategoryOptionsSchema,
   CatalogSizeGuideListQuerySchema,
   CatalogSizeGuidePageSchema,
@@ -26,6 +28,8 @@ import {
   type CatalogProductDetail,
   type CatalogManagedProductDetail,
   type CatalogCategoryOption,
+  type CatalogCategoryManagementListQuery,
+  type CatalogCategoryPage,
   type CatalogSizeGuideManagement,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
@@ -51,6 +55,8 @@ export type CatalogPageSearchParams = {
 
 const defaultCatalogQuery = CatalogProductListQuerySchema.parse({});
 const defaultSizeGuideQuery = CatalogSizeGuideListQuerySchema.parse({});
+const defaultCategoryTableQuery =
+  CatalogCategoryManagementListQuerySchema.parse({});
 export function parseCatalogPageQuery(
   searchParams: CatalogPageSearchParams,
 ): CatalogProductListQuery {
@@ -141,27 +147,27 @@ export function parseCatalogSizeGuidePageQuery(
 
 export function parseCatalogCategoryTableQuery(
   searchParams: CatalogPageSearchParams,
-) {
-  const statusParam: "active" | "inactive" | undefined =
-    searchParams.status === "active"
-      ? "active"
-      : searchParams.status === "inactive"
-        ? "inactive"
-        : undefined;
-  const kindParam: "parent" | "leaf" | undefined =
-    searchParams.kind === "parent"
-      ? "parent"
-      : searchParams.kind === "leaf"
-        ? "leaf"
-        : undefined;
-  return {
-    search:
-      typeof searchParams.search === "string" && searchParams.search.trim()
-        ? searchParams.search.trim()
-        : undefined,
-    status: statusParam,
-    kind: kindParam,
-  };
+): CatalogCategoryManagementListQuery {
+  if (
+    [
+      searchParams.limit,
+      searchParams.offset,
+      searchParams.search,
+      searchParams.status,
+      searchParams.kind,
+    ].some(Array.isArray)
+  ) {
+    return defaultCategoryTableQuery;
+  }
+
+  const result = CatalogCategoryManagementListQuerySchema.safeParse({
+    limit: searchParams.limit,
+    offset: searchParams.offset,
+    search: searchParams.search,
+    status: searchParams.status,
+    kind: searchParams.kind,
+  });
+  return result.success ? result.data : defaultCategoryTableQuery;
 }
 
 function apiBaseUrl(): string {
@@ -284,6 +290,40 @@ export type ManagedSizeGuidesResult =
 
 export async function getManagedCategories() {
   return getCatalogCategoryList("manage");
+}
+
+export async function getManagedCategoryPage(
+  query: CatalogCategoryManagementListQuery,
+): Promise<
+  | { page: CatalogCategoryPage }
+  | { kind: "unauthenticated" | "forbidden" | "unavailable" }
+> {
+  try {
+    const cookie = (await headers()).get("cookie");
+    const search = new URLSearchParams({
+      limit: String(query.limit),
+      offset: String(query.offset),
+    });
+    if (query.search) search.set("search", query.search);
+    if (query.status) search.set("status", query.status);
+    if (query.kind) search.set("kind", query.kind);
+
+    const response = await fetch(
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/catalog/categories/manage/page?${search}`,
+      {
+        ...(cookie ? { headers: { cookie } } : {}),
+        cache: "no-store",
+      },
+    );
+    if (response.status === 401) return { kind: "unauthenticated" };
+    if (response.status === 403) return { kind: "forbidden" };
+    if (!response.ok) return { kind: "unavailable" };
+
+    const result = CatalogCategoryPageSchema.safeParse(await response.json());
+    return result.success ? { page: result.data } : { kind: "unavailable" };
+  } catch {
+    return { kind: "unavailable" };
+  }
 }
 
 export async function getManagedCategoryOptions() {

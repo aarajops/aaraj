@@ -34,11 +34,12 @@ Each list contract uses the continuation mechanism suited to that collection:
   silently presented as the end of the collection. This ceiling is inherited
   from the earlier contract and has not been validated against production-scale
   query plans.
-- Categories are deliberately returned as a complete tree and filtered in
-  memory while the API enforces the existing 500-category cap. Keep that
-  bounded approach for the tree-shaped editor. If the cap or observed payload
-  size makes it unsuitable, add a server-side search/pagination contract before
-  increasing the cap.
+- Category forms and selectors receive the complete category tree; the API
+  enforces the existing 500-category cap. The category management directory
+  uses a separate server-filtered, offset-paginated view with the shared
+  metadata contract. Keep full-tree reads for hierarchy choices and form
+  relationships. Review their query and payload costs before increasing the
+  category cap.
 - The audit log uses `limit` and a cursor, returning `events` and
   `nextCursor`. The token is encrypted and authenticated, expires after three
   days, and binds the continuation point to the list filters. Its encryption

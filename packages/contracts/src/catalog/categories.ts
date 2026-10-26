@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { API_V1_BASE_PATH } from "../platform/api-version.js";
+import {
+  MAX_LIST_PAGE_SIZE,
+  OffsetPaginationMetadataSchema,
+  OffsetPaginationQuerySchema,
+} from "../common/pagination.js";
 import { CATALOG_MEDIA_RENDITIONS } from "./media.js";
+import { CatalogSearchQuerySchema } from "./search.js";
 
 export const CATALOG_CATEGORY_SLUG_MAX_LENGTH = 100;
 
@@ -57,6 +63,22 @@ export const CatalogCategoryListSchema = z.strictObject({
   categories: CatalogCategorySchema.array(),
 });
 export type CatalogCategoryList = z.infer<typeof CatalogCategoryListSchema>;
+
+export const CatalogCategoryManagementListQuerySchema =
+  OffsetPaginationQuerySchema.extend({
+    search: CatalogSearchQuerySchema,
+    status: z.enum(["active", "inactive"]).optional(),
+    kind: z.enum(["parent", "leaf"]).optional(),
+  });
+export type CatalogCategoryManagementListQuery = z.infer<
+  typeof CatalogCategoryManagementListQuerySchema
+>;
+
+export const CatalogCategoryPageSchema = z.strictObject({
+  categories: CatalogCategorySchema.array().max(MAX_LIST_PAGE_SIZE),
+  ...OffsetPaginationMetadataSchema.shape,
+});
+export type CatalogCategoryPage = z.infer<typeof CatalogCategoryPageSchema>;
 
 export const CatalogCategoryOptionsSchema = z.strictObject({
   categories: CatalogCategoryOptionSchema.array(),

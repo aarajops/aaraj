@@ -14,6 +14,8 @@ import {
   CatalogProductDetailImageSchema,
   CatalogProductImageSchema,
 } from "./media.js";
+import { CatalogSearchQuerySchema } from "./search.js";
+export { MAX_CATALOG_SEARCH_LENGTH } from "./search.js";
 
 export const CatalogAudienceSchema = z.enum(["men", "women", "unisex"]);
 export type CatalogAudience = z.infer<typeof CatalogAudienceSchema>;
@@ -197,17 +199,9 @@ export type CatalogProductUpdateInput = z.input<
   typeof CatalogProductUpdateSchema
 >;
 
-export const MAX_CATALOG_SEARCH_LENGTH = 160;
-
-const OptionalCatalogSearchSchema = z.preprocess(
-  (value) =>
-    typeof value === "string" && value.trim() === "" ? undefined : value,
-  z.string().trim().min(1).max(MAX_CATALOG_SEARCH_LENGTH).optional(),
-);
-
 export const CatalogProductListQuerySchema = OffsetPaginationQuerySchema.extend(
   {
-    search: OptionalCatalogSearchSchema,
+    search: CatalogSearchQuerySchema,
     categoryId: z.union([z.uuid(), z.literal("uncategorized")]).optional(),
     status: z.enum(["draft", "published"]).optional(),
   },
@@ -267,7 +261,7 @@ export const CatalogPublishedProductListQuerySchema = z
       .default(DEFAULT_PUBLIC_CATALOG_PAGE_SIZE),
     offset: z.coerce.number().int().min(0).max(MAX_LIST_OFFSET).default(0),
     sort: CatalogPublishedProductSortSchema.optional(),
-    search: OptionalCatalogSearchSchema,
+    search: CatalogSearchQuerySchema,
     audience: OptionalCatalogAudienceQuerySchema,
     category: OptionalCatalogCategoryQuerySchema,
     color: OptionalCatalogColorQuerySchema,

@@ -400,7 +400,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("button", { name: "M", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Black", exact: true }).click();
+  await expect(page.getByText("Color: Black")).toBeVisible();
   await page.getByRole("button", { name: "S", exact: true }).click();
   await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/color=Black/);
@@ -465,7 +465,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(publicProductName).toHaveCount(1);
   await expect(publicProductName).not.toHaveText(firstPageProduct ?? "");
   await page.getByRole("link", { name: "Previous" }).click();
-  await expect(page).toHaveURL(/offset=0/);
+  await expect(page).toHaveURL(/\/shop\/categories\/t-shirts\?limit=1$/);
 
   await page.goto("/admin/catalog");
   await page.getByRole("link", { name: "Edit Aaraj E2E T-shirt" }).click();

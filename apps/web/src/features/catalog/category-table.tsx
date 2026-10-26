@@ -1,7 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
-import type { CatalogCategory } from "@aaraj/contracts";
+import type {
+  CatalogCategory,
+  CatalogCategoryManagementListQuery,
+  CatalogCategoryPage,
+} from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -15,15 +19,16 @@ const columnHelper = createDataTableColumnHelper<CatalogCategory>();
 export function CategoryTable({
   categories,
   query,
+  page,
   onRefresh,
   isRefreshing,
 }: {
   categories: CatalogCategory[];
-  query: {
-    search?: string;
-    status?: "active" | "inactive";
-    kind?: "parent" | "leaf";
-  };
+  query: CatalogCategoryManagementListQuery;
+  page: Pick<
+    CatalogCategoryPage,
+    "limit" | "offset" | "hasMore" | "nextOffset"
+  >;
   onRefresh: () => void;
   isRefreshing?: boolean;
 }) {
@@ -88,26 +93,11 @@ export function CategoryTable({
     [],
   );
 
-  const search = query.search?.toLocaleLowerCase("en-US");
-  const filteredCategories = categories.filter((category) => {
-    if (query.status && category.isActive !== (query.status === "active")) {
-      return false;
-    }
-    if (query.kind && category.isLeaf !== (query.kind === "leaf")) {
-      return false;
-    }
-    return (
-      !search ||
-      [category.path, category.name, category.slug].some((value) =>
-        value.toLocaleLowerCase("en-US").includes(search),
-      )
-    );
-  });
   return (
     <AdminDataTable
       ariaLabel="Product categories"
       columns={columns}
-      data={filteredCategories}
+      data={categories}
       pathname="/admin/catalog/categories"
       query={query}
       itemName="categories"
@@ -136,7 +126,7 @@ export function CategoryTable({
       ]}
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
-      page={null}
+      page={page}
     />
   );
 }

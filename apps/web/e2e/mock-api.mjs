@@ -8,6 +8,7 @@ import {
   CatalogProductUpdateSchema,
   CatalogSizeGuideCreateSchema,
   CatalogCategoryCreateSchema,
+  CatalogCategoryManagementListQuerySchema,
   CatalogCategorySlugSuggestionQuerySchema,
   CatalogCategoryUpdateSchema,
   CATALOG_CATEGORY_SLUG_MAX_LENGTH,
@@ -480,6 +481,60 @@ const server = createServer(async (request, response) => {
   ) {
     if (!requireCategoryAdmin(request, response)) return;
     send(response, 200, { categories: refreshCategoryTree() });
+    return;
+  }
+
+  if (
+    url.pathname === "/api/v1/catalog/categories/manage/page" &&
+    method === "GET"
+  ) {
+    if (!requireCategoryAdmin(request, response)) return;
+    const parsed = CatalogCategoryManagementListQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams),
+    );
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid category pagination query",
+      });
+      return;
+    }
+
+    const { limit, offset, search, status, kind } = parsed.data;
+    const normalizedSearch = search?.toLocaleLowerCase("en-US");
+    const matchingCategories = refreshCategoryTree()
+      .filter((category) => {
+        if (status && category.isActive !== (status === "active")) {
+          return false;
+        }
+        if (kind && category.isLeaf !== (kind === "leaf")) return false;
+        return (
+          !normalizedSearch ||
+          [category.path, category.name, category.slug].some((value) =>
+            value.toLocaleLowerCase("en-US").includes(normalizedSearch),
+          )
+        );
+      })
+      .sort(
+        (left, right) =>
+          left.path.localeCompare(right.path, "en-US") ||
+          left.id.localeCompare(right.id),
+      );
+    const rows = matchingCategories.slice(offset, offset + limit + 1);
+    const hasMore = rows.length > limit;
+    const categoriesPage = rows.slice(0, limit);
+    const candidateNextOffset = offset + categoriesPage.length;
+
+    send(response, 200, {
+      categories: categoriesPage,
+      limit,
+      offset,
+      hasMore,
+      nextOffset:
+        hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+          ? candidateNextOffset
+          : null,
+    });
     return;
   }
 

@@ -29,13 +29,7 @@ import {
   DataTable,
   type DataTableColumnDef,
 } from "@/components/ui/data-table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+import { CollectionPagination } from "@/components/collection-pagination";
 
 export { createDataTableColumnHelper };
 
@@ -106,9 +100,6 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
     searchDraftState.queryKey === queryKey
       ? searchDraftState.value
       : searchValue;
-  const offset = page?.offset ?? 0;
-  const previousOffset = page ? Math.max(0, offset - page.limit) : 0;
-  const hasPrevious = page !== null && offset > 0;
 
   function navigate(updates: TableQuery, resetOffset = true) {
     const nextQuery: Record<string, string | number | undefined> = {
@@ -142,24 +133,6 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   function submitSearch(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     navigate({ search: searchDraft.trim() || undefined });
-  }
-
-  function pageHref(nextOffset: number) {
-    const nextQuery = new URLSearchParams();
-    for (const [name, value] of Object.entries(query)) {
-      if (
-        value !== undefined &&
-        value !== "" &&
-        name !== "offset" &&
-        name !== "limit"
-      ) {
-        nextQuery.set(name, String(value));
-      }
-    }
-    if (page) nextQuery.set("limit", String(page.limit));
-    if (nextOffset > 0) nextQuery.set("offset", String(nextOffset));
-    const search = nextQuery.toString();
-    return search ? `${pathname}?${search}` : pathname;
   }
 
   const hasActiveFilters = Object.entries(query).some(
@@ -284,57 +257,24 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
           emptyMessage ??
           (hasActiveFilters
             ? `No matching ${itemName}.`
-            : `No ${itemName} yet.`)
+            : page && page.offset > 0
+              ? `No ${itemName} on this page.`
+              : `No ${itemName} yet.`)
         }
       />
 
-      {page &&
-        (data.length > 0 ||
-          hasPrevious ||
-          (page.hasMore && page.nextOffset === null)) && (
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border px-4 py-4">
-            {data.length > 0 && (
-              <p aria-live="polite" className="text-sm text-muted-foreground">
-                Showing {offset + 1}–{offset + data.length} {itemName}
-              </p>
-            )}
-
-            <Pagination
-              aria-label={`${ariaLabel} pagination`}
-              className="mx-0 w-auto"
-            >
-              <PaginationContent>
-                {hasPrevious && (
-                  <PaginationItem>
-                    <PaginationPrevious
-                      href={pageHref(previousOffset)}
-                      rel="prev"
-                      scroll={false}
-                      text="Previous"
-                    />
-                  </PaginationItem>
-                )}
-                {page.nextOffset !== null && (
-                  <PaginationItem>
-                    <PaginationNext
-                      href={pageHref(page.nextOffset)}
-                      rel="next"
-                      scroll={false}
-                      text="Next"
-                    />
-                  </PaginationItem>
-                )}
-              </PaginationContent>
-            </Pagination>
-
-            {page.hasMore && page.nextOffset === null && (
-              <p className="basis-full text-sm text-warning" role="status">
-                More {itemName} exist, but this list has reached the maximum
-                supported offset.
-              </p>
-            )}
-          </div>
-        )}
+      {page && (
+        <CollectionPagination
+          className="border-t border-border px-4 py-4"
+          itemCount={data.length}
+          itemName={itemName}
+          label={ariaLabel}
+          page={page}
+          pathname={pathname}
+          query={query}
+          scroll={false}
+        />
+      )}
     </div>
   );
 }

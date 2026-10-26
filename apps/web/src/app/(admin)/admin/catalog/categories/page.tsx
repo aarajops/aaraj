@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CategoryManager } from "@/features/catalog/category-manager";
 import {
-  getManagedCategories,
+  getManagedCategoryPage,
   parseCatalogCategoryTableQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
@@ -17,10 +17,8 @@ export default async function StaffCatalogCategoriesPage({
 }: {
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
-  const [result, query] = await Promise.all([
-    getManagedCategories(),
-    searchParams.then(parseCatalogCategoryTableQuery),
-  ]);
+  const query = parseCatalogCategoryTableQuery(await searchParams);
+  const result = await getManagedCategoryPage(query);
   if ("kind" in result) {
     const message =
       result.kind === "unauthenticated"
@@ -31,7 +29,7 @@ export default async function StaffCatalogCategoriesPage({
 
     return (
       <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-        <div className="mx-auto max-w-3xl">
+        <div className="container mx-auto">
           <p className="text-sm font-semibold tracking-[0.18em] text-primary">
             AARAJ STAFF
           </p>
@@ -60,7 +58,7 @@ export default async function StaffCatalogCategoriesPage({
   return (
     <CategoryManager
       key={JSON.stringify(query)}
-      initialCategories={result.categories}
+      initialPage={result.page}
       query={query}
     />
   );

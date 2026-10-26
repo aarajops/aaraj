@@ -12,6 +12,8 @@ import type {
   CatalogCategory,
   CatalogCategoryCreateInput,
   CatalogCategoryList,
+  CatalogCategoryManagementListQuery,
+  CatalogCategoryPage,
   CatalogCategoryOptions,
   CatalogCategoryUpdateInput,
   CatalogCategoryOption,
@@ -20,6 +22,7 @@ import {
   API_V1_BASE_PATH,
   CATALOG_CATEGORY_SLUG_MAX_LENGTH,
   CatalogCategoryImageSchema,
+  MAX_LIST_OFFSET,
   MAX_CATALOG_MEDIA_DERIVATIVE_BYTES,
 } from "@aaraj/contracts";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -245,6 +248,58 @@ export class CategoryService {
       actor,
     );
     return this.loadCategoryList();
+  }
+
+  async listManagementPage(
+    actor: AccessPrincipal,
+    query: CatalogCategoryManagementListQuery,
+  ): Promise<CatalogCategoryPage> {
+    await this.authorization.authorize(
+      CatalogPolicy,
+      "manageCategories",
+      actor,
+    );
+
+    const search = query.search?.toLocaleLowerCase("en-US");
+    const matchingCategories = (await this.loadCategoryList()).categories
+      .filter((category) => {
+        if (query.status && category.isActive !== (query.status === "active")) {
+          return false;
+        }
+        if (query.kind && category.isLeaf !== (query.kind === "leaf")) {
+          return false;
+        }
+        return (
+          !search ||
+          [category.path, category.name, category.slug].some((value) =>
+            value.toLocaleLowerCase("en-US").includes(search),
+          )
+        );
+      })
+      .sort(
+        (left, right) =>
+          left.path.localeCompare(right.path, "en-US") ||
+          left.id.localeCompare(right.id),
+      );
+
+    const rows = matchingCategories.slice(
+      query.offset,
+      query.offset + query.limit + 1,
+    );
+    const hasMore = rows.length > query.limit;
+    const categories = rows.slice(0, query.limit);
+    const candidateNextOffset = query.offset + categories.length;
+
+    return {
+      categories,
+      limit: query.limit,
+      offset: query.offset,
+      hasMore,
+      nextOffset:
+        hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+          ? candidateNextOffset
+          : null,
+    };
   }
 
   async listOptionsForManagement(

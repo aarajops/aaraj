@@ -3,8 +3,11 @@
 import {
   CATALOG_CATEGORY_SLUG_MAX_LENGTH,
   CatalogCategorySchema,
+  CatalogCategoryManagementListQuerySchema,
   CatalogCategorySlugSuggestionSchema,
   type CatalogCategory,
+  type CatalogCategoryManagementListQuery,
+  type CatalogCategoryPage,
 } from "@aaraj/contracts";
 import Image from "next/image";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -50,24 +53,24 @@ import {
 
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
+const defaultCategoryTableQuery =
+  CatalogCategoryManagementListQuerySchema.parse({});
 
 export function CategoryManager({
   view = "list",
-  initialCategories,
+  initialCategories = [],
   initialCategory,
-  query = {},
+  initialPage,
+  query = defaultCategoryTableQuery,
 }: {
   view?: "list" | "create" | "edit";
-  initialCategories: CatalogCategory[];
+  initialCategories?: CatalogCategory[];
   initialCategory?: CatalogCategory;
-  query?: {
-    search?: string;
-    status?: "active" | "inactive";
-    kind?: "parent" | "leaf";
-  };
+  initialPage?: CatalogCategoryPage;
+  query?: CatalogCategoryManagementListQuery;
 }) {
   const router = useRouter();
-  const categories = initialCategories;
+  const categories = initialPage?.categories ?? initialCategories;
   const {
     control,
     register,
@@ -231,15 +234,16 @@ export function CategoryManager({
           </p>
         )}
         <div className="mt-8">
-          {view === "list" && (
+          {view === "list" && initialPage && (
             <section aria-labelledby="categories-heading">
               <h2 className="text-xl font-semibold" id="categories-heading">
-                Category tree
+                Category directory
               </h2>
               <div className="mt-4">
                 <CategoryTable
                   categories={categories}
                   query={query}
+                  page={initialPage}
                   onRefresh={() => router.refresh()}
                 />
               </div>

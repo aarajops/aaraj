@@ -26,11 +26,13 @@ import {
 import {
   CatalogCategoryCreateSchema,
   CatalogCategoryIdSchema,
+  CatalogCategoryManagementListQuerySchema,
   CatalogMediaSha256Schema,
   CatalogCategoryUpdateSchema,
   CatalogCategorySlugSuggestionQuerySchema,
   MAX_CATALOG_MEDIA_UPLOAD_BYTES,
   type CatalogCategoryCreateInput,
+  type CatalogCategoryManagementListQuery,
   type CatalogCategoryUpdateInput,
   type CatalogCategorySlugSuggestionQuery,
 } from "@aaraj/contracts";
@@ -79,6 +81,17 @@ export class CategoryController {
   @Header("Cache-Control", "no-store")
   listForManagement(@Session() session: UserSession) {
     return this.categories.listForManagement(session.user);
+  }
+
+  @Get("manage/page")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  listManagementPage(
+    @Session() session: UserSession,
+    @Query({ schema: CatalogCategoryManagementListQuerySchema })
+    query: CatalogCategoryManagementListQuery,
+  ) {
+    return this.categories.listManagementPage(session.user, query);
   }
 
   @Get("options/manage")
