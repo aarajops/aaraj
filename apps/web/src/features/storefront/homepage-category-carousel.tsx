@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -10,8 +11,44 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
-import { Card, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ImageIcon } from "lucide-react";
 import type { CatalogPublishedCategoryOption } from "@aaraj/contracts";
+
+function CategoryImage({
+  category,
+}: {
+  category: CatalogPublishedCategoryOption;
+}) {
+  const [imageStatus, setImageStatus] = useState<
+    "loading" | "loaded" | "error"
+  >(category.image ? "loading" : "error");
+
+  return (
+    <AspectRatio className="overflow-hidden rounded-xl bg-muted" ratio={1}>
+      {category.image && imageStatus !== "error" && (
+        <Image
+          alt=""
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          height={category.image.height}
+          onError={() => setImageStatus("error")}
+          onLoad={() => setImageStatus("loaded")}
+          src={category.image.src}
+          unoptimized
+          width={category.image.width}
+        />
+      )}
+      {category.image && imageStatus === "loading" && (
+        <Skeleton aria-hidden="true" className="absolute inset-0 rounded-xl" />
+      )}
+      {imageStatus === "error" && (
+        <div className="flex h-full items-center justify-center text-muted-foreground">
+          <ImageIcon aria-hidden="true" className="size-8" />
+        </div>
+      )}
+    </AspectRatio>
+  );
+}
 
 export function HomepageCategoryCarousel({
   categories,
@@ -24,37 +61,18 @@ export function HomepageCategoryCarousel({
         {categories.map((category) => {
           return (
             <CarouselItem
-              className="basis-4/5 sm:basis-1/2 lg:basis-1/3 xl:basis-1/5"
+              className="basis-4/5 sm:basis-1/2 lg:basis-1/3 xl:basis-1/5 2xl:basis-1/6"
               key={category.id}
             >
-              <AspectRatio className="rounded-xl bg-muted" ratio={1}>
-                <Link
-                  className="group absolute inset-0 block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  href={`/shop/categories/${category.slug}`}
-                >
-                  <Card className="absolute inset-0 gap-0 overflow-hidden rounded-xl bg-muted p-0 ring-0">
-                    {category.image && (
-                      <Image
-                        alt=""
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        height={category.image.height}
-                        src={category.image.src}
-                        unoptimized
-                        width={category.image.width}
-                      />
-                    )}
-                    <CardTitle
-                      className={
-                        category.image
-                          ? "absolute inset-x-4 bottom-4 rounded-md bg-background px-3 py-3 text-center text-sm font-semibold uppercase tracking-wide text-foreground sm:text-base"
-                          : "absolute inset-0 flex items-center justify-center px-4 text-center text-lg font-semibold uppercase tracking-wide text-foreground"
-                      }
-                    >
-                      {category.name}
-                    </CardTitle>
-                  </Card>
-                </Link>
-              </AspectRatio>
+              <Link
+                className="group flex flex-col gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                href={`/shop/categories/${category.slug}`}
+              >
+                <CategoryImage category={category} />
+                <h3 className="text-center text-sm font-medium uppercase tracking-wide text-foreground">
+                  {category.name}
+                </h3>
+              </Link>
             </CarouselItem>
           );
         })}
