@@ -687,7 +687,7 @@ test("customer Order page explains serviceability timeout cancellation", async (
       status: 200,
       json: {
         id: orderId,
-        reference: "AA-0123456789AB",
+        reference: "ORD-026-00001",
         currency: "BDT",
         status: "cancelled",
         serviceability: "pending_manual_review",

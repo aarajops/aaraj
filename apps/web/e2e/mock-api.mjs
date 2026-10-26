@@ -89,8 +89,8 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
   const sequence = index + 1;
   const status = ["awaiting_confirmation", "confirmed", "rejected"][index % 3];
   return {
-    id: `00000000-0000-4000-8000-${sequence.toString(16).padStart(12, "0")}`,
-    reference: `AA-${sequence.toString(16).toUpperCase().padStart(12, "0")}`,
+    id: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+    reference: `ORD-026-${String(sequence).padStart(5, "0")}`,
     status,
     fulfillmentStatus:
       status === "confirmed"
@@ -353,7 +353,7 @@ const server = createServer(async (request, response) => {
       });
       return;
     }
-    if (parsed.data.search === "AA-FFFFFFFFFFFF") {
+    if (parsed.data.search === "ORD-026-99999") {
       send(response, 503, {
         statusCode: 503,
         message: "Synthetic Order list outage",

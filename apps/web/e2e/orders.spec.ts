@@ -31,10 +31,10 @@ test("Orders uses shared pagination with stable URL history and order links", as
   await expect(table).toBeVisible();
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(
-    table.getByText("AA-000000000001", { exact: true }),
+    table.getByText("ORD-026-00001", { exact: true }),
   ).toBeVisible();
   await expect(
-    table.getByRole("link", { name: "AA-000000000001" }),
+    table.getByRole("link", { name: "ORD-026-00001" }),
   ).toHaveAttribute(
     "href",
     "/admin/orders/00000000-0000-4000-8000-000000000001",
@@ -47,13 +47,13 @@ test("Orders uses shared pagination with stable URL history and order links", as
   );
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(
-    table.getByText("AA-000000000015", { exact: true }),
+    table.getByText("ORD-026-00021", { exact: true }),
   ).toBeVisible();
   await expect(
-    table.getByRole("link", { name: "AA-000000000015" }),
+    table.getByRole("link", { name: "ORD-026-00021" }),
   ).toHaveAttribute(
     "href",
-    "/admin/orders/00000000-0000-4000-8000-000000000015",
+    "/admin/orders/00000000-0000-4000-8000-000000000021",
   );
 
   await page.getByRole("link", { name: "Go to previous page" }).click();
@@ -83,7 +83,7 @@ test("Orders follows API pagination, search, empty, and error states", async ({
   const table = page.getByRole("table", { name: "Orders" });
   await expect(table.locator("tbody tr")).toHaveCount(25);
   await expect(
-    table.getByText("AA-00000000001A", { exact: true }),
+    table.getByText("ORD-026-00026", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("Showing 26–50 orders", { exact: true }),
@@ -99,32 +99,32 @@ test("Orders follows API pagination, search, empty, and error states", async ({
   await expect(page).toHaveURL(/\/admin\/orders\?limit=25&offset=25$/);
 
   const search = page.getByRole("searchbox", { name: "Search orders" });
-  await search.fill("AA-000000000033");
+  await search.fill("ORD-026-00033");
   await page.getByRole("button", { name: "Apply orders search" }).click();
   await expect(page).toHaveURL(
-    /\/admin\/orders\?limit=25&search=AA-000000000033$/,
+    /\/admin\/orders\?limit=25&search=ORD-026-00033$/,
   );
-  await expect(search).toHaveValue("AA-000000000033");
+  await expect(search).toHaveValue("ORD-026-00033");
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await expect(
-    table.getByText("AA-000000000033", { exact: true }),
+    table.getByText("ORD-026-00033", { exact: true }),
   ).toBeVisible();
 
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/orders\?limit=25&offset=25$/);
   await page.goForward();
   await expect(page).toHaveURL(
-    /\/admin\/orders\?limit=25&search=AA-000000000033$/,
+    /\/admin\/orders\?limit=25&search=ORD-026-00033$/,
   );
   await page.reload();
-  await expect(search).toHaveValue("AA-000000000033");
+  await expect(search).toHaveValue("ORD-026-00033");
   await expect(table.locator("tbody tr")).toHaveCount(1);
 
-  await search.fill("AA-FFFFFFFFFFFE");
+  await search.fill("ORD-026-99998");
   await page.getByRole("button", { name: "Apply orders search" }).click();
   await expect(table.getByText("No matching orders.")).toBeVisible();
 
-  await page.goto("/admin/orders?search=AA-FFFFFFFFFFFF");
+  await page.goto("/admin/orders?search=ORD-026-99999");
   await expect(
     page.getByRole("heading", { name: "Orders unavailable" }),
   ).toBeVisible();
@@ -133,7 +133,7 @@ test("Orders follows API pagination, search, empty, and error states", async ({
   );
   await expect(page.getByRole("link", { name: "Try again" })).toHaveAttribute(
     "href",
-    "/admin/orders?search=AA-FFFFFFFFFFFF",
+    "/admin/orders?search=ORD-026-99999",
   );
 });
 

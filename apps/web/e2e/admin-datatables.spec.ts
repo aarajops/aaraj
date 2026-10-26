@@ -457,7 +457,7 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
   ).toBeGreaterThan(0);
   await attachScreenshot(page, testInfo, "orders-table-focus-overflow.png");
 
-  const orderLink = page.getByRole("link", { name: "AA-000000000001" });
+  const orderLink = page.getByRole("link", { name: "ORD-026-00001" });
   await page.keyboard.press("Tab");
   await expect(orderLink).toBeFocused();
   expect(
@@ -543,7 +543,7 @@ test("admin table controls retain visible keyboard focus in light and dark theme
     ],
     ["refresh button", page.getByRole("button", { name: "Refresh orders" })],
     ["pagination link", page.getByRole("link", { name: "Go to next page" })],
-    ["order link", page.getByRole("link", { name: "AA-000000000001" })],
+    ["order link", page.getByRole("link", { name: "ORD-026-00001" })],
     [
       "table scroll region",
       page.getByRole("region", { name: "Scrollable orders table" }),
