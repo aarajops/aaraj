@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { API_V1_BASE_PATH } from "../platform/api-version.js";
 import {
-  DEFAULT_LIST_PAGE_SIZE,
   MAX_LIST_PAGE_SIZE,
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
@@ -476,9 +475,12 @@ export type StorefrontBannerUpdate = z.infer<
   typeof StorefrontBannerUpdateSchema
 >;
 
+/** Cursor page bound for the banner asset picker; independent of table pages. */
+export const STOREFRONT_BANNER_ASSET_PAGE_SIZE = 50;
+
 export const StorefrontBannerAssetPageSchema = z.strictObject({
   assets: ManagedStorefrontBannerAssetSchema.array().max(
-    DEFAULT_LIST_PAGE_SIZE,
+    STOREFRONT_BANNER_ASSET_PAGE_SIZE,
   ),
   nextCursor: z.uuid().nullable(),
 });

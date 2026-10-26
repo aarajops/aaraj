@@ -25,6 +25,8 @@ Feature contracts compose those shared schemas rather than redefining limits.
 
 Each list contract uses the continuation mechanism suited to that collection:
 
+- The storefront banner asset picker uses a cursor and keeps its dedicated
+  50-asset page bound; it is separate from the 20-row data-table default.
 - Product and size-guide administration currently use `limit` and `offset`,
   returning the effective `limit` and `offset` with named collections,
   `hasMore`, and `nextOffset`. Their query

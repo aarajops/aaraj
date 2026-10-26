@@ -9,8 +9,8 @@ import {
 import { AuthorizationService } from "@nestjs/authorization";
 import {
   API_V1_BASE_PATH,
-  DEFAULT_LIST_PAGE_SIZE,
   MAX_LIST_OFFSET,
+  STOREFRONT_BANNER_ASSET_PAGE_SIZE,
   type PublicStorefrontBanners,
   type ManagedStorefrontBannerAsset,
   type StorefrontBanner,
@@ -50,7 +50,7 @@ import {
   type StorefrontBannerUploadFile,
 } from "./storefront-banner-image.js";
 
-const ASSET_LIST_LIMIT = DEFAULT_LIST_PAGE_SIZE;
+const ASSET_LIST_LIMIT = STOREFRONT_BANNER_ASSET_PAGE_SIZE;
 const ASSET_QUERY_LIMIT = ASSET_LIST_LIMIT + 1;
 const desktopAssetTable = alias(storefrontBannerAsset, "desktop_banner_asset");
 const mobileAssetTable = alias(storefrontBannerAsset, "mobile_banner_asset");
