@@ -114,7 +114,9 @@ function SinglePageCheckout({
       const key = window.sessionStorage.getItem(storageKey);
       if (!key) return;
       void resumeCodOrder(key)
-        .then((order) => {
+        .then(async (order) => {
+          if (!active) return;
+          await refreshCart();
           if (active) router.replace(`/orders/${order.id}`);
         })
         .catch((reason: unknown) => {
@@ -139,7 +141,7 @@ function SinglePageCheckout({
     return () => {
       active = false;
     };
-  }, [initialQuoteId, router]);
+  }, [initialQuoteId, refreshCart, router]);
 
   async function submit(values: CheckoutFormValues) {
     if (!quote) {
@@ -166,6 +168,7 @@ function SinglePageCheckout({
     };
     try {
       const order = await createCodOrder(input, key);
+      await refreshCart();
       router.push(`/orders/${order.id}`);
     } catch (reason) {
       if (
@@ -176,6 +179,7 @@ function SinglePageCheckout({
       ) {
         try {
           const existing = await resumeCodOrder(key);
+          await refreshCart();
           router.push(`/orders/${existing.id}`);
           return;
         } catch (resumeError) {
