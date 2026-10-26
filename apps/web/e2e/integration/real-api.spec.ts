@@ -988,7 +988,7 @@ test("catalog operator configures a product through to storefront visibility", a
 
   await page.goto("/shop");
   await expect(
-    page.getByRole("button", { name: "Show up to 3 columns" }),
+    page.getByRole("button", { name: "Show up to 4 columns" }),
   ).toHaveAttribute("aria-pressed", "true");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   const productFilters = page.locator('aside[aria-label="Product filters"]');
