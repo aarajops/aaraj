@@ -227,7 +227,7 @@ export function StorefrontBannerManager({
           </h1>
           <p className="mt-2 max-w-2xl text-muted-foreground">
             Configure reusable artwork and publish it to the homepage hero
-            carousel. Newest banners appear first.
+            carousel. Set their display order from the banner list.
           </p>
         </div>
 

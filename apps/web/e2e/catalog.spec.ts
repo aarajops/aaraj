@@ -144,15 +144,26 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.locator("#size-label-1").fill("M");
   await page.locator("#size-1-chest_width").fill("21.000");
   await page.locator("#size-1-body_length").fill("29.000");
+  const secondSizeHandle = page.getByRole("button", {
+    name: "Reorder size row 2",
+  });
+  await secondSizeHandle.focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("Space");
+  await expect(page.getByLabel("Size label, row 1")).toHaveValue("M");
+  await expect(page.getByLabel("Size label, row 2")).toHaveValue("S");
   await page.getByRole("button", { name: "Create guide" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/size-guides$/);
   await page.getByRole("link", { name: "Edit Aaraj Classic Tee" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/size-guides\/.+\/edit$/);
+  await expect(page.getByLabel("Size label, row 1")).toHaveValue("M");
+  await expect(page.getByLabel("Size label, row 2")).toHaveValue("S");
   await expect(
     page.getByRole("combobox", { name: "Enter measurements in" }),
   ).toContainText("Inches (in)");
-  await expect(page.locator("#size-0-chest_width")).toHaveValue("20");
-  await expect(page.locator("#size-0-body_length")).toHaveValue("28");
+  await expect(page.locator("#size-0-chest_width")).toHaveValue("21");
+  await expect(page.locator("#size-0-body_length")).toHaveValue("29");
   await page.goto("/admin/catalog");
   await expect(
     page.getByRole("heading", { name: "Catalog management" }),

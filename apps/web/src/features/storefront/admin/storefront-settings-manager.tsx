@@ -11,16 +11,10 @@ import {
   type StorefrontSettings,
   type StorefrontSettingsUpdate,
 } from "@aaraj/contracts";
-import {
-  ArrowDown,
-  ArrowUp,
-  ImagePlus,
-  LoaderCircle,
-  Trash2,
-  X,
-} from "lucide-react";
+import { ImagePlus, LoaderCircle, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SortableList } from "@/components/dnd/sortable-list";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -132,7 +126,6 @@ export function StorefrontSettingsManager({
     remove: removePolicyLink,
   } = useFieldArray({ control, name: "footerLinkGroups.policies" });
   const {
-    fields: headerNavigationFields,
     append: appendHeaderNavigationItem,
     remove: removeHeaderNavigationItem,
     move: moveHeaderNavigationItem,
@@ -363,6 +356,18 @@ export function StorefrontSettingsManager({
       homepageCategoryIds.filter((configuredId) => configuredId !== categoryId),
       { shouldDirty: true, shouldValidate: true },
     );
+  }
+
+  function moveHomepageCategory(fromIndex: number, toIndex: number) {
+    const reorderedCategoryIds = [...homepageCategoryIds];
+    const [categoryId] = reorderedCategoryIds.splice(fromIndex, 1);
+    if (categoryId === undefined) return;
+
+    reorderedCategoryIds.splice(toIndex, 0, categoryId);
+    setValue("homepageCategoryIds", reorderedCategoryIds, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
   }
 
   const configuredCategoryIds = new Set(
@@ -836,138 +841,126 @@ export function StorefrontSettingsManager({
                         Header navigation
                       </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Select active catalog categories for the header.
+                        Select active catalog categories and drag to set their
+                        display order.
                       </p>
                     </div>
 
-                    <ol className="grid gap-3">
-                      {headerNavigation.length === 0 && (
-                        <li className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
-                          No header categories added yet.
-                        </li>
-                      )}
-                      {headerNavigation.map((item, index) => {
-                        const otherCategoryIds = new Set(
-                          headerNavigation
-                            .filter(
-                              (_, candidateIndex) => candidateIndex !== index,
-                            )
-                            .map(({ categoryId }) => categoryId),
-                        );
-                        const selectedCategory = categoryOptions.find(
-                          ({ id }) => id === item.categoryId,
-                        );
-                        const categoryOptionsForItem = categoryOptions.filter(
-                          ({ id }) =>
-                            id === item.categoryId || !otherCategoryIds.has(id),
-                        );
-                        const categorySelectItems = [
-                          ...(!selectedCategory
-                            ? [
-                                {
-                                  value: item.categoryId,
-                                  label: "Unavailable category",
-                                },
-                              ]
-                            : []),
-                          ...categoryOptionsForItem.map(({ id, path }) => ({
-                            label: path,
-                            value: id,
-                          })),
-                        ];
+                    {headerNavigation.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+                        No header categories added yet.
+                      </p>
+                    ) : (
+                      <SortableList
+                        ariaLabel="Header navigation categories"
+                        className="grid gap-3"
+                        getItemId={({ categoryId }) => categoryId}
+                        getItemLabel={(item, index) => {
+                          const category = categoryOptions.find(
+                            ({ id }) => id === item.categoryId,
+                          );
+                          return `${category?.path ?? "Unavailable category"}, position ${index + 1}`;
+                        }}
+                        itemClassName="grid gap-3 rounded-lg border border-border p-4"
+                        items={headerNavigation}
+                        onMove={moveHeaderNavigationItem}
+                        renderItem={(item, index, handle) => {
+                          const otherCategoryIds = new Set(
+                            headerNavigation
+                              .filter(
+                                (_, candidateIndex) => candidateIndex !== index,
+                              )
+                              .map(({ categoryId }) => categoryId),
+                          );
+                          const selectedCategory = categoryOptions.find(
+                            ({ id }) => id === item.categoryId,
+                          );
+                          const categoryOptionsForItem = categoryOptions.filter(
+                            ({ id }) =>
+                              id === item.categoryId ||
+                              !otherCategoryIds.has(id),
+                          );
+                          const categorySelectItems = [
+                            ...(!selectedCategory
+                              ? [
+                                  {
+                                    value: item.categoryId,
+                                    label: "Unavailable category",
+                                  },
+                                ]
+                              : []),
+                            ...categoryOptionsForItem.map(({ id, path }) => ({
+                              label: path,
+                              value: id,
+                            })),
+                          ];
 
-                        return (
-                          <li
-                            className="grid gap-3 rounded-lg border border-border p-4"
-                            key={headerNavigationFields[index]?.id ?? index}
-                          >
-                            <Field>
-                              <FieldLabel htmlFor={`header-category-${index}`}>
-                                Catalog category
-                              </FieldLabel>
-                              <Select
-                                items={categorySelectItems}
-                                value={item.categoryId}
-                                onValueChange={(categoryId) => {
-                                  if (!categoryId) return;
-                                  updateHeaderNavigationItem(index, {
-                                    type: "category",
-                                    categoryId,
-                                  });
-                                }}
-                              >
-                                <SelectTrigger id={`header-category-${index}`}>
-                                  <SelectValue placeholder="Choose a category" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {!selectedCategory && (
-                                    <SelectItem value={item.categoryId}>
-                                      Unavailable category
-                                    </SelectItem>
-                                  )}
-                                  {categoryOptionsForItem.map(
-                                    ({ id, path }) => (
-                                      <SelectItem key={id} value={id}>
-                                        {path}
+                          return (
+                            <>
+                              <Field>
+                                <FieldLabel
+                                  htmlFor={`header-category-${index}`}
+                                >
+                                  Catalog category
+                                </FieldLabel>
+                                <Select
+                                  items={categorySelectItems}
+                                  value={item.categoryId}
+                                  onValueChange={(categoryId) => {
+                                    if (!categoryId) return;
+                                    updateHeaderNavigationItem(index, {
+                                      type: "category",
+                                      categoryId,
+                                    });
+                                  }}
+                                >
+                                  <SelectTrigger
+                                    id={`header-category-${index}`}
+                                  >
+                                    <SelectValue placeholder="Choose a category" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {!selectedCategory && (
+                                      <SelectItem value={item.categoryId}>
+                                        Unavailable category
                                       </SelectItem>
-                                    ),
-                                  )}
-                                </SelectContent>
-                              </Select>
-                              {!selectedCategory && (
-                                <FieldDescription>
-                                  This category is inactive or unavailable.
-                                  Remove it, or choose an active category.
-                                </FieldDescription>
-                              )}
-                            </Field>
-                            <div className="flex items-center gap-1">
-                              <span className="mr-auto text-xs text-muted-foreground">
-                                Item {index + 1}
-                              </span>
-                              <Button
-                                aria-label={`Move header item ${index + 1} up`}
-                                className="text-muted-foreground"
-                                disabled={index === 0}
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                onClick={() =>
-                                  moveHeaderNavigationItem(index, index - 1)
-                                }
-                              >
-                                <ArrowUp />
-                              </Button>
-                              <Button
-                                aria-label={`Move header item ${index + 1} down`}
-                                className="text-muted-foreground"
-                                disabled={index === headerNavigation.length - 1}
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                onClick={() =>
-                                  moveHeaderNavigationItem(index, index + 1)
-                                }
-                              >
-                                <ArrowDown />
-                              </Button>
-                              <Button
-                                aria-label={`Remove header item ${index + 1}`}
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                className="text-muted-foreground hover:text-destructive"
-                                onClick={() =>
-                                  removeHeaderNavigationItem(index)
-                                }
-                              >
-                                <Trash2 />
-                              </Button>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ol>
+                                    )}
+                                    {categoryOptionsForItem.map(
+                                      ({ id, path }) => (
+                                        <SelectItem key={id} value={id}>
+                                          {path}
+                                        </SelectItem>
+                                      ),
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                                {!selectedCategory && (
+                                  <FieldDescription>
+                                    This category is inactive or unavailable.
+                                    Remove it, or choose an active category.
+                                  </FieldDescription>
+                                )}
+                              </Field>
+                              <div className="flex items-center gap-1">
+                                {handle}
+                                <Button
+                                  aria-label={`Remove header item ${index + 1}`}
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="text-muted-foreground hover:text-destructive"
+                                  onClick={() =>
+                                    removeHeaderNavigationItem(index)
+                                  }
+                                >
+                                  <Trash2 />
+                                </Button>
+                              </div>
+                            </>
+                          );
+                        }}
+                      />
+                    )}
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <Field>
@@ -1014,6 +1007,7 @@ export function StorefrontSettingsManager({
                     }
                     onCategoryAdd={addHomepageCategory}
                     onCategoryRemove={removeHomepageCategory}
+                    onCategoryMove={moveHomepageCategory}
                   />
 
                   <section

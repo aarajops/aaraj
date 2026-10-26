@@ -824,6 +824,38 @@ test("admin uploads and publishes a catalog banner through to the storefront", a
   await page.goto("/");
   await page.getByRole("button", { name: "Next promotion" }).click();
   await expect(page.getByText("Slide 2 of 2", { exact: true })).toBeVisible();
+
+  await page.goto("/admin/storefront/banners");
+  const secondBannerHandle = page.getByRole("button", {
+    name: "Reorder Second seasonal banner",
+  });
+  const reorderResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/storefront/manage/banners/order") &&
+      response.request().method() === "PATCH",
+  );
+  await secondBannerHandle.focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Space");
+  expect((await reorderResponsePromise).status()).toBe(200);
+  await expect(page.getByRole("row").nth(1)).toContainText(
+    "Seasonal banner revised",
+  );
+  await expect(page.getByRole("row").nth(2)).toContainText(
+    "Second seasonal banner",
+  );
+
+  const reorderedPublicBannerResponse = await page.request.get(
+    "/api/v1/storefront/banners/home_hero",
+  );
+  expect(reorderedPublicBannerResponse.status()).toBe(200);
+  const reorderedPublicBanner = await reorderedPublicBannerResponse.json();
+  expect(
+    reorderedPublicBanner.banners.map(
+      (banner: { altText: string }) => banner.altText,
+    ),
+  ).toEqual(["AARAJ seasonal collection", "AARAJ second seasonal collection"]);
 });
 
 test("catalog operator configures a product through to storefront visibility", async ({

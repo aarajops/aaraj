@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Header,
+  Patch,
   Param,
   Post,
   Put,
@@ -26,6 +27,7 @@ import {
   MAX_STOREFRONT_ASSET_UPLOAD_BYTES,
   StorefrontBannerCreateSchema,
   StorefrontBannerListQuerySchema,
+  StorefrontBannerOrderSchema,
   StorefrontBannerAssetUploadSchema,
   StorefrontBannerAssetCursorSchema,
   StorefrontBannerPlacementSchema,
@@ -33,6 +35,7 @@ import {
   STOREFRONT_BANNER_CACHE,
   type StorefrontBannerCreate,
   type StorefrontBannerListQuery,
+  type StorefrontBannerOrder,
   type StorefrontBannerAssetUpload,
   type StorefrontBannerPlacement,
   type StorefrontBannerUpdate,
@@ -121,6 +124,16 @@ export class StorefrontBannersController {
     query: StorefrontBannerListQuery,
   ) {
     return this.banners.listForManagement(session.user, query);
+  }
+
+  @Patch("manage/banners/order")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  reorder(
+    @Session() session: UserSession,
+    @Body({ schema: StorefrontBannerOrderSchema }) input: StorefrontBannerOrder,
+  ) {
+    return this.banners.reorder(session.user, input);
   }
 
   @Get("manage/banners/:bannerId")

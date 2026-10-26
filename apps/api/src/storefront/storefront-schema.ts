@@ -145,6 +145,7 @@ export const storefrontBanner = storefrontSchema.table(
     ),
     altText: text("alt_text").notNull().default(""),
     href: text("href"),
+    sortOrder: integer("sort_order").notNull().default(0),
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -158,9 +159,9 @@ export const storefrontBanner = storefrontSchema.table(
     }),
   },
   (table) => [
-    index("banner_placement_created_at_id_idx").on(
+    index("banner_placement_sort_order_id_idx").on(
       table.placement,
-      table.createdAt,
+      table.sortOrder,
       table.id,
     ),
     check(

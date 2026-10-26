@@ -17,6 +17,7 @@ import {
   type CatalogMediaRendition,
   type CatalogMedia,
   type CatalogMediaDeleteInput,
+  type CatalogProductMediaOrderInput,
   type CatalogMediaUploadInput,
   type CatalogProductMediaList,
 } from "@aaraj/contracts";
@@ -95,6 +96,120 @@ export class CatalogMediaService {
       )
       .orderBy(asc(catalogProductMedia.sortOrder));
     return { media: rows.map(toCatalogMedia) };
+  }
+
+  async reorder(
+    actor: AccessPrincipal,
+    productId: string,
+    input: CatalogProductMediaOrderInput,
+  ): Promise<CatalogProductMediaList> {
+    const media = await this.database.db.transaction(async (transaction) => {
+      await this.authorization.authorize(
+        CatalogPolicy,
+        "manage",
+        actor,
+        transaction,
+      );
+
+      const [product] = await transaction
+        .select({ id: catalogProduct.id })
+        .from(catalogProduct)
+        .where(eq(catalogProduct.id, productId))
+        .for("update")
+        .limit(1);
+      if (!product) throw new NotFoundException("Product not found.");
+
+      const existingRows = await transaction
+        .select()
+        .from(catalogProductMedia)
+        .where(eq(catalogProductMedia.productId, productId))
+        .orderBy(
+          asc(catalogProductMedia.sortOrder),
+          asc(catalogProductMedia.id),
+        )
+        .for("update");
+      const reorderableRows = existingRows.filter(
+        ({ status }) => status !== "deleted",
+      );
+      const currentIds = reorderableRows.map(({ id }) => id);
+      if (
+        currentIds.length !== input.mediaIds.length ||
+        input.mediaIds.some((id) => !currentIds.includes(id))
+      ) {
+        throw new ConflictException(
+          "Product images changed. Refresh the list and try again.",
+        );
+      }
+
+      if (input.mediaIds.every((id, index) => id === currentIds[index])) {
+        return reorderableRows;
+      }
+
+      const temporaryOffset =
+        Math.max(...existingRows.map(({ sortOrder }) => sortOrder)) + 1;
+      const updatedAt = new Date();
+      await transaction
+        .update(catalogProductMedia)
+        .set({
+          sortOrder: sql`${catalogProductMedia.sortOrder} + ${temporaryOffset}`,
+          updatedAt,
+        })
+        .where(
+          and(
+            eq(catalogProductMedia.productId, productId),
+            not(eq(catalogProductMedia.status, "deleted")),
+          ),
+        );
+
+      const availableOrders = reorderableRows.map(({ sortOrder }) => sortOrder);
+      const sortOrderCases = sql.join(
+        input.mediaIds.map((mediaId, index) => {
+          const sortOrder = availableOrders[index];
+          if (sortOrder === undefined) {
+            throw new Error("A product media order is missing its sort slot.");
+          }
+          return sql`when ${catalogProductMedia.id} = ${mediaId} then ${sortOrder}`;
+        }),
+        sql` `,
+      );
+      await transaction
+        .update(catalogProductMedia)
+        .set({
+          sortOrder: sql`case ${sortOrderCases} else ${catalogProductMedia.sortOrder} end`,
+          updatedAt,
+        })
+        .where(
+          and(
+            eq(catalogProductMedia.productId, productId),
+            not(eq(catalogProductMedia.status, "deleted")),
+          ),
+        );
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: actor.id,
+        eventType: "catalog.media_reordered",
+        subjectType: "catalog_product",
+        subjectId: productId,
+        metadata: { mediaIds: input.mediaIds },
+      });
+
+      return transaction
+        .select()
+        .from(catalogProductMedia)
+        .where(
+          and(
+            eq(catalogProductMedia.productId, productId),
+            not(eq(catalogProductMedia.status, "deleted")),
+          ),
+        )
+        .orderBy(
+          asc(catalogProductMedia.sortOrder),
+          asc(catalogProductMedia.id),
+        );
+    });
+
+    return { media: media.map(toCatalogMedia) };
   }
 
   async upload(

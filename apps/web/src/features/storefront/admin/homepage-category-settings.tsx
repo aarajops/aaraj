@@ -4,6 +4,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import type { CatalogCategoryOption } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
+import { SortableList } from "@/components/dnd/sortable-list";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import {
   Select,
@@ -21,6 +22,7 @@ export function HomepageCategorySettings({
   onEnabledChange,
   onCategoryAdd,
   onCategoryRemove,
+  onCategoryMove,
 }: {
   categories: CatalogCategoryOption[];
   selectedCategoryIds: string[];
@@ -28,20 +30,17 @@ export function HomepageCategorySettings({
   onEnabledChange: (enabled: boolean) => void;
   onCategoryAdd: (categoryId: string) => void;
   onCategoryRemove: (categoryId: string) => void;
+  onCategoryMove: (fromIndex: number, toIndex: number) => void;
 }) {
   const selectedIds = new Set(selectedCategoryIds);
-  const availableIds = new Set(categories.map(({ id }) => id));
+  const categoryPaths = new Map(categories.map(({ id, path }) => [id, path]));
   const availableCategories = categories.filter(
     ({ id }) => !selectedIds.has(id),
   );
-  const selectedCategories = [
-    ...categories
-      .filter(({ id }) => selectedIds.has(id))
-      .map(({ id, path }) => ({ id, path })),
-    ...selectedCategoryIds
-      .filter((id) => !availableIds.has(id))
-      .map((id) => ({ id, path: "Unavailable category" })),
-  ];
+  const selectedCategories = selectedCategoryIds.map((id) => ({
+    id,
+    path: categoryPaths.get(id) ?? "Unavailable category",
+  }));
 
   return (
     <section
@@ -53,7 +52,8 @@ export function HomepageCategorySettings({
           Homepage categories
         </h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Feature selected catalog categories on your homepage.
+          Feature selected catalog categories on your homepage. Drag to set
+          their display order.
         </p>
       </div>
       <Field className="flex items-center gap-3">
@@ -106,26 +106,31 @@ export function HomepageCategorySettings({
           .
         </FieldDescription>
         {selectedCategories.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {selectedCategories.map(({ id, path }) => (
-              <li
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/30 py-1 pl-3 pr-1 text-sm"
-                key={id}
-              >
+          <SortableList
+            ariaLabel="Homepage categories"
+            className="flex flex-wrap gap-2"
+            getItemId={({ id }) => id}
+            getItemLabel={({ path }, index) => `${path}, position ${index + 1}`}
+            itemClassName="inline-flex items-center gap-1 rounded-full border border-border bg-muted/30 py-1 pl-3 pr-1 text-sm"
+            items={selectedCategories}
+            onMove={onCategoryMove}
+            renderItem={({ id, path }, _index, handle) => (
+              <>
                 <span>{path}</span>
+                {handle}
                 <Button
                   aria-label={`Remove ${path} from homepage`}
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
                   className="rounded-full text-muted-foreground"
                   onClick={() => onCategoryRemove(id)}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
                 >
                   <X />
                 </Button>
-              </li>
-            ))}
-          </ul>
+              </>
+            )}
+          />
         )}
       </Field>
     </section>

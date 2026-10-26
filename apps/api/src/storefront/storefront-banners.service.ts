@@ -18,12 +18,23 @@ import {
   type StorefrontBannerAssetUpload,
   type StorefrontBannerCreate,
   type StorefrontBannerListQuery,
+  type StorefrontBannerOrder,
   type StorefrontBannerPage,
   type StorefrontBannerPlacement,
   type StorefrontBannerUpdate,
 } from "@aaraj/contracts";
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNotNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AccessPrincipal } from "../platform/authorization/permissions.service.js";
@@ -79,7 +90,7 @@ export class StorefrontBannersService {
           eq(storefrontBanner.active, true),
         ),
       )
-      .orderBy(desc(storefrontBanner.createdAt), desc(storefrontBanner.id));
+      .orderBy(asc(storefrontBanner.sortOrder), asc(storefrontBanner.id));
     return {
       placement,
       banners: rows.map(({ banner, desktop, mobile }) => ({
@@ -182,7 +193,11 @@ export class StorefrontBannersService {
         eq(mobileAssetTable.id, storefrontBanner.mobileAssetId),
       )
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(storefrontBanner.createdAt), desc(storefrontBanner.id))
+      .orderBy(
+        asc(storefrontBanner.placement),
+        asc(storefrontBanner.sortOrder),
+        asc(storefrontBanner.id),
+      )
       .limit(query.limit + 1)
       .offset(query.offset);
     const hasMore = rows.length > query.limit;
@@ -231,6 +246,71 @@ export class StorefrontBannersService {
       .limit(1);
     if (!row) throw new NotFoundException("Storefront banner not found.");
     return toManagedBanner(row.banner, row.desktop, row.mobile);
+  }
+
+  async reorder(
+    actor: AccessPrincipal,
+    input: StorefrontBannerOrder,
+  ): Promise<void> {
+    await this.database.db.transaction(async (transaction) => {
+      await this.authorization.authorize(
+        StorefrontPolicy,
+        "manageSettings",
+        actor,
+        transaction,
+      );
+      await transaction.execute(
+        sql`select pg_advisory_xact_lock(hashtext('storefront.banner.order'))`,
+      );
+      const rows = await transaction
+        .select({ id: storefrontBanner.id })
+        .from(storefrontBanner)
+        .where(eq(storefrontBanner.placement, input.placement))
+        .orderBy(asc(storefrontBanner.sortOrder), asc(storefrontBanner.id))
+        .for("update");
+      const currentIds = rows.map(({ id }) => id);
+      const requestedIds = new Set(input.bannerIds);
+      if (
+        currentIds.length !== input.bannerIds.length ||
+        currentIds.some((id) => !requestedIds.has(id))
+      ) {
+        throw new ConflictException(
+          "The banner list changed. Refresh it before reordering.",
+        );
+      }
+      if (currentIds.every((id, index) => id === input.bannerIds[index])) {
+        return;
+      }
+
+      const cases = sql.join(
+        input.bannerIds.map(
+          (id, index) => sql`when ${storefrontBanner.id} = ${id} then ${index}`,
+        ),
+        sql` `,
+      );
+      await transaction
+        .update(storefrontBanner)
+        .set({
+          sortOrder: sql`case ${cases} else ${storefrontBanner.sortOrder} end`,
+        })
+        .where(
+          and(
+            eq(storefrontBanner.placement, input.placement),
+            inArray(storefrontBanner.id, input.bannerIds),
+          ),
+        );
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: actor.id,
+        eventType: "storefront.banners_reordered",
+        subjectType: "storefront_banner",
+        subjectId: input.bannerIds[0]!,
+        metadata: {
+          placement: input.placement,
+          bannerIds: input.bannerIds,
+        },
+      });
+    });
   }
 
   async getAssetPage(
@@ -395,9 +475,17 @@ export class StorefrontBannersService {
           throw new BadRequestException("Choose uploaded banner images.");
         }
       }
+      await transaction.execute(
+        sql`select pg_advisory_xact_lock(hashtext('storefront.banner.order'))`,
+      );
+      await transaction
+        .update(storefrontBanner)
+        .set({ sortOrder: sql`${storefrontBanner.sortOrder} + 1` })
+        .where(eq(storefrontBanner.placement, input.placement));
       await transaction.insert(storefrontBanner).values({
         id,
         ...input,
+        sortOrder: 0,
         createdBy: actor.id,
         updatedAt: new Date(),
         updatedBy: actor.id,

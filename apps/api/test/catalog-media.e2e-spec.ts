@@ -186,6 +186,18 @@ describe("catalog media management", () => {
       .expect("Cache-Control", "no-store");
   }
 
+  function reorderMedia(
+    targetProductId: string,
+    mediaIds: string[],
+    account = operator,
+  ) {
+    return request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/manage/${targetProductId}/media/order`)
+      .set("Cookie", account.cookie)
+      .set("Origin", origin)
+      .send({ mediaIds });
+  }
+
   function deleteMedia(id: string, reason: string, account = operator) {
     return request(app.getHttpServer())
       .delete(`/api/v1/catalog/products/manage/${productId}/media/${id}`)
@@ -283,6 +295,61 @@ describe("catalog media management", () => {
         .from(catalogProduct)
         .where(eq(catalogProduct.id, otherProductId)),
     ).toHaveLength(1);
+  });
+
+  it("persists the selected media order through to the public product", async () => {
+    const targetProductId = await createProduct("media-order-product");
+    const first = await upload(targetProductId, {
+      commandId: randomUUID(),
+      altText: "First gallery image",
+    }).expect(201);
+    const second = await upload(targetProductId, {
+      commandId: randomUUID(),
+      altText: "Second gallery image",
+    }).expect(201);
+    const firstId = first.body.id as string;
+    const secondId = second.body.id as string;
+
+    const reordered = await reorderMedia(targetProductId, [
+      secondId,
+      firstId,
+    ]).expect(200);
+    expect(reordered.body.media.map(({ id }: { id: string }) => id)).toEqual([
+      secondId,
+      firstId,
+    ]);
+    expect(
+      reordered.body.media.map(
+        ({ sortOrder }: { sortOrder: number }) => sortOrder,
+      ),
+    ).toEqual([0, 1]);
+    await reorderMedia(targetProductId, [firstId, firstId]).expect(400);
+    await reorderMedia(targetProductId, [firstId]).expect(409);
+    await reorderMedia(targetProductId, [firstId, secondId], customer).expect(
+      403,
+    );
+
+    const [variant] = await database.db
+      .select({ id: catalogProductVariant.id })
+      .from(catalogProductVariant)
+      .where(eq(catalogProductVariant.productId, targetProductId))
+      .limit(1);
+    if (!variant) throw new Error("Media order test variant was not created.");
+    await database.db
+      .update(catalogProductVariant)
+      .set({ priceBdt: 100 })
+      .where(eq(catalogProductVariant.id, variant.id));
+    await database.db
+      .update(catalogProduct)
+      .set({ isPublished: true })
+      .where(eq(catalogProduct.id, targetProductId));
+
+    const publicProduct = await request(app.getHttpServer())
+      .get("/api/v1/catalog/products/media-order-product")
+      .expect(200);
+    expect(
+      publicProduct.body.images.map(({ id }: { id: string }) => id),
+    ).toEqual([secondId, firstId]);
   });
 
   it("lets another authorized manager recover an upload after R2 failure", async () => {

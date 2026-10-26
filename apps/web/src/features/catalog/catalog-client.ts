@@ -3,6 +3,7 @@ import "client-only";
 import { API_V1_BASE_PATH } from "@aaraj/contracts";
 import type {
   CatalogMediaDeleteInput,
+  CatalogProductMediaOrderInput,
   CatalogMediaUploadInput,
   CatalogCategoryCreateInput,
   CatalogCategoryUpdateInput,
@@ -139,6 +140,21 @@ export function fetchManagedProductMedia(productId: string): Promise<Response> {
     {
       cache: "no-store",
       credentials: "same-origin",
+    },
+  );
+}
+
+export function reorderCatalogProductMedia(
+  productId: string,
+  input: CatalogProductMediaOrderInput,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/media/order`,
+    {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
     },
   );
 }

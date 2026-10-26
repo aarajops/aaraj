@@ -21,5 +21,6 @@
   "0045_order_lifecycle_and_quote_cleanup.sql": "maintenance",
   "0046_yearly_order_references.sql": "compatible",
   "0047_remove_serviceability_review_expiry.sql": "maintenance",
-  "0048_size_guide_input_unit.sql": "compatible"
+  "0048_size_guide_input_unit.sql": "compatible",
+  "0049_storefront_banner_order.sql": "compatible"
 }

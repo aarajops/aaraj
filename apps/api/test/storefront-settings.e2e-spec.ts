@@ -124,6 +124,14 @@ describe("storefront settings", () => {
       .send(body);
   }
 
+  function reorderBanners(bannerIds: string[], account = admin) {
+    return request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/storefront/manage/banners/order`)
+      .set("Cookie", account.cookie)
+      .set("Origin", origin)
+      .send({ placement: "home_hero", bannerIds });
+  }
+
   function uploadAsset(
     actor: Account,
     kind: StorefrontBrandAssetKind,
@@ -1026,6 +1034,21 @@ describe("storefront settings", () => {
       })
       .expect(201);
     expect(secondSlide.body.active).toBe(true);
+    const secondBannerId = secondSlide.body.id as string;
+
+    await reorderBanners([bannerId, bannerId]).expect(400);
+    await reorderBanners([bannerId]).expect(409);
+    await reorderBanners([bannerId, secondBannerId], customer).expect(403);
+    await reorderBanners([bannerId, secondBannerId]).expect(200);
+
+    const managedOrder = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/manage/banners`)
+      .set("Cookie", admin.cookie)
+      .expect(200);
+    expect(
+      managedOrder.body.banners.map(({ id }: { id: string }) => id),
+    ).toEqual([bannerId, secondBannerId]);
+
     const carousel = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/storefront/banners/home_hero`)
       .expect(200);
@@ -1034,7 +1057,22 @@ describe("storefront settings", () => {
       carousel.body.banners.map(
         (banner: { altText: string }) => banner.altText,
       ),
-    ).toEqual(["AARAJ new collection", "AARAJ seasonal collection"]);
+    ).toEqual(["AARAJ seasonal collection", "AARAJ new collection"]);
+    const reorderEvents = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.eventType, "storefront.banners_reordered"));
+    expect(reorderEvents).toHaveLength(1);
+    expect(reorderEvents[0]).toMatchObject({
+      actorType: "user",
+      actorId: admin.id,
+      subjectType: "storefront_banner",
+      subjectId: bannerId,
+      metadata: {
+        placement: "home_hero",
+        bannerIds: [bannerId, secondBannerId],
+      },
+    });
     const drafts = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/storefront/manage/banners?status=draft`)
       .set("Cookie", admin.cookie)

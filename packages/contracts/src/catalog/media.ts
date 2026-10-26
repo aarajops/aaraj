@@ -114,6 +114,20 @@ export type CatalogMediaDeleteInput = z.infer<
   typeof CatalogMediaDeleteInputSchema
 >;
 
+export const CatalogProductMediaOrderInputSchema = z.strictObject({
+  mediaIds: z
+    .array(z.uuid())
+    .min(1)
+    .max(MAX_CATALOG_PRODUCT_MEDIA)
+    .refine(
+      (mediaIds) => new Set(mediaIds).size === mediaIds.length,
+      "Image IDs must be unique.",
+    ),
+});
+export type CatalogProductMediaOrderInput = z.infer<
+  typeof CatalogProductMediaOrderInputSchema
+>;
+
 export const CatalogMediaSchema = z.strictObject({
   id: z.uuid(),
   commandId: z.uuid(),

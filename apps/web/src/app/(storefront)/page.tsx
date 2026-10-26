@@ -64,10 +64,17 @@ export default async function Home({
     getPublicStorefrontSettings(),
     getPublishedProductFilterOptions(),
   ]);
+  const categoriesById = new Map(
+    (productFilters?.categories ?? []).map((category) => [
+      category.id,
+      category,
+    ]),
+  );
   const homepageCategories = settings.homepageCategoriesEnabled
-    ? (productFilters?.categories.filter(({ id }) =>
-        settings.homepageCategoryIds.includes(id),
-      ) ?? [])
+    ? settings.homepageCategoryIds.flatMap((id) => {
+        const category = categoriesById.get(id);
+        return category ? [category] : [];
+      })
     : [];
 
   return (

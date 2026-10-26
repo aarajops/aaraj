@@ -55,6 +55,12 @@ type AdminDataTablePage = {
   nextOffset: number | null;
 };
 
+type AdminDataTableRowOrder<TData extends RowData & { id: string }> = {
+  disabled?: boolean;
+  getLabel: (item: TData, index: number) => string;
+  onMove: (fromIndex: number, toIndex: number) => void;
+};
+
 type AdminDataTableProps<TData extends RowData & { id: string }> = {
   ariaLabel: string;
   columns: DataTableColumnDef<TData>[];
@@ -69,6 +75,7 @@ type AdminDataTableProps<TData extends RowData & { id: string }> = {
   isRefreshing?: boolean;
   page: AdminDataTablePage | null;
   className?: string;
+  sortableRows?: AdminDataTableRowOrder<TData>;
 };
 
 export function AdminDataTable<TData extends RowData & { id: string }>({
@@ -85,6 +92,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   isRefreshing = false,
   page,
   className,
+  sortableRows,
 }: AdminDataTableProps<TData>) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -271,6 +279,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
         ariaLabel={ariaLabel}
         columns={columns}
         data={data}
+        sortableRows={sortableRows}
         emptyMessage={
           emptyMessage ??
           (hasActiveFilters

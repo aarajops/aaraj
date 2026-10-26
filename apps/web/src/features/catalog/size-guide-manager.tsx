@@ -13,6 +13,10 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  SortableProvider,
+  useSortableItem,
+} from "@/components/dnd/sortable-list";
 import { Input } from "@/components/ui/input";
 import {
   createCatalogSizeGuide,
@@ -31,8 +35,9 @@ import {
 import { SizeGuideTable } from "@/features/catalog/size-guide-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { GripVertical } from "lucide-react";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
   getApiErrorMessage,
@@ -54,6 +59,39 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+function SortableSizeGuideRow({
+  id,
+  index,
+  disabled,
+  children,
+}: {
+  id: string;
+  index: number;
+  disabled: boolean;
+  children: ReactNode;
+}) {
+  const { ref, handleRef } = useSortableItem(id, index, disabled);
+
+  return (
+    <TableRow ref={ref}>
+      <TableCell className="w-10 px-2 align-top">
+        <Button
+          aria-label={`Reorder size row ${index + 1}`}
+          className="text-muted-foreground"
+          disabled={disabled}
+          ref={handleRef}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <GripVertical aria-hidden="true" />
+        </Button>
+      </TableCell>
+      {children}
+    </TableRow>
+  );
+}
 
 const keys = CatalogMeasurementKeySchema.options;
 const inputClassName =
@@ -90,6 +128,7 @@ export function SizeGuideManager({
     fields: rowFields,
     append: appendRow,
     remove: removeRow,
+    move: moveRow,
   } = useFieldArray({ control, name: "rows" });
   const [selectedKeys, inputUnit] = useWatch({
     control,
@@ -449,9 +488,14 @@ export function SizeGuideManager({
                   className="space-y-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="font-semibold" id="guide-sizes-heading">
-                      Size rows
-                    </h3>
+                    <div>
+                      <h3 className="font-semibold" id="guide-sizes-heading">
+                        Size rows
+                      </h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Drag rows to set the size order shown to shoppers.
+                      </p>
+                    </div>
                     <Button
                       className="h-auto px-3 py-2"
                       type="button"
@@ -476,126 +520,143 @@ export function SizeGuideManager({
                   )}
                   {rowFields.length > 0 && (
                     <div className="rounded-md border">
-                      <Table
-                        className="min-w-max"
-                        scrollRegionLabel="Scrollable size guide measurements"
-                      >
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead scope="col">Size label</TableHead>
-                            {selectedKeys.map((key) => (
-                              <TableHead key={key} scope="col">
-                                {catalogMeasurementLabels[key]} ({inputUnit})
+                      <SortableProvider onMove={moveRow}>
+                        <Table
+                          className="min-w-max"
+                          scrollRegionLabel="Scrollable size guide measurements"
+                        >
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-10 px-2" scope="col">
+                                <span className="sr-only">Reorder</span>
                               </TableHead>
-                            ))}
-                            <TableHead className="text-right" scope="col">
-                              Actions
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {rowFields.map((row, index) => (
-                            <TableRow key={row.id}>
-                              <TableCell className="min-w-40 align-top">
-                                <label
-                                  className="sr-only"
-                                  htmlFor={`size-label-${index}`}
-                                >
-                                  Size label, row {index + 1}
-                                </label>
-                                <Input
-                                  aria-describedby={
-                                    errors.rows?.[index]?.sizeLabel
-                                      ? `size-label-${index}-error`
-                                      : undefined
-                                  }
-                                  aria-invalid={Boolean(
-                                    errors.rows?.[index]?.sizeLabel,
-                                  )}
-                                  id={`size-label-${index}`}
-                                  maxLength={40}
-                                  placeholder="e.g. M"
-                                  required
-                                  {...register(
-                                    `rows.${index}.sizeLabel` as const,
-                                  )}
-                                />
-                                {errors.rows?.[index]?.sizeLabel && (
-                                  <FieldError id={`size-label-${index}-error`}>
-                                    {errors.rows[index].sizeLabel.message}
-                                  </FieldError>
-                                )}
-                              </TableCell>
-                              {selectedKeys.map((key) => {
-                                const fieldName =
-                                  `rows.${index}.values.${key}` as const;
-                                const fieldRegistration = register(fieldName);
-                                const fieldId = `size-${index}-${key}`;
-                                const fieldError =
-                                  errors.rows?.[index]?.values?.[key];
-
-                                return (
-                                  <TableCell
-                                    className="min-w-40 align-top"
-                                    key={key}
-                                  >
-                                    <label
-                                      className="sr-only"
-                                      htmlFor={fieldId}
-                                    >
-                                      {`${catalogMeasurementLabels[key]} (${inputUnit}), size row ${index + 1}`}
-                                    </label>
-                                    <Input
-                                      aria-describedby={
-                                        fieldError
-                                          ? `${fieldId}-error`
-                                          : undefined
-                                      }
-                                      aria-invalid={Boolean(fieldError)}
-                                      id={fieldId}
-                                      inputMode="decimal"
-                                      max="9999.999"
-                                      min="0.001"
-                                      required
-                                      step="0.001"
-                                      type="number"
-                                      {...fieldRegistration}
-                                      onBlur={(event) => {
-                                        const value = event.currentTarget.value;
-                                        void fieldRegistration.onBlur(event);
-                                        const formattedValue =
-                                          formatMeasurementInput(value);
-                                        if (formattedValue !== value) {
-                                          setValue(fieldName, formattedValue, {
-                                            shouldDirty: true,
-                                            shouldValidate: true,
-                                          });
-                                        }
-                                      }}
-                                    />
-                                    {fieldError && (
-                                      <FieldError id={`${fieldId}-error`}>
-                                        {fieldError.message}
-                                      </FieldError>
-                                    )}
-                                  </TableCell>
-                                );
-                              })}
-                              <TableCell className="align-top text-right">
-                                <Button
-                                  aria-label={`Remove size row ${index + 1}`}
-                                  className="text-destructive"
-                                  type="button"
-                                  variant="ghost"
-                                  onClick={() => removeRow(index)}
-                                >
-                                  Remove
-                                </Button>
-                              </TableCell>
+                              <TableHead scope="col">Size label</TableHead>
+                              {selectedKeys.map((key) => (
+                                <TableHead key={key} scope="col">
+                                  {catalogMeasurementLabels[key]} ({inputUnit})
+                                </TableHead>
+                              ))}
+                              <TableHead className="text-right" scope="col">
+                                Actions
+                              </TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {rowFields.map((row, index) => (
+                              <SortableSizeGuideRow
+                                disabled={isSubmitting}
+                                id={row.id}
+                                index={index}
+                                key={row.id}
+                              >
+                                <TableCell className="min-w-40 align-top">
+                                  <label
+                                    className="sr-only"
+                                    htmlFor={`size-label-${index}`}
+                                  >
+                                    Size label, row {index + 1}
+                                  </label>
+                                  <Input
+                                    aria-describedby={
+                                      errors.rows?.[index]?.sizeLabel
+                                        ? `size-label-${index}-error`
+                                        : undefined
+                                    }
+                                    aria-invalid={Boolean(
+                                      errors.rows?.[index]?.sizeLabel,
+                                    )}
+                                    id={`size-label-${index}`}
+                                    maxLength={40}
+                                    placeholder="e.g. M"
+                                    required
+                                    {...register(
+                                      `rows.${index}.sizeLabel` as const,
+                                    )}
+                                  />
+                                  {errors.rows?.[index]?.sizeLabel && (
+                                    <FieldError
+                                      id={`size-label-${index}-error`}
+                                    >
+                                      {errors.rows[index].sizeLabel.message}
+                                    </FieldError>
+                                  )}
+                                </TableCell>
+                                {selectedKeys.map((key) => {
+                                  const fieldName =
+                                    `rows.${index}.values.${key}` as const;
+                                  const fieldRegistration = register(fieldName);
+                                  const fieldId = `size-${index}-${key}`;
+                                  const fieldError =
+                                    errors.rows?.[index]?.values?.[key];
+
+                                  return (
+                                    <TableCell
+                                      className="min-w-40 align-top"
+                                      key={key}
+                                    >
+                                      <label
+                                        className="sr-only"
+                                        htmlFor={fieldId}
+                                      >
+                                        {`${catalogMeasurementLabels[key]} (${inputUnit}), size row ${index + 1}`}
+                                      </label>
+                                      <Input
+                                        aria-describedby={
+                                          fieldError
+                                            ? `${fieldId}-error`
+                                            : undefined
+                                        }
+                                        aria-invalid={Boolean(fieldError)}
+                                        id={fieldId}
+                                        inputMode="decimal"
+                                        max="9999.999"
+                                        min="0.001"
+                                        required
+                                        step="0.001"
+                                        type="number"
+                                        {...fieldRegistration}
+                                        onBlur={(event) => {
+                                          const value =
+                                            event.currentTarget.value;
+                                          void fieldRegistration.onBlur(event);
+                                          const formattedValue =
+                                            formatMeasurementInput(value);
+                                          if (formattedValue !== value) {
+                                            setValue(
+                                              fieldName,
+                                              formattedValue,
+                                              {
+                                                shouldDirty: true,
+                                                shouldValidate: true,
+                                              },
+                                            );
+                                          }
+                                        }}
+                                      />
+                                      {fieldError && (
+                                        <FieldError id={`${fieldId}-error`}>
+                                          {fieldError.message}
+                                        </FieldError>
+                                      )}
+                                    </TableCell>
+                                  );
+                                })}
+                                <TableCell className="align-top text-right">
+                                  <Button
+                                    aria-label={`Remove size row ${index + 1}`}
+                                    className="text-destructive"
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => removeRow(index)}
+                                  >
+                                    Remove
+                                  </Button>
+                                </TableCell>
+                              </SortableSizeGuideRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </SortableProvider>
                     </div>
                   )}
                   {errors.rows?.root?.message && (

@@ -2,6 +2,7 @@ import "client-only";
 
 import {
   API_V1_BASE_PATH,
+  type StorefrontBannerOrder,
   type StorefrontBannerUpdate,
   type StorefrontBrandAssetKind,
   type StorefrontSettingsUpdate,
@@ -101,5 +102,17 @@ export function saveStorefrontBanner(
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(bannerId ? values : createValues),
+  });
+}
+
+export function reorderStorefrontBanners(
+  input: StorefrontBannerOrder,
+): Promise<Response> {
+  return fetch(`${API_V1_BASE_PATH}/storefront/manage/banners/order`, {
+    method: "PATCH",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   });
 }

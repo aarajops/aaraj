@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,7 +16,14 @@ import {
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
 import { formatDateTime } from "@/lib/date-time";
+import { toast } from "@/components/ui/toast";
+import {
+  getApiErrorMessage,
+  readApiErrorResponse,
+} from "@/lib/api-error-response";
 import { Images, Plus } from "lucide-react";
+import { reorderStorefrontBanners } from "@/features/storefront/admin/storefront-management-client";
+import { revalidateStorefrontBanners } from "@/features/storefront/admin/storefront-banner-actions";
 
 const columnHelper = createDataTableColumnHelper<StorefrontBanner>();
 
@@ -29,6 +36,59 @@ export function StorefrontBannerTable({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [bannerOrderState, setBannerOrderState] = useState({
+    source: page.banners,
+    banners: page.banners,
+  });
+  const orderedBanners =
+    bannerOrderState.source === page.banners
+      ? bannerOrderState.banners
+      : page.banners;
+  const [isReordering, setIsReordering] = useState(false);
+  const canReorder =
+    page.offset === 0 &&
+    !page.hasMore &&
+    !query.search &&
+    !query.status &&
+    new Set(page.banners.map(({ placement }) => placement)).size === 1 &&
+    page.banners.length > 1;
+
+  async function moveBanner(fromIndex: number, toIndex: number) {
+    const next = [...orderedBanners];
+    const [moved] = next.splice(fromIndex, 1);
+    if (!moved) return;
+    next.splice(toIndex, 0, moved);
+    setBannerOrderState({ source: page.banners, banners: next });
+    setIsReordering(true);
+
+    try {
+      const response = await reorderStorefrontBanners({
+        placement: next[0]!.placement,
+        bannerIds: next.map(({ id }) => id),
+      });
+      if (!response.ok) {
+        const error = await readApiErrorResponse(response);
+        throw new Error(
+          getApiErrorMessage(error) ?? "Could not save the banner order.",
+        );
+      }
+      await revalidateStorefrontBanners();
+      toast.add({ title: "Banner order saved", type: "success" });
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setBannerOrderState({ source: page.banners, banners: page.banners });
+      toast.add({
+        title: "Could not save banner order",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+        type: "error",
+      });
+      startTransition(() => router.refresh());
+    } finally {
+      setIsReordering(false);
+    }
+  }
+
   const columns = useMemo(
     () =>
       columnHelper.columns([
@@ -113,6 +173,11 @@ export function StorefrontBannerTable({
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               Storefront banners
             </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {canReorder
+                ? "Drag rows to set the homepage carousel order."
+                : "Reordering is available when the complete, unfiltered banner list is visible."}
+            </p>
           </div>
           <Link
             className={buttonVariants({ size: "lg" })}
@@ -128,7 +193,7 @@ export function StorefrontBannerTable({
           <AdminDataTable
             ariaLabel="Storefront banners"
             columns={columns}
-            data={page.banners}
+            data={orderedBanners}
             pathname="/admin/storefront/banners"
             query={query}
             itemName="banners"
@@ -146,8 +211,18 @@ export function StorefrontBannerTable({
               },
             ]}
             onRefresh={() => startTransition(() => router.refresh())}
-            isRefreshing={isPending}
+            isRefreshing={isPending || isReordering}
             page={page}
+            sortableRows={
+              canReorder
+                ? {
+                    disabled: isReordering,
+                    getLabel: (banner) => banner.name,
+                    onMove: (fromIndex, toIndex) =>
+                      void moveBanner(fromIndex, toIndex),
+                  }
+                : undefined
+            }
           />
         </section>
       </div>

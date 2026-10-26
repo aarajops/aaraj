@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SortableList } from "@/components/dnd/sortable-list";
 import { toast } from "@/components/ui/toast";
 import {
   Select,
@@ -32,6 +33,7 @@ import {
 import {
   deleteCatalogProductMedia,
   fetchManagedProductMedia,
+  reorderCatalogProductMedia,
   uploadCatalogProductMedia,
 } from "@/features/catalog/catalog-client";
 import {
@@ -61,7 +63,8 @@ interface SelectedUpload {
   retryable?: boolean;
 }
 
-type Operation = `upload:${string}` | `delete:${string}` | "refresh" | null;
+type Operation =
+  `upload:${string}` | `delete:${string}` | "reorder" | "refresh" | null;
 
 const fileFieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium";
@@ -147,6 +150,50 @@ export function CatalogMediaManager({
     setMedia(result.media);
     setProblem(null);
   }, [productId]);
+
+  async function reorderMedia(fromIndex: number, toIndex: number) {
+    const reorderedMedia = [...media];
+    const [movedMedia] = reorderedMedia.splice(fromIndex, 1);
+    if (!movedMedia || fromIndex === toIndex) return;
+    reorderedMedia.splice(toIndex, 0, movedMedia);
+
+    setMedia(reorderedMedia);
+    setOperation("reorder");
+    setProblem(null);
+    try {
+      const response = await reorderCatalogProductMedia(productId, {
+        mediaIds: reorderedMedia.map(({ id }) => id),
+      });
+      if (!response.ok) {
+        const apiError = await readApiErrorResponse(response);
+        await loadMedia();
+        setProblem(
+          getApiErrorMessage(apiError) ??
+            "The API could not save the image order.",
+        );
+        return;
+      }
+
+      const parsed = CatalogProductMediaListSchema.safeParse(
+        await response.json(),
+      );
+      if (!parsed.success) {
+        await loadMedia();
+        setProblem("The API returned an invalid media order response.");
+        return;
+      }
+
+      setMedia(parsed.data.media);
+      toast.add({ title: "Image order saved", type: "success" });
+    } catch {
+      await loadMedia();
+      setProblem(
+        "Could not reach the catalog API. Refresh the image list and try again.",
+      );
+    } finally {
+      setOperation(null);
+    }
+  }
 
   useEffect(() => {
     let isCurrent = true;
@@ -370,7 +417,7 @@ export function CatalogMediaManager({
         </CardTitle>
         <CardDescription>
           Original files stay private. Storefront images appear after
-          publishing.
+          publishing. Drag images to set their gallery order.
         </CardDescription>
         <CardAction className="flex flex-wrap items-center gap-2">
           <Badge
@@ -596,17 +643,23 @@ export function CatalogMediaManager({
               No media has been uploaded for this product.
             </p>
           ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {media.map((item) => (
-                <li
-                  className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4"
-                  key={item.id}
-                >
+            <SortableList
+              ariaLabel="Uploaded product media"
+              className="divide-y divide-border rounded-lg border border-border"
+              disabled={operation !== null || mediaIsLoading}
+              getItemId={({ id }) => id}
+              getItemLabel={(_, index) => `image ${index + 1}`}
+              itemClassName="grid gap-3 p-3 sm:grid-cols-2 sm:p-4"
+              items={media}
+              onMove={(fromIndex, toIndex) =>
+                void reorderMedia(fromIndex, toIndex)
+              }
+              renderItem={(item, index, handle) => (
+                <>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="font-medium">
-                        Image {item.sortOrder + 1}
-                      </h4>
+                      {handle}
+                      <h4 className="font-medium">Image {index + 1}</h4>
                       <Badge
                         className={mediaStatusClassName(item.status)}
                         variant="outline"
@@ -684,9 +737,9 @@ export function CatalogMediaManager({
                       </p>
                     )}
                   </div>
-                </li>
-              ))}
-            </ul>
+                </>
+              )}
+            />
           )}
         </section>
       </CardContent>

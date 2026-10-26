@@ -417,6 +417,22 @@ export const StorefrontBannerPageSchema = z.strictObject({
 });
 export type StorefrontBannerPage = z.infer<typeof StorefrontBannerPageSchema>;
 
+export const StorefrontBannerOrderSchema = z
+  .strictObject({
+    placement: StorefrontBannerPlacementSchema,
+    bannerIds: z.array(z.uuid()).min(1),
+  })
+  .superRefine(({ bannerIds }, context) => {
+    if (new Set(bannerIds).size !== bannerIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["bannerIds"],
+        message: "Each banner can appear only once.",
+      });
+    }
+  });
+export type StorefrontBannerOrder = z.infer<typeof StorefrontBannerOrderSchema>;
+
 const StorefrontBannerInputFields = z.strictObject({
   name: z.string().trim().min(1).max(MAX_STOREFRONT_BANNER_NAME_LENGTH),
   placement: StorefrontBannerPlacementSchema,
