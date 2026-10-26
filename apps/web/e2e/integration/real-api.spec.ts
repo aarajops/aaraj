@@ -5,7 +5,7 @@ import { chooseSelectOption } from "../select";
 
 function variantField(page: Page, index: number, label: string) {
   return page
-    .getByRole("group", { name: `Variant ${index}` })
+    .getByRole("row", { name: `Variant ${index}` })
     .getByLabel(label, { exact: true });
 }
 
@@ -972,7 +972,7 @@ test("catalog operator configures a product through to storefront visibility", a
   const saveProduct = page.getByRole("button", { name: "Save changes" });
   await expect(saveProduct).toBeDisabled();
   const managedSkuFields = page
-    .getByRole("group", { name: /^Variant \d+$/ })
+    .getByRole("row", { name: /^Variant \d+$/ })
     .getByLabel("SKU", { exact: true });
   await expect(managedSkuFields).toHaveCount(2);
   const managedSkus = await managedSkuFields.evaluateAll((inputs) =>
@@ -987,6 +987,9 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   await page.goto("/shop");
+  await expect(
+    page.getByRole("button", { name: "Show up to 3 columns" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   const productFilters = page.locator('aside[aria-label="Product filters"]');
   await page
