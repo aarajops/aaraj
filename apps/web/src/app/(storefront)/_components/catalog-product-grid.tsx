@@ -25,7 +25,7 @@ export function CatalogProductGrid({
   toolbar: ReactNode;
   children: ReactNode;
 }) {
-  const [columns, setColumns] = useState<ColumnCount>(3);
+  const [columns, setColumns] = useState<ColumnCount>(4);
 
   return (
     <>
