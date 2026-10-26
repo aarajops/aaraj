@@ -23,12 +23,17 @@ export function ProductCardSkeleton() {
 
 export function ProductCard({
   product,
+  imageRatio = 1,
+  headingLevel = "h2",
 }: {
   product: CatalogPublishedProductListItem;
+  imageRatio?: number;
+  headingLevel?: "h2" | "h3";
 }) {
   const href = `/shop/products/${product.slug}`;
   const primaryImage = product.images[0];
   const hoverImage = product.images[1];
+  const Heading = headingLevel;
 
   return (
     <article className="flex h-full flex-col">
@@ -38,7 +43,10 @@ export function ProductCard({
           className="group/image block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           href={href}
         >
-          <AspectRatio className="overflow-hidden bg-muted/30" ratio={1}>
+          <AspectRatio
+            className="overflow-hidden bg-muted/30"
+            ratio={imageRatio}
+          >
             <Image
               alt={primaryImage.altText}
               className={`h-full w-full object-cover ${hoverImage ? "transition-opacity duration-300 motion-reduce:transition-none group-hover/image:opacity-0 group-focus-visible/image:opacity-0" : ""}`}
@@ -64,7 +72,7 @@ export function ProductCard({
         <AspectRatio
           aria-label={`${product.name}: image unavailable`}
           className="grid place-items-center bg-muted/30 text-muted-foreground"
-          ratio={1}
+          ratio={imageRatio}
           role="img"
         >
           <ImageOff aria-hidden="true" className="size-8" />
@@ -75,9 +83,9 @@ export function ProductCard({
           className="group/link rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           href={href}
         >
-          <h2 className="line-clamp-2 text-xs font-medium uppercase leading-5 tracking-wide text-foreground group-hover/link:text-primary">
+          <Heading className="line-clamp-2 text-xs font-medium uppercase leading-5 tracking-wide text-foreground group-hover/link:text-primary">
             {product.name}
-          </h2>
+          </Heading>
           {product.price && (
             <p className="mt-1 text-xs text-primary">
               {product.priceVaries && "From "}

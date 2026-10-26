@@ -4,7 +4,7 @@ import {
   DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
 } from "@aaraj/contracts";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ProductCardSkeleton } from "./product-card";
+import { ProductCardSkeleton } from "@/features/catalog/product-card";
 
 const audienceOptions = ["All audiences", ...CatalogAudienceSchema.options];
 

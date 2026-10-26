@@ -7,8 +7,8 @@ import {
   CatalogResultsToolbar,
 } from "@/features/catalog/catalog-filters";
 import { CollectionPagination } from "@/components/collection-pagination";
-import { ProductCard } from "./product-card";
 import { CatalogProductGrid } from "./catalog-product-grid";
+import { ProductCard } from "@/features/catalog/product-card";
 import {
   getPublishedProducts,
   getStorefrontCategoryBySlug,

@@ -1,16 +1,18 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { permanentRedirect } from "next/navigation";
 import {
+  CatalogAudienceSchema,
   CatalogCategorySlugSchema,
+  CatalogPublishedProductListQuerySchema,
   STOREFRONT_BANNER_PLACEMENT_HOME_HERO,
 } from "@aaraj/contracts";
 import {
-  getPublishedProductFilterOptions,
+  getPublishedProducts,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
 import { HomepageCategorySection } from "@/features/storefront/homepage-category-section";
+import { NewArrivalsSection } from "@/features/storefront/new-arrivals-section";
 import { getPublicStorefrontBanners } from "@/features/storefront/storefront-banners";
 import { StorefrontBanner } from "@/features/storefront/storefront-banner";
 import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
@@ -60,12 +62,24 @@ export default async function Home({
     permanentRedirect(search ? `${href}?${search}` : href);
   }
 
-  const [settings, productFilters] = await Promise.all([
+  const audienceResult =
+    typeof query.audience === "string"
+      ? CatalogAudienceSchema.safeParse(query.audience)
+      : null;
+  const audience = audienceResult?.success ? audienceResult.data : "men";
+  const [settings, newArrivals] = await Promise.all([
     getPublicStorefrontSettings(),
-    getPublishedProductFilterOptions(),
+    getPublishedProducts(
+      CatalogPublishedProductListQuerySchema.parse({
+        limit: 10,
+        offset: 0,
+        sort: "newest",
+        audience,
+      }),
+    ),
   ]);
   const categoriesById = new Map(
-    (productFilters?.categories ?? []).map((category) => [
+    (newArrivals?.filters.categories ?? []).map((category) => [
       category.id,
       category,
     ]),
@@ -85,14 +99,11 @@ export default async function Home({
       <main className="bg-background px-5 py-14 text-foreground sm:py-20">
         <div className="container mx-auto">
           <HomepageCategorySection categories={homepageCategories} />
-          <div className="flex justify-center">
-            <Link
-              className="rounded-lg border border-input px-4 py-2.5 text-sm font-medium text-foreground hover:border-ring"
-              href="/shop"
-            >
-              View all products
-            </Link>
-          </div>
+          <NewArrivalsSection
+            audience={audience}
+            products={newArrivals?.products ?? []}
+            unavailable={newArrivals === null}
+          />
         </div>
       </main>
     </>
