@@ -55,13 +55,20 @@ export function HomepageCategoryCarousel({
 }: {
   categories: CatalogPublishedCategoryOption[];
 }) {
+  const mobileItemBasis =
+    categories.length > 2
+      ? "basis-1/3"
+      : categories.length === 2
+        ? "basis-1/2"
+        : "basis-full";
+
   return (
     <Carousel aria-label="Shop by category" opts={{ align: "start" }}>
       <CarouselContent>
         {categories.map((category) => {
           return (
             <CarouselItem
-              className="basis-4/5 sm:basis-1/2 lg:basis-1/3 xl:basis-1/5 2xl:basis-1/6"
+              className={`${mobileItemBasis} sm:basis-1/2 lg:basis-1/3 xl:basis-1/5 2xl:basis-1/6`}
               key={category.id}
             >
               <Link
@@ -79,11 +86,11 @@ export function HomepageCategoryCarousel({
       </CarouselContent>
       <CarouselPrevious
         aria-label="Previous categories"
-        className="left-2 border-0 bg-background/90 text-foreground shadow hover:bg-background disabled:hidden"
+        className="left-2 hidden border-0 bg-background/90 text-foreground shadow hover:bg-background disabled:hidden sm:inline-flex"
       />
       <CarouselNext
         aria-label="Next categories"
-        className="right-2 border-0 bg-background/90 text-foreground shadow hover:bg-background disabled:hidden"
+        className="right-2 hidden border-0 bg-background/90 text-foreground shadow hover:bg-background disabled:hidden sm:inline-flex"
       />
     </Carousel>
   );
