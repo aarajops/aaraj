@@ -47,13 +47,13 @@ test("Orders uses shared pagination with stable URL history and order links", as
   );
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(
-    table.getByText("AA-000000000033", { exact: true }),
+    table.getByText("AA-000000000015", { exact: true }),
   ).toBeVisible();
   await expect(
-    table.getByRole("link", { name: "AA-000000000033" }),
+    table.getByRole("link", { name: "AA-000000000015" }),
   ).toHaveAttribute(
     "href",
-    "/admin/orders/00000000-0000-4000-8000-000000000033",
+    "/admin/orders/00000000-0000-4000-8000-000000000015",
   );
 
   await page.getByRole("link", { name: "Go to previous page" }).click();
