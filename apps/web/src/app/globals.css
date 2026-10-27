@@ -141,3 +141,10 @@
     @apply font-sans;
   }
 }
+
+@layer components {
+  /* Keep Base UI's sibling input hidden when strict CSP blocks its inline style. */
+  [data-slot="checkbox"] + input[aria-hidden="true"][type="checkbox"] {
+    @apply sr-only;
+  }
+}

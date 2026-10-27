@@ -314,6 +314,24 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
 
       const table = page.getByRole("table", { name: route.label });
       await expect(table).toBeVisible();
+      if (route.label === "Orders" && width === viewportWidths[0]) {
+        const checkboxInputs = table.locator(
+          '[data-slot="checkbox"] + input[aria-hidden="true"][type="checkbox"]',
+        );
+        expect(await checkboxInputs.count()).toBeGreaterThan(0);
+        const inputSizes = await checkboxInputs.evaluateAll((inputs) =>
+          inputs.map((input) => {
+            input.removeAttribute("style");
+            const bounds = input.getBoundingClientRect();
+            return { width: bounds.width, height: bounds.height };
+          }),
+        );
+        expect(
+          inputSizes.every(
+            ({ width: inputWidth, height }) => inputWidth <= 1 && height <= 1,
+          ),
+        ).toBe(true);
+      }
       if (route.label === "Products") {
         await page.getByRole("button", { name: "Refresh products" }).click();
         await expect(
