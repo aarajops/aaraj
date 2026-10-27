@@ -124,6 +124,7 @@ export function CatalogManager({
       : blankProductForm,
   });
   const productNameField = register("name");
+  const productSlugField = register("slug");
   const {
     fields: variantFields,
     append: appendVariant,
@@ -162,8 +163,7 @@ export function CatalogManager({
       if (
         !result.success ||
         requestId !== slugSuggestionRequestId.current ||
-        getValues("name").trim() !== normalizedName ||
-        getFieldState("slug").isDirty
+        getValues("name").trim() !== normalizedName
       ) {
         return;
       }
@@ -488,11 +488,11 @@ export function CatalogManager({
                         : "product-slug-description"
                     }
                     maxLength={CATALOG_PRODUCT_SLUG_MAX_LENGTH}
-                    {...register("slug", {
-                      onChange: () => {
-                        slugSuggestionRequestId.current += 1;
-                      },
-                    })}
+                    {...productSlugField}
+                    onChange={(event) => {
+                      slugSuggestionRequestId.current += 1;
+                      void productSlugField.onChange(event);
+                    }}
                   />
                   {slugError && (
                     <FieldError id="slug-error">{slugError}</FieldError>
