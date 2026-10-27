@@ -407,9 +407,14 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
         dimensions.regionClientWidth - 1,
       );
       expect(dimensions.tableLayout).toBe("auto");
-      if (width === 1440) {
+      if (width === 1440 && route.label !== "Orders") {
         expect(dimensions.tableWidth).toBeLessThanOrEqual(
           dimensions.regionClientWidth + 1,
+        );
+      }
+      if (width === 1440 && route.label === "Orders") {
+        expect(dimensions.regionScrollWidth).toBeGreaterThan(
+          dimensions.regionClientWidth,
         );
       }
       if (width <= 768 && route.label !== "Product categories") {
@@ -482,6 +487,7 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
 
   const orderPreviewButton = page.getByRole("button", {
     name: "ORD-026-00001",
+    exact: true,
   });
   await page.keyboard.press("Tab");
   await expect(
@@ -543,8 +549,13 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
     page.getByRole("menuitem", { name: "View order" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("menuitem", { name: "Copy order number" }),
+    page.getByRole("button", {
+      name: "Copy order ID ORD-026-00001",
+    }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy order number" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("menuitem", { name: "Print invoice" }),
   ).toBeVisible();
@@ -610,7 +621,7 @@ test("admin table controls retain visible keyboard focus in light and dark theme
     ["pagination link", page.getByRole("link", { name: "Go to next page" })],
     [
       "order preview button",
-      page.getByRole("button", { name: "ORD-026-00001" }),
+      page.getByRole("button", { name: "ORD-026-00001", exact: true }),
     ],
     [
       "table scroll region",

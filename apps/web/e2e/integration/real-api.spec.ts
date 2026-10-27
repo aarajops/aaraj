@@ -1556,7 +1556,7 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("heading", { name: "Orders", level: 1 }),
   ).toBeVisible();
   const customerOrderRow = page.getByRole("row").filter({
-    has: page.getByRole("button", { name: orderReference }),
+    has: page.getByRole("button", { name: orderReference, exact: true }),
   });
   await expect(customerOrderRow).toContainText("Pending");
   const managedOrderResponse = await page.request.get(

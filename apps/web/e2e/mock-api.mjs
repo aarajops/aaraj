@@ -91,6 +91,15 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
     reference: `ORD-026-${String(sequence).padStart(5, "0")}`,
     customerName: "E2E Order Customer",
     customerPhone: "+8801712345678",
+    deliveryZone: ["inside_dhaka", "suburban", "outside_dhaka"][index % 3],
+    items: [
+      {
+        productName: "E2E Order Item",
+        color: "Black",
+        sizeLabel: "M",
+        quantity: (index % 3) + 1,
+      },
+    ],
     status,
     fulfillmentStatus:
       status === "confirmed"
@@ -99,13 +108,6 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
           ? "cancelled"
           : "not_started",
     collectionStatus: "uncollected",
-    serviceability:
-      status === "confirmed"
-        ? "serviceable"
-        : status === "rejected"
-          ? "unserviceable"
-          : "pending_manual_review",
-    totalBdt: 1000 + sequence,
     codAmountDueBdt: 1000 + sequence,
     deliveryProvider: null,
     createdAt: new Date(

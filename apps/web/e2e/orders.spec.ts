@@ -32,7 +32,7 @@ test("Orders uses shared pagination, order previews, and stable URL history", as
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(table.getByText("ORD-026-00001", { exact: true })).toBeVisible();
   await expect(
-    table.getByRole("button", { name: "ORD-026-00001" }),
+    table.getByRole("button", { name: "ORD-026-00001", exact: true }),
   ).toHaveAttribute("aria-haspopup", "dialog");
   await page.getByRole("link", { name: "Go to next page" }).click();
   await expect(page).toHaveURL(
@@ -43,7 +43,7 @@ test("Orders uses shared pagination, order previews, and stable URL history", as
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(table.getByText("ORD-026-00021", { exact: true })).toBeVisible();
   await expect(
-    table.getByRole("button", { name: "ORD-026-00021" }),
+    table.getByRole("button", { name: "ORD-026-00021", exact: true }),
   ).toHaveAttribute("aria-haspopup", "dialog");
 
   await page.getByRole("link", { name: "Go to previous page" }).click();
