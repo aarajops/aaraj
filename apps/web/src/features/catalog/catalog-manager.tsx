@@ -488,7 +488,11 @@ export function CatalogManager({
                         : "product-slug-description"
                     }
                     maxLength={CATALOG_PRODUCT_SLUG_MAX_LENGTH}
-                    {...register("slug")}
+                    {...register("slug", {
+                      onChange: () => {
+                        slugSuggestionRequestId.current += 1;
+                      },
+                    })}
                   />
                   {slugError && (
                     <FieldError id="slug-error">{slugError}</FieldError>

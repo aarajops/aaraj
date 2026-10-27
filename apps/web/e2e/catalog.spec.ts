@@ -396,8 +396,30 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/admin/catalog/create");
 
+  let releaseSlugSuggestion!: () => void;
+  let notifySlugSuggestionRequest!: () => void;
+  const slugSuggestionRequest = new Promise<void>((resolve) => {
+    notifySlugSuggestionRequest = resolve;
+  });
+  const slugSuggestionResponseGate = new Promise<void>((resolve) => {
+    releaseSlugSuggestion = resolve;
+  });
+  const slugSuggestionPattern = "**/api/v1/catalog/products/slug-suggestion?*";
+  await page.route(slugSuggestionPattern, async (route) => {
+    notifySlugSuggestionRequest();
+    await slugSuggestionResponseGate;
+    await route.continue();
+  });
   await page.getByLabel("Name", { exact: true }).fill("Duplicate slug item");
   await page.locator("#product-slug").fill("aaraj-e2e-tee");
+  await slugSuggestionRequest;
+  const slugSuggestionResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/catalog/products/slug-suggestion?"),
+  );
+  releaseSlugSuggestion();
+  await slugSuggestionResponse;
+  await page.unroute(slugSuggestionPattern);
+  await expect(page.locator("#product-slug")).toHaveValue("aaraj-e2e-tee");
   await chooseSelectOption(page, "Audience", "Unisex");
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByRole("button", { name: "Create draft" }).click();
