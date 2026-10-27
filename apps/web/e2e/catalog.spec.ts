@@ -3,6 +3,14 @@ import type { Page } from "@playwright/test";
 import { DEFAULT_LIST_PAGE_SIZE, type CatalogMedia } from "@aaraj/contracts";
 import { chooseSelectOption } from "./select";
 
+async function openProductEdit(page: Page, productName: string) {
+  const productRow = page.getByRole("row").filter({ hasText: productName });
+  await productRow
+    .getByRole("button", { name: /^Actions for products row \d+$/ })
+    .click();
+  await page.getByRole("menuitem", { name: "Edit product" }).click();
+}
+
 test("admin sidebar follows permissions and closes after mobile navigation", async ({
   page,
   context,
@@ -155,7 +163,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByLabel("Size label, row 2")).toHaveValue("S");
   await page.getByRole("button", { name: "Create guide" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/size-guides$/);
-  await page.getByRole("link", { name: "Edit Aaraj Classic Tee" }).click();
+  const sizeGuideRow = page
+    .getByRole("row")
+    .filter({ hasText: "Aaraj Classic Tee" });
+  await sizeGuideRow
+    .getByRole("button", { name: /^Actions for size guides row \d+$/ })
+    .click();
+  await page.getByRole("menuitem", { name: "Edit size guide" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/size-guides\/.+\/edit$/);
   await expect(page.getByLabel("Size label, row 1")).toHaveValue("M");
   await expect(page.getByLabel("Size label, row 2")).toHaveValue("S");
@@ -468,14 +482,21 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page).toHaveURL(/\/shop\/categories\/t-shirts\?limit=1$/);
 
   await page.goto("/admin/catalog");
-  await page.getByRole("link", { name: "Edit Aaraj E2E T-shirt" }).click();
+  await openProductEdit(page, "Aaraj E2E T-shirt");
   await page.getByLabel("Published on the storefront").uncheck();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
+  const mediaProductRow = page
+    .getByRole("row")
+    .filter({ hasText: "Aaraj E2E Tee" });
+  await mediaProductRow
+    .getByRole("button", { name: /^Actions for products row \d+$/ })
+    .click();
   const mediaEditHref = await page
-    .getByRole("link", { name: "Edit Aaraj E2E Tee" })
+    .getByRole("menuitem", { name: "Edit product" })
     .getAttribute("href");
+  await page.keyboard.press("Escape");
   if (!mediaEditHref) throw new Error("Product edit link has no href.");
   const mediaProductId = mediaEditHref.split("/").at(-2);
   if (!mediaProductId) throw new Error("Product edit link has no product ID.");
@@ -552,7 +573,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   );
 
   await page.goto("/admin/catalog");
-  await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
+  await openProductEdit(page, "Aaraj E2E Tee");
   await expect(
     page.getByRole("heading", { name: "Product media" }),
   ).toBeVisible();
@@ -590,7 +611,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
 
   await page.goto("/admin/catalog");
-  await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
+  await openProductEdit(page, "Aaraj E2E Tee");
   await page.getByLabel("Published on the storefront").uncheck();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
@@ -665,7 +686,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
     },
   ]);
   await page.goto("/admin/catalog");
-  await page.getByRole("link", { name: "Edit Aaraj E2E Tee" }).click();
+  await openProductEdit(page, "Aaraj E2E Tee");
   await page
     .getByRole("region", { name: "Edit product" })
     .getByLabel("Name", { exact: true })
