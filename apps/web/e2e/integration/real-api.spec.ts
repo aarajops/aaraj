@@ -1168,21 +1168,16 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("heading", { name: "Inventory", level: 1 }),
   ).toBeVisible();
-  await page
-    .getByRole("link", {
-      name: `Adjust stock for ${productName}, Black, S`,
-    })
-    .click();
+  const smallVariantRow = page.getByRole("row").filter({
+    hasText: new RegExp(`${productName}.*Black\\s*·\\s*S`),
+  });
+  await openRowActions(page, smallVariantRow);
+  await page.getByRole("menuitem", { name: "Adjust stock" }).click();
   await page.getByLabel("Units").fill("12");
   await page.getByLabel("Reason").fill("Receive integration test stock");
   await page.getByRole("button", { name: "Receive stock" }).click();
   await expect(page).toHaveURL(/\/admin\/inventory$/);
-  const smallVariantAdjustmentLink = page.getByRole("link", {
-    name: `Adjust stock for ${productName}, Black, S`,
-  });
-  await expect(
-    page.getByRole("row").filter({ has: smallVariantAdjustmentLink }),
-  ).toContainText("12");
+  await expect(smallVariantRow).toContainText("12");
   await page.goto(`/shop/products/${slug}`);
   await expect(page.getByText("৳2,450–৳2,490", { exact: true })).toBeVisible();
   await expect(
