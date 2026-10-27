@@ -3,11 +3,21 @@ import type { Page } from "@playwright/test";
 import { DEFAULT_LIST_PAGE_SIZE, type CatalogMedia } from "@aaraj/contracts";
 import { chooseSelectOption } from "./select";
 
-async function openProductEdit(page: Page, productName: string) {
+async function openProductActions(page: Page, productName: string) {
   const productRow = page.getByRole("row").filter({ hasText: productName });
-  await productRow
-    .getByRole("button", { name: /^Actions for products row \d+$/ })
-    .click();
+  const actionsButton = productRow.getByRole("button", {
+    name: /^Actions for products row \d+$/,
+  });
+  await expect(async () => {
+    await actionsButton.click();
+    await expect(actionsButton).toHaveAttribute("aria-expanded", "true", {
+      timeout: 500,
+    });
+  }).toPass({ timeout: 10_000 });
+}
+
+async function openProductEdit(page: Page, productName: string) {
+  await openProductActions(page, productName);
   await page.getByRole("menuitem", { name: "Edit product" }).click();
 }
 
@@ -487,12 +497,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
-  const mediaProductRow = page
-    .getByRole("row")
-    .filter({ hasText: "Aaraj E2E Tee" });
-  await mediaProductRow
-    .getByRole("button", { name: /^Actions for products row \d+$/ })
-    .click();
+  await openProductActions(page, "Aaraj E2E Tee");
   const mediaEditHref = await page
     .getByRole("menuitem", { name: "Edit product" })
     .getAttribute("href");
