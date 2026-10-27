@@ -508,6 +508,7 @@ export class OrdersService implements OrdersPathaoPort {
       .select({
         id: customerOrder.id,
         reference: customerOrder.reference,
+        addressCiphertext: customerOrder.addressCiphertext,
         status: customerOrder.status,
         fulfillmentStatus: customerOrder.fulfillmentStatus,
         collectionStatus: customerOrder.collectionStatus,
@@ -534,11 +535,29 @@ export class OrdersService implements OrdersPathaoPort {
     const pageRows = rows.slice(0, query.limit);
     const hasMore = rows.length > query.limit;
     const candidateNextOffset = query.offset + query.limit;
+    const piiKeyring = getOrderPiiKeyring();
     return OrderManagementListSchema.parse({
-      rows: pageRows.map((row) => ({
-        ...row,
-        createdAt: row.createdAt.toISOString(),
-      })),
+      rows: pageRows.map((row) => {
+        const address = decryptAddress(
+          row.addressCiphertext,
+          row.id,
+          piiKeyring,
+        );
+        return {
+          id: row.id,
+          reference: row.reference,
+          customerName: address.recipientName,
+          customerPhone: address.phone,
+          status: row.status,
+          fulfillmentStatus: row.fulfillmentStatus,
+          collectionStatus: row.collectionStatus,
+          serviceability: row.serviceability,
+          deliveryProvider: row.deliveryProvider,
+          totalBdt: row.totalBdt,
+          codAmountDueBdt: row.codAmountDueBdt,
+          createdAt: row.createdAt.toISOString(),
+        };
+      }),
       limit: query.limit,
       offset: query.offset,
       hasMore,

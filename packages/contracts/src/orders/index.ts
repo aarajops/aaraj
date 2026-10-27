@@ -232,6 +232,8 @@ export const OrderManagementListSchema = z.strictObject({
     z.strictObject({
       id: OrderIdSchema,
       reference: OrderReferenceSchema,
+      customerName: z.string().min(2).max(120),
+      customerPhone: z.string().regex(/^\+8801[3-9]\d{8}$/),
       status: z.enum([
         "awaiting_confirmation",
         "confirmed",

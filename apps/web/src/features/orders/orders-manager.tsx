@@ -45,6 +45,22 @@ export function OrdersManager({
         ),
       }),
       columnHelper.display({
+        id: "customer",
+        header: "Customer",
+        cell: ({ row }) => (
+          <div className="grid gap-1">
+            <span className="font-medium">{row.original.customerName}</span>
+            <a
+              className="w-fit rounded-sm text-sm text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
+              href={`tel:${row.original.customerPhone}`}
+              aria-label={`Call ${row.original.customerName} at ${row.original.customerPhone}`}
+            >
+              {row.original.customerPhone}
+            </a>
+          </div>
+        ),
+      }),
+      columnHelper.display({
         id: "status",
         header: "Order status",
         cell: ({ row }) => (
