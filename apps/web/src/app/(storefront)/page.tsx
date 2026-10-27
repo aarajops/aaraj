@@ -66,7 +66,7 @@ export default async function Home({
     typeof query.audience === "string"
       ? CatalogAudienceSchema.safeParse(query.audience)
       : null;
-  const audience = audienceResult?.success ? audienceResult.data : "men";
+  const audience = audienceResult?.success ? audienceResult.data : "unisex";
   const [settings, newArrivals] = await Promise.all([
     getPublicStorefrontSettings(),
     getPublishedProducts(

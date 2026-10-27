@@ -8,9 +8,9 @@ import { CarouselItem } from "@/components/ui/carousel";
 import { NewArrivalsCarousel } from "./new-arrivals-carousel";
 
 const audiences: { value: CatalogAudience; label: string }[] = [
+  { value: "unisex", label: "Unisex" },
   { value: "men", label: "Men" },
   { value: "women", label: "Women" },
-  { value: "unisex", label: "Unisex" },
 ];
 
 export function NewArrivalsSection({
