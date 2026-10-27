@@ -22,5 +22,7 @@
   "0046_yearly_order_references.sql": "compatible",
   "0047_remove_serviceability_review_expiry.sql": "maintenance",
   "0048_size_guide_input_unit.sql": "compatible",
-  "0049_storefront_banner_order.sql": "compatible"
+  "0049_storefront_banner_order.sql": "compatible",
+  "0050_size_guide_inches_only.sql": "maintenance",
+  "0051_size_guide_one_decimal.sql": "maintenance"
 }

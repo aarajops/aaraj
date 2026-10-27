@@ -367,26 +367,37 @@ describe("Contracts Schema Validation", () => {
       categoryId: "0cc175b9-c0f1-36a8-b1c3-99e269772661",
       fit: "Regular",
       measurementBasis: "garment",
-      inputUnit: "in",
       reason: "Create reusable guide",
       rows: [
         {
           sizeLabel: "M",
           measurements: [
-            { key: "chest_width", value: "20.00" },
-            { key: "body_length", value: "28.00" },
+            { key: "chest_width", value: "20.0" },
+            { key: "body_length", value: "28.0" },
           ],
         },
         {
           sizeLabel: "L",
           measurements: [
-            { key: "chest_width", value: "21.00" },
-            { key: "body_length", value: "29.00" },
+            { key: "chest_width", value: "21.0" },
+            { key: "body_length", value: "29.0" },
           ],
         },
       ],
     };
     expect(CatalogSizeGuideCreateSchema.safeParse(guide).success).toBe(true);
+    expect(
+      CatalogSizeGuideCreateSchema.safeParse({
+        ...guide,
+        rows: guide.rows.map((row) => ({
+          ...row,
+          measurements: row.measurements.map((measurement) => ({
+            ...measurement,
+            value: `${measurement.value}0`,
+          })),
+        })),
+      }).success,
+    ).toBe(false);
     expect(
       CatalogSizeGuideCreateSchema.safeParse({
         ...guide,

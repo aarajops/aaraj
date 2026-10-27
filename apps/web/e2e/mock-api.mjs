@@ -1,7 +1,6 @@
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  convertCatalogMeasurementValue,
   CatalogProductCreateSchema,
   CatalogProductSlugSuggestionQuerySchema,
   CatalogPublishedProductListQuerySchema,
@@ -74,11 +73,10 @@ const sizeGuides = Array.from({ length: 100 }, (_, index) =>
       category: tshirtCategory,
       fit: index === 0 ? "Regular" : null,
       measurementBasis: "garment",
-      inputUnit: "cm",
       rows: [
         {
           sizeLabel: index === 0 ? "S" : "M",
-          measurements: [{ key: "chest_width", value: "50" }],
+          measurements: [{ key: "chest_width", value: "19.7" }],
         },
       ],
     },
@@ -1113,18 +1111,13 @@ function makeGuide(input, createdAt) {
     ),
     fit: input.fit ?? null,
     measurementBasis: input.measurementBasis,
-    inputUnit: input.inputUnit,
     rows: input.rows.map((row, sortOrder) => ({
       id: randomUUID(),
       sizeLabel: row.sizeLabel,
       sortOrder,
       measurements: row.measurements.map((measurement) => ({
         key: measurement.key,
-        valueCm: convertCatalogMeasurementValue(
-          measurement.value,
-          input.inputUnit,
-          "cm",
-        ),
+        valueIn: Number(measurement.value).toFixed(1),
       })),
     })),
     createdAt: createdAt ?? now,
@@ -1280,14 +1273,8 @@ function productDetail(product, management = false) {
               price: variant.price,
             },
       ),
-    sizeGuide: guide ? withoutInputUnit(guide) : null,
+    sizeGuide: guide ?? null,
   };
-}
-
-function withoutInputUnit(guide) {
-  const publicGuide = { ...guide };
-  delete publicGuide.inputUnit;
-  return publicGuide;
 }
 
 function summary(product) {

@@ -1,12 +1,11 @@
 "use client";
 
 import {
-  convertCatalogMeasurementValue,
   CatalogMeasurementKeySchema,
-  CatalogSizeGuideManagementSchema,
+  CatalogSizeGuideSchema,
   type CatalogMeasurementKey,
   type CatalogCategory,
-  type CatalogSizeGuideManagement,
+  type CatalogSizeGuide,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
 } from "@aaraj/contracts";
@@ -105,7 +104,7 @@ export function SizeGuideManager({
 }: {
   view?: "list" | "create" | "edit";
   initialPage?: CatalogSizeGuidePage;
-  initialGuide?: CatalogSizeGuideManagement;
+  initialGuide?: CatalogSizeGuide;
   query: CatalogSizeGuideListQuery;
   categoryOptions?: CatalogCategory[];
 }) {
@@ -130,9 +129,9 @@ export function SizeGuideManager({
     remove: removeRow,
     move: moveRow,
   } = useFieldArray({ control, name: "rows" });
-  const [selectedKeys, inputUnit] = useWatch({
+  const selectedKeys = useWatch({
     control,
-    name: ["keys", "inputUnit"],
+    name: "keys",
   });
   const hasGuideChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -141,30 +140,6 @@ export function SizeGuideManager({
     getValues("rows").forEach((_, index) => {
       setValue(`rows.${index}.values.${key}`, "", { shouldDirty: true });
     });
-  }
-
-  function changeInputUnit(
-    inputUnit: GuideForm["inputUnit"],
-    onChange: (value: GuideForm["inputUnit"]) => void,
-  ) {
-    const current = getValues();
-    if (current.inputUnit === inputUnit) return;
-    current.rows.forEach((row, index) => {
-      current.keys.forEach((key) => {
-        setValue(
-          `rows.${index}.values.${key}`,
-          formatMeasurementInput(
-            convertCatalogMeasurementValue(
-              row.values[key] ?? "",
-              current.inputUnit,
-              inputUnit,
-            ),
-          ),
-          { shouldDirty: true },
-        );
-      });
-    });
-    onChange(inputUnit);
   }
 
   async function saveGuide(submission: GuideSubmission) {
@@ -183,9 +158,7 @@ export function SizeGuideManager({
         );
         return;
       }
-      const result = CatalogSizeGuideManagementSchema.safeParse(
-        await response.json(),
-      );
+      const result = CatalogSizeGuideSchema.safeParse(await response.json());
       if (!result.success) {
         setErrorMessage("The server returned an invalid size guide.");
         return;
@@ -315,7 +288,7 @@ export function SizeGuideManager({
                     </FieldError>
                   )}
                 </Field>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="max-w-sm">
                   <Controller
                     control={control}
                     name="categoryId"
@@ -395,47 +368,6 @@ export function SizeGuideManager({
                             <SelectItem value="body">
                               Body measurements
                             </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel
-                      id="measurement-unit-label"
-                      htmlFor="measurement-unit"
-                    >
-                      Enter measurements in
-                    </FieldLabel>
-                    <Controller
-                      control={control}
-                      name="inputUnit"
-                      render={({ field }) => (
-                        <Select
-                          items={[
-                            { label: "Centimetres (cm)", value: "cm" },
-                            { label: "Inches (in)", value: "in" },
-                          ]}
-                          name={field.name}
-                          value={field.value}
-                          onValueChange={(value) =>
-                            changeInputUnit(
-                              String(value) as GuideForm["inputUnit"],
-                              field.onChange,
-                            )
-                          }
-                        >
-                          <SelectTrigger
-                            id="measurement-unit"
-                            aria-labelledby="measurement-unit-label"
-                            ref={field.ref}
-                            onBlur={field.onBlur}
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cm">Centimetres (cm)</SelectItem>
-                            <SelectItem value="in">Inches (in)</SelectItem>
                           </SelectContent>
                         </Select>
                       )}
@@ -533,7 +465,7 @@ export function SizeGuideManager({
                               <TableHead scope="col">Size label</TableHead>
                               {selectedKeys.map((key) => (
                                 <TableHead key={key} scope="col">
-                                  {catalogMeasurementLabels[key]} ({inputUnit})
+                                  {catalogMeasurementLabels[key]} (in)
                                 </TableHead>
                               ))}
                               <TableHead className="text-right" scope="col">
@@ -598,7 +530,7 @@ export function SizeGuideManager({
                                         className="sr-only"
                                         htmlFor={fieldId}
                                       >
-                                        {`${catalogMeasurementLabels[key]} (${inputUnit}), size row ${index + 1}`}
+                                        {`${catalogMeasurementLabels[key]} (in), size row ${index + 1}`}
                                       </label>
                                       <Input
                                         aria-describedby={
@@ -609,10 +541,10 @@ export function SizeGuideManager({
                                         aria-invalid={Boolean(fieldError)}
                                         id={fieldId}
                                         inputMode="decimal"
-                                        max="9999.999"
-                                        min="0.001"
+                                        max="9999.9"
+                                        min="0.1"
                                         required
-                                        step="0.001"
+                                        step="0.1"
                                         type="number"
                                         {...fieldRegistration}
                                         onBlur={(event) => {

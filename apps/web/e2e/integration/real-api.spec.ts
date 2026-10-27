@@ -956,7 +956,6 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByLabel("Guide name").fill(guideName);
   await chooseSelectOption(page, "Guide category", "Clothing");
   await page.getByLabel("Fit (optional)").fill("Regular");
-  await chooseSelectOption(page, "Enter measurements in", "Inches (in)");
   await page.getByRole("button", { name: "Add size" }).click();
   await page.getByRole("button", { name: "Add size" }).click();
   await page.locator("#size-label-0").fill("S");
@@ -1203,16 +1202,12 @@ test("catalog operator configures a product through to storefront visibility", a
     page.locator('header form[action="/shop"] input[name="size"]'),
   ).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Size guide" })).toBeVisible();
-  const measurementUnit = page.getByRole("switch", {
-    name: "Use centimeters",
-  });
-  await expect(measurementUnit).toHaveAttribute("aria-checked", "false");
+  await expect(
+    page.getByRole("switch", { name: "Use centimeters" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Chest width (in)")).toBeVisible();
   await expect(page.getByText("20", { exact: true })).toBeVisible();
   await expect(page.getByText("28", { exact: true })).toBeVisible();
-  await measurementUnit.click();
-  await expect(measurementUnit).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByText("50.8", { exact: true })).toBeVisible();
-  await expect(page.getByText("71.1", { exact: true })).toBeVisible();
   await expect(page.getByText(skuSmall)).toHaveCount(0);
   await expect(page.getByText(skuMedium)).toHaveCount(0);
 

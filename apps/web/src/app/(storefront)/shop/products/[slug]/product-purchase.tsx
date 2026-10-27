@@ -1,9 +1,7 @@
 "use client";
 
 import type { CatalogProductDetail, CatalogSizeGuide } from "@aaraj/contracts";
-import { convertCatalogMeasurementValue } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -24,7 +22,7 @@ import { formatBdtPrice } from "@/lib/currency";
 import { catalogMeasurementLabels } from "@/features/catalog/size-guide-labels";
 import { CircleHelp } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { sendEcommerceEvent } from "@/features/analytics/gtm-ecommerce";
 
 type ProductVariant = CatalogProductDetail["variants"][number];
@@ -201,7 +199,6 @@ export function ProductPurchase({
 }
 
 function SizeGuide({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
-  const [unit, setUnit] = useState<"in" | "cm">("in");
   const measurementKeys =
     sizeGuide.rows[0]?.measurements.map(({ key }) => key) ?? [];
 
@@ -211,35 +208,6 @@ function SizeGuide({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
         <h3 className="text-sm font-medium" id="size-guide-heading">
           Size guide
         </h3>
-        <div className="flex cursor-default select-none items-center gap-1 text-xs">
-          <span
-            aria-hidden="true"
-            className={
-              unit === "in"
-                ? "font-semibold text-foreground"
-                : "text-muted-foreground"
-            }
-          >
-            IN
-          </span>
-          <Switch
-            aria-label="Use centimeters"
-            checked={unit === "cm"}
-            className="cursor-pointer"
-            onCheckedChange={(checked) => setUnit(checked ? "cm" : "in")}
-            size="sm"
-          />
-          <span
-            aria-hidden="true"
-            className={
-              unit === "cm"
-                ? "font-semibold text-foreground"
-                : "text-muted-foreground"
-            }
-          >
-            CM
-          </span>
-        </div>
       </div>
       <div className="overflow-hidden rounded-lg border border-border">
         <Table
@@ -268,7 +236,7 @@ function SizeGuide({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
             {measurementKeys.map((key) => (
               <TableRow className="hover:bg-transparent" key={key}>
                 <TableHead className="h-auto px-3 py-2 font-medium" scope="row">
-                  {catalogMeasurementLabels[key]} ({unit})
+                  {catalogMeasurementLabels[key]} (in)
                 </TableHead>
                 {sizeGuide.rows.map((row) => {
                   const measurement = row.measurements.find(
@@ -280,7 +248,7 @@ function SizeGuide({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
                       key={row.id}
                     >
                       {measurement
-                        ? formatMeasurement(measurement.valueCm, unit)
+                        ? formatMeasurement(measurement.valueIn)
                         : "—"}
                     </TableCell>
                   );
@@ -382,9 +350,8 @@ function updateVariantUrl(color: string, size: string) {
   );
 }
 
-function formatMeasurement(valueCm: string, unit: "cm" | "in"): string {
-  return convertCatalogMeasurementValue(valueCm, "cm", unit, 1).replace(
-    /\.0$/,
-    "",
-  );
+function formatMeasurement(valueIn: string): string {
+  const [whole, fraction = ""] = valueIn.split(".");
+  const trimmedFraction = fraction.replace(/0+$/, "");
+  return trimmedFraction ? `${whole}.${trimmedFraction}` : (whole ?? valueIn);
 }

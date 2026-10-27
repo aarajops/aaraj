@@ -328,20 +328,19 @@ describe("catalog and security audit", () => {
         categoryId: parentCategory.body.id,
         fit: "Regular",
         measurementBasis: "garment",
-        inputUnit: "in",
         rows: [
           {
             sizeLabel: "M",
             measurements: [
-              { key: "chest_width", value: "20.000" },
-              { key: "body_length", value: "28.000" },
+              { key: "chest_width", value: "20.0" },
+              { key: "body_length", value: "28.0" },
             ],
           },
           {
             sizeLabel: "L",
             measurements: [
-              { key: "chest_width", value: "21.000" },
-              { key: "body_length", value: "29.000" },
+              { key: "chest_width", value: "21.0" },
+              { key: "body_length", value: "29.0" },
             ],
           },
         ],
@@ -350,10 +349,9 @@ describe("catalog and security audit", () => {
       .expect(201);
     const guideId = guide.body.id as string;
     expect(guide.body.category.id).toBe(parentCategory.body.id);
-    expect(guide.body.inputUnit).toBe("in");
     expect(guide.body.rows[0].measurements).toContainEqual({
       key: "chest_width",
-      valueCm: "50.800",
+      valueIn: "20.0",
     });
     await request(app.getHttpServer())
       .patch(`/api/v1/catalog/categories/${parentCategory.body.id}`)
@@ -383,8 +381,8 @@ describe("catalog and security audit", () => {
       .expect(200);
     expect(guide.body.rows[0].measurements).toEqual(
       expect.arrayContaining([
-        { key: "chest_width", valueCm: "50.800" },
-        { key: "body_length", valueCm: "71.120" },
+        { key: "chest_width", valueIn: "20.0" },
+        { key: "body_length", valueIn: "28.0" },
       ]),
     );
     await request(app.getHttpServer())
@@ -902,13 +900,12 @@ describe("catalog and security audit", () => {
         categoryId,
         fit: "Regular",
         measurementBasis: "garment",
-        inputUnit: "cm",
         rows: [
           {
             sizeLabel: "M",
             measurements: [
-              { key: "chest_width", value: "50.8" },
-              { key: "body_length", value: "71.12" },
+              { key: "chest_width", value: "20" },
+              { key: "body_length", value: "28" },
             ],
           },
         ],

@@ -10,39 +10,6 @@ export type CatalogMeasurementBasis = z.infer<
   typeof CatalogMeasurementBasisSchema
 >;
 
-export const CatalogMeasurementUnitSchema = z.enum(["cm", "in"]);
-export type CatalogMeasurementUnit = z.infer<
-  typeof CatalogMeasurementUnitSchema
->;
-
-export function convertCatalogMeasurementValue(
-  value: string,
-  from: CatalogMeasurementUnit,
-  to: CatalogMeasurementUnit,
-  fractionDigits: 0 | 1 | 2 | 3 = 3,
-): string {
-  if (value === "") return value;
-
-  const match = /^(\d{1,5})(?:\.(\d{1,3}))?$/.exec(value);
-  if (!match) return value;
-
-  const thousandths =
-    BigInt(match[1] ?? "0") * 1000n + BigInt((match[2] ?? "").padEnd(3, "0"));
-  const scale = 10n ** BigInt(fractionDigits);
-  const [numerator, denominator] =
-    from === to
-      ? [thousandths * scale, 1000n]
-      : from === "cm"
-        ? [thousandths * scale, 2540n]
-        : [thousandths * 254n * scale, 100000n];
-  const converted = (numerator + denominator / 2n) / denominator;
-  const whole = converted / scale;
-  if (fractionDigits === 0) return `${whole}`;
-  const fraction = String(converted % scale).padStart(fractionDigits, "0");
-
-  return `${whole}.${fraction}`;
-}
-
 export const CatalogMeasurementKeySchema = z.enum([
   "chest_width",
   "body_length",
@@ -60,7 +27,7 @@ export type CatalogMeasurementKey = z.infer<typeof CatalogMeasurementKeySchema>;
 
 export const CatalogSizeGuideMeasurementSchema = z.strictObject({
   key: CatalogMeasurementKeySchema,
-  valueCm: z.string().regex(/^\d{1,5}\.\d{3}$/),
+  valueIn: z.string().regex(/^\d{1,5}\.\d$/),
 });
 
 export const CatalogSizeGuideRowSchema = z.strictObject({
@@ -81,13 +48,6 @@ export const CatalogSizeGuideSchema = z.strictObject({
   updatedAt: z.iso.datetime(),
 });
 export type CatalogSizeGuide = z.infer<typeof CatalogSizeGuideSchema>;
-
-export const CatalogSizeGuideManagementSchema = CatalogSizeGuideSchema.extend({
-  inputUnit: CatalogMeasurementUnitSchema,
-});
-export type CatalogSizeGuideManagement = z.infer<
-  typeof CatalogSizeGuideManagementSchema
->;
 
 export const CatalogSizeGuideSummarySchema = z.strictObject({
   id: z.uuid(),
@@ -114,7 +74,6 @@ export const CatalogSizeGuideCreateSchema = z
     categoryId: z.uuid(),
     fit: z.string().trim().min(1).max(80).nullable().optional(),
     measurementBasis: CatalogMeasurementBasisSchema,
-    inputUnit: CatalogMeasurementUnitSchema,
     rows: z
       .array(
         z.strictObject({
@@ -126,8 +85,8 @@ export const CatalogSizeGuideCreateSchema = z
                 value: z
                   .string()
                   .regex(
-                    /^(?=.*[1-9])\d{1,4}(?:\.\d{1,3})?$/,
-                    "Measurements must be greater than zero and use up to three decimal places.",
+                    /^(?=.*[1-9])\d{1,4}(?:\.\d)?$/,
+                    "Measurements must be greater than zero and use up to one decimal place.",
                   ),
               }),
             )

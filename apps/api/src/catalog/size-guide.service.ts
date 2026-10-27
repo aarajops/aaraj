@@ -5,14 +5,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
-import {
-  convertCatalogMeasurementValue,
-  MAX_LIST_OFFSET,
-} from "@aaraj/contracts";
+import { MAX_LIST_OFFSET } from "@aaraj/contracts";
 import type {
   CatalogMeasurementKey,
-  CatalogMeasurementUnit,
-  CatalogSizeGuideManagement,
+  CatalogSizeGuide,
   CatalogSizeGuideCreateInput,
   CatalogSizeGuideListQuery,
   CatalogSizeGuidePage,
@@ -48,7 +44,7 @@ import {
   loadCategoryReferences,
   requireActiveCategory,
 } from "./catalog-category.helpers.js";
-import { loadManagedCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
+import { loadCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
 
 @Injectable()
 export class SizeGuideService {
@@ -161,7 +157,7 @@ export class SizeGuideService {
   async findForManagement(
     actor: AccessPrincipal,
     guideId: string,
-  ): Promise<CatalogSizeGuideManagement> {
+  ): Promise<CatalogSizeGuide> {
     await this.authorization.authorize(CatalogPolicy, "manage", actor);
     return this.database.db.transaction(async (transaction) => {
       const [guide] = await transaction
@@ -170,12 +166,12 @@ export class SizeGuideService {
         .where(eq(catalogSizeGuide.id, guideId))
         .limit(1);
       if (!guide) throw new NotFoundException("Size guide not found");
-      return loadManagedCatalogSizeGuide(transaction, guide);
+      return loadCatalogSizeGuide(transaction, guide);
     });
   }
 
   async create(actor: AccessPrincipal, input: CatalogSizeGuideCreateInput) {
-    const rows = normalizeMeasurements(input.inputUnit, input.rows);
+    const rows = normalizeMeasurements(input.rows);
     return this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
@@ -192,7 +188,6 @@ export class SizeGuideService {
             categoryId: input.categoryId,
             fit: input.fit ?? null,
             measurementBasis: input.measurementBasis,
-            inputUnit: input.inputUnit,
           })
           .returning();
         if (!guide) throw new Error("Size guide insert returned no row.");
@@ -210,7 +205,7 @@ export class SizeGuideService {
             sizeCount: input.rows.length,
           },
         });
-        return loadManagedCatalogSizeGuide(transaction, guide);
+        return loadCatalogSizeGuide(transaction, guide);
       } catch (error) {
         if (isUniqueViolation(error)) {
           throw new ConflictException(
@@ -227,7 +222,7 @@ export class SizeGuideService {
     guideId: string,
     input: CatalogSizeGuideUpdateInput,
   ) {
-    const rows = normalizeMeasurements(input.inputUnit, input.rows);
+    const rows = normalizeMeasurements(input.rows);
     return this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
@@ -251,7 +246,6 @@ export class SizeGuideService {
           categoryId: input.categoryId,
           fit: input.fit ?? null,
           measurementBasis: input.measurementBasis,
-          inputUnit: input.inputUnit,
           updatedAt: new Date(),
         })
         .where(eq(catalogSizeGuide.id, guideId))
@@ -278,7 +272,7 @@ export class SizeGuideService {
             sizeCount: input.rows.length,
           },
         });
-        return loadManagedCatalogSizeGuide(transaction, updated);
+        return loadCatalogSizeGuide(transaction, updated);
       } catch (error) {
         if (isUniqueViolation(error)) {
           throw new ConflictException(
@@ -321,10 +315,10 @@ async function replaceSizeGuideRows(
   const measurements = rows.flatMap((row, sortOrder) => {
     const rowId = rowIdsByOrder.get(sortOrder);
     if (!rowId) throw new Error("A size guide row did not receive an ID.");
-    return row.measurements.map(({ key, valueCm }) => ({
+    return row.measurements.map(({ key, valueIn }) => ({
       rowId,
       key,
-      valueCm,
+      valueIn,
     }));
   });
   if (measurements.length) {
@@ -392,36 +386,22 @@ async function ensurePublishedProductsRemainValid(
 }
 
 function normalizeMeasurements(
-  unit: CatalogMeasurementUnit,
   rows: CatalogSizeGuideCreateInput["rows"],
 ): NormalizedSizeGuideRow[] {
   return rows.map((row) => ({
     sizeLabel: row.sizeLabel,
     measurements: row.measurements.map(({ key, value }) => ({
       key,
-      valueCm: toCentimeters(unit, value),
+      valueIn: value,
     })),
   }));
-}
-
-function toCentimeters(unit: CatalogMeasurementUnit, value: string): string {
-  const centimeters = convertCatalogMeasurementValue(value, unit, "cm");
-  const [wholePart, fractionPart = ""] = centimeters.split(".");
-  const centimeterThousandths =
-    BigInt(wholePart ?? "0") * 1000n + BigInt(fractionPart.padEnd(3, "0"));
-  if (centimeterThousandths <= 0n || centimeterThousandths > 99_999_999n) {
-    throw new BadRequestException(
-      "Measurements must fit a positive numeric(8,3) centimetre value.",
-    );
-  }
-  return centimeters;
 }
 
 interface NormalizedSizeGuideRow {
   sizeLabel: string;
   measurements: Array<{
     key: CatalogMeasurementKey;
-    valueCm: string;
+    valueIn: string;
   }>;
 }
 

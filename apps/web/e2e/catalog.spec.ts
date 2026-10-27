@@ -153,15 +153,14 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeEnabled();
   await page.getByRole("option", { name: "Clothing", exact: true }).click();
   await page.getByLabel("Fit (optional)").fill("Regular");
-  await chooseSelectOption(page, "Enter measurements in", "Inches (in)");
   await page.getByRole("button", { name: "Add size" }).click();
   await page.getByRole("button", { name: "Add size" }).click();
   await page.locator("#size-label-0").fill("S");
-  await page.locator("#size-0-chest_width").fill("20.000");
-  await page.locator("#size-0-body_length").fill("28.000");
+  await page.locator("#size-0-chest_width").fill("20.0");
+  await page.locator("#size-0-body_length").fill("28.0");
   await page.locator("#size-label-1").fill("M");
-  await page.locator("#size-1-chest_width").fill("21.000");
-  await page.locator("#size-1-body_length").fill("29.000");
+  await page.locator("#size-1-chest_width").fill("21.0");
+  await page.locator("#size-1-body_length").fill("29.0");
   const secondSizeHandle = page.getByRole("button", {
     name: "Reorder size row 2",
   });
@@ -184,8 +183,8 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByLabel("Size label, row 1")).toHaveValue("M");
   await expect(page.getByLabel("Size label, row 2")).toHaveValue("S");
   await expect(
-    page.getByRole("combobox", { name: "Enter measurements in" }),
-  ).toContainText("Inches (in)");
+    page.getByRole("columnheader", { name: "Chest width (in)" }),
+  ).toBeVisible();
   await expect(page.locator("#size-0-chest_width")).toHaveValue("21");
   await expect(page.locator("#size-0-body_length")).toHaveValue("29");
   await page.goto("/admin/catalog");
@@ -430,16 +429,12 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page).toHaveURL(/color=Black/);
   await expect(page).toHaveURL(/size=S/);
   await expect(page.getByRole("heading", { name: "Size guide" })).toBeVisible();
-  const measurementUnit = page.getByRole("switch", {
-    name: "Use centimeters",
-  });
-  await expect(measurementUnit).toHaveAttribute("aria-checked", "false");
+  await expect(
+    page.getByRole("switch", { name: "Use centimeters" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Chest width (in)")).toBeVisible();
   await expect(page.getByText("20", { exact: true })).toBeVisible();
   await expect(page.getByText("28", { exact: true })).toBeVisible();
-  await measurementUnit.click();
-  await expect(measurementUnit).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByText("50.8", { exact: true })).toBeVisible();
-  await expect(page.getByText("71.1", { exact: true })).toBeVisible();
 
   await page.goto("/admin/catalog/create");
   await page.getByLabel("Name", { exact: true }).fill("Aaraj E2E T-shirt");

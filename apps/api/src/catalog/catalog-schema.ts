@@ -86,7 +86,6 @@ export const catalogSizeGuide = catalogSchema.table(
     measurementBasis: text("measurement_basis")
       .$type<"garment" | "body">()
       .notNull(),
-    inputUnit: text("input_unit").$type<"cm" | "in">().notNull().default("cm"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -103,10 +102,6 @@ export const catalogSizeGuide = catalogSchema.table(
     check(
       "size_guide_measurement_basis_check",
       sql`${table.measurementBasis} in ('garment', 'body')`,
-    ),
-    check(
-      "size_guide_input_unit_check",
-      sql`${table.inputUnit} in ('cm', 'in')`,
     ),
   ],
 );
@@ -143,7 +138,7 @@ export const catalogSizeGuideMeasurement = catalogSchema.table(
       .notNull()
       .references(() => catalogSizeGuideRow.id, { onDelete: "cascade" }),
     key: text("key").$type<CatalogMeasurementKey>().notNull(),
-    valueCm: numeric("value_cm", { precision: 8, scale: 3 }).notNull(),
+    valueIn: numeric("value_in", { precision: 6, scale: 1 }).notNull(),
   },
   (table) => [
     uniqueIndex("size_guide_measurement_key_uidx").on(table.rowId, table.key),
@@ -151,7 +146,7 @@ export const catalogSizeGuideMeasurement = catalogSchema.table(
       "size_guide_measurement_key_check",
       sql`${table.key} in ('chest_width', 'body_length', 'shoulder_width', 'sleeve_length', 'waist', 'hip', 'inseam', 'outseam', 'rise', 'thigh', 'hem')`,
     ),
-    check("size_guide_measurement_value_check", sql`${table.valueCm} > 0`),
+    check("size_guide_measurement_value_check", sql`${table.valueIn} > 0`),
   ],
 );
 

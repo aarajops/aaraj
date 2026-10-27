@@ -351,6 +351,20 @@
       "when": 1792995391435,
       "tag": "0049_storefront_banner_order",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793082724676,
+      "tag": "0050_size_guide_inches_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793091360633,
+      "tag": "0051_size_guide_one_decimal",
+      "breakpoints": true
     }
   ]
 }

@@ -1,8 +1,4 @@
-import type {
-  CatalogMeasurementKey,
-  CatalogSizeGuide,
-  CatalogSizeGuideManagement,
-} from "@aaraj/contracts";
+import type { CatalogMeasurementKey, CatalogSizeGuide } from "@aaraj/contracts";
 import { asc, eq, inArray } from "drizzle-orm";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import {
@@ -35,11 +31,11 @@ export async function loadCatalogSizeGuide(
     : [];
   const measurementsByRow = new Map<
     string,
-    Array<{ key: CatalogMeasurementKey; valueCm: string }>
+    Array<{ key: CatalogMeasurementKey; valueIn: string }>
   >();
   for (const measurement of measurements) {
     const values = measurementsByRow.get(measurement.rowId) ?? [];
-    values.push({ key: measurement.key, valueCm: measurement.valueCm });
+    values.push({ key: measurement.key, valueIn: measurement.valueIn });
     measurementsByRow.set(measurement.rowId, values);
   }
   const category = await loadCategoryReference(transaction, guide.categoryId);
@@ -58,15 +54,5 @@ export async function loadCatalogSizeGuide(
     })),
     createdAt: guide.createdAt.toISOString(),
     updatedAt: guide.updatedAt.toISOString(),
-  };
-}
-
-export async function loadManagedCatalogSizeGuide(
-  transaction: AuditTransaction,
-  guide: typeof catalogSizeGuide.$inferSelect,
-): Promise<CatalogSizeGuideManagement> {
-  return {
-    ...(await loadCatalogSizeGuide(transaction, guide)),
-    inputUnit: guide.inputUnit,
   };
 }

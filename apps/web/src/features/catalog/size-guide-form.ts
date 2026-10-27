@@ -1,10 +1,8 @@
 import {
-  convertCatalogMeasurementValue,
   CatalogMeasurementKeySchema,
   CatalogSizeGuideCreateSchema,
   type CatalogMeasurementKey,
-  type CatalogMeasurementUnit,
-  type CatalogSizeGuideManagement,
+  type CatalogSizeGuide,
   type CatalogSizeGuideCreateInput,
   type CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
@@ -22,7 +20,6 @@ export interface GuideForm {
   categoryId: string;
   fit: string;
   measurementBasis: "garment" | "body";
-  inputUnit: CatalogMeasurementUnit;
   keys: CatalogMeasurementKey[];
   rows: GuideRowDraft[];
 }
@@ -33,7 +30,6 @@ export const blankGuideForm: GuideForm = {
   categoryId: "",
   fit: "",
   measurementBasis: "garment",
-  inputUnit: "cm",
   keys: ["chest_width", "body_length"],
   rows: [],
 };
@@ -59,7 +55,6 @@ function toGuideSubmission(form: GuideForm): GuideSubmission {
     categoryId: form.categoryId,
     fit: form.fit.trim() || null,
     measurementBasis: form.measurementBasis,
-    inputUnit: form.inputUnit,
     rows: form.rows.map((row) => ({
       sizeLabel: row.sizeLabel.trim(),
       measurements: form.keys.map((key) => ({
@@ -111,7 +106,6 @@ export const guideFormSchema = z
     categoryId: z.string(),
     fit: z.string(),
     measurementBasis: z.enum(["garment", "body"]),
-    inputUnit: z.enum(["cm", "in"]),
     keys: CatalogMeasurementKeySchema.array(),
     rows: z.array(
       z.strictObject({
@@ -151,25 +145,20 @@ export const guideFormSchema = z
   })
   .transform(toGuideSubmission);
 
-export function toSizeGuideFormState(
-  guide: CatalogSizeGuideManagement,
-): GuideForm {
+export function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
   return {
     id: guide.id,
     name: guide.name,
     categoryId: guide.category.id,
     fit: guide.fit ?? "",
     measurementBasis: guide.measurementBasis,
-    inputUnit: guide.inputUnit,
     keys: guide.rows[0]?.measurements.map(({ key }) => key) ?? [],
     rows: guide.rows.map((row) => ({
       sizeLabel: row.sizeLabel,
       values: Object.fromEntries(
-        row.measurements.map(({ key, valueCm }) => [
+        row.measurements.map(({ key, valueIn }) => [
           key,
-          formatMeasurementInput(
-            convertCatalogMeasurementValue(valueCm, "cm", guide.inputUnit),
-          ),
+          formatMeasurementInput(valueIn),
         ]),
       ),
     })),
