@@ -20,7 +20,7 @@ import {
   recordOrderFulfillmentOutcome,
   updateOrderServiceability,
 } from "./orders-client";
-import { humanize } from "./orders-manager";
+import { humanize } from "./orders-format";
 import {
   PathaoBookingPanel,
   type PathaoAssignmentState,

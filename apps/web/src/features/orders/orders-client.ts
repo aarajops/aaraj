@@ -87,6 +87,14 @@ export async function fetchOrder(orderId: string): Promise<Order> {
   return readResponse(response, OrderSchema);
 }
 
+export async function fetchManagedOrder(orderId: string): Promise<Order> {
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}`,
+    { cache: "no-store", credentials: "same-origin" },
+  );
+  return readResponse(response, OrderSchema);
+}
+
 export async function updateOrderServiceability(
   orderId: string,
   input: OrderServiceabilityInput,

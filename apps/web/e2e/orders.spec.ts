@@ -16,7 +16,7 @@ async function signInAsStaff(
   ]);
 }
 
-test("Orders uses shared pagination with stable URL history and order links", async ({
+test("Orders uses shared pagination, order previews, and stable URL history", async ({
   page,
   context,
   baseURL,
@@ -32,11 +32,8 @@ test("Orders uses shared pagination with stable URL history and order links", as
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(table.getByText("ORD-026-00001", { exact: true })).toBeVisible();
   await expect(
-    table.getByRole("link", { name: "ORD-026-00001" }),
-  ).toHaveAttribute(
-    "href",
-    "/admin/orders/00000000-0000-4000-8000-000000000001",
-  );
+    table.getByRole("button", { name: "ORD-026-00001" }),
+  ).toHaveAttribute("aria-haspopup", "dialog");
   await page.getByRole("link", { name: "Go to next page" }).click();
   await expect(page).toHaveURL(
     new RegExp(
@@ -46,11 +43,8 @@ test("Orders uses shared pagination with stable URL history and order links", as
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
   await expect(table.getByText("ORD-026-00021", { exact: true })).toBeVisible();
   await expect(
-    table.getByRole("link", { name: "ORD-026-00021" }),
-  ).toHaveAttribute(
-    "href",
-    "/admin/orders/00000000-0000-4000-8000-000000000021",
-  );
+    table.getByRole("button", { name: "ORD-026-00021" }),
+  ).toHaveAttribute("aria-haspopup", "dialog");
 
   await page.getByRole("link", { name: "Go to previous page" }).click();
   await expect(page).toHaveURL(

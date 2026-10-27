@@ -480,7 +480,9 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
   ).toBeGreaterThan(0);
   await attachScreenshot(page, testInfo, "orders-table-focus-overflow.png");
 
-  const orderLink = page.getByRole("link", { name: "ORD-026-00001" });
+  const orderPreviewButton = page.getByRole("button", {
+    name: "ORD-026-00001",
+  });
   await page.keyboard.press("Tab");
   await expect(
     ordersScrollRegion.getByRole("checkbox", {
@@ -502,20 +504,22 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
     }),
   ).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(orderLink).toBeFocused();
+  await expect(orderPreviewButton).toBeFocused();
   expect(
-    await orderLink.evaluate((element) => element.matches(":focus-visible")),
+    await orderPreviewButton.evaluate((element) =>
+      element.matches(":focus-visible"),
+    ),
   ).toBe(true);
-  await orderLink.scrollIntoViewIfNeeded();
-  const orderBounds = await orderLink.evaluate((element) => {
-    const link = element.getBoundingClientRect();
+  await orderPreviewButton.scrollIntoViewIfNeeded();
+  const orderBounds = await orderPreviewButton.evaluate((element) => {
+    const control = element.getBoundingClientRect();
     const region = element.closest<HTMLElement>(
       "[data-slot='table-container']",
     );
     const regionBounds = region?.getBoundingClientRect();
     return {
-      left: link.left,
-      right: link.right,
+      left: control.left,
+      right: control.right,
       regionLeft: regionBounds?.left ?? 0,
       regionRight: regionBounds?.right ?? 0,
     };
@@ -525,7 +529,7 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
   await attachScreenshot(
     page,
     testInfo,
-    "orders-order-link-keyboard-focus.png",
+    "orders-order-preview-keyboard-focus.png",
   );
   await page.keyboard.press("Shift+Tab");
   await expect(
@@ -604,7 +608,10 @@ test("admin table controls retain visible keyboard focus in light and dark theme
     ],
     ["refresh button", page.getByRole("button", { name: "Refresh orders" })],
     ["pagination link", page.getByRole("link", { name: "Go to next page" })],
-    ["order link", page.getByRole("link", { name: "ORD-026-00001" })],
+    [
+      "order preview button",
+      page.getByRole("button", { name: "ORD-026-00001" }),
+    ],
     [
       "table scroll region",
       page.getByRole("region", { name: "Scrollable orders table" }),

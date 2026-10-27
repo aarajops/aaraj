@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Eye, Printer } from "lucide-react";
 import type { OrderListQuery, OrderManagementList } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenuItem,
   DropdownMenuLinkItem,
@@ -18,6 +18,8 @@ import {
 } from "@/components/admin/admin-data-table";
 import { formatBdtPrice } from "@/lib/currency";
 import type { ManagedOrderRow, ManagedOrdersPage } from "./orders-view-model";
+import { OrderDetailsSheet } from "./order-details-sheet";
+import { humanize } from "./orders-format";
 
 const columnHelper = createDataTableColumnHelper<ManagedOrderRow>();
 
@@ -29,6 +31,7 @@ export function OrdersManager({
   query: OrderListQuery;
 }) {
   const router = useRouter();
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const columns = useMemo(() => {
     return columnHelper.columns([
@@ -37,13 +40,15 @@ export function OrdersManager({
         header: "Order",
         cell: ({ row }) => (
           <div className="grid gap-1">
-            <Link
-              className="rounded-sm font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
-              href={`/admin/orders/${row.original.id}`}
-              prefetch={false}
+            <Button
+              aria-haspopup="dialog"
+              className="h-auto justify-start rounded-sm px-0 py-0 font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
+              onClick={() => setSelectedOrderId(row.original.id)}
+              type="button"
+              variant="link"
             >
               {row.original.reference}
-            </Link>
+            </Button>
             <span className="text-xs text-muted-foreground">
               {formatDateTime(row.original.createdAt)}
             </span>
@@ -143,13 +148,13 @@ export function OrdersManager({
           data={initialPage.rows}
           rowActions={(order) => (
             <>
-              <DropdownMenuLinkItem
-                closeOnClick
-                href={`/admin/orders/${order.id}`}
+              <DropdownMenuItem
+                aria-haspopup="dialog"
+                onClick={() => setSelectedOrderId(order.id)}
               >
                 <Eye aria-hidden="true" className="size-4" />
                 View order
-              </DropdownMenuLinkItem>
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => void copyOrderNumber(order.reference)}
               >
@@ -199,6 +204,13 @@ export function OrdersManager({
           page={initialPage}
         />
       </div>
+      <OrderDetailsSheet
+        onOpenChange={(open) => {
+          if (!open) setSelectedOrderId(null);
+        }}
+        open={selectedOrderId !== null}
+        orderId={selectedOrderId}
+      />
     </main>
   );
 }
@@ -280,11 +292,4 @@ function serviceabilityVariant(
   if (status === "unserviceable") return "destructive";
   if (status === "pending_manual_review") return "outline";
   return "secondary";
-}
-
-export function humanize(value: string): string {
-  return value
-    .split("_")
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
 }
