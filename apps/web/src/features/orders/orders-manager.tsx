@@ -19,7 +19,7 @@ import {
 import { formatBdtPrice } from "@/lib/currency";
 import type { ManagedOrderRow, ManagedOrdersPage } from "./orders-view-model";
 import { OrderDetailsSheet } from "./order-details-sheet";
-import { humanize } from "./orders-format";
+import { currentOrderStatusLabel, humanize } from "./orders-format";
 
 const columnHelper = createDataTableColumnHelper<ManagedOrderRow>();
 
@@ -39,7 +39,7 @@ export function OrdersManager({
         id: "order",
         header: "Order",
         cell: ({ row }) => (
-          <div className="grid gap-1">
+          <div className="flex items-center gap-1">
             <Button
               aria-haspopup="dialog"
               className="h-auto justify-start rounded-sm px-0 py-0 font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
@@ -49,11 +49,24 @@ export function OrdersManager({
             >
               {row.original.reference}
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {formatDateTime(row.original.createdAt)}
-            </span>
+            <Button
+              aria-label={`Copy order ID ${row.original.reference}`}
+              className="text-muted-foreground"
+              onClick={() =>
+                void copyOrderValue(row.original.reference, "Order ID")
+              }
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <Copy aria-hidden="true" />
+            </Button>
           </div>
         ),
+      }),
+      columnHelper.accessor("createdAt", {
+        header: "Placed",
+        cell: ({ getValue }) => formatDateTime(getValue()),
       }),
       columnHelper.display({
         id: "customer",
@@ -61,44 +74,94 @@ export function OrdersManager({
         cell: ({ row }) => (
           <div className="grid gap-1">
             <span className="font-medium">{row.original.customerName}</span>
-            <a
-              className="w-fit rounded-sm text-sm text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
-              href={`tel:${row.original.customerPhone}`}
-              aria-label={`Call ${row.original.customerName} at ${row.original.customerPhone}`}
-            >
-              {row.original.customerPhone}
-            </a>
+            <div className="flex items-center gap-1">
+              <a
+                className="w-fit rounded-sm text-sm text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
+                href={`tel:${row.original.customerPhone}`}
+                aria-label={`Call ${row.original.customerName} at ${row.original.customerPhone}`}
+              >
+                {row.original.customerPhone}
+              </a>
+              <Button
+                aria-label={`Copy phone number for ${row.original.customerName}`}
+                className="text-muted-foreground"
+                onClick={() =>
+                  void copyOrderValue(
+                    row.original.customerPhone.replace(/^\+880/, "0"),
+                    "Phone number",
+                  )
+                }
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Copy aria-hidden="true" />
+              </Button>
+            </div>
           </div>
         ),
       }),
       columnHelper.display({
-        id: "status",
-        header: "Order status",
-        cell: ({ row }) => (
-          <div className="grid gap-1">
-            <Badge variant={orderStatusVariant(row.original.status)}>
-              {humanize(row.original.status)}
-            </Badge>
-            <span className="text-xs text-muted-foreground">
-              {humanize(row.original.fulfillmentStatus)}
-            </span>
-          </div>
-        ),
-      }),
-      columnHelper.accessor("serviceability", {
-        header: "Serviceability",
-        cell: ({ getValue }) => {
-          const serviceability = getValue();
+        id: "items",
+        header: "Items",
+        meta: { className: "min-w-52 max-w-64 whitespace-normal" },
+        cell: ({ row }) => {
+          const [item, ...remainingItems] = row.original.items;
+
           return (
-            <Badge variant={serviceabilityVariant(serviceability)}>
-              {humanize(serviceability)}
-            </Badge>
+            <div className="grid gap-1 whitespace-normal">
+              {item ? (
+                <span>{item.productName}</span>
+              ) : (
+                <span className="text-muted-foreground">No items</span>
+              )}
+              {item && (item.color || item.sizeLabel) && (
+                <span className="text-xs text-muted-foreground">
+                  {[item.color, item.sizeLabel].filter(Boolean).join(" · ")}
+                </span>
+              )}
+              {remainingItems.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  +{remainingItems.length} more item
+                  {remainingItems.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
           );
         },
       }),
       columnHelper.display({
+        id: "pieces",
+        header: "Pieces",
+        meta: { align: "right", numeric: true },
+        cell: ({ row }) =>
+          row.original.items.reduce((total, line) => total + line.quantity, 0),
+      }),
+      columnHelper.display({
+        id: "zone",
+        header: "Zone",
+        cell: ({ row }) =>
+          row.original.deliveryZone ? (
+            humanize(row.original.deliveryZone)
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      }),
+      columnHelper.display({
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge variant={orderStatusVariant(row.original.status)}>
+            {currentOrderStatusLabel(
+              row.original.status,
+              row.original.fulfillmentStatus,
+            )}
+          </Badge>
+        ),
+      }),
+      columnHelper.display({
         id: "delivery",
-        header: "Delivery",
+        header: "Shipment",
         cell: ({ row }) => (
           <CourierStatus
             deliveryProvider={row.original.deliveryProvider}
@@ -114,19 +177,18 @@ export function OrdersManager({
           align: "right",
           numeric: true,
         },
-        cell: ({ row }) => (
-          <div className="grid gap-1">
-            {row.original.status === "cancelled" ||
-            row.original.status === "rejected" ? (
-              <span className="text-muted-foreground">Not payable</span>
-            ) : (
-              formatBdtPrice({ amountBdt: row.original.codAmountDueBdt })
-            )}
-            <span className="text-xs text-muted-foreground">
-              {humanize(row.original.collectionStatus)}
-            </span>
-          </div>
-        ),
+        cell: ({ row }) => {
+          return (
+            <div className="grid gap-1">
+              {formatBdtPrice({ amountBdt: row.original.codAmountDueBdt })}
+              {row.original.collectionStatus !== "uncollected" && (
+                <span className="text-xs text-muted-foreground">
+                  {humanize(row.original.collectionStatus)}
+                </span>
+              )}
+            </div>
+          );
+        },
       }),
     ]);
   }, [initialPage.pathaoSummaryAvailable]);
@@ -155,12 +217,6 @@ export function OrdersManager({
                 <Eye aria-hidden="true" className="size-4" />
                 View order
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => void copyOrderNumber(order.reference)}
-              >
-                <Copy aria-hidden="true" className="size-4" />
-                Copy order number
-              </DropdownMenuItem>
               <DropdownMenuLinkItem
                 closeOnClick
                 href={`/admin/orders/${order.id}/invoice?print=1`}
@@ -181,10 +237,7 @@ export function OrdersManager({
               value: query.fulfillmentStatus ?? "",
               allLabel: "All fulfillment states",
               options: [
-                {
-                  label: "Awaiting serviceability review",
-                  value: "not_started",
-                },
+                { label: "Not started", value: "not_started" },
                 {
                   label: "Awaiting dispatch (stock held)",
                   value: "awaiting_dispatch",
@@ -215,17 +268,17 @@ export function OrdersManager({
   );
 }
 
-async function copyOrderNumber(orderReference: string) {
+async function copyOrderValue(value: string, label: string) {
   try {
-    await navigator.clipboard.writeText(orderReference);
+    await navigator.clipboard.writeText(value);
     toast.add({
-      title: "Order number copied",
-      description: orderReference,
+      title: `${label} copied`,
+      description: value,
       type: "success",
     });
   } catch {
     toast.add({
-      title: "Could not copy order number",
+      title: `Could not copy ${label.toLowerCase()}`,
       description: "Your browser could not access the clipboard.",
       type: "error",
     });
@@ -283,13 +336,5 @@ function orderStatusVariant(
 ): "default" | "secondary" | "destructive" {
   if (status === "cancelled" || status === "rejected") return "destructive";
   if (status === "confirmed") return "default";
-  return "secondary";
-}
-
-function serviceabilityVariant(
-  status: OrderManagementList["rows"][number]["serviceability"],
-): "secondary" | "outline" | "destructive" {
-  if (status === "unserviceable") return "destructive";
-  if (status === "pending_manual_review") return "outline";
   return "secondary";
 }

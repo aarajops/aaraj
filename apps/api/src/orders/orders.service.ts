@@ -10,6 +10,7 @@ import {
 import {
   OrderAddressSchema,
   OrderCreatedSchema,
+  DeliveryZoneSchema,
   OrderManagementListSchema,
   OrderSchema,
   MAX_LIST_OFFSET,
@@ -509,12 +510,11 @@ export class OrdersService implements OrdersPathaoPort {
         id: customerOrder.id,
         reference: customerOrder.reference,
         addressCiphertext: customerOrder.addressCiphertext,
+        deliverySnapshot: customerOrder.deliverySnapshot,
         status: customerOrder.status,
         fulfillmentStatus: customerOrder.fulfillmentStatus,
         collectionStatus: customerOrder.collectionStatus,
-        serviceability: customerOrder.serviceability,
         deliveryProvider: customerOrder.deliveryProvider,
-        totalBdt: customerOrder.totalBdt,
         codAmountDueBdt: customerOrder.codAmountDueBdt,
         createdAt: customerOrder.createdAt,
       })
@@ -535,6 +535,29 @@ export class OrdersService implements OrdersPathaoPort {
     const pageRows = rows.slice(0, query.limit);
     const hasMore = rows.length > query.limit;
     const candidateNextOffset = query.offset + query.limit;
+    const pageOrderIds = pageRows.map((row) => row.id);
+    const lineRows =
+      pageOrderIds.length > 0
+        ? await this.database.db
+            .select({
+              orderId: customerOrderLine.orderId,
+              variantId: customerOrderLine.variantId,
+              quantity: customerOrderLine.quantity,
+              productSnapshot: customerOrderLine.productSnapshot,
+            })
+            .from(customerOrderLine)
+            .where(inArray(customerOrderLine.orderId, pageOrderIds))
+            .orderBy(
+              asc(customerOrderLine.orderId),
+              asc(customerOrderLine.variantId),
+            )
+        : [];
+    const linesByOrderId = new Map<string, typeof lineRows>();
+    for (const line of lineRows) {
+      const lines = linesByOrderId.get(line.orderId) ?? [];
+      lines.push(line);
+      linesByOrderId.set(line.orderId, lines);
+    }
     const piiKeyring = getOrderPiiKeyring();
     return OrderManagementListSchema.parse({
       rows: pageRows.map((row) => {
@@ -548,12 +571,15 @@ export class OrdersService implements OrdersPathaoPort {
           reference: row.reference,
           customerName: address.recipientName,
           customerPhone: address.phone,
+          deliveryZone: parseDeliveryZone(row.deliverySnapshot),
+          items: (linesByOrderId.get(row.id) ?? []).map((line) => ({
+            ...parseOrderLineProduct(line.productSnapshot),
+            quantity: line.quantity,
+          })),
           status: row.status,
           fulfillmentStatus: row.fulfillmentStatus,
           collectionStatus: row.collectionStatus,
-          serviceability: row.serviceability,
           deliveryProvider: row.deliveryProvider,
-          totalBdt: row.totalBdt,
           codAmountDueBdt: row.codAmountDueBdt,
           createdAt: row.createdAt.toISOString(),
         };
@@ -892,7 +918,7 @@ export class OrdersService implements OrdersPathaoPort {
         row.serviceability !== "pending_manual_review"
       ) {
         throw new ConflictException(
-          "This Order is no longer awaiting serviceability review.",
+          "This Order is no longer pending confirmation or review.",
           { errorCode: "ORDER_REVIEW_ALREADY_COMPLETED" },
         );
       }
@@ -917,7 +943,7 @@ export class OrdersService implements OrdersPathaoPort {
 
       if (!reviewed) {
         throw new ConflictException(
-          "This Order changed before the serviceability review was completed.",
+          "This Order changed before the decision was saved.",
           { errorCode: "ORDER_REVIEW_ALREADY_COMPLETED" },
         );
       }
@@ -933,7 +959,7 @@ export class OrdersService implements OrdersPathaoPort {
         actorId: staffId,
         eventType:
           input.outcome === "serviceable"
-            ? "commerce.cod_order_serviceable_confirmed"
+            ? "commerce.cod_order_confirmed"
             : "commerce.cod_order_rejected_unserviceable",
         subjectType: "order",
         subjectId: row.id,
@@ -1842,6 +1868,33 @@ function parseOrderPiiKey(encoded: string | undefined, label: string): Buffer {
     );
   }
   return key;
+}
+
+function parseDeliveryZone(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return null;
+  }
+  const parsed = DeliveryZoneSchema.safeParse(
+    (snapshot as Record<string, unknown>).zone,
+  );
+  return parsed.success ? parsed.data : null;
+}
+
+function parseOrderLineProduct(snapshot: unknown) {
+  const product =
+    snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+      ? (snapshot as Record<string, unknown>)
+      : {};
+  const productName =
+    typeof product.productName === "string" && product.productName.trim()
+      ? product.productName.trim()
+      : "Product";
+
+  return {
+    productName,
+    color: typeof product.color === "string" ? product.color : null,
+    sizeLabel: typeof product.sizeLabel === "string" ? product.sizeLabel : null,
+  };
 }
 
 function orderNotFound(): NotFoundException {

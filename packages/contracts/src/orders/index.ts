@@ -65,10 +65,16 @@ export const OrderListQuerySchema = OffsetPaginationQuerySchema.extend({
 });
 export type OrderListQuery = z.infer<typeof OrderListQuerySchema>;
 
-export const OrderServiceabilityInputSchema = z.strictObject({
-  outcome: z.enum(["serviceable", "unserviceable"]),
-  reason: z.string().trim().min(3).max(500),
-});
+export const OrderServiceabilityInputSchema = z.discriminatedUnion("outcome", [
+  z.strictObject({
+    outcome: z.literal("serviceable"),
+    reason: z.string().trim().min(3).max(500).optional(),
+  }),
+  z.strictObject({
+    outcome: z.literal("unserviceable"),
+    reason: z.string().trim().min(3).max(500),
+  }),
+]);
 export type OrderServiceabilityInput = z.infer<
   typeof OrderServiceabilityInputSchema
 >;
@@ -234,6 +240,17 @@ export const OrderManagementListSchema = z.strictObject({
       reference: OrderReferenceSchema,
       customerName: z.string().min(2).max(120),
       customerPhone: z.string().regex(/^\+8801[3-9]\d{8}$/),
+      deliveryZone: DeliveryZoneSchema.nullable(),
+      items: z
+        .array(
+          z.strictObject({
+            productName: z.string().min(1).max(160),
+            color: z.string().max(80).nullable(),
+            sizeLabel: z.string().max(80).nullable(),
+            quantity: z.number().int().min(1).max(10),
+          }),
+        )
+        .max(50),
       status: z.enum([
         "awaiting_confirmation",
         "confirmed",
@@ -251,13 +268,7 @@ export const OrderManagementListSchema = z.strictObject({
         "cancelled",
       ]),
       collectionStatus: z.enum(["uncollected", "collected", "discrepancy"]),
-      serviceability: z.enum([
-        "pending_manual_review",
-        "serviceable",
-        "unserviceable",
-      ]),
       deliveryProvider: z.enum(["manual", "pathao"]).nullable(),
-      totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
       codAmountDueBdt: z
         .number()
         .int()

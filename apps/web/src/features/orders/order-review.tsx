@@ -20,7 +20,7 @@ import {
   recordOrderFulfillmentOutcome,
   updateOrderServiceability,
 } from "./orders-client";
-import { humanize } from "./orders-format";
+import { humanize, humanizeOrderStatus } from "./orders-format";
 import {
   PathaoBookingPanel,
   type PathaoAssignmentState,
@@ -48,13 +48,18 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
     setPending(true);
     setError(null);
     try {
-      setOrder(await updateOrderServiceability(order.id, { outcome, reason }));
+      setOrder(
+        await updateOrderServiceability(
+          order.id,
+          outcome === "serviceable" ? { outcome } : { outcome, reason },
+        ),
+      );
       setReason("");
     } catch (reasonError) {
       setError(
         reasonError instanceof OrderRequestError || reasonError instanceof Error
           ? reasonError.message
-          : "The serviceability decision could not be saved.",
+          : "The order decision could not be saved.",
       );
     } finally {
       setPending(false);
@@ -183,7 +188,8 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
           <div>
             <h2 className="font-semibold">Order state</h2>
             <p className="mt-2">
-              {humanize(order.status)} · {humanize(order.serviceability)}
+              {humanizeOrderStatus(order.status)} ·{" "}
+              {humanize(order.serviceability)}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               {humanize(order.fulfillmentStatus)} · COD{" "}
@@ -194,28 +200,29 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
             </p>
           </div>
           <div>
-            <h2 className="font-semibold">
-              {order.status === "cancelled" || order.status === "rejected"
-                ? "COD amount"
-                : "COD amount due"}
-            </h2>
+            <h2 className="font-semibold">COD amount due</h2>
             <p className="mt-2 text-xl font-semibold">
-              {order.status === "cancelled" || order.status === "rejected"
-                ? "Not payable"
-                : formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
+              {formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
             </p>
-            <p className="text-sm text-muted-foreground">
-              {order.collectionStatus === "uncollected"
-                ? "No COD collection has been recorded."
-                : order.collectionStatus === "collected"
+            {order.collectionStatus !== "uncollected" && (
+              <p className="text-sm text-muted-foreground">
+                {order.collectionStatus === "collected"
                   ? `AARAJ recorded ${order.collectedAmountBdt} BDT collected.`
                   : `AARAJ recorded ${order.collectedAmountBdt} BDT; the amount is under reconciliation.`}
-            </p>
+              </p>
+            )}
           </div>
           <div className="sm:col-span-2">
             <h2 className="font-semibold">Recipient and delivery address</h2>
             <address className="mt-2 not-italic leading-6">
-              {order.address.recipientName} · {order.address.phone}
+              {order.address.recipientName} ·{" "}
+              <a
+                aria-label={`Call ${order.address.recipientName} at ${order.address.phone}`}
+                className="underline underline-offset-4"
+                href={`tel:${order.address.phone}`}
+              >
+                {order.address.phone}
+              </a>
               <br />
               {[
                 order.address.house,
@@ -271,44 +278,52 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
         {order.status === "awaiting_confirmation" &&
           order.serviceability === "pending_manual_review" && (
             <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
-              <h2 className="text-xl font-semibold">
-                Manual serviceability review
-              </h2>
+              <h2 className="text-xl font-semibold">Customer confirmation</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Confirm the destination can be served. Marking it unserviceable
-                rejects the Order and releases its stock reservation. Do not
-                enter customer contact or address details in the decision note.
+                Call the customer using the number above. After they confirm the
+                order and delivery details, confirm here to make the order ready
+                for Pathao or another courier. If the destination cannot be
+                served, reject the order to release its reserved stock.
               </p>
               {error && (
                 <p className="mt-4 text-sm text-destructive" role="alert">
                   {error}
                 </p>
               )}
-              <label className="mt-4 grid gap-2 text-sm font-medium">
-                Decision note
-                <Textarea
-                  maxLength={500}
-                  minLength={3}
-                  required
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                />
-              </label>
               <div className="mt-4 flex flex-wrap gap-3">
                 <Button
-                  disabled={pending || reason.trim().length < 3}
+                  disabled={pending}
                   onClick={() => void decide("serviceable")}
                 >
-                  {pending ? "Saving…" : "Confirm serviceable"}
+                  {pending ? "Confirming…" : "Confirm order"}
                 </Button>
+              </div>
+              <details className="mt-4 rounded-lg border border-border p-4">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Reject as unserviceable
+                </summary>
+                <label className="mt-3 grid gap-2 text-sm font-medium">
+                  Reason
+                  <Textarea
+                    maxLength={500}
+                    minLength={3}
+                    required
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                  <span className="text-xs font-normal text-muted-foreground">
+                    Do not include customer contact or address details.
+                  </span>
+                </label>
                 <Button
+                  className="mt-3"
                   disabled={pending || reason.trim().length < 3}
                   variant="destructive"
                   onClick={() => void decide("unserviceable")}
                 >
-                  {pending ? "Saving…" : "Reject as unserviceable"}
+                  {pending ? "Rejecting…" : "Reject order and release stock"}
                 </Button>
-              </div>
+              </details>
             </section>
           )}
         {order.status === "confirmed" &&

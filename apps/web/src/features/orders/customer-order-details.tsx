@@ -413,11 +413,11 @@ function getOrderPresentation(order: Order) {
   if (order.serviceability === "pending_manual_review") {
     return {
       title: "Order received",
-      statusLabel: "Delivery review in progress",
+      statusLabel: "Pending confirmation",
       statusClass:
         "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
       message:
-        "We’re checking whether delivery is available to your address. Your order is not yet confirmed for dispatch.",
+        "We’ll contact you to confirm your order and delivery details before dispatch.",
     };
   }
 

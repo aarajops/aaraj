@@ -18,7 +18,7 @@ import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
 import { cn } from "cn";
 import { fetchManagedOrder } from "./orders-client";
-import { humanize } from "./orders-format";
+import { humanize, humanizeOrderStatus } from "./orders-format";
 
 export function OrderDetailsSheet({
   onOpenChange,
@@ -136,7 +136,7 @@ export function OrderDetailsSheet({
               <section aria-label="Order status" className="grid gap-3">
                 <div className="flex flex-wrap gap-2">
                   <Badge variant={orderStatusVariant(order.status)}>
-                    {humanize(order.status)}
+                    {humanizeOrderStatus(order.status)}
                   </Badge>
                   <Badge variant="secondary">
                     {humanize(order.fulfillmentStatus)}
@@ -146,10 +146,12 @@ export function OrderDetailsSheet({
                   </Badge>
                 </div>
                 <dl className="divide-y divide-border text-sm">
-                  <DetailRow
-                    label="COD collection"
-                    value={humanize(order.collectionStatus)}
-                  />
+                  {order.collectionStatus !== "uncollected" && (
+                    <DetailRow
+                      label="COD collection"
+                      value={humanize(order.collectionStatus)}
+                    />
+                  )}
                   {order.collectedAmountBdt !== null && (
                     <DetailRow
                       label="Collected"
@@ -267,7 +269,9 @@ export function OrderDetailsSheet({
               href={`/admin/orders/${order.id}`}
               onClick={() => onOpenChange(false)}
             >
-              Open full order review
+              {order.status === "awaiting_confirmation"
+                ? "Review and confirm order"
+                : "Open full order review"}
             </Link>
           </SheetFooter>
         )}

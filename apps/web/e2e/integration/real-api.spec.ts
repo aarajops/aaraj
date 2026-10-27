@@ -1505,7 +1505,8 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/\/orders\/[0-9a-f-]{36}$/i);
   await expect(page.getByTestId("order-reference")).toBeVisible();
   const customerOrderStatus = page.getByRole("status").filter({
-    hasText: "We’re checking whether delivery is available to your address.",
+    hasText:
+      "We’ll contact you to confirm your order and delivery details before dispatch.",
   });
   await expect(customerOrderStatus).toBeVisible();
   await expect(
@@ -1555,20 +1556,19 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("heading", { name: "Orders", level: 1 }),
   ).toBeVisible();
   const customerOrderRow = page.getByRole("row").filter({
-    has: page.getByRole("link", { name: orderReference }),
+    has: page.getByRole("button", { name: orderReference }),
   });
-  await expect(customerOrderRow).toContainText("Pending Manual Review");
+  await expect(customerOrderRow).toContainText("Pending");
   const managedOrderResponse = await page.request.get(
     `/api/v1/orders/manage/${customerOrderId}`,
   );
   expect(managedOrderResponse.status()).toBe(200);
   await page.goto(`/admin/orders/${customerOrderId}`);
   await expect(
-    page.getByRole("heading", { name: "Manual serviceability review" }),
+    page.getByRole("heading", { name: "Customer confirmation" }),
   ).toBeVisible();
   await expect(page.getByText("Integration Customer")).toBeVisible();
-  await page.getByLabel("Decision note").fill("Courier does not cover area");
-  await page.getByRole("button", { name: "Confirm serviceable" }).click();
+  await page.getByRole("button", { name: "Confirm order" }).click();
   await expect(
     page.getByText("Confirmed · Serviceable", { exact: true }),
   ).toBeVisible();
