@@ -1,7 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { chooseSelectOption } from "../select";
+
+async function openRowActions(page: Page, row: Locator) {
+  const actionsButton = row.getByRole("button", {
+    name: /^Actions for .+ row \d+$/,
+  });
+  await expect(async () => {
+    await actionsButton.click();
+    await expect(actionsButton).toHaveAttribute("aria-expanded", "true", {
+      timeout: 500,
+    });
+  }).toPass({ timeout: 10_000 });
+}
 
 function variantField(page: Page, index: number, label: string) {
   return page
@@ -741,7 +753,11 @@ test("admin uploads and publishes a catalog banner through to the storefront", a
   await expect(
     page.getByRole("row", { name: /Seasonal banner.*Published/ }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Edit Seasonal banner" }).click();
+  await openRowActions(
+    page,
+    page.getByRole("row", { name: /Seasonal banner.*Published/ }),
+  );
+  await page.getByRole("menuitem", { name: "Edit banner" }).click();
   await expect(
     page.getByRole("heading", { name: "Edit banner", level: 1 }),
   ).toBeVisible();
@@ -912,7 +928,11 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByLabel("Slug").fill("clothing");
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
-  await page.getByRole("link", { name: "Edit Clothing" }).click();
+  await openRowActions(
+    page,
+    page.getByRole("row").filter({ hasText: "Clothing" }),
+  );
+  await page.getByRole("menuitem", { name: "Edit category" }).click();
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
     "Clothing",
   );
@@ -950,7 +970,11 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("row", { name: new RegExp(guideName) }),
   ).toBeVisible();
-  await page.getByRole("link", { name: `Edit ${guideName}` }).click();
+  await openRowActions(
+    page,
+    page.getByRole("row", { name: new RegExp(guideName) }),
+  );
+  await page.getByRole("menuitem", { name: "Edit size guide" }).click();
   const saveGuide = page.getByRole("button", { name: "Save guide" });
   await expect(saveGuide).toBeDisabled();
   await page.getByLabel("Guide name").fill(`${guideName} edited`);
@@ -996,7 +1020,11 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("link", { name: productName })).toHaveCount(0);
 
   await page.goto("/admin/catalog");
-  await page.getByRole("link", { name: `Edit ${productName}` }).click();
+  await openRowActions(
+    page,
+    page.getByRole("row").filter({ hasText: productName }),
+  );
+  await page.getByRole("menuitem", { name: "Edit product" }).click();
   await expect(
     page.getByRole("heading", { name: "Edit product", level: 2 }),
   ).toBeVisible();
@@ -1780,7 +1808,11 @@ test("catalog operator configures a product through to storefront visibility", a
   }
 
   await page.goto("/admin/catalog");
-  await page.getByRole("link", { name: `Edit ${productName}` }).click();
+  await openRowActions(
+    page,
+    page.getByRole("row").filter({ hasText: productName }),
+  );
+  await page.getByRole("menuitem", { name: "Edit product" }).click();
   await page.getByLabel("Published on the storefront").uncheck();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
