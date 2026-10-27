@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,7 @@ import {
   API_V1_BASE_PATH,
   type BangladeshGeography,
   type CreateOrderInput,
+  type OrderAddress,
 } from "@aaraj/contracts";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
@@ -64,6 +65,45 @@ type Destination = {
   districtId: string;
   upazilaId?: string;
 };
+
+function encryptOrderAddressForTest(
+  address: OrderAddress,
+  orderId: string,
+): string {
+  const configuration = process.env.ORDER_PII_KEYRING?.trim();
+  const keyring = configuration
+    ? (JSON.parse(configuration) as {
+        activeKeyId: string;
+        keys: Record<string, string>;
+      })
+    : null;
+  const keyId = keyring?.activeKeyId ?? "legacy";
+  const encodedKey =
+    keyring?.keys[keyId] ?? process.env.ORDER_PII_ENCRYPTION_KEY;
+  if (!encodedKey) {
+    throw new Error("The Order PII test key is not configured.");
+  }
+
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv(
+    "aes-256-gcm",
+    Buffer.from(encodedKey, "base64url"),
+    nonce,
+  );
+  cipher.setAAD(Buffer.from(`aaraj/order-address/v2:${keyId}:${orderId}`));
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(address), "utf8"),
+    cipher.final(),
+  ]);
+
+  return [
+    "v2",
+    keyId,
+    nonce.toString("base64url"),
+    ciphertext.toString("base64url"),
+    cipher.getAuthTag().toString("base64url"),
+  ].join(".");
+}
 
 describe("COD Orders and checkout", () => {
   let app: NestExpressApplication;
@@ -1101,6 +1141,11 @@ describe("COD Orders and checkout", () => {
     const fixture = await createGuestOrder();
     const sourceOrder = await orderById(fixture.id);
     if (!sourceOrder) throw new Error("Order pagination fixture is missing.");
+    const sourceAddressResponse = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}`)
+      .set("Cookie", fixture.cookie)
+      .expect(200);
+    const sourceAddress = sourceAddressResponse.body.address as OrderAddress;
     const [sourceQuote] = await database.db
       .select()
       .from(quoteSnapshot)
@@ -1138,6 +1183,7 @@ describe("COD Orders and checkout", () => {
           quoteId,
           reservationId,
           reference,
+          addressCiphertext: encryptOrderAddressForTest(sourceAddress, id),
         })),
       );
 

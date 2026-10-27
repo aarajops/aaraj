@@ -7,13 +7,13 @@ import type {
   CatalogSizeGuideSummary,
   CatalogSizeGuidePage,
 } from "@aaraj/contracts";
-import { buttonVariants } from "@/components/ui/button";
+import { DropdownMenuLinkItem } from "@/components/ui/dropdown-menu";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
 import { formatDateTime } from "@/lib/date-time";
-import Link from "next/link";
+import { Pencil } from "lucide-react";
 
 const columnHelper = createDataTableColumnHelper<CatalogSizeGuideSummary>();
 
@@ -75,21 +75,6 @@ export function SizeGuideTable({
           header: "Updated",
           cell: ({ getValue }) => formatDateTime(getValue()),
         }),
-        columnHelper.display({
-          id: "actions",
-          header: "Actions",
-          meta: { align: "right" },
-          cell: ({ row }) => (
-            <Link
-              className={buttonVariants({ size: "lg", variant: "outline" })}
-              aria-label={`Edit ${row.original.name}`}
-              href={`/admin/catalog/size-guides/${encodeURIComponent(row.original.id)}/edit`}
-              prefetch={false}
-            >
-              Edit
-            </Link>
-          ),
-        }),
       ]),
     [categoryPaths],
   );
@@ -99,6 +84,15 @@ export function SizeGuideTable({
       ariaLabel="Size guides"
       columns={columns}
       data={guides}
+      rowActions={(guide) => (
+        <DropdownMenuLinkItem
+          closeOnClick
+          href={`/admin/catalog/size-guides/${encodeURIComponent(guide.id)}/edit`}
+        >
+          <Pencil aria-hidden="true" className="size-4" />
+          Edit size guide
+        </DropdownMenuLinkItem>
+      )}
       pathname="/admin/catalog/size-guides"
       query={query}
       itemName="size guides"

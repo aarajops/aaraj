@@ -35,7 +35,8 @@ import {
 import { changeManagedUserRole } from "@/features/access/access-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { formatDateTime } from "@/lib/date-time";
-import { LoaderCircle } from "lucide-react";
+import { KeyRound, LoaderCircle } from "lucide-react";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 const columnHelper = createDataTableColumnHelper<AccessManagedUser>();
 type AssignableRole = {
@@ -144,27 +145,6 @@ export function UsersManager({
         </div>
       ),
     }),
-    columnHelper.display({
-      id: "role-actions",
-      header: "Actions",
-      meta: { align: "right" },
-      cell: ({ row }) => (
-        <Button
-          aria-label={`Manage access for ${row.original.email}`}
-          disabled={busyUserId !== null || isRefreshing}
-          size="sm"
-          type="button"
-          variant="outline"
-          onClick={() => {
-            setMessage(null);
-            setError(null);
-            setSelectedUser(row.original);
-          }}
-        >
-          Manage
-        </Button>
-      ),
-    }),
   ]);
 
   return (
@@ -196,6 +176,19 @@ export function UsersManager({
             ariaLabel="Users"
             columns={columns}
             data={page.users}
+            rowActions={(user) => (
+              <DropdownMenuItem
+                disabled={busyUserId !== null || isRefreshing}
+                onClick={() => {
+                  setMessage(null);
+                  setError(null);
+                  setSelectedUser(user);
+                }}
+              >
+                <KeyRound aria-hidden="true" className="size-4" />
+                Manage access
+              </DropdownMenuItem>
+            )}
             emptyMessage={
               query.search
                 ? "No matching users. Clear the search to browse all accounts."

@@ -8,13 +8,13 @@ import type {
   CatalogProductPage,
 } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { DropdownMenuLinkItem } from "@/components/ui/dropdown-menu";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
 import { formatBdtPrice } from "@/lib/currency";
-import Link from "next/link";
+import { Pencil } from "lucide-react";
 
 const columnHelper = createDataTableColumnHelper<CatalogProduct>();
 
@@ -85,21 +85,6 @@ export function ProductTable({
             </Badge>
           ),
         }),
-        columnHelper.display({
-          id: "actions",
-          header: "Actions",
-          meta: { align: "right" },
-          cell: ({ row }) => (
-            <Link
-              className={buttonVariants({ size: "lg", variant: "outline" })}
-              aria-label={`Edit ${row.original.name}`}
-              href={`/admin/catalog/${encodeURIComponent(row.original.id)}/edit`}
-              prefetch={false}
-            >
-              Edit
-            </Link>
-          ),
-        }),
       ]),
     [],
   );
@@ -109,6 +94,15 @@ export function ProductTable({
       ariaLabel="Products"
       columns={columns}
       data={products}
+      rowActions={(product) => (
+        <DropdownMenuLinkItem
+          closeOnClick
+          href={`/admin/catalog/${encodeURIComponent(product.id)}/edit`}
+        >
+          <Pencil aria-hidden="true" className="size-4" />
+          Edit product
+        </DropdownMenuLinkItem>
+      )}
       pathname="/admin/catalog"
       query={query}
       itemName="products"

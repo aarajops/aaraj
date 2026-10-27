@@ -161,8 +161,9 @@ test("superadmin manages user access and repeatedly saves delivery tariffs", asy
     const targetRow = page.getByRole("row").filter({ hasText: targetEmail });
     await expect(targetRow).toBeVisible();
     await targetRow
-      .getByRole("button", { name: `Manage access for ${targetEmail}` })
+      .getByRole("button", { name: /^Actions for users row \d+$/ })
       .click();
+    await page.getByRole("menuitem", { name: "Manage access" }).click();
     const accessSheet = page.getByRole("dialog", { name: "Manage access" });
     const roleSelect = accessSheet.getByRole("combobox", {
       name: `Role to grant to ${targetEmail}`,
@@ -194,10 +195,7 @@ test("superadmin manages user access and repeatedly saves delivery tariffs", asy
         .getByRole("status")
         .filter({ hasText: `admin access granted to ${targetEmail}` }),
     ).toBeVisible();
-    const targetRolesCell = targetRow.getByRole("cell").nth(2);
-    await expect(
-      targetRolesCell.getByText("admin", { exact: true }),
-    ).toBeVisible();
+    await expect(targetRow.getByText("admin", { exact: true })).toBeVisible();
 
     await promotedPage.goto("/account");
     await expect(promotedPage).toHaveURL(/\/admin$/);
@@ -216,8 +214,9 @@ test("superadmin manages user access and repeatedly saves delivery tariffs", asy
       promotedPage.getByRole("navigation", { name: "Access" }),
     ).toHaveCount(0);
     await targetRow
-      .getByRole("button", { name: `Manage access for ${targetEmail}` })
+      .getByRole("button", { name: /^Actions for users row \d+$/ })
       .click();
+    await page.getByRole("menuitem", { name: "Manage access" }).click();
     const revokeSheet = page.getByRole("dialog", { name: "Manage access" });
     await expect(
       revokeSheet.getByRole("combobox", {
@@ -239,7 +238,7 @@ test("superadmin manages user access and repeatedly saves delivery tariffs", asy
     expect(remainingAccess.status()).toBe(200);
     expect((await remainingAccess.json()).users[0].roles).toEqual(["customer"]);
     await expect(
-      targetRow.getByRole("cell").nth(2).getByText("customer", { exact: true }),
+      targetRow.getByText("customer", { exact: true }),
     ).toBeVisible();
     await promotedPage.goto("/admin");
     await expect(promotedPage).toHaveURL(/\/$/);

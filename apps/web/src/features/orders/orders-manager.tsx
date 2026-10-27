@@ -3,8 +3,14 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Copy, Eye, Printer } from "lucide-react";
 import type { OrderListQuery, OrderManagementList } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "@/components/ui/toast";
 import { formatDateTime } from "@/lib/date-time";
 import {
   AdminDataTable,
@@ -135,6 +141,32 @@ export function OrdersManager({
           ariaLabel="Orders"
           columns={columns}
           data={initialPage.rows}
+          rowActions={(order) => (
+            <>
+              <DropdownMenuLinkItem
+                closeOnClick
+                href={`/admin/orders/${order.id}`}
+              >
+                <Eye aria-hidden="true" className="size-4" />
+                View order
+              </DropdownMenuLinkItem>
+              <DropdownMenuItem
+                onClick={() => void copyOrderNumber(order.reference)}
+              >
+                <Copy aria-hidden="true" className="size-4" />
+                Copy order number
+              </DropdownMenuItem>
+              <DropdownMenuLinkItem
+                closeOnClick
+                href={`/admin/orders/${order.id}/invoice?print=1`}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <Printer aria-hidden="true" className="size-4" />
+                Print invoice
+              </DropdownMenuLinkItem>
+            </>
+          )}
           pathname="/admin/orders"
           query={query}
           filters={[
@@ -169,6 +201,23 @@ export function OrdersManager({
       </div>
     </main>
   );
+}
+
+async function copyOrderNumber(orderReference: string) {
+  try {
+    await navigator.clipboard.writeText(orderReference);
+    toast.add({
+      title: "Order number copied",
+      description: orderReference,
+      type: "success",
+    });
+  } catch {
+    toast.add({
+      title: "Could not copy order number",
+      description: "Your browser could not access the clipboard.",
+      type: "error",
+    });
+  }
 }
 
 function CourierStatus({

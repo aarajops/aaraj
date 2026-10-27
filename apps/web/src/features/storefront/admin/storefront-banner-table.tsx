@@ -21,7 +21,8 @@ import {
   getApiErrorMessage,
   readApiErrorResponse,
 } from "@/lib/api-error-response";
-import { Images, Plus } from "lucide-react";
+import { Images, Pencil, Plus } from "lucide-react";
+import { DropdownMenuLinkItem } from "@/components/ui/dropdown-menu";
 import { reorderStorefrontBanners } from "@/features/storefront/admin/storefront-management-client";
 import { revalidateStorefrontBanners } from "@/features/storefront/admin/storefront-banner-actions";
 
@@ -143,21 +144,6 @@ export function StorefrontBannerTable({
           cell: ({ getValue }) =>
             getValue() ? formatDateTime(getValue()!) : "Not yet updated",
         }),
-        columnHelper.display({
-          id: "actions",
-          header: "Actions",
-          meta: { align: "right" },
-          cell: ({ row }) => (
-            <Link
-              aria-label={`Edit ${row.original.name}`}
-              className={buttonVariants({ size: "lg", variant: "outline" })}
-              href={`/admin/storefront/banners/${encodeURIComponent(row.original.id)}/edit`}
-              prefetch={false}
-            >
-              Edit
-            </Link>
-          ),
-        }),
       ]),
     [],
   );
@@ -194,6 +180,15 @@ export function StorefrontBannerTable({
             ariaLabel="Storefront banners"
             columns={columns}
             data={orderedBanners}
+            rowActions={(banner) => (
+              <DropdownMenuLinkItem
+                closeOnClick
+                href={`/admin/storefront/banners/${encodeURIComponent(banner.id)}/edit`}
+              >
+                <Pencil aria-hidden="true" className="size-4" />
+                Edit banner
+              </DropdownMenuLinkItem>
+            )}
             pathname="/admin/storefront/banners"
             query={query}
             itemName="banners"

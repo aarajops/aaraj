@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useMemo,
   useState,
   useTransition,
   type ReactNode,
@@ -8,8 +9,15 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import type { RowData } from "@tanstack/react-table";
-import { RefreshCw, Search } from "lucide-react";
+import { EllipsisVertical, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
   InputGroup,
@@ -64,6 +72,7 @@ type AdminDataTableProps<TData extends RowData & { id: string }> = {
   itemName: string;
   searchPlaceholder: string | null;
   emptyMessage?: ReactNode;
+  rowActions?: (row: TData) => ReactNode;
   filters?: AdminDataTableFilter[];
   onRefresh: () => void;
   isRefreshing?: boolean;
@@ -81,6 +90,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   itemName,
   searchPlaceholder,
   emptyMessage,
+  rowActions,
   filters = [],
   onRefresh,
   isRefreshing = false,
@@ -100,6 +110,46 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
     searchDraftState.queryKey === queryKey
       ? searchDraftState.value
       : searchValue;
+  const tableColumns = useMemo(() => {
+    if (!rowActions) return columns;
+
+    const actionsColumn = createDataTableColumnHelper<TData>().display({
+      id: "actions",
+      header: "Actions",
+      meta: { className: "w-20 px-3" },
+      cell: ({ row }) => {
+        const actions = rowActions(row.original);
+        const hasActions =
+          actions !== null && actions !== undefined && actions !== false;
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={`Actions for ${ariaLabel.toLowerCase()} row ${row.index + 1}`}
+              render={
+                <Button
+                  disabled={!hasActions}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                />
+              }
+            >
+              <EllipsisVertical aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                {actions}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    });
+
+    return [actionsColumn, ...columns];
+  }, [ariaLabel, columns, rowActions]);
 
   function navigate(updates: TableQuery, resetOffset = true) {
     const nextQuery: Record<string, string | number | undefined> = {
@@ -249,8 +299,9 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
       </div>
 
       <DataTable
+        key={queryKey}
         ariaLabel={ariaLabel}
-        columns={columns}
+        columns={tableColumns}
         data={data}
         sortableRows={sortableRows}
         emptyMessage={

@@ -1,19 +1,19 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import type {
   InventoryListQuery,
   InventoryVariant,
   InventoryVariantPage,
 } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { DropdownMenuLinkItem } from "@/components/ui/dropdown-menu";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
 import { formatDateTime } from "@/lib/date-time";
+import { Boxes } from "lucide-react";
 
 const columnHelper = createDataTableColumnHelper<InventoryVariant>();
 
@@ -103,21 +103,6 @@ export function InventoryTable({
               ? formatDateTime(row.original.stockUpdatedAt)
               : "No stock recorded",
         }),
-        columnHelper.display({
-          id: "actions",
-          header: "Actions",
-          meta: { align: "right" },
-          cell: ({ row }) => (
-            <Link
-              className={buttonVariants({ size: "lg", variant: "outline" })}
-              href={`/admin/inventory/${encodeURIComponent(row.original.id)}`}
-              aria-label={`Adjust stock for ${row.original.productName}, ${row.original.color}, ${row.original.sizeLabel}`}
-              prefetch={false}
-            >
-              Adjust stock
-            </Link>
-          ),
-        }),
       ]),
     [],
   );
@@ -128,6 +113,15 @@ export function InventoryTable({
       ariaLabel="Inventory by product variant"
       columns={columns}
       data={variants}
+      rowActions={(variant) => (
+        <DropdownMenuLinkItem
+          closeOnClick
+          href={`/admin/inventory/${encodeURIComponent(variant.id)}`}
+        >
+          <Boxes aria-hidden="true" className="size-4" />
+          Adjust stock
+        </DropdownMenuLinkItem>
+      )}
       pathname="/admin/inventory"
       query={query}
       itemName="active variants"

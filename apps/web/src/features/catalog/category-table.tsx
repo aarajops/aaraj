@@ -7,12 +7,12 @@ import type {
   CatalogCategoryPage,
 } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { DropdownMenuLinkItem } from "@/components/ui/dropdown-menu";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
-import Link from "next/link";
+import { Pencil } from "lucide-react";
 
 const columnHelper = createDataTableColumnHelper<CatalogCategory>();
 
@@ -74,21 +74,6 @@ export function CategoryTable({
             </Badge>
           ),
         }),
-        columnHelper.display({
-          id: "actions",
-          header: "Actions",
-          meta: { align: "right" },
-          cell: ({ row }) => (
-            <Link
-              className={buttonVariants({ size: "lg", variant: "outline" })}
-              aria-label={`Edit ${row.original.name}`}
-              href={`/admin/catalog/categories/${encodeURIComponent(row.original.id)}/edit`}
-              prefetch={false}
-            >
-              Edit
-            </Link>
-          ),
-        }),
       ]),
     [],
   );
@@ -98,6 +83,15 @@ export function CategoryTable({
       ariaLabel="Product categories"
       columns={columns}
       data={categories}
+      rowActions={(category) => (
+        <DropdownMenuLinkItem
+          closeOnClick
+          href={`/admin/catalog/categories/${encodeURIComponent(category.id)}/edit`}
+        >
+          <Pencil aria-hidden="true" className="size-4" />
+          Edit category
+        </DropdownMenuLinkItem>
+      )}
       pathname="/admin/catalog/categories"
       query={query}
       itemName="categories"

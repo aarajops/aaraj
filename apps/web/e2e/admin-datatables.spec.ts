@@ -337,9 +337,14 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
         .first()
         .evaluate((element) => element.getBoundingClientRect().height);
       expect(firstBodyRowHeight).toBeGreaterThanOrEqual(48);
-      await expect(table.locator("thead th").last()).toHaveText(
-        "lastHeader" in route ? route.lastHeader : "Actions",
-      );
+      await expect(
+        table.getByRole("columnheader", { name: "Actions" }),
+      ).toBeVisible();
+      if ("lastHeader" in route) {
+        await expect(table.locator("thead th").last()).toHaveText(
+          route.lastHeader,
+        );
+      }
 
       if ("rightAlignedHeader" in route) {
         const numericHeader = table.getByRole("columnheader", {
@@ -459,6 +464,26 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
 
   const orderLink = page.getByRole("link", { name: "ORD-026-00001" });
   await page.keyboard.press("Tab");
+  await expect(
+    ordersScrollRegion.getByRole("checkbox", {
+      name: "Select all orders on this page",
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    ordersScrollRegion.getByRole("checkbox", {
+      name: "Select orders row 1",
+      exact: true,
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    ordersScrollRegion.getByRole("button", {
+      name: "Actions for orders row 1",
+      exact: true,
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(orderLink).toBeFocused();
   expect(
     await orderLink.evaluate((element) => element.matches(":focus-visible")),
@@ -484,6 +509,24 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
     testInfo,
     "orders-order-link-keyboard-focus.png",
   );
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    ordersScrollRegion.getByRole("button", {
+      name: "Actions for orders row 1",
+      exact: true,
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("menuitem", { name: "View order" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy order number" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Print invoice" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
 });
 
 test("product refresh alert text meets WCAG AA contrast in both themes", async ({

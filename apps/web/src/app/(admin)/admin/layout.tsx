@@ -27,7 +27,10 @@ export default async function AdminLayout({
 
   return (
     <TooltipProvider>
-      <SidebarProvider defaultOpen={defaultOpen}>
+      <SidebarProvider
+        className="print:block print:min-h-0 print:w-full print:bg-white"
+        defaultOpen={defaultOpen}
+      >
         <AdminSidebar
           permissions={access?.permissions ?? []}
           user={
@@ -36,8 +39,8 @@ export default async function AdminLayout({
               : null
           }
         />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+        <div className="flex min-w-0 flex-1 flex-col print:block print:min-h-0 print:w-full">
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 print:hidden">
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-4" />
             <p className="text-sm font-medium text-foreground">

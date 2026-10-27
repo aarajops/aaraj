@@ -91,6 +91,8 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
   return {
     id: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
     reference: `ORD-026-${String(sequence).padStart(5, "0")}`,
+    customerName: "E2E Order Customer",
+    customerPhone: "+8801712345678",
     status,
     fulfillmentStatus:
       status === "confirmed"

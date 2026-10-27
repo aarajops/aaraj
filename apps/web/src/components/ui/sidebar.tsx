@@ -159,7 +159,7 @@ function Sidebar({
       <div
         data-slot="sidebar"
         className={cn(
-          "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
+          "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground print:hidden",
           className,
         )}
         {...props}
@@ -177,7 +177,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-72 bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="w-72 bg-sidebar p-0 text-sidebar-foreground print:hidden [&>button]:hidden"
           side={side}
         >
           <SheetHeader className="sr-only">
@@ -192,7 +192,7 @@ function Sidebar({
 
   return (
     <div
-      className="group peer hidden text-sidebar-foreground md:block"
+      className="group peer hidden text-sidebar-foreground md:block print:hidden"
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}

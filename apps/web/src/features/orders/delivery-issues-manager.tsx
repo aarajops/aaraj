@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ClipboardCheck, Eye } from "lucide-react";
 import type {
   PathaoManagementIssue,
   PathaoManagementIssues,
@@ -12,6 +13,17 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AdminDataTable,
@@ -39,6 +51,8 @@ export function DeliveryIssuesManager({
   const router = useRouter();
   const [refreshing, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedIssue, setSelectedIssue] =
+    useState<PathaoManagementIssue | null>(null);
 
   const columns = useMemo(
     () =>
@@ -116,28 +130,8 @@ export function DeliveryIssuesManager({
           header: "Received",
           cell: ({ getValue }) => formatDateTime(getValue()),
         }),
-        columnHelper.display({
-          id: "action",
-          header: "Action",
-          meta: { align: "right" },
-          cell: ({ row }) =>
-            row.original.orderId &&
-            row.original.status === "reconciliation_required" ? (
-              <WebhookResolutionActions
-                disabled={refreshing}
-                issue={row.original}
-                onError={setActionError}
-                onResolved={() => {
-                  setActionError(null);
-                  startTransition(() => router.refresh());
-                }}
-              />
-            ) : (
-              <span className="text-sm text-muted-foreground">—</span>
-            ),
-        }),
       ]),
-    [refreshing, router],
+    [],
   );
 
   return (
@@ -154,16 +148,41 @@ export function DeliveryIssuesManager({
             Review unmatched and conflicting Pathao events.
           </p>
         </header>
-        {actionError && (
-          <p className="mt-4 text-sm text-destructive" role="alert">
-            {actionError}
-          </p>
-        )}
         <section aria-label="Webhook exceptions" className="mt-6">
           <AdminDataTable
             ariaLabel="Webhook exceptions"
             columns={columns}
             data={initialPage.issues}
+            rowActions={(issue) => {
+              const canReview =
+                issue.orderId && issue.status === "reconciliation_required";
+              if (!issue.orderId && !canReview) return null;
+
+              return (
+                <>
+                  {issue.orderId && (
+                    <DropdownMenuLinkItem
+                      closeOnClick
+                      href={`/admin/orders/${issue.orderId}`}
+                    >
+                      <Eye aria-hidden="true" className="size-4" />
+                      View order
+                    </DropdownMenuLinkItem>
+                  )}
+                  {canReview && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setActionError(null);
+                        setSelectedIssue(issue);
+                      }}
+                    >
+                      <ClipboardCheck aria-hidden="true" className="size-4" />
+                      Review event
+                    </DropdownMenuItem>
+                  )}
+                </>
+              );
+            }}
             emptyMessage="No webhook exceptions need attention."
             itemName="webhook exceptions"
             onRefresh={() => {
@@ -178,6 +197,46 @@ export function DeliveryIssuesManager({
           />
         </section>
       </div>
+      <Sheet
+        open={selectedIssue !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedIssue(null);
+        }}
+      >
+        {selectedIssue && (
+          <SheetContent
+            className="w-full overflow-hidden p-0 sm:max-w-md"
+            side="right"
+          >
+            <SheetHeader className="border-b border-border px-6 py-5 pr-14">
+              <SheetTitle className="text-xl font-semibold">
+                Review delivery event
+              </SheetTitle>
+              <SheetDescription>
+                {humanizeEvent(selectedIssue.event)}
+              </SheetDescription>
+            </SheetHeader>
+            <div className="space-y-4 overflow-y-auto px-6 py-5">
+              {actionError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {actionError}
+                </p>
+              )}
+              <WebhookResolutionActions
+                key={selectedIssue.id}
+                disabled={refreshing}
+                issue={selectedIssue}
+                onError={setActionError}
+                onResolved={() => {
+                  setActionError(null);
+                  setSelectedIssue(null);
+                  startTransition(() => router.refresh());
+                }}
+              />
+            </div>
+          </SheetContent>
+        )}
+      </Sheet>
     </main>
   );
 }
@@ -193,7 +252,6 @@ function WebhookResolutionActions({
   onResolved: () => void;
   onError: (error: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [reason, setReason] = useState("");
   const [verified, setVerified] = useState(false);
   const [pending, setPending] = useState(false);
@@ -226,20 +284,6 @@ function WebhookResolutionActions({
     } finally {
       setPending(false);
     }
-  }
-
-  if (!expanded) {
-    return (
-      <Button
-        disabled={disabled || pending}
-        size="sm"
-        type="button"
-        variant="outline"
-        onClick={() => setExpanded(true)}
-      >
-        Review
-      </Button>
-    );
   }
 
   return (
