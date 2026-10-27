@@ -115,7 +115,7 @@ export function DataTable<TData extends RowData & { id: string }>({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const visibleColumns = useMemo(() => {
-    const selectionColumn: ColumnDef<DataTableFeatures, TData> = {
+    const selectionColumn = createDataTableColumnHelper<TData>().display({
       id: "select",
       header: ({ table }) => (
         <Checkbox
@@ -138,7 +138,7 @@ export function DataTable<TData extends RowData & { id: string }>({
           onCheckedChange={(checked) => row.toggleSelected(checked === true)}
         />
       ),
-    };
+    });
     return [selectionColumn, ...columns];
   }, [ariaLabel, columns]);
   const instance = useTable({
