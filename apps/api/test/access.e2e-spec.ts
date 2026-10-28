@@ -344,16 +344,6 @@ describe("PBAC with real Better Auth sessions and PostgreSQL", () => {
     expect(grants).toHaveLength(1);
   });
 
-  it("requires a recent sign-in for role changes while leaving read access available", async () => {
-    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 16 * 60 * 1000);
-    const response = await change(owner, customer, "staff").expect(403);
-    expect(response.body.errorCode).toBe("RECENT_SIGN_IN_REQUIRED");
-    await request(app.getHttpServer())
-      .get("/api/v1/access/roles")
-      .set("Cookie", owner.cookie)
-      .expect(200);
-  });
-
   it("rolls back role changes if the audit insert fails", async () => {
     vi.spyOn(app.get(AuditService), "append").mockRejectedValueOnce(
       new Error("Audit unavailable"),

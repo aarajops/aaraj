@@ -302,7 +302,7 @@ function roleFromCookie(cookie = "") {
 
 function requireStaff(request, response) {
   const role = roleFromCookie(request.headers.cookie);
-  if (["staff", "staff-stale", "admin", "superadmin"].includes(role))
+  if (["staff", "admin", "superadmin"].includes(role))
     return true;
   send(response, role ? 403 : 401, {
     statusCode: role ? 403 : 401,
@@ -317,16 +317,6 @@ function requireCategoryAdmin(request, response) {
   send(response, role ? 403 : 401, {
     statusCode: role ? 403 : 401,
     message: role ? "Forbidden" : "Unauthorized",
-  });
-  return false;
-}
-
-function requireRecentSignIn(request, response) {
-  if (roleFromCookie(request.headers.cookie) !== "staff-stale") return true;
-  send(response, 403, {
-    statusCode: 403,
-    errorCode: "RECENT_SIGN_IN_REQUIRED",
-    message: "Sign out and sign in again before retrying this action.",
   });
   return false;
 }
@@ -401,7 +391,7 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    const role = requestedRole === "staff-stale" ? "staff" : requestedRole;
+    const role = requestedRole;
     const permissions = ["access.read_self"];
     if (["staff", "admin", "superadmin"].includes(role)) {
       permissions.push("catalog.manage");
@@ -953,7 +943,6 @@ const server = createServer(async (request, response) => {
 
   if (url.pathname === "/api/v1/catalog/size-guides" && method === "POST") {
     if (!requireStaff(request, response)) return;
-    if (!requireRecentSignIn(request, response)) return;
     const parsed = CatalogSizeGuideCreateSchema.safeParse(
       await readBody(request),
     );
@@ -983,7 +972,6 @@ const server = createServer(async (request, response) => {
   );
   if (guidePath && method === "PATCH") {
     if (!requireStaff(request, response)) return;
-    if (!requireRecentSignIn(request, response)) return;
     const guide = sizeGuides.find(({ id }) => id === guidePath[1]);
     const parsed = CatalogSizeGuideCreateSchema.safeParse(
       await readBody(request),
@@ -1121,7 +1109,6 @@ const server = createServer(async (request, response) => {
 
   if (url.pathname === "/api/v1/catalog/products" && method === "POST") {
     if (!requireStaff(request, response)) return;
-    if (!requireRecentSignIn(request, response)) return;
     const parsed = CatalogProductCreateSchema.safeParse(
       await readBody(request),
     );
@@ -1226,7 +1213,6 @@ const server = createServer(async (request, response) => {
 
   if (productPath && method === "PATCH") {
     if (!requireStaff(request, response)) return;
-    if (!requireRecentSignIn(request, response)) return;
     const product = products.find(({ id }) => id === productPath[1]);
     if (!product) {
       send(response, 404, { statusCode: 404, message: "Product not found" });

@@ -1023,11 +1023,6 @@ export function CatalogManager({
                     role="alert"
                   >
                     {formErrorMessage}
-                    {errorCode === "RECENT_SIGN_IN_REQUIRED" && (
-                      <Link className="ml-1 underline" href="/account">
-                        Go to your account
-                      </Link>
-                    )}
                   </p>
                 )}
                 <Button

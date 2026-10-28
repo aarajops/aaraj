@@ -692,28 +692,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
     ),
   ).toBeVisible();
 
-  await context.clearCookies();
-  await context.addCookies([
-    {
-      name: "aaraj-e2e-role",
-      value: "staff-stale",
-      url: baseURL!,
-      httpOnly: true,
-      sameSite: "Lax",
-    },
-  ]);
-  await page.goto("/admin/catalog");
-  await openProductEdit(page, "Aaraj E2E Tee");
-  await page
-    .getByRole("region", { name: "Edit product" })
-    .getByLabel("Name", { exact: true })
-    .fill("Aaraj E2E Tee auth recovery check");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.locator('p[role="alert"]')).toContainText(
-    "Sign out and sign in again before retrying this action.",
-  );
-  await page.getByRole("link", { name: "Go to your account" }).click();
-  await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
 });
 
 test("customer Order page explains serviceability timeout cancellation", async ({

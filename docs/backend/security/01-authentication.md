@@ -8,6 +8,6 @@ The adapter registers its authentication guard globally. Use `@AllowAnonymous()`
 
 Customer registration uses name, email, and password. Email verification and OTP are not required. The first account is a customer; it gains no staff privileges automatically.
 
-Application permissions are owned by [the authorization base](02-authorization.md). Authentication establishes identity; a valid session alone does not authorize a privileged business action. Role mutation endpoints additionally require a recent sign-in and trusted Origin, as described in that guide.
+Application permissions are owned by [the authorization base](02-authorization.md). Authentication establishes identity; a valid session alone does not authorize a privileged business action. Cookie-authenticated business writes also require a trusted Origin, and sensitive auth endpoints retain Better Auth's built-in safeguards.
 
 References: [Better Auth email/password](https://better-auth.com/docs/authentication/email-password), [NestJS integration](https://better-auth.com/docs/integrations/nestjs), [adapter repository](https://github.com/ThallesP/nestjs-better-auth).
