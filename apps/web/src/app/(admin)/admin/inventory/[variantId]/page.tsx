@@ -37,10 +37,7 @@ export default async function AdminInventoryVariantPage({
         <div>
           <AdminPageHeader
             backLink={
-              <Link
-                className={adminPageLinkClassName}
-                href="/admin/inventory"
-              >
+              <Link className={adminPageLinkClassName} href="/admin/inventory">
                 ← Back to inventory
               </Link>
             }

@@ -182,10 +182,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
       <article>
         <AdminPageHeader
           backLink={
-            <Link
-              className={adminPageLinkClassName}
-              href="/admin/orders"
-            >
+            <Link className={adminPageLinkClassName} href="/admin/orders">
               ← Back to orders
             </Link>
           }

@@ -218,10 +218,7 @@ export function StorefrontBannerManager({
       <div>
         <AdminPageHeader
           backLink={
-            <Link
-              className={adminPageLinkClassName}
-              href={BANNER_LIST_PATH}
-            >
+            <Link className={adminPageLinkClassName} href={BANNER_LIST_PATH}>
               ← Back to banners
             </Link>
           }

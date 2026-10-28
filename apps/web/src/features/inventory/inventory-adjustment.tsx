@@ -147,10 +147,7 @@ export function InventoryAdjustment({
       <div>
         <AdminPageHeader
           backLink={
-            <Link
-              className={adminPageLinkClassName}
-              href="/admin/inventory"
-            >
+            <Link className={adminPageLinkClassName} href="/admin/inventory">
               ← Back to inventory
             </Link>
           }

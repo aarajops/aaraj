@@ -26,7 +26,10 @@ export default async function AdminOrderPage({
             title="Order review"
             description="Review fulfillment, delivery, and COD collection."
           />
-          <p className="mt-6 rounded-xl border border-border p-5 text-muted-foreground" role="status">
+          <p
+            className="mt-6 rounded-xl border border-border p-5 text-muted-foreground"
+            role="status"
+          >
             {result.kind === "unauthenticated"
               ? "Sign in with an Aaraj staff account to review this Order."
               : result.kind === "forbidden"

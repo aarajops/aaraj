@@ -370,7 +370,10 @@ const server = createServer(async (request, response) => {
       !body.path.startsWith("/api/") ||
       !["hold", "release"].includes(body.action)
     ) {
-      send(response, 400, { statusCode: 400, message: "Invalid response gate" });
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid response gate",
+      });
       return;
     }
     if (body.action === "hold") heldApiPaths.add(body.path);

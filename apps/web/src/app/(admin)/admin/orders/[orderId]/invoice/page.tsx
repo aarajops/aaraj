@@ -38,7 +38,10 @@ export default async function AdminOrderInvoicePage({
             title="Invoice"
             description="Print a customer order invoice."
           />
-          <p className="mt-6 rounded-xl border border-border p-5 text-muted-foreground" role="status">
+          <p
+            className="mt-6 rounded-xl border border-border p-5 text-muted-foreground"
+            role="status"
+          >
             {message}
           </p>
         </div>
