@@ -11,6 +11,7 @@ import type {
   AssignedRole,
   Permission,
 } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,14 +149,12 @@ export function UsersManager({
   ]);
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] flex-1 px-5 py-8 text-foreground sm:px-8 sm:py-10">
-      <div className="container mx-auto">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          User management
-        </h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Search accounts and manage staff access.
-        </p>
+    <>
+      <div>
+        <AdminPageHeader
+          title="User management"
+          description="Manage accounts and staff access."
+        />
 
         {message && (
           <p className="mt-4 text-sm text-success" role="status">
@@ -168,41 +167,37 @@ export function UsersManager({
           </p>
         )}
 
-        <section aria-labelledby="user-directory-heading" className="mt-7">
-          <h2 className="sr-only" id="user-directory-heading">
-            Account directory
-          </h2>
-          <AdminDataTable
-            ariaLabel="Users"
-            columns={columns}
-            data={page.users}
-            rowActions={(user) => (
-              <DropdownMenuItem
-                disabled={busyUserId !== null || isRefreshing}
-                onClick={() => {
-                  setMessage(null);
-                  setError(null);
-                  setSelectedUser(user);
-                }}
-              >
-                <KeyRound aria-hidden="true" className="size-4" />
-                Manage access
-              </DropdownMenuItem>
-            )}
-            emptyMessage={
-              query.search
-                ? "No matching users. Clear the search to browse all accounts."
-                : "No accounts yet."
-            }
-            page={page}
-            isRefreshing={isRefreshing || busyUserId !== null}
-            itemName="users"
-            onRefresh={() => startRefresh(() => router.refresh())}
-            pathname="/admin/users"
-            query={query}
-            searchPlaceholder="Search by name or email"
-          />
-        </section>
+        <AdminDataTable
+          className="mt-6"
+          ariaLabel="Users"
+          columns={columns}
+          data={page.users}
+          rowActions={(user) => (
+            <DropdownMenuItem
+              disabled={busyUserId !== null || isRefreshing}
+              onClick={() => {
+                setMessage(null);
+                setError(null);
+                setSelectedUser(user);
+              }}
+            >
+              <KeyRound aria-hidden="true" className="size-4" />
+              Manage access
+            </DropdownMenuItem>
+          )}
+          emptyMessage={
+            query.search
+              ? "No matching users. Clear the search to browse all accounts."
+              : "No accounts yet."
+          }
+          page={page}
+          isRefreshing={isRefreshing || busyUserId !== null}
+          itemName="users"
+          onRefresh={() => startRefresh(() => router.refresh())}
+          pathname="/admin/users"
+          query={query}
+          searchPlaceholder="Search by name or email"
+        />
       </div>
 
       <RoleManagementSheet
@@ -219,7 +214,7 @@ export function UsersManager({
         open={selectedUser !== null}
         user={selectedUser}
       />
-    </main>
+    </>
   );
 }
 

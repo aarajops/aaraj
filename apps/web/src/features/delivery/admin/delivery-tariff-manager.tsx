@@ -21,6 +21,7 @@ import {
   type DeliveryZone,
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
+import { AdminFormContentSkeleton } from "@/components/admin/admin-page-skeleton";
 import {
   Field,
   FieldDescription,
@@ -268,7 +269,7 @@ export function DeliveryTariffManager() {
       {notice && <Message kind="notice">{notice}</Message>}
 
       {loading ? (
-        <p role="status">Loading delivery settings…</p>
+        <AdminFormContentSkeleton label="delivery settings" />
       ) : settings && geography ? (
         <form className="grid gap-8" onSubmit={handleSubmit(save)}>
           <input type="hidden" {...register("geographyVersion")} />

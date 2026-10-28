@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { OrderIdSchema } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { OrderInvoice } from "@/features/orders/order-invoice";
 import { getManagedOrder } from "@/features/orders/orders-queries";
 
@@ -31,12 +32,17 @@ export default async function AdminOrderInvoicePage({
           : "The invoice could not be loaded. Try again shortly.";
 
     return (
-      <main className="flex-1 bg-background px-5 py-12 text-foreground sm:px-8">
-        <div className="mx-auto max-w-3xl rounded-xl border border-border p-7">
-          <h1 className="text-2xl font-semibold">Invoice unavailable</h1>
-          <p className="mt-3 text-muted-foreground">{message}</p>
+      <>
+        <div>
+          <AdminPageHeader
+            title="Invoice"
+            description="Print a customer order invoice."
+          />
+          <p className="mt-6 rounded-xl border border-border p-5 text-muted-foreground" role="status">
+            {message}
+          </p>
         </div>
-      </main>
+      </>
     );
   }
 

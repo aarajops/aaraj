@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Eye, Printer } from "lucide-react";
 import type { OrderListQuery, OrderManagementList } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -177,34 +178,21 @@ export function OrdersManager({
           align: "right",
           numeric: true,
         },
-        cell: ({ row }) => {
-          return (
-            <div className="grid gap-1">
-              {formatBdtPrice({ amountBdt: row.original.codAmountDueBdt })}
-              {row.original.collectionStatus !== "uncollected" && (
-                <span className="text-xs text-muted-foreground">
-                  {humanize(row.original.collectionStatus)}
-                </span>
-              )}
-            </div>
-          );
-        },
+        cell: ({ row }) =>
+          formatBdtPrice({ amountBdt: row.original.codAmountDueBdt }),
       }),
     ]);
   }, [initialPage.pathaoSummaryAvailable]);
 
   return (
-    <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10">
-      <div className="container mx-auto">
-        <p className="text-sm font-semibold tracking-widest text-primary">
-          AARAJ ADMIN
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Orders</h1>
-        <p className="mt-1 text-muted-foreground">
-          Review order status, delivery checks, and dispatch.
-        </p>
+    <>
+      <div>
+        <AdminPageHeader
+          title="Orders"
+          description="Review orders and manage dispatch."
+        />
         <AdminDataTable
-          className="mt-5"
+          className="mt-6"
           ariaLabel="Orders"
           columns={columns}
           data={initialPage.rows}
@@ -264,7 +252,7 @@ export function OrdersManager({
         open={selectedOrderId !== null}
         orderId={selectedOrderId}
       />
-    </main>
+    </>
   );
 }
 

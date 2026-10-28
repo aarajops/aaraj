@@ -1,0 +1,5 @@
+import { AdminFormPageSkeleton } from "@/components/admin/admin-page-skeleton";
+
+export default function LoadingEditSizeGuide() {
+  return <AdminFormPageSkeleton hasBackLink label="size guide form" />;
+}

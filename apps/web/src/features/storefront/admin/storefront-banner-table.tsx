@@ -9,6 +9,7 @@ import type {
   StorefrontBannerListQuery,
   StorefrontBannerPage,
 } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -149,33 +150,28 @@ export function StorefrontBannerTable({
   );
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-      <div className="container mx-auto">
-        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-          AARAJ ADMIN
-        </p>
-        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              Storefront banners
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {canReorder
-                ? "Drag rows to set the homepage carousel order."
-                : "Reordering is available when the complete, unfiltered banner list is visible."}
-            </p>
-          </div>
-          <Link
-            className={buttonVariants({ size: "lg" })}
-            href="/admin/storefront/banners/create"
-            prefetch={false}
-          >
-            <Plus aria-hidden="true" />
-            New banner
-          </Link>
-        </div>
+    <>
+      <div>
+        <AdminPageHeader
+          title="Storefront banners"
+          description={
+            canReorder
+              ? "Set the homepage banner order."
+              : "Clear filters to reorder banners."
+          }
+          actions={
+            <Link
+              className={buttonVariants({ size: "lg" })}
+              href="/admin/storefront/banners/create"
+              prefetch={false}
+            >
+              <Plus aria-hidden="true" />
+              New banner
+            </Link>
+          }
+        />
 
-        <section className="mt-8" aria-label="Banner records">
+        <section className="mt-6" aria-label="Banner records">
           <AdminDataTable
             ariaLabel="Storefront banners"
             columns={columns}
@@ -221,6 +217,6 @@ export function StorefrontBannerTable({
           />
         </section>
       </div>
-    </main>
+    </>
   );
 }

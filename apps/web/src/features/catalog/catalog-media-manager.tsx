@@ -11,6 +11,7 @@ import {
 } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardAction,
@@ -635,9 +636,17 @@ export function CatalogMediaManager({
             Uploaded images
           </h3>
           {mediaIsLoading ? (
-            <p className="text-sm text-muted-foreground" role="status">
-              Loading product media…
-            </p>
+            <div
+              aria-busy="true"
+              aria-label="Loading product media"
+              className="grid gap-3 sm:grid-cols-2"
+              role="status"
+            >
+              <div aria-hidden="true" className="grid gap-3 sm:col-span-2">
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+              </div>
+            </div>
           ) : isUnavailable ? null : media.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
               No media has been uploaded for this product.

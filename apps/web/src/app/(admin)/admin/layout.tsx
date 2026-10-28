@@ -47,7 +47,9 @@ export default async function AdminLayout({
               Administration
             </p>
           </header>
-          {children}
+          <main className="min-w-0 flex-1 bg-background p-6 text-foreground print:block print:min-h-0 print:w-full print:bg-white print:p-0 print:text-black">
+            {children}
+          </main>
         </div>
       </SidebarProvider>
     </TooltipProvider>

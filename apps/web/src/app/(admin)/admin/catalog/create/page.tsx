@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { CatalogManager } from "@/features/catalog/catalog-manager";
 import {
   getManagedCategoryOptions,
@@ -27,11 +28,12 @@ export default async function CreateCatalogProductPage() {
           : "Product setup could not be loaded. Please try again.";
 
     return (
-      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Create product
-          </h1>
+      <>
+        <div>
+          <AdminPageHeader
+            title="Create product"
+            description="Create one product per style, then add its color and size options."
+          />
           <p
             className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
             role="alert"
@@ -54,7 +56,7 @@ export default async function CreateCatalogProductPage() {
             </Link>
           )}
         </div>
-      </main>
+      </>
     );
   }
 

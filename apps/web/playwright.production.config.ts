@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const host = "127.0.0.1";
 const webPort = 3190;
+const distDir = process.env.NEXT_DIST_DIR ?? ".next";
+const standaloneWebDir = `${distDir}/standalone/apps/web`;
+const standaloneBuildDir = `${standaloneWebDir}/${distDir}`;
 const apiInternalUrl = process.env.API_INTERNAL_URL ?? `http://${host}:3001`;
 const configuredApiPort = new URL(apiInternalUrl).port;
 const apiPort = Number(configuredApiPort || 3001);
@@ -31,8 +34,7 @@ export default defineConfig({
       env: { PORT: String(apiPort), HOST: host },
     },
     {
-      command:
-        "mkdir -p .next/standalone/apps/web/.next/static .next/standalone/apps/web/public && cp -a .next/static/. .next/standalone/apps/web/.next/static/ && if [ -d public ]; then cp -a public/. .next/standalone/apps/web/public/; fi && node .next/standalone/apps/web/server.js",
+      command: `mkdir -p ${standaloneBuildDir}/static ${standaloneWebDir}/public && cp -a ${distDir}/static/. ${standaloneBuildDir}/static/ && if [ -d public ]; then cp -a public/. ${standaloneWebDir}/public/; fi && node ${standaloneWebDir}/server.js`,
       url: `http://${host}:${webPort}`,
       reuseExistingServer: false,
       timeout: 120_000,

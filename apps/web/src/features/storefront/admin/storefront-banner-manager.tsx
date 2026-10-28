@@ -26,6 +26,10 @@ import {
 import { useForm, useWatch } from "react-hook-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
+  AdminPageHeader,
+  adminPageLinkClassName,
+} from "@/components/admin/admin-page-header";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -210,28 +214,22 @@ export function StorefrontBannerManager({
 
   const title = bannerId ? "Edit banner" : "Create banner";
   return (
-    <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-      <div className="container mx-auto">
-        <Link
-          className="text-sm text-primary hover:text-primary/80"
-          href={BANNER_LIST_PATH}
-        >
-          ← Back to banners
-        </Link>
-        <div className="mt-5">
-          <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-            AARAJ ADMIN
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            {title}
-          </h1>
-          <p className="mt-2 max-w-2xl text-muted-foreground">
-            Configure reusable artwork and publish it to the homepage hero
-            carousel. Set their display order from the banner list.
-          </p>
-        </div>
+    <>
+      <div>
+        <AdminPageHeader
+          backLink={
+            <Link
+              className={adminPageLinkClassName}
+              href={BANNER_LIST_PATH}
+            >
+              ← Back to banners
+            </Link>
+          }
+          title={title}
+          description="Configure banner artwork and publishing. Set display order from the banner list."
+        />
 
-        <section className="mt-8 grid gap-6" aria-label="Banner form">
+        <section className="mt-6 grid gap-6" aria-label="Banner form">
           {error && (
             <p
               className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
@@ -444,7 +442,7 @@ export function StorefrontBannerManager({
           </form>
         </section>
       </div>
-    </main>
+    </>
   );
 }
 

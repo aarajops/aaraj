@@ -68,6 +68,7 @@ function SortableDataTableRow({
   label,
   disabled,
   selected,
+  selection,
   children,
 }: {
   id: string;
@@ -75,24 +76,28 @@ function SortableDataTableRow({
   label: string;
   disabled: boolean;
   selected: boolean;
+  selection: ReactNode;
   children: ReactNode;
 }) {
   const { ref, handleRef } = useSortableItem(id, index, disabled);
 
   return (
     <TableRow data-state={selected ? "selected" : undefined} ref={ref}>
-      <TableCell className="w-10 px-2">
-        <Button
-          aria-label={`Reorder ${label}`}
-          className="text-muted-foreground"
-          disabled={disabled}
-          ref={handleRef}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <GripVertical aria-hidden="true" />
-        </Button>
+      <TableCell className="w-16 px-2">
+        <div className="flex items-center gap-1">
+          {selection}
+          <Button
+            aria-label={`Reorder ${label}`}
+            className="text-muted-foreground"
+            disabled={disabled}
+            ref={handleRef}
+            size="icon-xs"
+            type="button"
+            variant="ghost"
+          >
+            <GripVertical aria-hidden="true" />
+          </Button>
+        </div>
       </TableCell>
       {children}
     </TableRow>
@@ -104,6 +109,38 @@ export type DataTableColumnDef<TData extends RowData> = ColumnDef<
   TData
 >;
 
+function createSelectionColumn<TData extends RowData>(
+  ariaLabel: string,
+  sortable: boolean,
+) {
+  const columnHelper = createColumnHelper<DataTableFeatures, TData>();
+
+  return columnHelper.display({
+    id: "select",
+    meta: { className: sortable ? "w-16 px-2" : "w-10 px-2" },
+    header: ({ table }) => (
+      <Checkbox
+        aria-label={`Select all ${ariaLabel.toLowerCase()} on this page`}
+        checked={table.getIsAllPageRowsSelected()}
+        disabled={table.getRowModel().rows.length === 0}
+        indeterminate={
+          table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected()
+        }
+        onCheckedChange={(checked) =>
+          table.toggleAllPageRowsSelected(checked === true)
+        }
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        aria-label={`Select row ${row.index + 1} from ${ariaLabel.toLowerCase()}`}
+        checked={row.getIsSelected()}
+        onCheckedChange={(checked) => row.toggleSelected(checked === true)}
+      />
+    ),
+  });
+}
+
 export function DataTable<TData extends RowData & { id: string }>({
   ariaLabel,
   columns,
@@ -113,63 +150,35 @@ export function DataTable<TData extends RowData & { id: string }>({
   sortableRows,
 }: DataTableProps<TData>) {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-
-  const visibleColumns = useMemo(() => {
-    const selectionColumn = createDataTableColumnHelper<TData>().display({
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          aria-label={`Select all ${ariaLabel.toLowerCase()} on this page`}
-          checked={table.getIsAllPageRowsSelected()}
-          disabled={table.getRowModel().rows.length === 0}
-          indeterminate={
-            table.getIsSomePageRowsSelected() &&
-            !table.getIsAllPageRowsSelected()
-          }
-          onCheckedChange={(checked) =>
-            table.toggleAllPageRowsSelected(checked === true)
-          }
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          aria-label={`Select ${ariaLabel.toLowerCase()} row ${row.index + 1}`}
-          checked={row.getIsSelected()}
-          onCheckedChange={(checked) => row.toggleSelected(checked === true)}
-        />
-      ),
-    });
-    return [selectionColumn, ...columns];
-  }, [ariaLabel, columns]);
+  const hasSortableRows = sortableRows !== undefined;
+  const selectionColumn = useMemo(
+    () => createSelectionColumn<TData>(ariaLabel, hasSortableRows),
+    [ariaLabel, hasSortableRows],
+  );
+  const tableColumns = useMemo(
+    () => [selectionColumn, ...columns],
+    [columns, selectionColumn],
+  );
   const instance = useTable({
     features,
     data,
-    columns: visibleColumns,
+    columns: tableColumns,
     getRowId: (row) => row.id,
-    enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
     state: { rowSelection },
   });
   const rows = instance.getRowModel().rows;
+  const selectedCount = instance.getSelectedRowModel().rows.length;
 
   const table = (
-    <Table
-      aria-label={ariaLabel}
-      scrollRegionLabel={`Scrollable ${ariaLabel.toLowerCase()} table`}
-    >
+    <Table aria-label={ariaLabel}>
       <TableHeader>
         {instance.getHeaderGroups().map((group) => (
           <TableRow key={group.id}>
-            {sortableRows && (
-              <TableHead className="w-10 px-2">
-                <span className="sr-only">Reorder</span>
-              </TableHead>
-            )}
             {group.headers.map((header) => (
               <TableHead
                 key={header.id}
                 className={cn(
-                  header.id === "select" && "w-10 px-2",
                   header.column.columnDef.meta?.className,
                   alignmentClasses[
                     header.column.columnDef.meta?.align ?? "left"
@@ -189,11 +198,11 @@ export function DataTable<TData extends RowData & { id: string }>({
       <TableBody>
         {rows.length > 0 ? (
           rows.map((row, index) => {
-            const cells = row.getAllCells().map((cell) => (
+            const rowCells = row.getAllCells();
+            const renderCell = (cell: (typeof rowCells)[number]) => (
               <TableCell
                 key={cell.id}
                 className={cn(
-                  cell.column.id === "select" && "w-10 px-2",
                   cell.column.columnDef.meta?.className,
                   alignmentClasses[cell.column.columnDef.meta?.align ?? "left"],
                   cell.column.columnDef.meta?.numeric && "tabular-nums",
@@ -201,24 +210,34 @@ export function DataTable<TData extends RowData & { id: string }>({
               >
                 <instance.FlexRender cell={cell} />
               </TableCell>
-            ));
-            return sortableRows ? (
-              <SortableDataTableRow
-                disabled={sortableRows.disabled ?? false}
-                id={row.original.id}
-                index={index}
-                key={row.id}
-                label={sortableRows.getLabel(row.original, index)}
-                selected={row.getIsSelected()}
-              >
-                {cells}
-              </SortableDataTableRow>
-            ) : (
+            );
+            if (sortableRows) {
+              const [selectionCell, ...dataCells] = rowCells;
+              return (
+                <SortableDataTableRow
+                  disabled={sortableRows.disabled ?? false}
+                  id={row.original.id}
+                  index={index}
+                  key={row.id}
+                  label={sortableRows.getLabel(row.original, index)}
+                  selected={row.getIsSelected()}
+                  selection={
+                    selectionCell ? (
+                      <instance.FlexRender cell={selectionCell} />
+                    ) : null
+                  }
+                >
+                  {dataCells.map(renderCell)}
+                </SortableDataTableRow>
+              );
+            }
+
+            return (
               <TableRow
                 data-state={row.getIsSelected() ? "selected" : undefined}
                 key={row.id}
               >
-                {cells}
+                {rowCells.map(renderCell)}
               </TableRow>
             );
           })
@@ -226,9 +245,7 @@ export function DataTable<TData extends RowData & { id: string }>({
           <TableRow>
             <TableCell
               className="h-24 whitespace-normal text-center text-muted-foreground"
-              colSpan={
-                instance.getAllLeafColumns().length + (sortableRows ? 1 : 0)
-              }
+              colSpan={instance.getAllLeafColumns().length}
             >
               {emptyMessage}
             </TableCell>
@@ -247,25 +264,14 @@ export function DataTable<TData extends RowData & { id: string }>({
       ) : (
         table
       )}
-      {instance.getSelectedRowModel().rows.length > 0 && (
-        <div
+      {selectedCount > 0 && (
+        <p
           aria-live="polite"
-          className="flex items-center gap-3 border-t border-border px-4 py-2 text-sm text-muted-foreground"
+          className="px-4 pb-3 text-sm text-muted-foreground"
           role="status"
         >
-          <span>
-            {instance.getSelectedRowModel().rows.length} selected on this page
-          </span>
-          <Button
-            className="h-auto px-2 py-1"
-            size="sm"
-            type="button"
-            variant="ghost"
-            onClick={() => instance.resetRowSelection(true)}
-          >
-            Clear selection
-          </Button>
-        </div>
+          {selectedCount} {selectedCount === 1 ? "row" : "rows"} selected
+        </p>
       )}
     </div>
   );

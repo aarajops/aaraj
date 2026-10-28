@@ -35,9 +35,76 @@ const routes = [
     rightAlignedHeader: "COD due",
     lastHeader: "COD due",
   },
+  {
+    path: "/admin/users",
+    label: "Users",
+    viewports: [1440, 390],
+  },
+  {
+    path: "/admin/storefront/banners",
+    label: "Storefront banners",
+    viewports: [1440, 390],
+  },
+  {
+    path: "/admin/orders/reconciliation",
+    label: "Webhook exceptions",
+    viewports: [1440, 390],
+    emptyRowActions: true,
+  },
 ] as const;
 
 const viewportWidths = [1440, 1280, 1024, 768, 390];
+
+const loadingTableRoutes = [
+  {
+    path: "/admin/catalog",
+    apiPath: "/api/v1/catalog/products/manage",
+    loadingLabel: "products",
+    tableLabel: "Products",
+  },
+  {
+    path: "/admin/catalog/categories",
+    apiPath: "/api/v1/catalog/categories/manage/page",
+    loadingLabel: "categories",
+    tableLabel: "Product categories",
+  },
+  {
+    path: "/admin/catalog/size-guides",
+    apiPath: "/api/v1/catalog/size-guides/manage",
+    loadingLabel: "size guides",
+    tableLabel: "Size guides",
+  },
+  {
+    path: "/admin/inventory",
+    apiPath: "/api/v1/inventory/manage",
+    loadingLabel: "inventory",
+    tableLabel: "Inventory by product variant",
+  },
+  {
+    path: "/admin/orders",
+    apiPath: "/api/v1/orders/manage",
+    loadingLabel: "orders",
+    tableLabel: "Orders",
+  },
+  {
+    path: "/admin/users",
+    apiPath: "/api/v1/access/users",
+    loadingLabel: "users",
+    tableLabel: "Users",
+  },
+  {
+    path: "/admin/storefront/banners",
+    apiPath: "/api/v1/storefront/manage/banners",
+    loadingLabel: "storefront banners",
+    tableLabel: "Storefront banners",
+  },
+  {
+    path: "/admin/orders/reconciliation",
+    apiPath: "/api/v1/delivery/pathao/manage/issues",
+    loadingLabel: "delivery issues",
+    tableLabel: "Webhook exceptions",
+  },
+] as const;
 
 async function measureRenderedTextContrast(locator: Locator) {
   return locator.evaluate((element) => {
@@ -255,6 +322,22 @@ async function signInAsAdmin(
   ]);
 }
 
+async function setMockApiResponseGate(
+  page: Page,
+  baseURL: string | undefined,
+  action: "hold" | "release",
+  path: string,
+) {
+  const apiURL = new URL(baseURL!);
+  apiURL.port = String(Number(apiURL.port) + 1);
+  apiURL.pathname = "/__e2e/response-gate";
+  apiURL.search = "";
+  const response = await page.request.post(apiURL.toString(), {
+    data: { action, path },
+  });
+  expect(response.ok(), `mock API ${action} ${path}`).toBe(true);
+}
+
 async function attachScreenshot(page: Page, testInfo: TestInfo, name: string) {
   await page.addStyleTag({
     content: "nextjs-portal { display: none !important; }",
@@ -307,31 +390,70 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
     });
   });
 
+  const routeAlignmentByWidth = new Map<
+    number,
+    Array<{ route: string; titleLeft: number; tableLeft: number }>
+  >();
+
   for (const route of routes) {
-    for (const width of viewportWidths) {
+    const widths = "viewports" in route ? route.viewports : viewportWidths;
+    for (const width of widths) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(route.path);
 
       const table = page.getByRole("table", { name: route.label });
       await expect(table).toBeVisible();
-      if (route.label === "Orders" && width === viewportWidths[0]) {
-        const checkboxInputs = table.locator(
-          '[data-slot="checkbox"] + input[aria-hidden="true"][type="checkbox"]',
+      const checkboxInputs = table.locator(
+        '[data-slot="checkbox"] + input[aria-hidden="true"][type="checkbox"]',
+      );
+      expect(await checkboxInputs.count()).toBeGreaterThan(0);
+      const inputSizes = await checkboxInputs.evaluateAll((inputs) =>
+        inputs.map((input) => {
+          input.removeAttribute("style");
+          const bounds = input.getBoundingClientRect();
+          return { width: bounds.width, height: bounds.height };
+        }),
+      );
+      expect(
+        inputSizes.every(({ width, height }) => width <= 1 && height <= 1),
+        `${route.path} native checkbox inputs must stay visually hidden`,
+      ).toBe(true);
+      const horizontalAlignment = await page.evaluate(() => {
+        const title = document.querySelector<HTMLElement>("main h1");
+        const tableRegion = document.querySelector<HTMLElement>(
+          '[data-slot="table-container"]',
         );
-        expect(await checkboxInputs.count()).toBeGreaterThan(0);
-        const inputSizes = await checkboxInputs.evaluateAll((inputs) =>
-          inputs.map((input) => {
-            input.removeAttribute("style");
-            const bounds = input.getBoundingClientRect();
-            return { width: bounds.width, height: bounds.height };
-          }),
-        );
-        expect(
-          inputSizes.every(
-            ({ width: inputWidth, height }) => inputWidth <= 1 && height <= 1,
-          ),
-        ).toBe(true);
-      }
+        return {
+          titleLeft: title?.getBoundingClientRect().left ?? null,
+          tableLeft: tableRegion?.getBoundingClientRect().left ?? null,
+        };
+      });
+      expect(
+        horizontalAlignment.titleLeft,
+        `${route.path} title should align with the table at ${width}px`,
+      ).not.toBeNull();
+      expect(
+        horizontalAlignment.tableLeft,
+        `${route.path} table should render at ${width}px`,
+      ).not.toBeNull();
+      expect(
+        Math.abs(
+          horizontalAlignment.titleLeft! - horizontalAlignment.tableLeft!,
+        ),
+        `${route.path} title and table left edges should align at ${width}px`,
+      ).toBeLessThanOrEqual(2);
+      const routeAlignment = routeAlignmentByWidth.get(width) ?? [];
+      routeAlignment.push({
+        route: route.path,
+        titleLeft: horizontalAlignment.titleLeft!,
+        tableLeft: horizontalAlignment.tableLeft!,
+      });
+      routeAlignmentByWidth.set(width, routeAlignment);
+      await expect(
+        table.getByRole("checkbox", {
+          name: `Select all ${route.label.toLowerCase()} on this page`,
+        }),
+      ).toBeVisible();
       if (route.label === "Products") {
         await page.getByRole("button", { name: "Refresh products" }).click();
         await expect(
@@ -358,6 +480,13 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
       await expect(
         table.getByRole("columnheader", { name: "Actions" }),
       ).toBeVisible();
+      if ("emptyRowActions" in route) {
+        await expect(
+          table.getByRole("button", {
+            name: "Actions for webhook exceptions row 1",
+          }),
+        ).toHaveCount(0);
+      }
       if ("lastHeader" in route) {
         await expect(table.locator("thead th").last()).toHaveText(
           route.lastHeader,
@@ -407,20 +536,20 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
         dimensions.regionClientWidth - 1,
       );
       expect(dimensions.tableLayout).toBe("auto");
+      const isHorizontallyScrollable =
+        dimensions.regionScrollWidth > dimensions.regionClientWidth + 1;
+      if (width === 1440 && route.label === "Orders") {
+        expect(isHorizontallyScrollable).toBe(true);
+      }
       if (width === 1440 && route.label !== "Orders") {
         expect(dimensions.tableWidth).toBeLessThanOrEqual(
           dimensions.regionClientWidth + 1,
         );
       }
-      if (width === 1440 && route.label === "Orders") {
-        expect(dimensions.regionScrollWidth).toBeGreaterThan(
-          dimensions.regionClientWidth,
-        );
-      }
-      if (width <= 768 && route.label !== "Product categories") {
-        expect(dimensions.regionScrollWidth).toBeGreaterThan(
-          dimensions.regionClientWidth,
-        );
+      if (width <= 768) {
+        if (route.label !== "Product categories") {
+          expect(isHorizontallyScrollable).toBe(true);
+        }
       }
 
       if (width === 390) {
@@ -451,7 +580,9 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
       }
 
       const routeSlug = route.label.toLowerCase().replaceAll(" ", "-");
-      await attachScreenshot(page, testInfo, `${routeSlug}-${width}.png`);
+      if (width === 1440 || width === 390) {
+        await attachScreenshot(page, testInfo, `${routeSlug}-${width}.png`);
+      }
       if (width === 1440 && route.label === "Orders") {
         await attachScreenshot(page, testInfo, "orders-table-desktop.png");
       }
@@ -461,11 +592,39 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
     }
   }
 
+  for (const [width, alignments] of routeAlignmentByWidth) {
+    const titleLefts = alignments.map(({ titleLeft }) => titleLeft);
+    const tableLefts = alignments.map(({ tableLeft }) => tableLeft);
+    expect(
+      Math.max(...titleLefts) - Math.min(...titleLefts),
+      `all route titles should share a left edge at ${width}px: ${alignments.map(({ route, titleLeft }) => `${route}=${titleLeft}`).join(", ")}`,
+    ).toBeLessThanOrEqual(2);
+    expect(
+      Math.max(...tableLefts) - Math.min(...tableLefts),
+      `all route tables should share a left edge at ${width}px: ${alignments.map(({ route, tableLeft }) => `${route}=${tableLeft}`).join(", ")}`,
+    ).toBeLessThanOrEqual(2);
+  }
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/orders");
-  const ordersScrollRegion = page.getByRole("region", {
-    name: "Scrollable orders table",
+  const ordersTable = page.getByRole("table", { name: "Orders" });
+  const selectAllOrders = ordersTable.getByRole("checkbox", {
+    name: "Select all orders on this page",
   });
+  const firstOrderCheckbox = ordersTable.getByRole("checkbox", {
+    name: "Select row 1 from orders",
+  });
+  const firstOrderRow = ordersTable.locator("tbody tr").first();
+  await firstOrderCheckbox.click();
+  await expect(firstOrderCheckbox).toHaveAttribute("aria-checked", "true");
+  await expect(firstOrderRow).toHaveAttribute("data-state", "selected");
+  await expect(selectAllOrders).toHaveAttribute("aria-checked", "mixed");
+  await expect(page.getByText("1 row selected")).toBeVisible();
+  await selectAllOrders.click();
+  await expect(selectAllOrders).toHaveAttribute("aria-checked", "true");
+  await selectAllOrders.click();
+  await expect(selectAllOrders).toHaveAttribute("aria-checked", "false");
+
   await page.getByRole("button", { name: "Apply orders search" }).focus();
   await page.keyboard.press("Tab");
   await expect(
@@ -475,40 +634,21 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
   await expect(
     page.getByRole("button", { name: "Refresh orders" }),
   ).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(ordersScrollRegion).toBeFocused();
-  await ordersScrollRegion.evaluate((element) => {
-    element.scrollLeft = element.scrollWidth;
-  });
-  expect(
-    await ordersScrollRegion.evaluate((element) => element.scrollLeft),
-  ).toBeGreaterThan(0);
-  await attachScreenshot(page, testInfo, "orders-table-focus-overflow.png");
 
+  await page.keyboard.press("Tab");
+  await expect(selectAllOrders).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(firstOrderCheckbox).toBeFocused();
+  const firstRowActions = ordersTable.getByRole("button", {
+    name: "Actions for orders row 1",
+    exact: true,
+  });
   const orderPreviewButton = page.getByRole("button", {
     name: "ORD-026-00001",
     exact: true,
   });
   await page.keyboard.press("Tab");
-  await expect(
-    ordersScrollRegion.getByRole("checkbox", {
-      name: "Select all orders on this page",
-    }),
-  ).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(
-    ordersScrollRegion.getByRole("checkbox", {
-      name: "Select orders row 1",
-      exact: true,
-    }),
-  ).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(
-    ordersScrollRegion.getByRole("button", {
-      name: "Actions for orders row 1",
-      exact: true,
-    }),
-  ).toBeFocused();
+  await expect(firstRowActions).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(orderPreviewButton).toBeFocused();
   expect(
@@ -538,15 +678,13 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
     "orders-order-preview-keyboard-focus.png",
   );
   await page.keyboard.press("Shift+Tab");
-  await expect(
-    ordersScrollRegion.getByRole("button", {
-      name: "Actions for orders row 1",
-      exact: true,
-    }),
-  ).toBeFocused();
+  await expect(firstRowActions).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(
     page.getByRole("menuitem", { name: "View order" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menu").getByText("Actions", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", {
@@ -560,6 +698,35 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
     page.getByRole("menuitem", { name: "Print invoice" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
+});
+
+test("admin table loading skeletons match each route while data is pending", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(120_000);
+  await signInAsAdmin(context, baseURL);
+
+  for (const route of loadingTableRoutes) {
+    await setMockApiResponseGate(page, baseURL, "hold", route.apiPath);
+    let skeletonColumnCount = 0;
+    try {
+      await page.goto(route.path, { waitUntil: "commit" });
+      const skeleton = page.getByRole("status", {
+        name: `Loading ${route.loadingLabel}`,
+      });
+      await expect(skeleton).toBeVisible();
+      skeletonColumnCount = await skeleton.locator("table thead th").count();
+      expect(skeletonColumnCount).toBeGreaterThan(0);
+    } finally {
+      await setMockApiResponseGate(page, baseURL, "release", route.apiPath);
+    }
+
+    const table = page.getByRole("table", { name: route.tableLabel });
+    await expect(table).toBeVisible();
+    await expect(table.locator("thead th")).toHaveCount(skeletonColumnCount);
+  }
 });
 
 test("product refresh alert text meets WCAG AA contrast in both themes", async ({
@@ -614,6 +781,14 @@ test("admin table controls retain visible keyboard focus in light and dark theme
   const targets = [
     ["search input", page.getByRole("searchbox", { name: "Search orders" })],
     [
+      "select all checkbox",
+      page.getByRole("checkbox", { name: "Select all orders on this page" }),
+    ],
+    [
+      "row checkbox",
+      page.getByRole("checkbox", { name: "Select row 1 from orders" }),
+    ],
+    [
       "search button",
       page.getByRole("button", { name: "Apply orders search" }),
     ],
@@ -622,10 +797,6 @@ test("admin table controls retain visible keyboard focus in light and dark theme
     [
       "order preview button",
       page.getByRole("button", { name: "ORD-026-00001", exact: true }),
-    ],
-    [
-      "table scroll region",
-      page.getByRole("region", { name: "Scrollable orders table" }),
     ],
   ] as const;
   type Theme = "light" | "dark";

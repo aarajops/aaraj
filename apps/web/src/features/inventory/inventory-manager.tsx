@@ -6,6 +6,7 @@ import type {
   InventoryListQuery,
   InventoryVariantPage,
 } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { InventoryTable } from "./inventory-table";
 
 export function InventoryManager({
@@ -19,20 +20,15 @@ export function InventoryManager({
   const [isRefreshing, startTransition] = useTransition();
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-10 text-foreground sm:px-8 sm:py-12">
-      <div className="container mx-auto">
-        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-          AARAJ ADMIN
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-          Inventory
-        </h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Track stock for active product variants.
-        </p>
+    <>
+      <div>
+        <AdminPageHeader
+          title="Inventory"
+          description="Track stock by product variant."
+        />
 
         <InventoryTable
-          className="mt-8"
+          className="mt-6"
           variants={page.variants}
           query={query}
           page={page}
@@ -40,6 +36,6 @@ export function InventoryManager({
           isRefreshing={isRefreshing}
         />
       </div>
-    </main>
+    </>
   );
 }

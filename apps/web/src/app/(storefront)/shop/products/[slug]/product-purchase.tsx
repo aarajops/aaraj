@@ -213,7 +213,6 @@ function SizeGuide({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
         <Table
           aria-describedby="size-guide-measurement-basis"
           className="min-w-max border-collapse text-left"
-          scrollRegionLabel="Size guide measurements"
         >
           <TableCaption className="sr-only">Size measurements</TableCaption>
           <TableHeader>

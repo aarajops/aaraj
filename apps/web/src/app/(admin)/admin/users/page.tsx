@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -90,20 +91,24 @@ function DirectoryNotice({
   actionHref: string;
 }) {
   return (
-    <main className="flex min-h-[calc(100vh-3.5rem)] flex-1 px-5 py-8 text-foreground sm:px-8 sm:py-10">
-      <div className="container mx-auto">
+    <>
+      <div>
+        <AdminPageHeader
+          title="User management"
+          description="Manage accounts and staff access."
+        />
         <Card
           aria-labelledby="directory-notice-title"
-          className="max-w-xl"
+          className="mt-6"
           role={role}
         >
           <CardHeader>
-            <h1
+            <h2
               className="font-heading text-xl font-semibold"
               id="directory-notice-title"
             >
               {title}
-            </h1>
+            </h2>
             <CardDescription>{description}</CardDescription>
           </CardHeader>
           <CardContent>
@@ -113,6 +118,6 @@ function DirectoryNotice({
           </CardContent>
         </Card>
       </div>
-    </main>
+    </>
   );
 }

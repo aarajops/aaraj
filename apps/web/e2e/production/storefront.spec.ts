@@ -202,6 +202,115 @@ test("localhost E2E keeps the live GTM container disabled", async ({
   ).toBeVisible();
 });
 
+test("admin checkbox fallback stays visually hidden under production CSP", async ({
+  page,
+  baseURL,
+}) => {
+  await page.context().addCookies([
+    {
+      name: "aaraj-e2e-role",
+      value: "admin",
+      url: baseURL!,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+
+  const response = await page.goto("/admin/storefront/banners/create");
+  expect(response?.status()).toBe(200);
+  const contentSecurityPolicy =
+    response?.headers()["content-security-policy"] ?? "";
+  expect(contentSecurityPolicy).not.toContain("style-src-attr");
+
+  const checkbox = page.getByRole("checkbox", {
+    name: "Publish this banner",
+  });
+  await expect(checkbox).toBeVisible();
+  const nativeInput = page.locator(
+    '[data-slot="checkbox"] + input[aria-hidden="true"][type="checkbox"]',
+  );
+  await expect(nativeInput).toHaveCount(1);
+  const renderedInputs = await nativeInput.evaluateAll((inputs) =>
+    inputs.map((input) => {
+      const bounds = input.getBoundingClientRect();
+      return {
+        position: getComputedStyle(input).position,
+        width: bounds.width,
+        height: bounds.height,
+      };
+    }),
+  );
+  expect(
+    renderedInputs.every(
+      ({ position, width, height }) =>
+        position === "absolute" && width <= 1 && height <= 1,
+    ),
+  ).toBe(true);
+});
+
+test("production admin orders table renders shared row-selection controls", async ({
+  page,
+  baseURL,
+}) => {
+  await page.context().addCookies([
+    {
+      name: "aaraj-e2e-role",
+      value: "admin",
+      url: baseURL!,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+
+  const response = await page.goto("/admin/orders");
+  expect(response?.status()).toBe(200);
+  expect(response?.headers()["content-security-policy"] ?? "").not.toContain(
+    "style-src-attr",
+  );
+
+  const table = page.getByRole("table", { name: "Orders" });
+  await expect(table).toBeVisible();
+  await expect(
+    table.getByRole("checkbox", {
+      name: "Select all orders on this page",
+    }),
+  ).toBeVisible();
+  const checkboxRoots = table.locator('[data-slot="checkbox"]');
+  const nativeInputs = table.locator(
+    '[data-slot="checkbox"] + input[aria-hidden="true"][type="checkbox"]',
+  );
+  const accessibleCheckboxCount = await table.getByRole("checkbox").count();
+  expect(accessibleCheckboxCount).toBe(await checkboxRoots.count());
+  await expect(nativeInputs).toHaveCount(accessibleCheckboxCount);
+  expect(
+    await nativeInputs.evaluateAll((inputs) =>
+      inputs.every((input) => {
+        const bounds = input.getBoundingClientRect();
+        return (
+          getComputedStyle(input).position === "absolute" &&
+          bounds.width <= 1 &&
+          bounds.height <= 1
+        );
+      }),
+    ),
+  ).toBe(true);
+  await expect(
+    table.getByRole("columnheader", { name: "Actions" }),
+  ).toBeVisible();
+  await table
+    .getByRole("button", {
+      name: "Actions for orders row 1",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "View order" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menu").getByText("Actions", { exact: true }),
+  ).toBeVisible();
+});
+
 test("production storefront renders processed media through the same-origin API rewrite", async ({
   page,
 }) => {

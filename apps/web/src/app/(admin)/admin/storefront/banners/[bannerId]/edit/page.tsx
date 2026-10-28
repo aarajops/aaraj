@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import {
+  AdminPageHeader,
+  adminPageLinkClassName,
+} from "@/components/admin/admin-page-header";
 import { StorefrontBannerManager } from "@/features/storefront/admin/storefront-banner-manager";
 import {
   getManagedBannerAssets,
@@ -39,9 +43,20 @@ export default async function EditStorefrontBannerPage({
   }
   if ("kind" in bannerResult || "kind" in assetsResult) {
     return (
-      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-        <div className="container mx-auto">
-          <h1 className="text-3xl font-semibold tracking-tight">Edit banner</h1>
+      <>
+        <div>
+          <AdminPageHeader
+            backLink={
+              <Link
+                className={adminPageLinkClassName}
+                href="/admin/storefront/banners"
+              >
+                ← Back to banners
+              </Link>
+            }
+            title="Edit banner"
+            description="Configure banner artwork and publishing. Set display order from the banner list."
+          />
           <p
             className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
             role="alert"
@@ -49,14 +64,8 @@ export default async function EditStorefrontBannerPage({
             Banner details could not be loaded. Return to the banner list and
             try again.
           </p>
-          <Link
-            className="mt-5 inline-flex text-primary underline"
-            href="/admin/storefront/banners"
-          >
-            Back to banners
-          </Link>
         </div>
-      </main>
+      </>
     );
   }
 

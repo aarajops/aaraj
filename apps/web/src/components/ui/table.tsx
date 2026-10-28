@@ -1,20 +1,13 @@
-"use client";
-
 import * as React from "react";
 import { cn } from "cn";
 
-type TableProps = React.ComponentProps<"table"> & {
-  scrollRegionLabel?: string;
-};
+type TableProps = React.ComponentProps<"table">;
 
-function Table({ className, scrollRegionLabel, ...props }: TableProps) {
+function Table({ className, ...props }: TableProps) {
   return (
     <div
       data-slot="table-container"
-      aria-label={scrollRegionLabel}
-      className="relative w-full overflow-x-auto focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-      role={scrollRegionLabel ? "region" : undefined}
-      tabIndex={scrollRegionLabel ? 0 : undefined}
+      className="relative w-full overflow-x-auto"
     >
       <table
         data-slot="table"

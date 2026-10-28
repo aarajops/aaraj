@@ -10,6 +10,7 @@ import type {
   PathaoManagementIssuesQuery,
   PathaoWebhookResolutionInput,
 } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -135,19 +136,12 @@ export function DeliveryIssuesManager({
   );
 
   return (
-    <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10">
-      <div className="container mx-auto">
-        <header>
-          <p className="text-sm font-semibold tracking-widest text-primary">
-            AARAJ ADMIN
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            Delivery issues
-          </h1>
-          <p className="mt-1 text-muted-foreground">
-            Review unmatched and conflicting Pathao events.
-          </p>
-        </header>
+    <>
+      <div>
+        <AdminPageHeader
+          title="Delivery issues"
+          description="Review Pathao delivery exceptions."
+        />
         <section aria-label="Webhook exceptions" className="mt-6">
           <AdminDataTable
             ariaLabel="Webhook exceptions"
@@ -237,7 +231,7 @@ export function DeliveryIssuesManager({
           </SheetContent>
         )}
       </Sheet>
-    </main>
+    </>
   );
 }
 

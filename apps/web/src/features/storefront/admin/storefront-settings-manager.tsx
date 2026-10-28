@@ -12,6 +12,7 @@ import {
   type StorefrontSettingsUpdate,
 } from "@aaraj/contracts";
 import { ImagePlus, LoaderCircle, Trash2, X } from "lucide-react";
+import { AdminFormContentSkeleton } from "@/components/admin/admin-page-skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SortableList } from "@/components/dnd/sortable-list";
@@ -436,12 +437,9 @@ export function StorefrontSettingsManager({
         </p>
       )}
       {loading ? (
-        <p
-          className="px-5 py-8 text-sm text-muted-foreground sm:px-6"
-          role="status"
-        >
-          Loading settings…
-        </p>
+        <div className="px-5 py-5 sm:px-6">
+          <AdminFormContentSkeleton label="storefront settings" />
+        </div>
       ) : settings ? (
         <form
           className="grid"

@@ -4,12 +4,16 @@ import { useRef, useState, useTransition, type SubmitEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AdminPageHeader,
+  adminPageLinkClassName,
+} from "@/components/admin/admin-page-header";
+import {
   InventoryAdjustmentInputSchema,
   InventoryAdjustmentResultSchema,
   type InventoryAdjustmentInput,
   type InventoryVariant,
 } from "@aaraj/contracts";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -139,26 +143,22 @@ export function InventoryAdjustment({
   const locked = isSubmitting || pending !== null;
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-10 text-foreground sm:px-8 sm:py-12">
-      <div className="mx-auto max-w-3xl">
-        <Link
-          className={buttonVariants({ variant: "link" })}
-          href="/admin/inventory"
-        >
-          ← Back to inventory
-        </Link>
-        <p className="mt-7 text-sm font-semibold tracking-[0.18em] text-primary">
-          AARAJ ADMIN
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-          Adjust stock
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          {variant.productName} · {variant.color} · {variant.sizeLabel} · SKU{" "}
-          {variant.sku}
-        </p>
+    <>
+      <div>
+        <AdminPageHeader
+          backLink={
+            <Link
+              className={adminPageLinkClassName}
+              href="/admin/inventory"
+            >
+              ← Back to inventory
+            </Link>
+          }
+          title="Adjust stock"
+          description={`${variant.productName} · ${variant.color} · ${variant.sizeLabel} · SKU ${variant.sku}`}
+        />
 
-        <Card className="mt-7 gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7">
+        <Card className="mt-6 gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7">
           <p className="text-sm text-muted-foreground">
             Current on-hand quantity
           </p>
@@ -258,7 +258,7 @@ export function InventoryAdjustment({
           </form>
         </Card>
       </div>
-    </main>
+    </>
   );
 }
 

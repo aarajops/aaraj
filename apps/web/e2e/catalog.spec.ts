@@ -189,8 +189,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.locator("#size-0-body_length")).toHaveValue("29");
   await page.goto("/admin/catalog");
   await expect(
-    page.getByRole("heading", { name: "Catalog management" }),
+    page.getByRole("heading", { name: "Products", level: 1 }),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2 })).toHaveCount(0);
   await page.goto("/admin/catalog/create");
   await page.getByRole("combobox", { name: "Product category" }).click();
   await expect(
@@ -241,9 +242,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
 
-  const managedProducts = page.locator(
-    'section[aria-labelledby="managed-products-heading"]',
-  );
+  const managedProducts = page.getByRole("main");
   await expect(
     managedProducts.getByRole("row", { name: /Aaraj E2E Tee/ }),
   ).toBeVisible();
@@ -476,16 +475,12 @@ test("staff manages reusable size guides and apparel products safely", async ({
 
   await page.goto("/admin/catalog?limit=1&offset=0");
   await expect(
-    page.locator(
-      'section[aria-labelledby="managed-products-heading"] tbody tr',
-    ),
+    page.getByRole("table", { name: "Products" }).locator("tbody tr"),
   ).toHaveCount(1);
   await page.getByRole("link", { name: "Go to next page" }).click();
   await expect(page).toHaveURL(/offset=1/);
   await expect(
-    page.locator(
-      'section[aria-labelledby="managed-products-heading"] tbody tr',
-    ),
+    page.getByRole("table", { name: "Products" }).locator("tbody tr"),
   ).toHaveCount(1);
   await expect(
     page.getByRole("link", { name: "Go to previous page" }),

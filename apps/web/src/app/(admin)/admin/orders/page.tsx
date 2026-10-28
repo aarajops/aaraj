@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DEFAULT_LIST_PAGE_SIZE } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { OrdersManager } from "@/features/orders/orders-manager";
 import {
   getManagedOrders,
@@ -31,14 +32,14 @@ export default async function AdminOrdersPage({
           ? "Order management access required"
           : "Orders unavailable";
     return (
-      <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-12 text-foreground sm:px-8">
-        <div className="container mx-auto">
-          <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-            AARAJ STAFF
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold">Order management</h1>
+      <>
+        <div>
+          <AdminPageHeader
+            title="Orders"
+            description="Review orders and manage dispatch."
+          />
           <section
-            className="mt-8 rounded-2xl border border-border p-7"
+            className="mt-6 rounded-2xl border border-border p-7"
             role="alert"
           >
             <h2 className="text-xl font-semibold">{title}</h2>
@@ -59,7 +60,7 @@ export default async function AdminOrdersPage({
             )}
           </section>
         </div>
-      </main>
+      </>
     );
   }
   const summaries = await getPathaoBookingSummariesForOrders(

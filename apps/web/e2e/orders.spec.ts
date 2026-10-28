@@ -30,6 +30,8 @@ test("Orders uses shared pagination, order previews, and stable URL history", as
   const table = page.getByRole("table", { name: "Orders" });
   await expect(table).toBeVisible();
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
+  await expect(table.getByText("Uncollected", { exact: true })).toHaveCount(0);
+  await expect(table.getByText("Not payable", { exact: true })).toHaveCount(0);
   await expect(table.getByText("ORD-026-00001", { exact: true })).toBeVisible();
   await expect(
     table.getByRole("button", { name: "ORD-026-00001", exact: true }),
@@ -114,9 +116,11 @@ test("Orders follows API pagination, search, empty, and error states", async ({
   await expect(
     page.getByRole("heading", { name: "Orders unavailable" }),
   ).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText(
-    "Order management could not be loaded.",
-  );
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Order management could not be loaded." }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Try again" })).toHaveAttribute(
     "href",
     "/admin/orders?search=ORD-026-99999",
@@ -137,8 +141,14 @@ test("Delivery issues renders its server-loaded exception page", async ({
   await expect(
     page.getByRole("table", { name: "Webhook exceptions" }),
   ).toBeVisible();
+  const table = page.getByRole("table", { name: "Webhook exceptions" });
   await expect(
-    page.getByText("No webhook exceptions need attention."),
+    table.getByRole("row", { name: /Shipment Created/ }),
   ).toBeVisible();
+  await expect(
+    table.getByRole("button", {
+      name: "Actions for webhook exceptions row 1",
+    }),
+  ).toHaveCount(0);
   await expect(page.getByText("Loading Pathao issues…")).toHaveCount(0);
 });

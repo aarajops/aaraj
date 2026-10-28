@@ -11,6 +11,7 @@ import type {
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatBdtPrice } from "@/lib/currency";
 import {
   getPathaoBooking,
@@ -253,9 +254,18 @@ export function PathaoBookingPanel({
         </p>
       )}
       {loading && !details ? (
-        <p className="mt-4 text-sm" role="status">
-          Loading courier booking…
-        </p>
+        <div
+          aria-busy="true"
+          aria-label="Loading courier booking"
+          className="mt-4 grid gap-3"
+          role="status"
+        >
+          <div aria-hidden="true" className="grid gap-3">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-16 w-full rounded-lg" />
+            <Skeleton className="h-10 w-36" />
+          </div>
+        </div>
       ) : null}
 
       {booking ? (

@@ -16,6 +16,8 @@ import {
   OrderListQuerySchema,
   PathaoManagementBookingSummariesQuerySchema,
   PathaoManagementIssuesQuerySchema,
+  AccessUserListQuerySchema,
+  StorefrontBannerListQuerySchema,
   DEFAULT_LIST_PAGE_SIZE,
   DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
   MAX_LIST_OFFSET,
@@ -115,6 +117,88 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
     ).toISOString(),
   };
 });
+const managedUsers = [
+  {
+    id: "e2e-staff-user",
+    name: "E2E Staff User",
+    email: "staff@example.test",
+    emailVerified: true,
+    createdAt: "2026-09-01T12:00:00.000Z",
+    roles: ["staff"],
+  },
+];
+const managedStorefrontBanners = [
+  {
+    id: "00000000-0000-4000-8000-000000000101",
+    name: "E2E homepage banner",
+    placement: "home_hero",
+    active: false,
+    desktop: null,
+    mobile: null,
+    altText: "",
+    href: null,
+    version: 1,
+    createdAt: "2026-10-01T12:00:00.000Z",
+    updatedAt: null,
+  },
+];
+const managedDeliveryIssues = [
+  {
+    id: "00000000-0000-4000-8000-000000000201",
+    orderId: null,
+    orderReference: null,
+    consignmentId: null,
+    merchantOrderId: null,
+    storeId: null,
+    event: "shipment_created",
+    providerStatus: null,
+    status: "unmatched",
+    errorCode: null,
+    occurredAt: "2026-10-01T12:00:00.000Z",
+  },
+];
+const managedRoleCatalog = [
+  {
+    role: "admin",
+    permissions: [
+      "access.read_self",
+      "access.read",
+      "access.manage",
+      "audit.read",
+      "catalog.manage",
+      "catalog.categories.manage",
+      "inventory.manage",
+      "orders.manage",
+      "delivery.tariff.manage",
+      "storefront.settings.manage",
+    ],
+  },
+  {
+    role: "staff",
+    permissions: [
+      "access.read_self",
+      "catalog.manage",
+      "inventory.manage",
+      "orders.manage",
+    ],
+  },
+  { role: "moderator", permissions: ["access.read_self", "audit.read"] },
+  {
+    role: "superadmin",
+    permissions: [
+      "access.read_self",
+      "access.read",
+      "access.manage",
+      "audit.read",
+      "catalog.manage",
+      "catalog.categories.manage",
+      "inventory.manage",
+      "orders.manage",
+      "delivery.tariff.manage",
+      "storefront.settings.manage",
+    ],
+  },
+];
 const managedInventory = [
   {
     id: "6bc2deaf-5b52-4c6d-8a15-000000000001",
@@ -257,9 +341,44 @@ async function readBody(request) {
   }
 }
 
+const heldApiPaths = new Set();
+const heldApiWaiters = new Map();
+
+function holdApiResponse(path) {
+  if (!heldApiPaths.has(path)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const waiters = heldApiWaiters.get(path) ?? [];
+    waiters.push(resolve);
+    heldApiWaiters.set(path, waiters);
+  });
+}
+
+function releaseApiResponse(path) {
+  heldApiPaths.delete(path);
+  for (const resolve of heldApiWaiters.get(path) ?? []) resolve();
+  heldApiWaiters.delete(path);
+}
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${host}:${port}`);
   const method = request.method ?? "GET";
+  if (url.pathname === "/__e2e/response-gate" && method === "POST") {
+    const body = await readBody(request);
+    if (
+      !body ||
+      typeof body.path !== "string" ||
+      !body.path.startsWith("/api/") ||
+      !["hold", "release"].includes(body.action)
+    ) {
+      send(response, 400, { statusCode: 400, message: "Invalid response gate" });
+      return;
+    }
+    if (body.action === "hold") heldApiPaths.add(body.path);
+    else releaseApiResponse(body.path);
+    send(response, 200, { status: body.action });
+    return;
+  }
+  await holdApiResponse(url.pathname);
   if (url.pathname === "/api/health/ready") {
     send(response, 200, { status: "ok", database: "ok", redis: "ok" });
     return;
@@ -286,6 +405,7 @@ const server = createServer(async (request, response) => {
       permissions.push("orders.manage", "inventory.manage");
     }
     if (["admin", "superadmin"].includes(role)) {
+      permissions.push("access.read", "access.manage", "audit.read");
       permissions.push("catalog.categories.manage");
       permissions.push("storefront.settings.manage");
     }
@@ -294,6 +414,102 @@ const server = createServer(async (request, response) => {
       roles: [role],
       permissions,
     });
+    return;
+  }
+
+  if (url.pathname === "/api/v1/access/users" && method === "GET") {
+    if (!requireCategoryAdmin(request, response)) return;
+    const parsed = AccessUserListQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams),
+    );
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid user pagination query",
+      });
+      return;
+    }
+    const matchingUsers = parsed.data.search
+      ? managedUsers.filter((user) =>
+          [user.name, user.email]
+            .join(" ")
+            .toLowerCase()
+            .includes(parsed.data.search.toLowerCase()),
+        )
+      : managedUsers;
+    const users = matchingUsers.slice(
+      parsed.data.offset,
+      parsed.data.offset + parsed.data.limit,
+    );
+    const hasMore = parsed.data.offset + users.length < matchingUsers.length;
+    send(response, 200, {
+      users,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      hasMore,
+      nextOffset: hasMore ? parsed.data.offset + users.length : null,
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/v1/access/roles" && method === "GET") {
+    if (!requireCategoryAdmin(request, response)) return;
+    send(response, 200, managedRoleCatalog);
+    return;
+  }
+
+  if (
+    url.pathname === "/api/v1/storefront/manage/banners" &&
+    method === "GET"
+  ) {
+    if (!requireCategoryAdmin(request, response)) return;
+    const parsed = StorefrontBannerListQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams),
+    );
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid banner pagination query",
+      });
+      return;
+    }
+    const matchingBanners = managedStorefrontBanners.filter((banner) => {
+      if (
+        parsed.data.status &&
+        banner.active !== (parsed.data.status === "active")
+      ) {
+        return false;
+      }
+      return (
+        !parsed.data.search ||
+        [banner.name, banner.altText]
+          .join(" ")
+          .toLowerCase()
+          .includes(parsed.data.search.toLowerCase())
+      );
+    });
+    const banners = matchingBanners.slice(
+      parsed.data.offset,
+      parsed.data.offset + parsed.data.limit,
+    );
+    const hasMore =
+      parsed.data.offset + banners.length < matchingBanners.length;
+    send(response, 200, {
+      banners,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      hasMore,
+      nextOffset: hasMore ? parsed.data.offset + banners.length : null,
+    });
+    return;
+  }
+
+  if (
+    url.pathname === "/api/v1/storefront/manage/banner-assets" &&
+    method === "GET"
+  ) {
+    if (!requireCategoryAdmin(request, response)) return;
+    send(response, 200, { assets: [], nextCursor: null });
     return;
   }
 
@@ -433,11 +649,18 @@ const server = createServer(async (request, response) => {
       return;
     }
     send(response, 200, {
-      issues: [],
+      issues: managedDeliveryIssues.slice(
+        parsed.data.offset,
+        parsed.data.offset + parsed.data.limit,
+      ),
       limit: parsed.data.limit,
       offset: parsed.data.offset,
-      hasMore: false,
-      nextOffset: null,
+      hasMore:
+        parsed.data.offset + parsed.data.limit < managedDeliveryIssues.length,
+      nextOffset:
+        parsed.data.offset + parsed.data.limit < managedDeliveryIssues.length
+          ? parsed.data.offset + parsed.data.limit
+          : null,
     });
     return;
   }

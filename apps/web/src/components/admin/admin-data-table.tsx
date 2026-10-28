@@ -116,24 +116,18 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
     const actionsColumn = createDataTableColumnHelper<TData>().display({
       id: "actions",
       header: "Actions",
-      meta: { className: "w-20 px-3" },
+      meta: { className: "w-16 px-2" },
       cell: ({ row }) => {
         const actions = rowActions(row.original);
         const hasActions =
           actions !== null && actions !== undefined && actions !== false;
+        if (!hasActions) return null;
 
         return (
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label={`Actions for ${ariaLabel.toLowerCase()} row ${row.index + 1}`}
-              render={
-                <Button
-                  disabled={!hasActions}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                />
-              }
+              render={<Button size="icon-sm" type="button" variant="ghost" />}
             >
               <EllipsisVertical aria-hidden="true" />
             </DropdownMenuTrigger>

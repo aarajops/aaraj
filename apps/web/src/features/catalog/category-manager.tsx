@@ -11,6 +11,10 @@ import {
 } from "@aaraj/contracts";
 import Image from "next/image";
 import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  AdminPageHeader,
+  adminPageLinkClassName,
+} from "@/components/admin/admin-page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -190,40 +194,38 @@ export function CategoryManager({
     .map((category) => ({ label: category.path, value: category.id }));
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-      <div className="container mx-auto">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <Link
-            className="text-sm text-primary hover:text-primary/80"
-            href={
-              view !== "list" ? "/admin/catalog/categories" : "/admin/catalog"
-            }
-          >
-            {view !== "list" ? "← Back to categories" : "← Back to products"}
-          </Link>
-          {view === "list" && (
-            <Link
-              className={buttonVariants({ size: "lg" })}
-              href="/admin/catalog/categories/create"
-            >
-              Create category
-            </Link>
-          )}
-        </div>
-        <p className="mt-8 text-sm font-semibold tracking-[0.18em] text-primary">
-          AARAJ STAFF
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-          {view === "create"
-            ? "Create category"
-            : view === "edit"
-              ? "Edit category"
-              : "Product categories"}
-        </h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
-          Products use leaf categories. Size guides can cover a category and its
-          subcategories.
-        </p>
+    <>
+      <div>
+        <AdminPageHeader
+          title={
+            view === "create"
+              ? "Create category"
+              : view === "edit"
+                ? "Edit category"
+                : "Product categories"
+          }
+          description="Organize the storefront catalog."
+          backLink={
+            view !== "list" && (
+              <Link
+                className={adminPageLinkClassName}
+                href="/admin/catalog/categories"
+              >
+                ← Back to categories
+              </Link>
+            )
+          }
+          actions={
+            view === "list" && (
+              <Link
+                className={buttonVariants({ size: "lg" })}
+                href="/admin/catalog/categories/create"
+              >
+                Create category
+              </Link>
+            )
+          }
+        />
 
         {errorMessage && (
           <p
@@ -233,21 +235,14 @@ export function CategoryManager({
             {errorMessage}
           </p>
         )}
-        <div className="mt-8">
+        <div className={view === "list" ? "mt-6" : "mt-8"}>
           {view === "list" && initialPage && (
-            <section aria-labelledby="categories-heading">
-              <h2 className="text-xl font-semibold" id="categories-heading">
-                Category directory
-              </h2>
-              <div className="mt-4">
-                <CategoryTable
-                  categories={categories}
-                  query={query}
-                  page={initialPage}
-                  onRefresh={() => router.refresh()}
-                />
-              </div>
-            </section>
+            <CategoryTable
+              categories={categories}
+              query={query}
+              page={initialPage}
+              onRefresh={() => router.refresh()}
+            />
           )}
 
           {view !== "list" && (
@@ -380,7 +375,7 @@ export function CategoryManager({
                     {initialCategory?.image && (
                       <Image
                         alt={initialCategory.name}
-                        className="aspect-[3/4] w-40 rounded-lg object-cover"
+                        className="aspect-3/4 w-40 rounded-lg object-cover"
                         height={initialCategory.image.height}
                         unoptimized
                         src={initialCategory.image.src}
@@ -444,6 +439,6 @@ export function CategoryManager({
           )}
         </div>
       </div>
-    </main>
+    </>
   );
 }

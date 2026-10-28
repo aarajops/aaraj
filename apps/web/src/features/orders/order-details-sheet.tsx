@@ -146,12 +146,6 @@ export function OrderDetailsSheet({
                   </Badge>
                 </div>
                 <dl className="divide-y divide-border text-sm">
-                  {order.collectionStatus !== "uncollected" && (
-                    <DetailRow
-                      label="COD collection"
-                      value={humanize(order.collectionStatus)}
-                    />
-                  )}
                   {order.collectedAmountBdt !== null && (
                     <DetailRow
                       label="Collected"

@@ -12,6 +12,10 @@ import {
   type CatalogProductPage,
 } from "@aaraj/contracts";
 import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  AdminPageHeader,
+  adminPageLinkClassName,
+} from "@/components/admin/admin-page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -321,74 +325,47 @@ export function CatalogManager({
   );
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-      <div className="container mx-auto">
-        <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-          AARAJ STAFF
-        </p>
-        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-              {view === "create"
-                ? "Create product"
+    <>
+      <div>
+        <AdminPageHeader
+          title={
+            view === "create"
+              ? "Create product"
+              : view === "edit"
+                ? "Edit product"
+                : "Products"
+          }
+          description={
+            view === "list"
+              ? "Manage product listings and variants."
+              : view === "create"
+                ? "Create one product per style, then add its real color and size options."
                 : view === "edit"
-                  ? "Edit product"
-                  : "Catalog management"}
-            </h1>
-            {view !== "list" && (
-              <p className="mt-2 text-muted-foreground">
-                {view === "create"
-                  ? "Create one product per style, then add its real color and size options."
-                  : "Update the product details, sellable variants, and storefront visibility."}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            {view !== "list" ? (
-              <Link
-                className="text-sm text-primary hover:text-primary/80"
-                href="/admin/catalog"
-              >
+                  ? "Update the product details, sellable variants, and storefront visibility."
+                  : undefined
+          }
+          backLink={
+            view !== "list" && (
+              <Link className={adminPageLinkClassName} href="/admin/catalog">
                 Back to products
               </Link>
-            ) : (
+            )
+          }
+          actions={
+            view === "list" && (
               <Link
                 className={buttonVariants({ size: "lg" })}
                 href="/admin/catalog/create"
               >
                 Create product
               </Link>
-            )}
-            <Link
-              className="text-sm text-primary hover:text-primary/80"
-              href="/admin/catalog/size-guides"
-            >
-              Manage size guides
-            </Link>
-            <Link
-              className="text-sm text-primary hover:text-primary/80"
-              href="/admin/catalog/categories"
-            >
-              Manage categories
-            </Link>
-            <Link
-              className="text-sm text-primary hover:text-primary/80"
-              href="/shop"
-            >
-              View public catalog
-            </Link>
-          </div>
-        </div>
+            )
+          }
+        />
 
-        <div className="mt-10">
+        <div className={view === "list" ? "mt-6" : "mt-8"}>
           {view === "list" && (
-            <section aria-labelledby="managed-products-heading">
-              <h2
-                className="text-xl font-semibold"
-                id="managed-products-heading"
-              >
-                Products
-              </h2>
+            <>
               {productRefreshError && (
                 <div
                   className="mt-4 rounded-lg border border-destructive bg-background p-4 text-sm text-destructive"
@@ -411,17 +388,15 @@ export function CatalogManager({
                   </Button>
                 </div>
               )}
-              <div className="mt-4">
-                <ProductTable
-                  products={products}
-                  categoryOptions={categoryOptions}
-                  query={query}
-                  onRefresh={() => void loadProducts()}
-                  isRefreshing={isRefreshing}
-                  page={productPage}
-                />
-              </div>
-            </section>
+              <ProductTable
+                products={products}
+                categoryOptions={categoryOptions}
+                query={query}
+                onRefresh={() => void loadProducts()}
+                isRefreshing={isRefreshing}
+                page={productPage}
+              />
+            </>
           )}
 
           {view !== "list" && (
@@ -724,10 +699,7 @@ export function CatalogManager({
                   )}
                   {variantFields.length > 0 && (
                     <div className="rounded-md border">
-                      <Table
-                        className="min-w-max"
-                        scrollRegionLabel="Scrollable product variants"
-                      >
+                      <Table className="min-w-max">
                         <TableHeader>
                           <TableRow>
                             <TableHead scope="col">SKU</TableHead>
@@ -1087,6 +1059,6 @@ export function CatalogManager({
           )}
         </div>
       </div>
-    </main>
+    </>
   );
 }

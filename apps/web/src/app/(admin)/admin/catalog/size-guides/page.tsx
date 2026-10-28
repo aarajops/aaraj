@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { SizeGuideManager } from "@/features/catalog/size-guide-manager";
 import {
   getManagedCategoryOptions,
@@ -28,18 +29,13 @@ export default async function StaffSizeGuidesPage({
     const isUnauthenticated = loadError === "unauthenticated";
     const isForbidden = loadError === "forbidden";
     return (
-      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-        <div className="mx-auto max-w-3xl">
-          <Link
-            className="text-sm text-primary hover:text-primary/80"
-            href="/admin/catalog"
-          >
-            ← Back to catalog management
-          </Link>
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight">
-            Size guides
-          </h1>
-          <section className="mt-8 rounded-2xl border border-border bg-card/70 p-7">
+      <>
+        <div>
+          <AdminPageHeader
+            title="Size guides"
+            description="Define sizing by category and fit."
+          />
+          <section className="mt-6 rounded-2xl border border-border bg-card/70 p-7">
             <h2 className="text-xl font-semibold">
               {isUnauthenticated
                 ? "Sign in to continue"
@@ -64,7 +60,7 @@ export default async function StaffSizeGuidesPage({
             )}
           </section>
         </div>
-      </main>
+      </>
     );
   }
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DEFAULT_LIST_PAGE_SIZE } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { DeliveryIssuesManager } from "@/features/orders/delivery-issues-manager";
 import {
   getPathaoManagementIssuesForPage,
@@ -28,14 +29,12 @@ export default async function DeliveryIssuesPage({
           ? "Delivery issue access required"
           : "Delivery issues unavailable";
     return (
-      <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10">
-        <div className="container mx-auto">
-          <p className="text-sm font-semibold tracking-widest text-primary">
-            AARAJ ADMIN
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            Delivery issues
-          </h1>
+      <>
+        <div>
+          <AdminPageHeader
+            title="Delivery issues"
+            description="Review Pathao delivery exceptions."
+          />
           <section
             className="mt-6 rounded-xl border border-border p-6"
             role="alert"
@@ -58,7 +57,7 @@ export default async function DeliveryIssuesPage({
             )}
           </section>
         </div>
-      </main>
+      </>
     );
   }
   return <DeliveryIssuesManager initialPage={result.value} query={query} />;

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { InventoryManager } from "@/features/inventory/inventory-manager";
 import {
   getManagedInventory,
@@ -29,9 +30,12 @@ export default async function AdminInventoryPage({
           : "Inventory could not be loaded. Please try again.";
 
     return (
-      <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-10 text-foreground sm:px-8 sm:py-12">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="text-3xl font-semibold tracking-tight">Inventory</h1>
+      <>
+        <div>
+          <AdminPageHeader
+            title="Inventory"
+            description="Track stock by product variant."
+          />
           <p
             className={`mt-5 rounded-xl border p-5 ${result.kind === "forbidden" ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-border bg-card/70 text-secondary-foreground"}`}
             role="alert"
@@ -54,7 +58,7 @@ export default async function AdminInventoryPage({
             </Link>
           )}
         </div>
-      </main>
+      </>
     );
   }
 

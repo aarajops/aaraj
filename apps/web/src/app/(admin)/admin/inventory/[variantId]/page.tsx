@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { InventoryVariantIdSchema } from "@aaraj/contracts";
+import {
+  AdminPageHeader,
+  adminPageLinkClassName,
+} from "@/components/admin/admin-page-header";
 import { InventoryAdjustment } from "@/features/inventory/inventory-adjustment";
 import { getManagedInventoryVariant } from "@/features/inventory/inventory-queries";
 
@@ -29,25 +33,28 @@ export default async function AdminInventoryVariantPage({
           : "This variant's inventory could not be loaded. Please try again.";
 
     return (
-      <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-10 text-foreground sm:px-8 sm:py-12">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Adjust stock
-          </h1>
+      <>
+        <div>
+          <AdminPageHeader
+            backLink={
+              <Link
+                className={adminPageLinkClassName}
+                href="/admin/inventory"
+              >
+                ← Back to inventory
+              </Link>
+            }
+            title="Adjust stock"
+            description="Adjust on-hand stock for a product variant."
+          />
           <p
             className="mt-5 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
             role="alert"
           >
             {message}
           </p>
-          <Link
-            className="mt-5 inline-flex text-primary underline"
-            href="/admin/inventory"
-          >
-            Back to inventory
-          </Link>
         </div>
-      </main>
+      </>
     );
   }
 

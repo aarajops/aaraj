@@ -26,7 +26,7 @@ export function OrderInvoice({
     .join(", ");
 
   return (
-    <main className="flex-1 bg-background px-5 py-8 text-foreground sm:px-8 sm:py-10 print:min-h-0 print:w-full print:bg-white print:px-0 print:py-0 print:text-black">
+    <>
       <article className="mx-auto max-w-3xl rounded-xl border border-border bg-card p-6 sm:p-10 print:max-w-none print:rounded-none print:border-0 print:bg-white print:p-0">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3 print:hidden">
           <Link
@@ -40,7 +40,7 @@ export function OrderInvoice({
 
         <header className="flex flex-wrap items-start justify-between gap-6 border-b border-border pb-6 print:border-black">
           <div>
-            <p className="text-lg font-bold tracking-[0.16em] text-primary print:text-black">
+            <p className="text-lg font-bold tracking-widest text-primary print:text-black">
               AARAJ
             </p>
             <h1 className="mt-5 text-3xl font-semibold tracking-tight">
@@ -156,6 +156,6 @@ export function OrderInvoice({
           Payment method: Cash on delivery
         </p>
       </article>
-    </main>
+    </>
   );
 }

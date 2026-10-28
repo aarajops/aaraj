@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CatalogSizeGuideIdSchema } from "@aaraj/contracts";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { SizeGuideManager } from "@/features/catalog/size-guide-manager";
 import {
   getManagedCategoryOptions,
@@ -37,11 +38,12 @@ export default async function EditSizeGuidePage({
           : "Size guide details could not be loaded. Please try again.";
 
     return (
-      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-        <div className="mx-auto max-w-3xl">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Edit size guide
-          </h1>
+      <>
+        <div>
+          <AdminPageHeader
+            title="Edit size guide"
+            description="Define sizing by category and fit."
+          />
           <p
             className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-5 text-warning"
             role="alert"
@@ -61,7 +63,7 @@ export default async function EditSizeGuidePage({
               : "Back to size guides"}
           </Link>
         </div>
-      </main>
+      </>
     );
   }
 

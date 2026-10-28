@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { CatalogManager } from "@/features/catalog/catalog-manager";
 import {
   getManagedCategoryOptions,
@@ -9,8 +10,8 @@ import {
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Catalog management",
-  description: "Manage products in the Aaraj catalog.",
+  title: "Products",
+  description: "Manage product listings and variants.",
 };
 
 export default async function StaffCatalogPage({
@@ -29,16 +30,14 @@ export default async function StaffCatalogPage({
     const isUnauthenticated = loadError === "unauthenticated";
     const isForbidden = loadError === "forbidden";
     return (
-      <main className="min-h-[calc(100vh-4rem)] flex-1 bg-background px-5 py-12 text-foreground sm:py-16">
-        <div className="mx-auto max-w-3xl">
-          <p className="text-sm font-semibold tracking-[0.18em] text-primary">
-            AARAJ STAFF
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-            Catalog management
-          </h1>
+      <>
+        <div>
+          <AdminPageHeader
+            title="Products"
+            description="Manage product listings and variants."
+          />
           <section
-            className={`mt-8 rounded-2xl border p-7 ${isForbidden ? "border-destructive/30 bg-destructive/10" : isUnauthenticated ? "border-border bg-card/70" : "border-warning/30 bg-warning/10"}`}
+            className={`mt-6 rounded-2xl border p-7 ${isForbidden ? "border-destructive/30 bg-destructive/10" : isUnauthenticated ? "border-border bg-card/70" : "border-warning/30 bg-warning/10"}`}
           >
             <h2 className="text-xl font-semibold">
               {loadError === "unauthenticated"
@@ -71,7 +70,7 @@ export default async function StaffCatalogPage({
             )}
           </section>
         </div>
-      </main>
+      </>
     );
   }
   return (

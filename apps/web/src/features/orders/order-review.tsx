@@ -3,6 +3,10 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import {
+  AdminPageHeader,
+  adminPageLinkClassName,
+} from "@/components/admin/admin-page-header";
+import {
   OrderDispatchInputSchema,
   type Order,
   type OrderFulfillmentOutcomeInput,
@@ -174,16 +178,20 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
           : [];
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] flex-1 bg-background px-5 py-10 text-foreground sm:px-8 sm:py-12">
-      <article className="mx-auto max-w-4xl">
-        <Link className="text-sm text-primary underline" href="/admin/orders">
-          ← Back to Orders
-        </Link>
-        <p className="mt-7 text-sm font-semibold tracking-[0.18em] text-primary">
-          AARAJ ORDER REVIEW
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">Order ID</p>
-        <h1 className="mt-1 text-3xl font-semibold">{order.reference}</h1>
+    <>
+      <article>
+        <AdminPageHeader
+          backLink={
+            <Link
+              className={adminPageLinkClassName}
+              href="/admin/orders"
+            >
+              ← Back to orders
+            </Link>
+          }
+          title={order.reference}
+          description="Review fulfillment, delivery, and COD collection."
+        />
         <section className="mt-6 grid gap-5 rounded-2xl border border-border p-5 sm:grid-cols-2 sm:p-7">
           <div>
             <h2 className="font-semibold">Order state</h2>
@@ -561,7 +569,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
           </section>
         )}
       </article>
-    </main>
+    </>
   );
 }
 
