@@ -717,6 +717,20 @@ test("admin table loading skeletons match each route while data is pending", asy
         name: `Loading ${route.loadingLabel}`,
       });
       await expect(skeleton).toBeVisible();
+      const heading = skeleton
+        .locator(":scope > div[aria-hidden='true'] > div")
+        .first();
+      const tableCard = skeleton
+        .locator(":scope > div[aria-hidden='true'] > div")
+        .nth(1);
+      const headingBox = await heading.boundingBox();
+      const tableCardBox = await tableCard.boundingBox();
+      if (!headingBox || !tableCardBox) {
+        throw new Error("The table skeleton heading and card must be visible.");
+      }
+      expect(
+        tableCardBox.y - headingBox.y - headingBox.height,
+      ).toBeGreaterThanOrEqual(24);
       skeletonColumnCount = await skeleton.locator("table thead th").count();
       expect(skeletonColumnCount).toBeGreaterThan(0);
     } finally {

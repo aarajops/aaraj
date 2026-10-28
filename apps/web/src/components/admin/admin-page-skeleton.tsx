@@ -22,13 +22,10 @@ function LoadingRegion({
   className?: string;
 }) {
   return (
-    <div
-      aria-busy="true"
-      aria-label={`Loading ${label}`}
-      className={className}
-      role="status"
-    >
-      <div aria-hidden="true">{children}</div>
+    <div aria-busy="true" aria-label={`Loading ${label}`} role="status">
+      <div aria-hidden="true" className={className}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -42,11 +39,11 @@ function PageHeadingSkeleton({
 }) {
   return (
     <div className="space-y-4">
-      {backLink && <Skeleton aria-hidden="true" className="h-5 w-32" />}
+      {backLink && <Skeleton aria-hidden="true" className="h-9 w-32" />}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 space-y-3">
-          <Skeleton className="h-9 w-48" />
-          <Skeleton className="h-5 w-64 max-w-full" />
+        <div className="min-w-0 space-y-2">
+          <Skeleton className="h-9 w-48 sm:h-10" />
+          <Skeleton className="h-6 w-64 max-w-full" />
         </div>
         {action && <Skeleton aria-hidden="true" className="h-10 w-36" />}
       </header>
@@ -174,12 +171,12 @@ export function AdminListPageSkeleton({
     <LoadingRegion className="space-y-6" label={label}>
       <PageHeadingSkeleton action={hasAction} />
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 pb-3 pt-4">
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-4">
           {hasSearch && <Skeleton className="h-9 min-w-60 flex-1" />}
           {Array.from({ length: filterCount }, (_, index) => (
             <Skeleton className="h-9 w-44" key={index} />
           ))}
-          <Skeleton className="h-9 w-24" />
+          <Skeleton className="ml-auto h-9 w-24" />
         </div>
         <Table>
           <TableHeader>
