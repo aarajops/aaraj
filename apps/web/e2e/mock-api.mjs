@@ -302,8 +302,7 @@ function roleFromCookie(cookie = "") {
 
 function requireStaff(request, response) {
   const role = roleFromCookie(request.headers.cookie);
-  if (["staff", "admin", "superadmin"].includes(role))
-    return true;
+  if (["staff", "admin", "superadmin"].includes(role)) return true;
   send(response, role ? 403 : 401, {
     statusCode: role ? 403 : 401,
     message: role ? "Forbidden" : "Unauthorized",

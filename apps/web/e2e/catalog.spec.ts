@@ -691,7 +691,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
       "Your account does not have permission to manage the catalog.",
     ),
   ).toBeVisible();
-
 });
 
 test("customer Order page explains serviceability timeout cancellation", async ({
