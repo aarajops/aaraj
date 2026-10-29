@@ -20,7 +20,6 @@ export type PathaoStore = z.infer<typeof PathaoStoreSchema>;
 
 export const PathaoBookingOptionsSchema = z.strictObject({
   stores: PathaoStoreListSchema,
-  deliveryType: PathaoDeliveryTypeSchema,
 });
 export type PathaoBookingOptions = z.infer<typeof PathaoBookingOptionsSchema>;
 

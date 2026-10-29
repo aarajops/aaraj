@@ -9,6 +9,7 @@ import {
 import {
   OrderDispatchInputSchema,
   type Order,
+  type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
@@ -70,13 +71,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
     }
   }
 
-  async function dispatch() {
-    const reference = handoffReference.trim();
-    const input = OrderDispatchInputSchema.parse({
-      deliveryProvider: pathaoAssignment === "booked" ? "pathao" : "manual",
-      deliveryOperator,
-      ...(reference ? { handoffReference: reference } : {}),
-    });
+  async function saveDispatch(input: OrderDispatchInput) {
     const fingerprint = JSON.stringify(input);
     let command = dispatchCommand.current;
     if (command?.fingerprint !== fingerprint) {
@@ -101,6 +96,25 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
     } finally {
       setPending(false);
     }
+  }
+
+  async function dispatchManual() {
+    const reference = handoffReference.trim();
+    const input = OrderDispatchInputSchema.parse({
+      deliveryProvider: "manual",
+      deliveryOperator,
+      ...(reference ? { handoffReference: reference } : {}),
+    });
+    await saveDispatch(input);
+  }
+
+  async function recordPathaoPickup(consignmentId: string) {
+    const input = OrderDispatchInputSchema.parse({
+      deliveryProvider: "pathao",
+      deliveryOperator: "Pathao Courier",
+      handoffReference: consignmentId,
+    });
+    await saveDispatch(input);
   }
 
   async function cancelBeforeDispatch() {
@@ -277,7 +291,10 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
           </p>
         )}
         <PathaoBookingPanel
+          handoffError={error}
+          handoffPending={pending}
           onAssignmentStateChange={setPathaoAssignment}
+          onRecordPickup={recordPathaoPickup}
           order={order}
         />
         {order.status === "awaiting_confirmation" &&
@@ -286,9 +303,10 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
               <h2 className="text-xl font-semibold">Customer confirmation</h2>
               <p className="mt-2 text-sm text-muted-foreground">
                 Call the customer using the number above. After they confirm the
-                order and delivery details, confirm here to make the order ready
-                for Pathao or another courier. If the destination cannot be
-                served, reject the order to release its reserved stock.
+                order and delivery details, confirm here. Once the order is
+                packed, book it with Pathao from the panel above. If the
+                destination cannot be served, reject the order to release its
+                reserved stock.
               </p>
               {error && (
                 <p className="mt-4 text-sm text-destructive" role="alert">
@@ -333,112 +351,94 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
           )}
         {order.status === "confirmed" &&
           order.serviceability === "serviceable" &&
-          order.fulfillmentStatus === "awaiting_dispatch" && (
-            <section
-              aria-label="Dispatch Order"
-              className="mt-6 rounded-2xl border border-border p-5 sm:p-7"
-            >
-              <h2 className="text-xl font-semibold">Dispatch Order</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Record the delivery operator and the handoff reference if one
-                was supplied. Dispatch consumes the held stock and does not
-                confirm delivery or COD collection.
-              </p>
-              {error && (
-                <p className="mt-4 text-sm text-destructive" role="alert">
-                  {error}
+          order.fulfillmentStatus === "awaiting_dispatch" &&
+          pathaoAssignment === "none" && (
+            <details className="mt-6 rounded-2xl border border-border">
+              <summary className="cursor-pointer p-5 font-semibold sm:px-7">
+                Use another courier or self-delivery
+              </summary>
+              <div className="grid gap-4 px-5 pb-5 sm:px-7">
+                <p className="text-sm text-muted-foreground">
+                  Record this only when the parcel is handed to a non-Pathao
+                  courier or your own delivery operator.
                 </p>
-              )}
-              <label className="mt-4 grid gap-2 text-sm font-medium">
-                Delivery operator
-                <Input
-                  autoComplete="organization"
-                  maxLength={120}
-                  minLength={2}
-                  required
-                  value={deliveryOperator}
-                  onChange={(event) => setDeliveryOperator(event.target.value)}
-                />
-              </label>
-              <label className="mt-4 grid gap-2 text-sm font-medium">
-                Handoff reference (optional)
-                <Input
-                  maxLength={160}
-                  value={handoffReference}
-                  onChange={(event) => setHandoffReference(event.target.value)}
-                />
-              </label>
-              <Button
-                className="mt-5"
-                disabled={
-                  pending ||
-                  deliveryOperator.trim().length < 2 ||
-                  (pathaoAssignment !== "none" && pathaoAssignment !== "booked")
-                }
-                onClick={() => void dispatch()}
-              >
-                {pending
-                  ? "Recording dispatch…"
-                  : dispatchAttempted
-                    ? "Retry dispatch"
-                    : "Record dispatch"}
-              </Button>
-              {pathaoAssignment !== "none" && pathaoAssignment !== "booked" && (
-                <p className="mt-2 text-sm text-muted-foreground" role="status">
-                  {pathaoAssignment === "loading"
-                    ? "Checking Pathao assignment before dispatch…"
-                    : pathaoAssignment === "unavailable"
-                      ? "Pathao assignment could not be checked. Refresh before dispatching."
-                      : "Resolve the Pathao booking outcome before dispatching."}
-                </p>
-              )}
-            </section>
+                {error && (
+                  <p className="mt-4 text-sm text-destructive" role="alert">
+                    {error}
+                  </p>
+                )}
+                <label className="mt-4 grid gap-2 text-sm font-medium">
+                  Delivery operator
+                  <Input
+                    autoComplete="organization"
+                    maxLength={120}
+                    minLength={2}
+                    required
+                    value={deliveryOperator}
+                    onChange={(event) =>
+                      setDeliveryOperator(event.target.value)
+                    }
+                  />
+                </label>
+                <label className="mt-4 grid gap-2 text-sm font-medium">
+                  Handoff reference (optional)
+                  <Input
+                    maxLength={160}
+                    value={handoffReference}
+                    onChange={(event) =>
+                      setHandoffReference(event.target.value)
+                    }
+                  />
+                </label>
+                <Button
+                  className="mt-5"
+                  disabled={pending || deliveryOperator.trim().length < 2}
+                  onClick={() => void dispatchManual()}
+                >
+                  {pending
+                    ? "Recording dispatch…"
+                    : dispatchAttempted
+                      ? "Retry dispatch"
+                      : "Record dispatch"}
+                </Button>
+              </div>
+            </details>
           )}
         {order.status === "confirmed" &&
-          order.fulfillmentStatus === "awaiting_dispatch" && (
-            <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
-              <h2 className="text-xl font-semibold">Cancel before dispatch</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                A Pathao booking claim blocks cancellation until its provider
-                state can be verified and reconciled. Do not release its stock
-                while that booking remains unresolved.
-              </p>
-              <label className="mt-4 grid gap-2 text-sm font-medium">
-                Cancellation reason
-                <Textarea
-                  maxLength={500}
-                  minLength={3}
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                />
-              </label>
-              {error && (
-                <p className="mt-4 text-sm text-destructive" role="alert">
-                  {error}
+          order.fulfillmentStatus === "awaiting_dispatch" &&
+          pathaoAssignment === "none" && (
+            <details className="mt-4 rounded-2xl border border-border">
+              <summary className="cursor-pointer p-5 font-semibold sm:px-7">
+                Cancel order and release reserved stock
+              </summary>
+              <div className="grid gap-4 px-5 pb-5 sm:px-7">
+                <p className="text-sm text-muted-foreground">
+                  Available before a courier booking or physical handoff.
                 </p>
-              )}
-              <Button
-                className="mt-4"
-                disabled={
-                  pending ||
-                  cancelReason.trim().length < 3 ||
-                  pathaoAssignment !== "none"
-                }
-                variant="destructive"
-                onClick={() => void cancelBeforeDispatch()}
-              >
-                {pending ? "Cancelling…" : "Cancel Order and release stock"}
-              </Button>
-              {pathaoAssignment !== "none" && (
-                <p className="mt-2 text-sm text-muted-foreground" role="status">
-                  {pathaoAssignment === "loading"
-                    ? "Checking Pathao assignment before cancellation…"
-                    : pathaoAssignment === "unavailable"
-                      ? "Pathao assignment could not be checked. Refresh before cancelling."
-                      : "This Order stays reserved while its Pathao booking claim is unresolved."}
-                </p>
-              )}
-            </section>
+                <label className="mt-4 grid gap-2 text-sm font-medium">
+                  Cancellation reason
+                  <Textarea
+                    maxLength={500}
+                    minLength={3}
+                    value={cancelReason}
+                    onChange={(event) => setCancelReason(event.target.value)}
+                  />
+                </label>
+                {error && (
+                  <p className="mt-4 text-sm text-destructive" role="alert">
+                    {error}
+                  </p>
+                )}
+                <Button
+                  className="mt-4"
+                  disabled={pending || cancelReason.trim().length < 3}
+                  variant="destructive"
+                  onClick={() => void cancelBeforeDispatch()}
+                >
+                  {pending ? "Cancelling…" : "Cancel Order and release stock"}
+                </Button>
+              </div>
+            </details>
           )}
         {order.dispatch && (
           <section

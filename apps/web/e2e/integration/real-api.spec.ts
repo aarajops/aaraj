@@ -1577,21 +1577,48 @@ test("catalog operator configures a product through to storefront visibility", a
     name: "Pathao courier booking",
   });
   await expect(pathaoPanel).toBeVisible();
-  await expect(pathaoPanel).toContainText(
-    "Configured Pathao service: Normal Delivery (48).",
-  );
   await expect(pathaoPanel.getByLabel("Pathao delivery type")).toHaveCount(0);
+  await expect(pathaoPanel.getByLabel("Active Pathao store")).toHaveValue(
+    "101",
+  );
+  await pathaoPanel.getByLabel("Actual parcel count").fill("1");
+  await pathaoPanel.getByLabel("Actual parcel weight (kg)").fill("0.5");
   await expect(
-    pathaoPanel.getByRole("button", { name: "Create Pathao booking" }),
+    pathaoPanel.getByRole("button", { name: "Book order in Pathao" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Cancel before dispatch" }),
+    page.getByText("Cancel order and release reserved stock", { exact: true }),
   ).toBeVisible();
 
-  await page.getByLabel("Delivery operator").fill("Integration Dispatch Desk");
-  await page
-    .getByLabel("Handoff reference (optional)")
-    .fill("BROWSER-HANDOFF-01");
+  const bookingRequests: Array<{
+    commandId: string;
+    body: Record<string, unknown>;
+  }> = [];
+  const bookingPath =
+    `**/api/v1/delivery/pathao/manage/orders/${customerOrderId}/book` as const;
+  await page.route(bookingPath, async (route) => {
+    if (route.request().method() === "POST") {
+      bookingRequests.push({
+        commandId: route.request().headers()["idempotency-key"] ?? "",
+        body: route.request().postDataJSON() as Record<string, unknown>,
+      });
+    }
+    await route.continue();
+  });
+  await pathaoPanel
+    .getByRole("button", { name: "Book order in Pathao" })
+    .click();
+  await expect(pathaoPanel).toContainText("Booked");
+  await expect(pathaoPanel).toContainText("PATHAO-BROWSER-E2E-01");
+  expect(bookingRequests).toHaveLength(1);
+  expect(bookingRequests[0]).toMatchObject({
+    body: { storeId: 101, parcelQuantity: 1, parcelWeightKg: 0.5 },
+  });
+  expect(bookingRequests[0]?.commandId).toBeTruthy();
+  await expect(
+    pathaoPanel.getByRole("button", { name: "Record Pathao pickup" }),
+  ).toBeVisible();
+  await page.unroute(bookingPath);
 
   const dispatchCommandIds: string[] = [];
   let firstDispatchCommitted = false;
@@ -1612,11 +1639,15 @@ test("catalog operator configures a product through to storefront visibility", a
     }
     await route.continue();
   });
-  await page.getByRole("button", { name: "Record dispatch" }).click();
+  await pathaoPanel
+    .getByRole("button", { name: "Record Pathao pickup" })
+    .click();
   await expect(
-    page.getByRole("region", { name: "Dispatch Order" }).getByRole("alert"),
+    pathaoPanel.getByRole("alert"),
   ).toContainText("dispatch", { ignoreCase: true });
-  await page.getByRole("button", { name: "Retry dispatch" }).click();
+  await pathaoPanel
+    .getByRole("button", { name: "Record Pathao pickup" })
+    .click();
   await expect(
     page.getByText("Dispatched · COD Uncollected", { exact: true }),
   ).toBeVisible();
@@ -1628,10 +1659,10 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.goto(`/orders/${customerOrderId}`);
   await expect(
     page.getByRole("region", { name: "Dispatch details" }),
-  ).toContainText("Integration Dispatch Desk");
+  ).toContainText("Pathao Courier");
   await expect(
     page.getByRole("region", { name: "Dispatch details" }),
-  ).toContainText("BROWSER-HANDOFF-01");
+  ).toContainText("PATHAO-BROWSER-E2E-01");
   await expect(
     page.getByText("Uncollected; no payment was taken at checkout", {
       exact: true,
@@ -1643,9 +1674,9 @@ test("catalog operator configures a product through to storefront visibility", a
   const pathaoTracking = page.getByRole("region", {
     name: "Courier tracking",
   });
-  await expect(pathaoTracking).toHaveCount(0);
+  await expect(pathaoTracking).toContainText("PATHAO-BROWSER-E2E-01");
   await expect(page.getByRole("status")).toContainText(
-    "Handed to Integration Dispatch Desk on",
+    "Handed to Pathao Courier on",
   );
 
   await page.goto(`/admin/orders/${customerOrderId}`);

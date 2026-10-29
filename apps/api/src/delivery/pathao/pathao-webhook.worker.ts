@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { PathaoService } from "./pathao.service.js";
 
-const PATHAO_WEBHOOK_POLL_INTERVAL_MS = 30_000;
+const PATHAO_WEBHOOK_WORKER_INTERVAL_MS = 30_000;
 
 @Injectable()
 export class PathaoWebhookWorker
@@ -22,7 +22,7 @@ export class PathaoWebhookWorker
     if (process.env.NODE_ENV === "test") return;
     this.timer = setInterval(
       () => void this.process(),
-      PATHAO_WEBHOOK_POLL_INTERVAL_MS,
+      PATHAO_WEBHOOK_WORKER_INTERVAL_MS,
     );
     this.timer.unref();
     void this.process();

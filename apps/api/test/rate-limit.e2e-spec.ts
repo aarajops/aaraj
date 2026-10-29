@@ -30,7 +30,7 @@ describe("distributed rate limits", () => {
     await app?.close();
   });
 
-  it("limits email sign-in attempts to five per minute", async () => {
+  it("uses Better Auth's built-in email sign-in limit", async () => {
     const email = `rate-limit-${randomUUID()}@example.test`;
     const account = await auth.api.signUpEmail({
       body: { name: "Rate limit test", email, password },
@@ -39,7 +39,7 @@ describe("distributed rate limits", () => {
     });
     expect(account.status).toBe(200);
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       await request(app.getHttpServer())
         .post("/api/auth/sign-in/email")
         .set("Origin", origin)

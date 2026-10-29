@@ -1,48 +1,40 @@
-# NestJS Security & Threat Mitigation Reference
+# AARAJ Security Reference
 
-> **Source Reference**: [NestJS Official Documentation - Security](https://docs.nestjs.com/security/authentication)
+This directory describes the security controls currently used by AARAJ. NestJS's documentation includes both framework controls and a separate `@nestjs/authentication` package. AARAJ uses Better Auth for identity and sessions; it does not run both authentication systems.
 
-Security in enterprise web services requires a defense-in-depth approach spanning transport security, client isolation, credential protection, identity verification, fine-grained access control, and denial-of-service mitigation.
+| Chapter | AARAJ implementation |
+| --- | --- |
+| [01 - Authentication](01-authentication.md) | Better Auth email/password, PostgreSQL Drizzle storage, Redis rate-limit storage, and the NestJS adapter |
+| [02 - Authorization](02-authorization.md) | NestJS policy checks and persisted application permissions |
+| [03 - Encryption & Hashing](03-encryption-hashing.md) | Cryptographic primitives and credential handling |
+| [04 - Security Headers](04-security-headers.md) | NestJS security headers and the production response policy |
+| [05 - CORS](05-cors.md) | Exact storefront origin and credentialed browser requests |
+| [06 - CSRF Protection](06-csrf-protection.md) | NestJS CSRF protection and the Pathao webhook exception |
+| [07 - Rate Limiting](07-rate-limiting.md) | Better Auth limits for auth endpoints and Redis-backed NestJS throttling for controller routes |
 
-This directory provides comprehensive architectural reference and production best practices for all official security integrations and threat countermeasures in NestJS.
+## Request security map
 
----
-
-## Security Tier Table of Contents
-
-| Chapter | Topic | Key Focus Areas |
-| :--- | :--- | :--- |
-| **01** | [Authentication](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/security/01-authentication.md) | `@nestjs/jwt`, `JwtService`, stateless Bearer tokens, `AuthGuard`, global authentication, `@Public()` metadata |
-| **02** | [Authorization](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/security/02-authorization.md) | RBAC (`@Roles()`, `RolesGuard`), Claims-based access, CASL (`@casl/ability`, `MongoAbility`), `PoliciesGuard` |
-| **03** | [Encryption & Hashing](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/security/03-encryption-hashing.md) | AES-256-CTR with `node:crypto`, salted password hashing with `bcrypt` / `argon2`, timing attack prevention |
-| **04** | [Security Headers](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/security/04-security-headers.md) | `app.useSecurityHeaders()` (NestJS 12.1+), CSP directives, HSTS, `X-Frame-Options`, Swagger/GraphQL accommodations |
-| **05** | [CORS](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/security/05-cors.md) | `enableCors()`, origin allowlisting, Express vs Fastify method disparity, preflight handling |
-| **06** | [CSRF Protection](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/security/06-csrf-protection.md) | Built-in Fetch Metadata protection (`Sec-Fetch-Site`), trusted origins, webhook exclusions, token fallbacks |
-| **07** | [Rate Limiting](file:///home/solo/JUNK/OFC/LK/aaraj/docs/backend/security/07-rate-limiting.md) | `@nestjs/throttler`, multi-tier throttlers, `@Throttle()`, proxy IP tracking (`X-Forwarded-For`), Redis storage |
-
----
-
-## Defense-in-Depth Pipeline Architecture
-
-Incoming HTTP requests traverse security layers in a deterministic, fail-closed sequence:
+The diagram separates Better Auth's middleware endpoints from Nest controller routes. It is a scope map, not a promise that every middleware and guard runs in the numbered order shown.
 
 ```mermaid
 flowchart TD
-    Req[Incoming HTTP Request] --> SecHeaders[1. Security Headers Middleware<br/>CSP, HSTS, X-Frame-Options]
-    SecHeaders --> CSRF[2. CSRF Verification<br/>Sec-Fetch-Site & Origin Matching]
-    CSRF --> CORS[3. CORS Preflight / Validation<br/>Origin & Method Checking]
-    CORS --> RateLimit[4. ThrottlerGuard<br/>IP / Token Sliding Window]
-    RateLimit --> AuthN[5. AuthGuard / JwtService<br/>Bearer Token Verification]
-    AuthN --> AuthZ[6. RolesGuard / PoliciesGuard<br/>RBAC & CASL Abilities]
-    AuthZ --> Pipes[7. StandardSchemaValidationPipe<br/>Input Sanitization & Validation]
-    Pipes --> Handler[8. Controller Business Logic]
+    Request[Incoming HTTP request] --> Shared[Origin and CSRF checks, CORS, security headers, bounded parsing]
+    Shared --> Route{Request path}
+    Route -->|/api/auth/*| BetterAuth[Better Auth handler and its Redis-backed rate limiter]
+    Route -->|Nest controller route| NestGuards[Nest global guards: Redis-backed throttling and Better Auth session authentication]
+    NestGuards --> Policy[Explicit application authorization where required]
+    Policy --> Validation[Route validation and business checks]
+    Validation --> Handler[Controller and service]
 ```
 
----
+## Current commitments
 
-## Core Security Commitments for `@aaraj`
+- Better Auth owns password authentication, session handling, and authentication endpoints. Do not add a second authentication authority or duplicate auth controllers.
+- Authentication establishes identity. Application permissions and record-level business rules are checked separately.
+- Production browser origins and proxy addresses are explicit. Do not trust caller-supplied forwarded-IP values.
+- Both rate limiters use shared Redis-backed storage. Better Auth protects its own endpoints; NestJS Throttler protects Nest controller routes.
+- Secrets and submitted credentials are not written to authentication audit records.
 
-1. **Zero Plaintext Credentials**: Passwords, refresh tokens, and authentication secrets must **never** be stored in plaintext. Passwords must be hashed using salted one-way algorithms (`bcrypt` with >= 10 salt rounds or `argon2`).
-2. **Fail-Closed Authentication**: Routes are authenticated by default using global `APP_GUARD`. Public routes must explicitly declare the `@Public()` decorator.
-3. **Strict Origin Validation**: CORS and CSRF must never use wildcard `*` origins in production when credentials (cookies, authorization headers) are transmitted.
-4. **Automated Header Hardening**: All API instances must invoke `app.useSecurityHeaders()` to enforce HSTS, no-sniff, and restrictive frame options.
+References: [NestJS authentication](https://docs.nestjs.com/security/authentication), [NestJS rate limiting](https://docs.nestjs.com/security/rate-limiting), [Better Auth NestJS integration](https://better-auth.com/docs/integrations/nestjs), [Better Auth rate limiting](https://better-auth.com/docs/concepts/rate-limit).
+
+The full NestJS source text supplied for this review is preserved in [official reference snapshots](official-references/README.md).

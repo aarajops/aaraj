@@ -60,6 +60,7 @@ import { PathaoTokenService } from "./pathao-token.service.js";
 
 const PATHAO_WEBHOOK_INTEGRATION_SECRET =
   "f3992ecc-59da-4cbe-a049-a13da2018d51";
+const PATHAO_NORMAL_DELIVERY_TYPE = 48 satisfies PathaoDeliveryType;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -118,7 +119,6 @@ export class PathaoService {
     const records = await this.api.listStores(config, accessToken);
     const activeStores = records.filter((store) => store.active);
     return PathaoBookingOptionsSchema.parse({
-      deliveryType: config.deliveryType,
       stores: PathaoStoreListSchema.parse(
         activeStores.map((store) => ({
           storeId: store.storeId,
@@ -146,14 +146,15 @@ export class PathaoService {
     }
     const input = PathaoBookingInputSchema.parse(rawInput);
     const config = requiredPathaoConfiguration();
+    const deliveryType = PATHAO_NORMAL_DELIVERY_TYPE;
     const fingerprint = sha256(
       JSON.stringify({
         orderId,
         input: {
           storeId: input.storeId,
-          deliveryType: config.deliveryType,
+          deliveryType,
           parcelQuantity: input.parcelQuantity,
-          parcelWeightKg: Number(input.parcelWeightKg),
+          parcelWeightKg: input.parcelWeightKg,
         },
       }),
     );
@@ -176,11 +177,7 @@ export class PathaoService {
       fingerprint,
       "submitting",
     );
-    const providerRequest = toProviderRequest(
-      order,
-      input,
-      config.deliveryType,
-    );
+    const providerRequest = toProviderRequest(order, input);
     const bookingId = randomUUID();
     let created: typeof pathaoBooking.$inferSelect | null = null;
     try {
@@ -192,7 +189,7 @@ export class PathaoService {
             orderId,
             environment: config.mode,
             storeId: input.storeId,
-            deliveryType: config.deliveryType,
+            deliveryType,
             parcelQuantity: input.parcelQuantity,
             parcelWeightKg: input.parcelWeightKg,
             merchantOrderId: order.reference,
@@ -214,7 +211,7 @@ export class PathaoService {
             commandId,
             environment: config.mode,
             storeId: input.storeId,
-            deliveryType: config.deliveryType,
+            deliveryType,
             parcelQuantity: input.parcelQuantity,
             parcelWeightKg: input.parcelWeightKg,
           },
@@ -369,7 +366,13 @@ export class PathaoService {
   ): Promise<PathaoBookingManagement> {
     const booking = await this.findBooking(orderId);
     const claimStatus = await this.orders.getPathaoBookingClaimStatus(orderId);
-    if (!booking) return { booking: null, claimStatus, observations: [] };
+    if (!booking) {
+      return {
+        booking: null,
+        claimStatus,
+        observations: [],
+      };
+    }
     const observations = await this.database.db
       .select()
       .from(pathaoWebhookInbox)
@@ -1579,12 +1582,14 @@ function requiredPathaoConfiguration(): PathaoConfiguration {
   return config;
 }
 
-function toProviderRequest(
+export function toProviderRequest(
   order: Awaited<ReturnType<OrdersPathaoPort["getPathaoBookingSnapshot"]>>,
   input: PathaoBookingInput,
-  deliveryType: PathaoDeliveryType,
 ): PathaoBookingRequest {
   const recipientPhone = pathaoPhone(order.recipientPhone);
+  const specialInstruction = sanitizeCustomerInstruction(
+    order.customerInstructions,
+  );
   if (
     order.recipientName.trim().length < 3 ||
     order.recipientName.trim().length > 100 ||
@@ -1602,12 +1607,23 @@ function toProviderRequest(
     recipient_name: order.recipientName.trim(),
     recipient_phone: recipientPhone,
     recipient_address: order.recipientAddress.trim(),
-    delivery_type: deliveryType,
+    ...(specialInstruction ? { special_instruction: specialInstruction } : {}),
+    delivery_type: PATHAO_NORMAL_DELIVERY_TYPE,
     item_type: 2,
     item_quantity: input.parcelQuantity,
-    item_weight: Number(input.parcelWeightKg),
+    item_weight: input.parcelWeightKg,
     amount_to_collect: order.codAmountDueBdt,
   };
+}
+
+function sanitizeCustomerInstruction(value: string | null): string | null {
+  if (value === null) return null;
+  const normalized = value
+    .normalize("NFC")
+    .replace(/\p{Cc}/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return normalized || null;
 }
 
 function pathaoPhone(value: string): string {
@@ -1629,7 +1645,7 @@ function toBooking(row: typeof pathaoBooking.$inferSelect): PathaoBooking {
     storeId: row.storeId,
     deliveryType: row.deliveryType,
     parcelQuantity: row.parcelQuantity,
-    parcelWeightKg: Number(row.parcelWeightKg),
+    parcelWeightKg: row.parcelWeightKg,
     merchantOrderId: row.merchantOrderId,
     status: row.status,
     consignmentId: row.consignmentId,
@@ -1688,7 +1704,7 @@ function normalizeStatus(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function progressFromEvent(event: string): Progress | null {
+export function progressFromEvent(event: string): Progress | null {
   switch (event) {
     case "order.created":
     case "order.pickup-requested":
@@ -1707,6 +1723,7 @@ function progressFromEvent(event: string): Progress | null {
     case "order.partial-delivery":
       return "partial_delivery";
     case "order.delivery-failed":
+      return "delivery_failed";
     case "order.pickup-failed":
     case "order.pickup-cancelled":
     case "order.on-hold":

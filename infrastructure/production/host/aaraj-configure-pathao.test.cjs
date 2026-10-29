@@ -49,10 +49,6 @@ function configuration(environment = "sandbox", overrides = {}) {
     "PATHAO_TOKEN_ENCRYPTION_KEY",
     environment === "unconfigured" ? "" : TOKEN_KEY,
   );
-  values.set(
-    "PATHAO_DELIVERY_TYPE",
-    environment === "unconfigured" ? "" : "48",
-  );
   if (environment === "sandbox") {
     for (const [key, value] of Object.entries(DUMMY_CREDENTIALS))
       values.set(key, value);
@@ -103,7 +99,6 @@ test("applies complete sandbox settings atomically and preserves unrelated entri
   const contents = fs.readFileSync(fx.runtimeEnvPath, "utf8");
   const env = runtimeValues(fx);
   assert.equal(env.PATHAO_BASE_URL, SANDBOX_URL);
-  assert.equal(env.PATHAO_DELIVERY_TYPE, "48");
   assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, CLIENT_SECRET);
   assert.equal(env.PATHAO_TOKEN_ENCRYPTION_KEY, TOKEN_KEY);
   assert.equal(env.PATHAO_LIVE_CLIENT_SECRET, "");
@@ -193,8 +188,6 @@ test("rejects incomplete or malformed Pathao configuration before writing", (t) 
       "not-a-valid-key",
       /PATHAO_TOKEN_ENCRYPTION_KEY/,
     ],
-    ["PATHAO_DELIVERY_TYPE", "48,12", /PATHAO_DELIVERY_TYPE/],
-    ["PATHAO_DELIVERY_TYPE", "", /PATHAO_DELIVERY_TYPE/],
     ["PATHAO_SANDBOX_PASSWORD", "bad'password", /unsupported characters/],
   ]) {
     const invalid = configuration("sandbox", { [key]: value });
@@ -219,7 +212,6 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
 
   const sandboxPayload = buildPayload({
     PATHAO_BASE_URL: SANDBOX_URL,
-    PATHAO_DELIVERY_TYPE: "48",
     ...DUMMY_CREDENTIALS,
     PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
   });
@@ -229,13 +221,11 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
   );
   const livePayload = buildPayload({
     PATHAO_BASE_URL: LIVE_URL,
-    PATHAO_DELIVERY_TYPE: "12",
     ...DUMMY_LIVE_CREDENTIALS,
     PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
   });
   const live = parsePayload(livePayload);
   assert.equal(live.get("PATHAO_BASE_URL"), LIVE_URL);
-  assert.equal(live.get("PATHAO_DELIVERY_TYPE"), "12");
   assert.equal(
     live.get("PATHAO_LIVE_CLIENT_SECRET"),
     DUMMY_LIVE_CREDENTIALS.PATHAO_LIVE_CLIENT_SECRET,
@@ -245,7 +235,6 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
     () =>
       buildPayload({
         PATHAO_BASE_URL: SANDBOX_URL,
-        PATHAO_DELIVERY_TYPE: "48",
         PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
       }),
     /PATHAO_SANDBOX_CLIENT_ID/,
@@ -254,7 +243,6 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
     () =>
       buildPayload({
         PATHAO_BASE_URL: SANDBOX_URL,
-        PATHAO_DELIVERY_TYPE: "48",
         ...DUMMY_CREDENTIALS,
         PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
         PATHAO_SANDBOX_PASSWORD:
@@ -264,7 +252,7 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
   );
 });
 
-test("applies live settings using Pathao's documented live URL without AARAJ-only gates", (t) => {
+test("applies live settings using Pathao's documented live URL", (t) => {
   const fx = fixture(t);
   const live = configuration("live");
   assert.equal(apply(fx, live), "applied");
@@ -498,7 +486,7 @@ test("validates and applies Pathao before staging and migration", () => {
       `${secret} must be scoped only to Pathao provisioning`,
     );
   }
-  for (const variable of ["PATHAO_BASE_URL", "PATHAO_DELIVERY_TYPE"]) {
+  for (const variable of ["PATHAO_BASE_URL"]) {
     assert.equal(
       workflow.split(`vars.${variable}`).length - 1,
       1,

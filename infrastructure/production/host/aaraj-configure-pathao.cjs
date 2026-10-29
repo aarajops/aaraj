@@ -11,7 +11,6 @@ const MAX_RUNTIME_BYTES = 1024 * 1024;
 const MAX_INPUT_BYTES = 32 * 1024;
 const PATHAO_KEYS = [
   "PATHAO_BASE_URL",
-  "PATHAO_DELIVERY_TYPE",
   "PATHAO_TOKEN_ENCRYPTION_KEY",
   "PATHAO_SANDBOX_CLIENT_ID",
   "PATHAO_SANDBOX_CLIENT_SECRET",
@@ -159,12 +158,6 @@ function validateEncryptionKey(value, required) {
   }
 }
 
-function validateDeliveryType(value) {
-  if (value !== "48" && value !== "12") {
-    fail("PATHAO_DELIVERY_TYPE must be the single documented value 48 or 12.");
-  }
-}
-
 function pathaoEnvironment(baseUrl) {
   if (!baseUrl) return null;
   const environment = PATHAO_BASE_URLS.get(baseUrl);
@@ -190,11 +183,6 @@ function validateConfiguration(inputValues, existingValues) {
   result.set("PATHAO_TOKEN_ENCRYPTION_KEY", existingKey || providedKey || "");
 
   if (!mode) {
-    if (inputValues.get("PATHAO_DELIVERY_TYPE") !== "") {
-      fail(
-        "PATHAO_DELIVERY_TYPE must be empty when PATHAO_BASE_URL is absent.",
-      );
-    }
     for (const key of [...SANDBOX_CREDENTIAL_KEYS, ...LIVE_CREDENTIAL_KEYS]) {
       if (inputValues.get(key) !== "") {
         fail(`${key} must be empty when PATHAO_BASE_URL is absent.`);
@@ -204,8 +192,6 @@ function validateConfiguration(inputValues, existingValues) {
   }
 
   validateEncryptionKey(existingKey || providedKey, true);
-  validateDeliveryType(inputValues.get("PATHAO_DELIVERY_TYPE"));
-  result.set("PATHAO_DELIVERY_TYPE", inputValues.get("PATHAO_DELIVERY_TYPE"));
 
   const selectedCredentialKeys =
     mode === "sandbox" ? SANDBOX_CREDENTIAL_KEYS : LIVE_CREDENTIAL_KEYS;
@@ -232,10 +218,6 @@ function buildPayload(environment) {
   values.set(
     "PATHAO_TOKEN_ENCRYPTION_KEY",
     environment.PATHAO_TOKEN_ENCRYPTION_KEY ?? "",
-  );
-  values.set(
-    "PATHAO_DELIVERY_TYPE",
-    mode ? (environment.PATHAO_DELIVERY_TYPE ?? "") : "",
   );
   if (mode === "sandbox") {
     for (const key of SANDBOX_CREDENTIAL_KEYS) {

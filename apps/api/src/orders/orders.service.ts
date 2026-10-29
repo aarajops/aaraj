@@ -646,6 +646,7 @@ export class OrdersService implements OrdersPathaoPort {
       recipientName: order.address.recipientName,
       recipientPhone: order.address.phone,
       recipientAddress,
+      customerInstructions: order.address.instructions,
       codAmountDueBdt: order.codAmountDueBdt,
     };
   }
@@ -864,6 +865,7 @@ export class OrdersService implements OrdersPathaoPort {
       recipientName: address.recipientName,
       recipientPhone: address.phone,
       recipientAddress,
+      customerInstructions: address.instructions,
       codAmountDueBdt: order.codAmountDueBdt,
     };
   }

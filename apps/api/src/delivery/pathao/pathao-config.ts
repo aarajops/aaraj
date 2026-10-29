@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import type { PathaoDeliveryType } from "@aaraj/contracts";
 
 export type PathaoEnvironment = "sandbox" | "live";
 
@@ -11,7 +10,6 @@ export type PathaoConfiguration = {
   username: string;
   password: string;
   webhookSecret: string;
-  deliveryType: PathaoDeliveryType;
   tokenEncryptionKey: Buffer;
 };
 
@@ -64,17 +62,8 @@ export function readPathaoConfiguration(
       environment[`${prefix}_WEBHOOK_SECRET`],
       `${prefix}_WEBHOOK_SECRET`,
     ),
-    deliveryType: readDeliveryType(environment.PATHAO_DELIVERY_TYPE),
     tokenEncryptionKey: decodeKey(environment.PATHAO_TOKEN_ENCRYPTION_KEY),
   };
-}
-
-function readDeliveryType(value: string | undefined): PathaoDeliveryType {
-  if (value === "48") return 48;
-  if (value === "12") return 12;
-  throw new Error(
-    "PATHAO_DELIVERY_TYPE must be one documented integer value: 48 or 12.",
-  );
 }
 
 function required(value: string | undefined, name: string): string {

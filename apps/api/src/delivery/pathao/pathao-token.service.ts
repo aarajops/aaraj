@@ -67,9 +67,10 @@ export class PathaoTokenService {
               refreshToken: decision.refreshToken,
             });
           } catch (error) {
-            // Pathao documents rotating refresh tokens, but not a recovery
-            // endpoint. If a refresh token is definitively rejected, use the
-            // configured merchant credentials once while holding the DB lease.
+            // The supplied Pathao capture does not specify refresh-token
+            // rotation or reuse semantics. If a refresh token is definitively
+            // rejected, use the configured merchant credentials once while
+            // holding the DB lease.
             // Network/5xx failures remain ambiguous and must not start another grant.
             if (
               !(error instanceof PathaoRequestError) ||

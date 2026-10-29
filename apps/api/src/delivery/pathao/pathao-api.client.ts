@@ -16,7 +16,8 @@ export type PathaoBookingRequest = {
   recipient_name: string;
   recipient_phone: string;
   recipient_address: string;
-  delivery_type: 12 | 48;
+  special_instruction?: string;
+  delivery_type: 48;
   item_type: 2;
   item_quantity: number;
   item_weight: number;
@@ -85,15 +86,16 @@ export class PathaoApiClient {
       data.token_type !== "Bearer" ||
       typeof data.access_token !== "string" ||
       typeof data.refresh_token !== "string" ||
+      typeof data.expires_in !== "number" ||
       !Number.isSafeInteger(data.expires_in) ||
-      Number(data.expires_in) < 1
+      data.expires_in < 1
     ) {
       throw new PathaoRequestError("PATHAO_TOKEN_RESPONSE_INVALID");
     }
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
-      expiresInSeconds: Number(data.expires_in),
+      expiresInSeconds: data.expires_in,
     };
   }
 
@@ -121,6 +123,7 @@ export class PathaoApiClient {
       for (const value of data.data) {
         if (
           !isObject(value) ||
+          typeof value.store_id !== "number" ||
           !Number.isSafeInteger(value.store_id) ||
           typeof value.store_name !== "string" ||
           (value.is_active !== 0 && value.is_active !== 1)
@@ -128,7 +131,7 @@ export class PathaoApiClient {
           throw new PathaoRequestError("PATHAO_STORES_RESPONSE_INVALID");
         }
         records.push({
-          storeId: Number(value.store_id),
+          storeId: value.store_id,
           storeName: value.store_name,
           active: value.is_active === 1,
         });
@@ -136,12 +139,13 @@ export class PathaoApiClient {
       const candidateLastPage = data.last_page;
       if (candidateLastPage !== undefined) {
         if (
+          typeof candidateLastPage !== "number" ||
           !Number.isSafeInteger(candidateLastPage) ||
-          Number(candidateLastPage) < page
+          candidateLastPage < page
         ) {
           throw new PathaoRequestError("PATHAO_STORES_RESPONSE_INVALID");
         }
-        lastPage = Number(candidateLastPage);
+        lastPage = candidateLastPage;
       }
       if (records.length > 1000 || lastPage > 100) {
         throw new PathaoRequestError("PATHAO_STORES_RESPONSE_TOO_LARGE");

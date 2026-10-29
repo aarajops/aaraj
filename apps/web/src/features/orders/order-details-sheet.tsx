@@ -19,6 +19,7 @@ import { formatDateTime } from "@/lib/date-time";
 import { cn } from "cn";
 import { fetchManagedOrder } from "./orders-client";
 import { humanize, humanizeOrderStatus } from "./orders-format";
+import { PathaoBookingPanel } from "./pathao-booking-panel";
 
 export function OrderDetailsSheet({
   onOpenChange,
@@ -252,6 +253,8 @@ export function OrderDetailsSheet({
                   value={formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
                 />
               </dl>
+
+              <PathaoBookingPanel order={order} />
             </div>
           )}
         </div>

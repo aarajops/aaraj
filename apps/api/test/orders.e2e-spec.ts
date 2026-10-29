@@ -116,7 +116,6 @@ describe("COD Orders and checkout", () => {
   let dhakaDivision: BangladeshGeography["locations"][number];
   const pathaoEnvironmentKeys = [
     "PATHAO_BASE_URL",
-    "PATHAO_DELIVERY_TYPE",
     "PATHAO_TOKEN_ENCRYPTION_KEY",
     "PATHAO_SANDBOX_CLIENT_ID",
     "PATHAO_SANDBOX_CLIENT_SECRET",
@@ -338,7 +337,10 @@ describe("COD Orders and checkout", () => {
     return row;
   }
 
-  async function createGuestOrder(stock = 2) {
+  async function createGuestOrder(
+    stock = 2,
+    addressExtra: Partial<CreateOrderInput["address"]> = {},
+  ) {
     const variantId = await createVariant(stock);
     const cart = await newGuestCart([variantId]);
     const quote = await createQuote(cart.cookie);
@@ -346,7 +348,7 @@ describe("COD Orders and checkout", () => {
     const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
     const response = await placeOrder(
       checkoutCookie,
-      checkoutBody(quote.id),
+      checkoutBody(quote.id, addressExtra),
       key,
     ).expect(201);
     const orderCookie = setCookieHeaders(response.headers).find((value) =>
@@ -386,6 +388,7 @@ describe("COD Orders and checkout", () => {
       tokenGrants: [] as string[],
     };
     let tokenNumber = 0;
+    let createdOrderNumber = 0;
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const requestUrl =
@@ -455,7 +458,9 @@ describe("COD Orders and checkout", () => {
           return new Response(
             JSON.stringify({
               data: {
-                consignment_id: options.consignmentId ?? "PATHAO-TEST-0001",
+                consignment_id:
+                  options.consignmentId ??
+                  `PATHAO-TEST-${String(++createdOrderNumber).padStart(4, "0")}`,
                 merchant_order_id: body?.merchant_order_id,
                 order_status: "Pending",
                 delivery_fee: 83.46,
@@ -593,7 +598,6 @@ describe("COD Orders and checkout", () => {
     }
     Object.assign(process.env, {
       PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
-      PATHAO_DELIVERY_TYPE: "48",
       PATHAO_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
       PATHAO_SANDBOX_CLIENT_ID: "pathao-test-client",
       PATHAO_SANDBOX_CLIENT_SECRET: "pathao-test-secret",
@@ -1814,7 +1818,9 @@ describe("COD Orders and checkout", () => {
   });
 
   it("books only active stores returned by Pathao and keeps booking separate from dispatch, delivery, and COD collection", async () => {
-    const fixture = await createGuestOrder(2);
+    const fixture = await createGuestOrder(2, {
+      instructions: "Call from the gate\nUse the east entrance",
+    });
     await confirmServiceable(fixture.id);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Pathao booking Order fixture is missing.");
@@ -1827,7 +1833,7 @@ describe("COD Orders and checkout", () => {
     expect(stores.body.stores).toEqual([
       { storeId: 101, storeName: "Active Test Store", active: true },
     ]);
-    expect(stores.body.deliveryType).toBe(48);
+    expect(stores.body).not.toHaveProperty("deliveryType");
     await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/stores`)
       .set("Cookie", customer.cookie)
@@ -1884,6 +1890,7 @@ describe("COD Orders and checkout", () => {
       merchant_order_id: order.reference,
       recipient_name: "E2E Recipient",
       recipient_phone: "01712345678",
+      special_instruction: "Call from the gate Use the east entrance",
       delivery_type: 48,
       item_type: 2,
       item_quantity: 1,
@@ -1894,6 +1901,36 @@ describe("COD Orders and checkout", () => {
     expect(createRequest?.body).not.toHaveProperty("recipient_zone");
     expect(createRequest?.body).not.toHaveProperty("recipient_area");
     expect(createRequest?.body).not.toHaveProperty("item_description");
+
+    const longInstruction = "x".repeat(201);
+    const longInstructionFixture = await createGuestOrder(2, {
+      instructions: longInstruction,
+    });
+    await confirmServiceable(longInstructionFixture.id);
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${longInstructionFixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send(bookingBody)
+      .expect(201);
+    const longInstructionRequest = provider.requests.find(
+      ({ url, method, body }) =>
+        url.endsWith("/aladdin/api/v1/orders") &&
+        method === "POST" &&
+        body?.special_instruction === longInstruction,
+    );
+    expect(longInstructionRequest?.body?.special_instruction).toBe(
+      longInstruction,
+    );
+    expect(
+      provider.requests.filter(
+        ({ url, method }) =>
+          url.endsWith("/aladdin/api/v1/orders") && method === "POST",
+      ),
+    ).toHaveLength(2);
 
     const inactiveFixture = await createGuestOrder(2);
     await confirmServiceable(inactiveFixture.id);
@@ -1916,7 +1953,7 @@ describe("COD Orders and checkout", () => {
         ({ url, method }) =>
           url.endsWith("/aladdin/api/v1/orders") && method === "POST",
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
 
     const duplicateWebhook = {
       event: "order.picked",

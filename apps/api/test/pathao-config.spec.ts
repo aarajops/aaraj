@@ -5,7 +5,6 @@ import { readPathaoConfiguration } from "../src/delivery/pathao/pathao-config.js
 const tokenEncryptionKey = randomBytes(32).toString("base64url");
 const sandboxEnvironment: NodeJS.ProcessEnv = {
   PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
-  PATHAO_DELIVERY_TYPE: "48",
   PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
   PATHAO_SANDBOX_CLIENT_ID: "test-client-id",
   PATHAO_SANDBOX_CLIENT_SECRET: "test-client-secret",
@@ -36,27 +35,23 @@ describe("Pathao configuration", () => {
       username: "test@example.invalid",
       password: "test-password",
       webhookSecret: "test-webhook-secret",
-      deliveryType: 48,
     });
   });
 
-  it("uses the documented live base URL and does not require AARAJ-only approval flags", () => {
-    expect(
-      readPathaoConfiguration({
-        PATHAO_BASE_URL: "https://api-hermes.pathao.com",
-        PATHAO_DELIVERY_TYPE: "48",
-        PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
-        PATHAO_LIVE_CLIENT_ID: "test-live-client-id",
-        PATHAO_LIVE_CLIENT_SECRET: "test-live-client-secret",
-        PATHAO_LIVE_USERNAME: "test-live@example.invalid",
-        PATHAO_LIVE_PASSWORD: "test-live-password",
-        PATHAO_LIVE_WEBHOOK_SECRET: "test-live-webhook-secret",
-      }),
-    ).toMatchObject({
+  it("uses the documented live base URL and merchant credentials", () => {
+    const liveEnvironment: NodeJS.ProcessEnv = {
+      PATHAO_BASE_URL: "https://api-hermes.pathao.com",
+      PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
+      PATHAO_LIVE_CLIENT_ID: "test-live-client-id",
+      PATHAO_LIVE_CLIENT_SECRET: "test-live-client-secret",
+      PATHAO_LIVE_USERNAME: "test-live@example.invalid",
+      PATHAO_LIVE_PASSWORD: "test-live-password",
+      PATHAO_LIVE_WEBHOOK_SECRET: "test-live-webhook-secret",
+    };
+    expect(readPathaoConfiguration(liveEnvironment)).toMatchObject({
       mode: "live",
       baseUrl: "https://api-hermes.pathao.com",
       clientId: "test-live-client-id",
-      deliveryType: 48,
     });
   });
 
@@ -73,23 +68,6 @@ describe("Pathao configuration", () => {
         PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com/extra",
       }),
     ).toThrow("PATHAO_BASE_URL");
-  });
-
-  it("accepts only one documented delivery_type code from configuration", () => {
-    expect(
-      readPathaoConfiguration({
-        ...sandboxEnvironment,
-        PATHAO_DELIVERY_TYPE: "12",
-      })?.deliveryType,
-    ).toBe(12);
-    for (const value of [undefined, "", "48,12", " 48", "13"]) {
-      expect(() =>
-        readPathaoConfiguration({
-          ...sandboxEnvironment,
-          PATHAO_DELIVERY_TYPE: value,
-        }),
-      ).toThrow("PATHAO_DELIVERY_TYPE");
-    }
   });
 
   it("requires the credentials and persistent token encryption key while configured", () => {

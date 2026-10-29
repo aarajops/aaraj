@@ -5,6 +5,7 @@ import { betterAuth } from "better-auth";
 import { createAuthMiddleware, isAPIError } from "better-auth/api";
 import { recordAuditEvent } from "../platform/audit/audit.service.js";
 import { loadLocalEnvironment } from "../platform/config/local-environment.js";
+import { getStorefrontOrigin } from "../platform/config/storefront-origin.js";
 import { getDrizzleDatabase } from "../platform/database/database-client.js";
 import { getRedisClient } from "../platform/redis/redis-client.js";
 import { getCurrentRequestId } from "../platform/request-context.js";
@@ -18,17 +19,16 @@ if (!secret || Buffer.byteLength(secret, "utf8") < 32) {
   throw new Error("BETTER_AUTH_SECRET must contain at least 32 bytes.");
 }
 
-const baseURL =
+const configuredBaseURL =
   process.env.BETTER_AUTH_URL ??
   (process.env.NODE_ENV === "production" ? undefined : "http://localhost:3001");
-const clientURL =
-  process.env.CLIENT_URL ??
-  (process.env.NODE_ENV === "production" ? undefined : "http://localhost:3000");
+const baseURL = configuredBaseURL
+  ? normalizeBetterAuthBaseURL(configuredBaseURL)
+  : undefined;
+const clientURL = getStorefrontOrigin();
 
-if (!baseURL || !clientURL) {
-  throw new Error(
-    "BETTER_AUTH_URL and CLIENT_URL must be configured in production.",
-  );
+if (!baseURL) {
+  throw new Error("BETTER_AUTH_URL must be configured in production.");
 }
 
 const redis = getRedisClient();
@@ -64,12 +64,6 @@ export const auth = betterAuth({
   rateLimit: {
     enabled: true,
     storage: "secondary-storage",
-    window: 60,
-    max: 100,
-    customRules: {
-      "/sign-in/email": { window: 60, max: 5 },
-      "/sign-up/email": { window: 60, max: 5 },
-    },
   },
   emailAndPassword: {
     enabled: true,
@@ -117,3 +111,35 @@ export const auth = betterAuth({
     }),
   },
 });
+
+function normalizeBetterAuthBaseURL(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("BETTER_AUTH_URL must be an absolute HTTP(S) URL.");
+  }
+
+  const path = parsed.pathname.replace(/\/+$/, "");
+  if (
+    !["", "/api/auth"].includes(path) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error(
+      "BETTER_AUTH_URL must be an origin, optionally followed by /api/auth.",
+    );
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("BETTER_AUTH_URL must use HTTP or HTTPS.");
+  }
+  if (process.env.NODE_ENV === "production" && parsed.protocol !== "https:") {
+    throw new Error("BETTER_AUTH_URL must use HTTPS in production.");
+  }
+
+  // The explicit Better Auth basePath owns the route. Strip the legacy path
+  // form from BETTER_AUTH_URL so the mount path has one source of truth.
+  return parsed.origin;
+}
