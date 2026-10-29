@@ -2,7 +2,6 @@
 
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
-const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -16,7 +15,6 @@ const {
   parsePayload,
 } = require("./aaraj-configure-pathao.cjs");
 
-const TOKEN_KEY = crypto.randomBytes(32).toString("base64url");
 const CLIENT_SECRET = "dummy-client-secret-123";
 const SANDBOX_URL = "https://courier-api-sandbox.pathao.com";
 const LIVE_URL = "https://api-hermes.pathao.com";
@@ -44,10 +42,6 @@ function configuration(environment = "sandbox", overrides = {}) {
       : environment === "live"
         ? LIVE_URL
         : "",
-  );
-  values.set(
-    "PATHAO_TOKEN_ENCRYPTION_KEY",
-    environment === "unconfigured" ? "" : TOKEN_KEY,
   );
   if (environment === "sandbox") {
     for (const [key, value] of Object.entries(DUMMY_CREDENTIALS))
@@ -100,7 +94,6 @@ test("applies complete sandbox settings atomically and preserves unrelated entri
   const env = runtimeValues(fx);
   assert.equal(env.PATHAO_BASE_URL, SANDBOX_URL);
   assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, CLIENT_SECRET);
-  assert.equal(env.PATHAO_TOKEN_ENCRYPTION_KEY, TOKEN_KEY);
   assert.equal(env.PATHAO_LIVE_CLIENT_SECRET, "");
   assert.match(contents, /^# Keep this comment$/m);
   assert.equal(env.APP_NAME, "aaraj");
@@ -183,11 +176,6 @@ test("rejects incomplete or malformed Pathao configuration before writing", (t) 
   for (const [key, value, expected] of [
     ["PATHAO_SANDBOX_CLIENT_SECRET", "", /PATHAO_SANDBOX_CLIENT_SECRET/],
     ["PATHAO_SANDBOX_USERNAME", "   ", /PATHAO_SANDBOX_USERNAME/],
-    [
-      "PATHAO_TOKEN_ENCRYPTION_KEY",
-      "not-a-valid-key",
-      /PATHAO_TOKEN_ENCRYPTION_KEY/,
-    ],
     ["PATHAO_SANDBOX_PASSWORD", "bad'password", /unsupported characters/],
   ]) {
     const invalid = configuration("sandbox", { [key]: value });
@@ -202,18 +190,15 @@ test("rejects incomplete or malformed Pathao configuration before writing", (t) 
 test("builds GitHub payloads from the official base URL and clears inactive credentials", () => {
   const unconfiguredPayload = buildPayload({
     PATHAO_SANDBOX_CLIENT_SECRET: "stale-github-secret",
-    PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
   });
   const unconfigured = parsePayload(unconfiguredPayload);
   assert.equal(unconfigured.get("PATHAO_BASE_URL"), "");
-  assert.equal(unconfigured.get("PATHAO_TOKEN_ENCRYPTION_KEY"), TOKEN_KEY);
   assert.equal(unconfigured.get("PATHAO_SANDBOX_CLIENT_SECRET"), "");
   assert.doesNotMatch(unconfiguredPayload, /stale-github-secret/);
 
   const sandboxPayload = buildPayload({
     PATHAO_BASE_URL: SANDBOX_URL,
     ...DUMMY_CREDENTIALS,
-    PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
   });
   assert.equal(
     parsePayload(sandboxPayload).get("PATHAO_SANDBOX_CLIENT_SECRET"),
@@ -222,7 +207,6 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
   const livePayload = buildPayload({
     PATHAO_BASE_URL: LIVE_URL,
     ...DUMMY_LIVE_CREDENTIALS,
-    PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
   });
   const live = parsePayload(livePayload);
   assert.equal(live.get("PATHAO_BASE_URL"), LIVE_URL);
@@ -235,7 +219,6 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
     () =>
       buildPayload({
         PATHAO_BASE_URL: SANDBOX_URL,
-        PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
       }),
     /PATHAO_SANDBOX_CLIENT_ID/,
   );
@@ -244,7 +227,6 @@ test("builds GitHub payloads from the official base URL and clears inactive cred
       buildPayload({
         PATHAO_BASE_URL: SANDBOX_URL,
         ...DUMMY_CREDENTIALS,
-        PATHAO_TOKEN_ENCRYPTION_KEY: TOKEN_KEY,
         PATHAO_SANDBOX_PASSWORD:
           "line1\nPATHAO_BASE_URL=https://api-hermes.pathao.com",
       }),
@@ -329,26 +311,6 @@ test("rejects duplicate, unauthorized, and injection-shaped payload entries with
     () => apply(unrewritablePathao, configuration("unconfigured")),
     /cannot be safely rewritten/,
   );
-});
-
-test("rejects encryption key replacement and leaves the runtime file untouched", (t) => {
-  const fx = fixture(
-    t,
-    `PATHAO_TOKEN_ENCRYPTION_KEY='${TOKEN_KEY}'\nAPP_NAME=aaraj\n`,
-  );
-  const before = fs.readFileSync(fx.runtimeEnvPath, "utf8");
-  const replacement = crypto.randomBytes(32).toString("base64url");
-  assert.throws(
-    () =>
-      apply(
-        fx,
-        configuration("sandbox", {
-          PATHAO_TOKEN_ENCRYPTION_KEY: replacement,
-        }),
-      ),
-    /must match the existing runtime key/,
-  );
-  assert.equal(fs.readFileSync(fx.runtimeEnvPath, "utf8"), before);
 });
 
 test("leaves the original runtime file intact if atomic replacement fails", (t) => {
@@ -468,7 +430,6 @@ test("validates and applies Pathao before staging and migration", () => {
     /buildPayload\(process\.env[\s\S]*?deploy-release\.sh pathao-apply/,
   );
   for (const secret of [
-    "PATHAO_TOKEN_ENCRYPTION_KEY",
     "PATHAO_SANDBOX_CLIENT_ID",
     "PATHAO_SANDBOX_CLIENT_SECRET",
     "PATHAO_SANDBOX_USERNAME",

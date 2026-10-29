@@ -1,4 +1,7 @@
-import { Buffer } from "node:buffer";
+import {
+  readOrderPiiKeyring,
+  type OrderPiiKeyring,
+} from "../../platform/crypto/order-pii-keyring.js";
 
 export type PathaoEnvironment = "sandbox" | "live";
 
@@ -10,7 +13,7 @@ export type PathaoConfiguration = {
   username: string;
   password: string;
   webhookSecret: string;
-  tokenEncryptionKey: Buffer;
+  tokenEncryptionKeyring: OrderPiiKeyring;
 };
 
 const PATHAO_BASE_URLS = {
@@ -24,10 +27,7 @@ export function readPathaoConfiguration(
   const baseUrl = environment.PATHAO_BASE_URL?.trim() ?? "";
   if (!baseUrl) {
     const hasCredentials = Object.entries(environment).some(
-      ([key, value]) =>
-        key.startsWith("PATHAO_") &&
-        key !== "PATHAO_TOKEN_ENCRYPTION_KEY" &&
-        Boolean(value?.trim()),
+      ([key, value]) => key.startsWith("PATHAO_") && Boolean(value?.trim()),
     );
     if (hasCredentials) {
       throw new Error(
@@ -62,7 +62,7 @@ export function readPathaoConfiguration(
       environment[`${prefix}_WEBHOOK_SECRET`],
       `${prefix}_WEBHOOK_SECRET`,
     ),
-    tokenEncryptionKey: decodeKey(environment.PATHAO_TOKEN_ENCRYPTION_KEY),
+    tokenEncryptionKeyring: readOrderPiiKeyring(environment),
   };
 }
 
@@ -70,17 +70,4 @@ function required(value: string | undefined, name: string): string {
   const normalized = value?.trim();
   if (!normalized) throw new Error(`${name} must be configured.`);
   return normalized;
-}
-
-function decodeKey(value: string | undefined): Buffer {
-  const encoded = value?.trim();
-  if (!encoded)
-    throw new Error("PATHAO_TOKEN_ENCRYPTION_KEY must be configured.");
-  const key = Buffer.from(encoded, "base64url");
-  if (key.length !== 32 || key.toString("base64url") !== encoded) {
-    throw new Error(
-      "PATHAO_TOKEN_ENCRYPTION_KEY must be canonical base64url for 32 random bytes.",
-    );
-  }
-  return key;
 }

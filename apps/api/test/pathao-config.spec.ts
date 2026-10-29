@@ -2,10 +2,10 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { readPathaoConfiguration } from "../src/delivery/pathao/pathao-config.js";
 
-const tokenEncryptionKey = randomBytes(32).toString("base64url");
+const orderPiiEncryptionKey = randomBytes(32).toString("base64url");
 const sandboxEnvironment: NodeJS.ProcessEnv = {
   PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
-  PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
+  ORDER_PII_ENCRYPTION_KEY: orderPiiEncryptionKey,
   PATHAO_SANDBOX_CLIENT_ID: "test-client-id",
   PATHAO_SANDBOX_CLIENT_SECRET: "test-client-secret",
   PATHAO_SANDBOX_USERNAME: "test@example.invalid",
@@ -41,7 +41,7 @@ describe("Pathao configuration", () => {
   it("uses the documented live base URL and merchant credentials", () => {
     const liveEnvironment: NodeJS.ProcessEnv = {
       PATHAO_BASE_URL: "https://api-hermes.pathao.com",
-      PATHAO_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
+      ORDER_PII_ENCRYPTION_KEY: orderPiiEncryptionKey,
       PATHAO_LIVE_CLIENT_ID: "test-live-client-id",
       PATHAO_LIVE_CLIENT_SECRET: "test-live-client-secret",
       PATHAO_LIVE_USERNAME: "test-live@example.invalid",
@@ -70,7 +70,7 @@ describe("Pathao configuration", () => {
     ).toThrow("PATHAO_BASE_URL");
   });
 
-  it("requires the credentials and persistent token encryption key while configured", () => {
+  it("requires the credentials and existing application encryption key while configured", () => {
     expect(() =>
       readPathaoConfiguration({
         ...sandboxEnvironment,
@@ -80,8 +80,8 @@ describe("Pathao configuration", () => {
     expect(() =>
       readPathaoConfiguration({
         ...sandboxEnvironment,
-        PATHAO_TOKEN_ENCRYPTION_KEY: "",
+        ORDER_PII_ENCRYPTION_KEY: "",
       }),
-    ).toThrow("PATHAO_TOKEN_ENCRYPTION_KEY");
+    ).toThrow("ORDER_PII_ENCRYPTION_KEY");
   });
 });

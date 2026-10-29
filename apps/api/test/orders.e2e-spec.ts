@@ -116,7 +116,6 @@ describe("COD Orders and checkout", () => {
   let dhakaDivision: BangladeshGeography["locations"][number];
   const pathaoEnvironmentKeys = [
     "PATHAO_BASE_URL",
-    "PATHAO_TOKEN_ENCRYPTION_KEY",
     "PATHAO_SANDBOX_CLIENT_ID",
     "PATHAO_SANDBOX_CLIENT_SECRET",
     "PATHAO_SANDBOX_USERNAME",
@@ -598,7 +597,6 @@ describe("COD Orders and checkout", () => {
     }
     Object.assign(process.env, {
       PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
-      PATHAO_TOKEN_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
       PATHAO_SANDBOX_CLIENT_ID: "pathao-test-client",
       PATHAO_SANDBOX_CLIENT_SECRET: "pathao-test-secret",
       PATHAO_SANDBOX_USERNAME: "pathao-test@example.invalid",

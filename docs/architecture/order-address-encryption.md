@@ -1,10 +1,10 @@
 # Order address encryption
 
-Order delivery addresses are encrypted with AES-256-GCM before they are stored. The ciphertext is bound to its Order ID. Existing `v1` values use the single `ORDER_PII_ENCRYPTION_KEY`; new `v2` values carry a key ID.
+Order delivery addresses and persisted Pathao OAuth tokens are encrypted with AES-256-GCM before they are stored. Order-address ciphertext is bound to its Order ID; token ciphertext is bound to its environment and purpose. Existing address `v1` values use the single `ORDER_PII_ENCRYPTION_KEY`; new address and token ciphertext carries a key ID.
 
 ## Initial configuration
 
-For an installation that has not rotated its key, keep `ORDER_PII_ENCRYPTION_KEY` stable across deployments. The application reads existing `v1` rows and writes `v2.legacy` rows while this compatibility setting is in use.
+For an installation that has not rotated its key, keep `ORDER_PII_ENCRYPTION_KEY` stable across deployments. The application reads existing address `v1` rows and writes `v2.legacy` rows while this compatibility setting is in use. Pathao tokens use the same existing key for encryption at rest, so Pathao setup does not need a separate encryption secret.
 
 ## Activate a new key
 
@@ -14,7 +14,7 @@ Deploy the application and migration that support the versioned keyring first. G
 ORDER_PII_KEYRING='{"activeKeyId":"<active-key-id>","keys":{"legacy":"<existing-key>","<active-key-id>":"<new-key>"}}'
 ```
 
-When `ORDER_PII_KEYRING` is set, remove `ORDER_PII_ENCRYPTION_KEY`. Keep `legacy` in the keyring: old `v1` addresses and existing checkout idempotency fingerprints depend on it. New Orders use `activeKeyId`; reads select the key ID stored in each `v2` value. Switching `activeKeyId` does not make older values unreadable as long as their keys remain configured.
+When `ORDER_PII_KEYRING` is set, remove `ORDER_PII_ENCRYPTION_KEY`. Keep `legacy` in the keyring: old `v1` addresses, existing checkout idempotency fingerprints, and any token ciphertext encrypted with that key depend on it. New Orders and refreshed Pathao tokens use `activeKeyId`; reads select the key ID stored in each `v2` value. Switching `activeKeyId` does not make older values unreadable as long as their keys remain configured.
 
 Keep every key in a protected secret store. Verify a non-production Order can still be read and checkout retries still replay after switching the active ID. Never test by deleting an old key from production first.
 

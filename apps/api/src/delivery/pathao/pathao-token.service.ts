@@ -13,6 +13,7 @@ import {
   readPathaoConfiguration,
   type PathaoConfiguration,
 } from "./pathao-config.js";
+import type { OrderPiiKeyring } from "../../platform/crypto/order-pii-keyring.js";
 
 const ACCESS_TOKEN_REUSE_SAFETY_MS = 30_000;
 const REFRESH_LEASE_SECONDS = 30;
@@ -83,13 +84,13 @@ export class PathaoTokenService {
         }
         const encryptedAccess = encryptToken(
           result.accessToken,
-          config.tokenEncryptionKey,
+          config.tokenEncryptionKeyring,
           config.mode,
           "access",
         );
         const encryptedRefresh = encryptToken(
           result.refreshToken,
-          config.tokenEncryptionKey,
+          config.tokenEncryptionKeyring,
           config.mode,
           "refresh",
         );
@@ -157,15 +158,20 @@ export class PathaoTokenService {
         .where(eq(pathaoApiToken.environment, config.mode))
         .limit(1);
       if (row.accessTokenCiphertext && timeState?.accessIsFresh) {
-        return {
-          kind: "ready",
-          accessToken: decryptToken(
-            row.accessTokenCiphertext,
-            config.tokenEncryptionKey,
-            config.mode,
-            "access",
-          ),
-        };
+        try {
+          return {
+            kind: "ready",
+            accessToken: decryptToken(
+              row.accessTokenCiphertext,
+              config.tokenEncryptionKeyring,
+              config.mode,
+              "access",
+            ),
+          };
+        } catch {
+          // A token encrypted with an earlier key is replaced using the
+          // configured merchant credentials below.
+        }
       }
 
       if (timeState?.refreshLeaseIsActive) {
@@ -183,18 +189,21 @@ export class PathaoTokenService {
         .returning({ environment: pathaoApiToken.environment });
       if (!leased) throw new Error("Could not lease Pathao token refresh.");
 
-      return {
-        kind: "refresh",
-        owner,
-        refreshToken: row.refreshTokenCiphertext
-          ? decryptToken(
-              row.refreshTokenCiphertext,
-              config.tokenEncryptionKey,
-              config.mode,
-              "refresh",
-            )
-          : null,
-      };
+      let refreshToken: string | null = null;
+      if (row.refreshTokenCiphertext) {
+        try {
+          refreshToken = decryptToken(
+            row.refreshTokenCiphertext,
+            config.tokenEncryptionKeyring,
+            config.mode,
+            "refresh",
+          );
+        } catch {
+          // If the prior encryption key is unavailable, issue a fresh token
+          // with the merchant credentials instead of leaving booking blocked.
+        }
+      }
+      return { kind: "refresh", owner, refreshToken };
     });
   }
 
@@ -220,19 +229,25 @@ export class PathaoTokenService {
 
 function encryptToken(
   value: string,
-  key: Buffer,
+  keyring: OrderPiiKeyring,
   environment: string,
   purpose: "access" | "refresh",
 ): string {
+  const keyId = keyring.activeKeyId;
+  const key = keyring.keys.get(keyId);
+  if (!key) throw new Error("The active Order PII encryption key is missing.");
   const nonce = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
-  cipher.setAAD(Buffer.from(`aaraj/pathao-token/v1:${environment}:${purpose}`));
+  cipher.setAAD(
+    Buffer.from(`aaraj/pathao-token/v2:${keyId}:${environment}:${purpose}`),
+  );
   const ciphertext = Buffer.concat([
     cipher.update(value, "utf8"),
     cipher.final(),
   ]);
   return [
-    "v1",
+    "v2",
+    keyId,
     nonce.toString("base64url"),
     ciphertext.toString("base64url"),
     cipher.getAuthTag().toString("base64url"),
@@ -241,22 +256,28 @@ function encryptToken(
 
 function decryptToken(
   value: string,
-  key: Buffer,
+  keyring: OrderPiiKeyring,
   environment: string,
   purpose: "access" | "refresh",
 ): string {
   try {
-    const [version, nonceValue, ciphertextValue, tagValue, extra] =
-      value.split(".");
-    if (
-      version !== "v1" ||
-      !nonceValue ||
-      !ciphertextValue ||
-      !tagValue ||
-      extra
-    ) {
+    const [version, ...fields] = value.split(".");
+    const isV1 = version === "v1" && fields.length === 3;
+    const isV2 =
+      version === "v2" &&
+      fields.length === 4 &&
+      /^[A-Za-z0-9_-]+$/.test(fields[0] ?? "");
+    if (!isV1 && !isV2) {
       throw new Error("invalid ciphertext");
     }
+    const [keyId, nonceValue, ciphertextValue, tagValue] = isV1
+      ? ["legacy", ...fields]
+      : fields;
+    if (!keyId || !nonceValue || !ciphertextValue || !tagValue) {
+      throw new Error("ciphertext key or field is unavailable");
+    }
+    const key = keyring.keys.get(keyId);
+    if (!key) throw new Error("ciphertext key is unavailable");
     const nonce = Buffer.from(nonceValue, "base64url");
     const ciphertext = Buffer.from(ciphertextValue, "base64url");
     const tag = Buffer.from(tagValue, "base64url");
@@ -264,7 +285,11 @@ function decryptToken(
       throw new Error("invalid envelope");
     const decipher = createDecipheriv("aes-256-gcm", key, nonce);
     decipher.setAAD(
-      Buffer.from(`aaraj/pathao-token/v1:${environment}:${purpose}`),
+      Buffer.from(
+        isV1
+          ? `aaraj/pathao-token/v1:${environment}:${purpose}`
+          : `aaraj/pathao-token/v2:${keyId}:${environment}:${purpose}`,
+      ),
     );
     decipher.setAuthTag(tag);
     return Buffer.concat([

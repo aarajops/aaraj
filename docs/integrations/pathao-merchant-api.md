@@ -29,7 +29,7 @@ The API page describes OAuth 2.0 access tokens. It says to persist the token for
 
 - `PATHAO_BASE_URL` is set to exactly one documented URL from the table above. AARAJ derives the internal environment label from this URL.
 - Pathao requires `delivery_type` on every Create Order request: `48` means Normal Delivery and `12` means On-Demand. AARAJ's regular nationwide fulfillment uses the documented Normal Delivery value `48`; this fixed service policy is not an environment variable. Pathao's Merchant Panel describes standard/nationwide delivery separately from the faster On-Demand option.
-- `PATHAO_TOKEN_ENCRYPTION_KEY` is an AARAJ storage key for encrypting persisted OAuth tokens. It is not a Pathao API credential and must remain stable while those tokens are stored.
+- OAuth tokens are encrypted at rest using AARAJ's existing `ORDER_PII_ENCRYPTION_KEY` or `ORDER_PII_KEYRING`; token ciphertext records its key ID so the existing keyring rotation rules apply. This is AARAJ's internal storage protection, not a Pathao credential or an additional Pathao setting.
 - The `PATHAO_SANDBOX_*` and `PATHAO_LIVE_*` GitHub Environment Secrets contain the respective credentials and webhook secret. The deployment provisions only the credential set matching `PATHAO_BASE_URL`.
 - AARAJ obtains the merchant's stores from Pathao's documented `GET /aladdin/api/v1/stores` response and presents entries Pathao marks active. Store setup belongs to the merchant account in Pathao's Merchant Panel; ecommerce does not create or edit stores. AARAJ submits the selected Pathao-issued integer `store_id` when booking an order.
 
@@ -206,9 +206,9 @@ Those code facts do not establish that a real Pathao request has succeeded. Loca
 
 For GitHub Environment `aaraj-production`:
 
-- The environment's current values were not independently inspected. A prior 2026-10-10 record says the base URL had been removed; verify the actual GitHub Environment and host runtime before relying on that historical state. The helper clears Pathao credentials from `runtime.env` when the base URL is absent while preserving the token-encryption key; a running process keeps its current configuration until the next apply and restart.
+- The environment's current values were not independently inspected. A prior 2026-10-10 record says the base URL had been removed; verify the actual GitHub Environment and host runtime before relying on that historical state. The helper clears Pathao credentials from `runtime.env` when the base URL is absent and preserves unrelated application settings; a running process keeps its current configuration until the next apply and restart.
 - Use the Environment **Variable** `PATHAO_BASE_URL` to select sandbox or live. AARAJ always sends Pathao's documented Normal Delivery code `48` when creating a booking.
-- Use Environment **Secrets** for the sandbox/live client IDs, client secrets, usernames, passwords, webhook secrets, and AARAJ's `PATHAO_TOKEN_ENCRYPTION_KEY`.
+- Use Environment **Secrets** for the sandbox/live client IDs, client secrets, usernames, passwords, and webhook secrets. AARAJ uses its existing order-data encryption key from the application runtime; Pathao setup adds no encryption-key secret.
 - The release workflow selects credentials from the URL, validates the configuration, and provisions it through the root-owned helper before activation. Changing GitHub Environment values alone does not apply them.
 
 These environment-variable names describe AARAJ's deployment mapping, not Pathao's own configuration interface.

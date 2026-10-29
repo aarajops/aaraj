@@ -11,7 +11,6 @@ const MAX_RUNTIME_BYTES = 1024 * 1024;
 const MAX_INPUT_BYTES = 32 * 1024;
 const PATHAO_KEYS = [
   "PATHAO_BASE_URL",
-  "PATHAO_TOKEN_ENCRYPTION_KEY",
   "PATHAO_SANDBOX_CLIENT_ID",
   "PATHAO_SANDBOX_CLIENT_SECRET",
   "PATHAO_SANDBOX_USERNAME",
@@ -145,19 +144,6 @@ function validateCredential(value, name) {
     fail(`${name} contains unsupported characters.`);
 }
 
-function validateEncryptionKey(value, required) {
-  if (!value) {
-    if (required) fail("PATHAO_TOKEN_ENCRYPTION_KEY must be configured.");
-    return;
-  }
-  const decoded = Buffer.from(value, "base64url");
-  if (decoded.length !== 32 || decoded.toString("base64url") !== value) {
-    fail(
-      "PATHAO_TOKEN_ENCRYPTION_KEY must be canonical base64url for 32 random bytes.",
-    );
-  }
-}
-
 function pathaoEnvironment(baseUrl) {
   if (!baseUrl) return null;
   const environment = PATHAO_BASE_URLS.get(baseUrl);
@@ -167,20 +153,12 @@ function pathaoEnvironment(baseUrl) {
   return environment;
 }
 
-function validateConfiguration(inputValues, existingValues) {
+function validateConfiguration(inputValues) {
   const baseUrl = inputValues.get("PATHAO_BASE_URL");
   const mode = pathaoEnvironment(baseUrl);
-  const providedKey = inputValues.get("PATHAO_TOKEN_ENCRYPTION_KEY");
-  const existingKey = existingValues.get("PATHAO_TOKEN_ENCRYPTION_KEY") || "";
-  validateEncryptionKey(existingKey, false);
-  validateEncryptionKey(providedKey, false);
-  if (existingKey && providedKey && existingKey !== providedKey) {
-    fail("PATHAO_TOKEN_ENCRYPTION_KEY must match the existing runtime key.");
-  }
 
   const result = new Map(PATHAO_KEYS.map((key) => [key, ""]));
   result.set("PATHAO_BASE_URL", baseUrl);
-  result.set("PATHAO_TOKEN_ENCRYPTION_KEY", existingKey || providedKey || "");
 
   if (!mode) {
     for (const key of [...SANDBOX_CREDENTIAL_KEYS, ...LIVE_CREDENTIAL_KEYS]) {
@@ -190,8 +168,6 @@ function validateConfiguration(inputValues, existingValues) {
     }
     return result;
   }
-
-  validateEncryptionKey(existingKey || providedKey, true);
 
   const selectedCredentialKeys =
     mode === "sandbox" ? SANDBOX_CREDENTIAL_KEYS : LIVE_CREDENTIAL_KEYS;
@@ -215,10 +191,6 @@ function buildPayload(environment) {
 
   const values = new Map(PATHAO_KEYS.map((key) => [key, ""]));
   values.set("PATHAO_BASE_URL", baseUrl);
-  values.set(
-    "PATHAO_TOKEN_ENCRYPTION_KEY",
-    environment.PATHAO_TOKEN_ENCRYPTION_KEY ?? "",
-  );
   if (mode === "sandbox") {
     for (const key of SANDBOX_CREDENTIAL_KEYS) {
       values.set(key, environment[key] ?? "");
@@ -233,7 +205,7 @@ function buildPayload(environment) {
       fail(`Configuration value ${key} contains unsafe content.`);
     }
   }
-  validateConfiguration(values, new Map());
+  validateConfiguration(values);
   return `${PATHAO_KEYS.map((key) => `${key}=${values.get(key)}`).join("\n")}\n`;
 }
 
@@ -353,7 +325,7 @@ function samePathaoValues(currentValues, desiredValues) {
 function applyConfiguration({ runtimeEnvPath, values, renameFile }) {
   const runtime = readRegularFile(runtimeEnvPath, "Runtime environment file");
   const parsed = parseRuntimeEnv(runtime.contents);
-  const desired = validateConfiguration(values, parsed.values);
+  const desired = validateConfiguration(values);
 
   if (samePathaoValues(parsed.values, desired)) return "already-applied";
   const nextContents = rewriteRuntimeEnv(runtime.contents, desired);

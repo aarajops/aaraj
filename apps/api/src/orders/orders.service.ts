@@ -38,6 +38,10 @@ import {
 import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import { DatabaseService } from "../platform/database/database.service.js";
+import {
+  readOrderPiiKeyring,
+  type OrderPiiKeyring,
+} from "../platform/crypto/order-pii-keyring.js";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { GeographyService } from "../geography/geography.service.js";
@@ -71,11 +75,6 @@ const MAX_ORDER_LINES = 50;
 type OrderRow = typeof customerOrder.$inferSelect;
 type IdempotencyRow = typeof orderIdempotency.$inferSelect;
 type NormalizedAddress = OrderAddress;
-type OrderPiiKeyring = {
-  activeKeyId: string;
-  keys: ReadonlyMap<string, Buffer>;
-};
-
 @Injectable()
 export class OrdersService implements OrdersPathaoPort {
   private readonly logger = new Logger(OrdersService.name);
@@ -101,7 +100,7 @@ export class OrdersService implements OrdersPathaoPort {
     if (!context.owner) throw orderNotFound();
     const owner = context.owner;
     const normalizedInput = normalizeCheckoutInput(input.address);
-    const piiKeyring = getOrderPiiKeyring();
+    const piiKeyring = readOrderPiiKeyring();
     const requestFingerprint = fingerprintCheckout(
       input.quoteId,
       normalizedInput,
@@ -558,7 +557,7 @@ export class OrdersService implements OrdersPathaoPort {
       lines.push(line);
       linesByOrderId.set(line.orderId, lines);
     }
-    const piiKeyring = getOrderPiiKeyring();
+    const piiKeyring = readOrderPiiKeyring();
     return OrderManagementListSchema.parse({
       rows: pageRows.map((row) => {
         const address = decryptAddress(
@@ -1442,7 +1441,7 @@ export class OrdersService implements OrdersPathaoPort {
     const address = decryptAddress(
       row.addressCiphertext,
       row.id,
-      getOrderPiiKeyring(),
+      readOrderPiiKeyring(),
     );
     return OrderSchema.parse({
       id: row.id,
@@ -1786,90 +1785,6 @@ function decryptAddress(
       { errorCode: "ORDER_ADDRESS_UNAVAILABLE" },
     );
   }
-}
-
-function getOrderPiiKeyring(): OrderPiiKeyring {
-  const encodedKeyring = process.env.ORDER_PII_KEYRING?.trim();
-  if (!encodedKeyring) {
-    const legacyKey = parseOrderPiiKey(
-      process.env.ORDER_PII_ENCRYPTION_KEY?.trim(),
-      "ORDER_PII_ENCRYPTION_KEY",
-    );
-    return { activeKeyId: "legacy", keys: new Map([["legacy", legacyKey]]) };
-  }
-
-  if (process.env.ORDER_PII_ENCRYPTION_KEY?.trim()) {
-    throw new Error(
-      "Remove ORDER_PII_ENCRYPTION_KEY after configuring ORDER_PII_KEYRING.",
-    );
-  }
-  let configuration: unknown;
-  try {
-    configuration = JSON.parse(encodedKeyring);
-  } catch {
-    throw new Error("ORDER_PII_KEYRING must be a JSON object.");
-  }
-  if (
-    !configuration ||
-    typeof configuration !== "object" ||
-    Array.isArray(configuration)
-  ) {
-    throw new Error("ORDER_PII_KEYRING must be a JSON object.");
-  }
-  const { activeKeyId, keys: entries } = configuration as {
-    activeKeyId?: unknown;
-    keys?: unknown;
-  };
-  if (
-    typeof activeKeyId !== "string" ||
-    !/^[A-Za-z0-9_-]+$/.test(activeKeyId)
-  ) {
-    throw new Error("ORDER_PII_KEYRING must include a valid activeKeyId.");
-  }
-  if (
-    !entries ||
-    typeof entries !== "object" ||
-    Array.isArray(entries) ||
-    Object.keys(entries).length === 0
-  ) {
-    throw new Error("ORDER_PII_KEYRING.keys must contain at least one key.");
-  }
-
-  const keys = new Map<string, Buffer>();
-  for (const [keyId, encodedKey] of Object.entries(entries)) {
-    if (!/^[A-Za-z0-9_-]+$/.test(keyId)) {
-      throw new Error(
-        "Order PII encryption key IDs must use letters, digits, underscores, or hyphens.",
-      );
-    }
-    if (typeof encodedKey !== "string") {
-      throw new Error("Every Order PII encryption key must be a string.");
-    }
-    keys.set(keyId, parseOrderPiiKey(encodedKey, `key ${keyId}`));
-  }
-
-  if (!keys.has("legacy")) {
-    throw new Error(
-      'ORDER_PII_KEYRING.keys must retain the "legacy" key for existing addresses and checkout retries.',
-    );
-  }
-  if (!keys.has(activeKeyId)) {
-    throw new Error(
-      "ORDER_PII_KEYRING.activeKeyId must name one of ORDER_PII_KEYRING.keys.",
-    );
-  }
-  return { activeKeyId, keys };
-}
-
-function parseOrderPiiKey(encoded: string | undefined, label: string): Buffer {
-  if (!encoded) throw new Error(`${label} must be configured.`);
-  const key = Buffer.from(encoded, "base64url");
-  if (key.length !== 32 || key.toString("base64url") !== encoded) {
-    throw new Error(
-      `${label} must be a canonical base64url encoding of 32 random bytes.`,
-    );
-  }
-  return key;
 }
 
 function parseDeliveryZone(snapshot: unknown) {
