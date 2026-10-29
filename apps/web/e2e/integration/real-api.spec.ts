@@ -1642,9 +1642,9 @@ test("catalog operator configures a product through to storefront visibility", a
   await pathaoPanel
     .getByRole("button", { name: "Record Pathao pickup" })
     .click();
-  await expect(
-    pathaoPanel.getByRole("alert"),
-  ).toContainText("dispatch", { ignoreCase: true });
+  await expect(pathaoPanel.getByRole("alert")).toContainText("dispatch", {
+    ignoreCase: true,
+  });
   await pathaoPanel
     .getByRole("button", { name: "Record Pathao pickup" })
     .click();
