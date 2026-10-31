@@ -1,19 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type {
-  Order,
-  PathaoBooking,
-  PathaoBookingManagement,
-  PathaoBookingOptions,
-  PathaoBookingInput,
-  PathaoManualReconciliationInput,
+import {
+  PATHAO_MINIMUM_ITEM_WEIGHT_KG,
+  type Order,
+  type PathaoBooking,
+  type PathaoBookingManagement,
+  type PathaoManualReconciliationInput,
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   getPathaoBooking,
-  getPathaoBookingOptions,
   PathaoClientError,
   reconcilePathaoBooking,
   submitPathaoBooking,
@@ -40,70 +38,36 @@ export function PathaoBookingPanel({
     order.serviceability === "serviceable" &&
     order.fulfillmentStatus === "awaiting_dispatch";
   const [details, setDetails] = useState<PathaoBookingManagement | null>(null);
-  const [options, setOptions] = useState<PathaoBookingOptions | null>(null);
-  const [storeId, setStoreId] = useState("");
-  const [parcelQuantity, setParcelQuantity] = useState("");
-  const [parcelWeightKg, setParcelWeightKg] = useState("");
   const [consignmentId, setConsignmentId] = useState("");
   const [reconciliationReason, setReconciliationReason] = useState("");
   const [verifiedInPanel, setVerifiedInPanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const command = useRef<{ fingerprint: string; id: string } | null>(null);
+  const command = useRef<{ orderId: string; id: string } | null>(null);
   const reconciliationCommand = useRef<{
     fingerprint: string;
     id: string;
   } | null>(null);
+  const itemQuantity = order.lines.reduce(
+    (total, line) => total + line.quantity,
+    0,
+  );
+  const booking = details?.booking ?? null;
 
-  async function loadDetails() {
-    const booking = await getPathaoBooking(order.id);
-    let bookingOptions: PathaoBookingOptions | null = null;
-    let optionsError: string | null = null;
-    if (eligible) {
-      try {
-        bookingOptions = await getPathaoBookingOptions();
-      } catch (reason) {
-        optionsError =
-          reason instanceof Error
-            ? reason.message
-            : "Pathao booking options could not be loaded.";
-      }
-    }
-    return { booking, bookingOptions, optionsError };
-  }
-
-  function applyDetails(
-    booking: PathaoBookingManagement,
-    bookingOptions: PathaoBookingOptions | null,
-    optionsError: string | null,
-  ) {
+  function applyDetails(booking: PathaoBookingManagement) {
     setDetails(booking);
-    setOptions(bookingOptions);
     onAssignmentStateChange?.(
       booking.claimStatus ?? booking.booking?.status ?? "none",
     );
-    setError(optionsError);
-    if (booking.booking) {
-      setStoreId((value) => value || String(booking.booking!.storeId));
-      setParcelQuantity(
-        (value) => value || String(booking.booking!.parcelQuantity),
-      );
-      setParcelWeightKg(
-        (value) => value || String(booking.booking!.parcelWeightKg),
-      );
-    }
-    if (bookingOptions?.stores[0]) {
-      setStoreId((value) => value || String(bookingOptions.stores[0]!.storeId));
-    }
   }
 
-  async function refresh() {
+  async function refresh(): Promise<boolean> {
     setLoading(true);
     setError(null);
     try {
-      const { booking, bookingOptions, optionsError } = await loadDetails();
-      applyDetails(booking, bookingOptions, optionsError);
+      applyDetails(await getPathaoBooking(order.id));
+      return true;
     } catch (reason) {
       onAssignmentStateChange?.("unavailable");
       setError(
@@ -111,6 +75,7 @@ export function PathaoBookingPanel({
           ? reason.message
           : "Pathao booking details could not be loaded.",
       );
+      return false;
     } finally {
       setLoading(false);
     }
@@ -118,10 +83,10 @@ export function PathaoBookingPanel({
 
   useEffect(() => {
     let active = true;
-    void loadDetails()
-      .then(({ booking, bookingOptions, optionsError }) => {
+    void getPathaoBooking(order.id)
+      .then((booking) => {
         if (!active) return;
-        applyDetails(booking, bookingOptions, optionsError);
+        applyDetails(booking);
       })
       .catch((reason: unknown) => {
         if (!active) return;
@@ -138,31 +103,20 @@ export function PathaoBookingPanel({
     return () => {
       active = false;
     };
-    // Load the provider state for the reviewed Order and eligibility.
+    // Load saved booking state before enabling a new booking for this Order.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order.id, eligible]);
+  }, [order.id]);
 
   async function book() {
-    if (!options || !storeId) return;
-    const input: PathaoBookingInput = {
-      storeId: Number(storeId),
-      parcelQuantity: Number(parcelQuantity),
-      parcelWeightKg: Number(parcelWeightKg),
-    };
-    const fingerprint = JSON.stringify(input);
     let activeCommand = command.current;
-    if (activeCommand?.fingerprint !== fingerprint) {
-      activeCommand = { fingerprint, id: crypto.randomUUID() };
+    if (activeCommand?.orderId !== order.id) {
+      activeCommand = { orderId: order.id, id: crypto.randomUUID() };
       command.current = activeCommand;
     }
     setPending(true);
     setError(null);
     try {
-      const result = await submitPathaoBooking(
-        order.id,
-        input,
-        activeCommand.id,
-      );
+      const result = await submitPathaoBooking(order.id, activeCommand.id);
       setDetails({
         booking: result,
         claimStatus: result.status,
@@ -174,20 +128,16 @@ export function PathaoBookingPanel({
         reason instanceof PathaoClientError || reason instanceof Error
           ? reason.message
           : "Pathao booking could not be confirmed. Refresh before taking further action.";
-      await refresh();
-      setError(message);
+      if (await refresh()) setError(message);
     } finally {
       setPending(false);
     }
   }
 
   async function reconcile() {
-    if (!options || !storeId || !verifiedInPanel) return;
+    if (!verifiedInPanel) return;
     const input: PathaoManualReconciliationInput = {
       consignmentId,
-      storeId: Number(storeId),
-      parcelQuantity: Number(parcelQuantity),
-      parcelWeightKg: Number(parcelWeightKg),
       reason: reconciliationReason,
       verifiedInPathaoPanel: true,
     };
@@ -219,14 +169,12 @@ export function PathaoBookingPanel({
         reason instanceof PathaoClientError || reason instanceof Error
           ? reason.message
           : "The Pathao consignment could not be reconciled. Refresh and review the provider record.";
-      await refresh();
-      setError(message);
+      if (await refresh()) setError(message);
     } finally {
       setPending(false);
     }
   }
 
-  const booking = details?.booking ?? null;
   if (!eligible && !booking) return null;
 
   return (
@@ -239,14 +187,16 @@ export function PathaoBookingPanel({
       {error && (
         <div className="flex flex-wrap items-center gap-3" role="alert">
           <p className="text-sm text-destructive">{error}</p>
-          <Button
-            disabled={loading || pending}
-            onClick={() => void refresh()}
-            size="sm"
-            variant="outline"
-          >
-            Retry
-          </Button>
+          {(!details || details.claimStatus) && (
+            <Button
+              disabled={loading || pending}
+              onClick={() => void refresh()}
+              size="sm"
+              variant="outline"
+            >
+              Refresh
+            </Button>
+          )}
         </div>
       )}
       {handoffError && (
@@ -322,65 +272,19 @@ export function PathaoBookingPanel({
         </p>
       )}
 
-      {eligible && !booking && !details?.claimStatus && options ? (
-        options.stores.length > 0 ? (
-          <div className="grid gap-3">
-            <label className="grid gap-2 text-sm font-medium">
-              Active Pathao store
-              <select
-                className="h-10 rounded-md border border-input bg-background px-3"
-                value={storeId}
-                onChange={(event) => setStoreId(event.target.value)}
-              >
-                {options.stores.map((store) => (
-                  <option key={store.storeId} value={store.storeId}>
-                    {store.storeName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Actual parcel count
-              <Input
-                min={1}
-                step={1}
-                type="number"
-                value={parcelQuantity}
-                onChange={(event) => setParcelQuantity(event.target.value)}
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Actual parcel weight (kg)
-              <Input
-                min={0.5}
-                max={10}
-                step="any"
-                type="number"
-                value={parcelWeightKg}
-                onChange={(event) => setParcelWeightKg(event.target.value)}
-              />
-              <span className="font-normal text-muted-foreground">
-                0.5–10 kg. Enter the measured weight.
-              </span>
-            </label>
-            <Button
-              disabled={
-                pending || !parcelQuantity || !parcelWeightKg || !storeId
-              }
-              onClick={() => void book()}
-            >
-              {pending ? "Booking with Pathao…" : "Book order in Pathao"}
-            </Button>
-          </div>
-        ) : (
+      {eligible && details && !booking && !details.claimStatus && (
+        <div className="grid gap-2">
           <p className="text-sm text-muted-foreground">
-            No active Pathao store.
+            {itemQuantity} {itemQuantity === 1 ? "item" : "items"} ·{" "}
+            {PATHAO_MINIMUM_ITEM_WEIGHT_KG} kg minimum
           </p>
-        )
-      ) : null}
+          <Button disabled={pending} onClick={() => void book()}>
+            {pending ? "Booking with Pathao…" : "Book order in Pathao"}
+          </Button>
+        </div>
+      )}
 
       {eligible &&
-        options &&
         (booking?.status === "outcome_unknown" ||
           booking?.status === "reconciliation_required" ||
           details?.claimStatus) && (
@@ -400,27 +304,6 @@ export function PathaoBookingPanel({
                   maxLength={120}
                   value={consignmentId}
                   onChange={(event) => setConsignmentId(event.target.value)}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Actual parcel count
-                <Input
-                  min={1}
-                  step={1}
-                  type="number"
-                  value={parcelQuantity}
-                  onChange={(event) => setParcelQuantity(event.target.value)}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Actual parcel weight (kg)
-                <Input
-                  min={0.5}
-                  max={10}
-                  step="any"
-                  type="number"
-                  value={parcelWeightKg}
-                  onChange={(event) => setParcelWeightKg(event.target.value)}
                 />
               </label>
               <label className="grid gap-2 text-sm font-medium">
@@ -450,8 +333,6 @@ export function PathaoBookingPanel({
                 disabled={
                   pending ||
                   !consignmentId ||
-                  !parcelQuantity ||
-                  !parcelWeightKg ||
                   !reconciliationReason.trim() ||
                   !verifiedInPanel
                 }

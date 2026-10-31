@@ -27,12 +27,10 @@ import {
   OrderIdSchema,
   PathaoManagementBookingSummariesQuerySchema,
   PathaoManagementIssuesQuerySchema,
-  PathaoBookingInputSchema,
   PathaoManualReconciliationInputSchema,
   PathaoWebhookResolutionInputSchema,
   type PathaoManagementBookingSummariesQuery,
   type PathaoManagementIssuesQuery,
-  type PathaoBookingInput,
   type PathaoManualReconciliationInput,
   type PathaoWebhookResolutionInput,
 } from "@aaraj/contracts";
@@ -49,11 +47,6 @@ const PATHAO_INTEGRATION_HEADER =
 @UsePipes(StandardSchemaValidationPipe)
 export class PathaoManagementController {
   constructor(private readonly pathao: PathaoService) {}
-
-  @Get("stores")
-  listStores() {
-    return this.pathao.listActiveStores();
-  }
 
   @Get("orders")
   @Header("Cache-Control", "no-store")
@@ -85,19 +78,13 @@ export class PathaoManagementController {
     @Session() session: UserSession,
     @Param("orderId", { schema: OrderIdSchema }) orderId: string,
     @Headers("idempotency-key") commandId: string | undefined,
-    @Body({ schema: PathaoBookingInputSchema }) input: PathaoBookingInput,
   ) {
     if (!commandId) {
       throw new BadRequestException("An Idempotency-Key header is required.", {
         errorCode: "IDEMPOTENCY_KEY_REQUIRED",
       });
     }
-    return this.pathao.createBooking(
-      orderId,
-      session.user.id,
-      commandId,
-      input,
-    );
+    return this.pathao.createBooking(orderId, session.user.id, commandId);
   }
 
   @Post("orders/:orderId/reconcile")

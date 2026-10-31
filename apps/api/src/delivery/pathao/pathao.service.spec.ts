@@ -12,13 +12,8 @@ const order: PathaoOrderBookingSnapshot = {
   recipientPhone: "+8801712345678",
   recipientAddress: "House 10, Road 5, Dhanmondi, Dhaka",
   customerInstructions: null,
+  itemQuantity: 1,
   codAmountDueBdt: 1480,
-};
-
-const input = {
-  storeId: 101,
-  parcelQuantity: 1,
-  parcelWeightKg: 0.5,
 };
 
 describe("Pathao booking request mapping", () => {
@@ -26,12 +21,15 @@ describe("Pathao booking request mapping", () => {
     const request = toProviderRequest(
       {
         ...order,
+        itemQuantity: 3,
         customerInstructions: "Call at gate\n\tUse east entrance",
       },
-      input,
+      101,
     );
 
     expect(request.delivery_type).toBe(48);
+    expect(request.item_quantity).toBe(3);
+    expect(request.item_weight).toBe(0.5);
     expect(request.special_instruction).toBe("Call at gate Use east entrance");
     expect(request).not.toHaveProperty("recipient_city");
     expect(request).not.toHaveProperty("recipient_zone");
@@ -41,14 +39,14 @@ describe("Pathao booking request mapping", () => {
   it("omits empty customer instructions and forwards valid order instructions", () => {
     const request = toProviderRequest(
       { ...order, customerInstructions: " \n\t " },
-      input,
+      101,
     );
     expect(request).not.toHaveProperty("special_instruction");
 
     const longInstruction = "x".repeat(201);
     const requestWithLongInstruction = toProviderRequest(
       { ...order, customerInstructions: longInstruction },
-      input,
+      101,
     );
     expect(requestWithLongInstruction.special_instruction).toBe(
       longInstruction,

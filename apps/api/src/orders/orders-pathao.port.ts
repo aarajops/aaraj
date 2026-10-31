@@ -12,6 +12,7 @@ export type PathaoOrderBookingSnapshot = {
   recipientPhone: string;
   recipientAddress: string;
   customerInstructions: string | null;
+  itemQuantity: number;
   codAmountDueBdt: number;
 };
 

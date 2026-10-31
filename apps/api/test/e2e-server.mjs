@@ -139,7 +139,12 @@ try {
         JSON.stringify({
           data: {
             data: [
-              { store_id: 101, store_name: "Browser E2E Store", is_active: 1 },
+              {
+                store_id: 101,
+                store_name: "Browser E2E Store",
+                is_active: 1,
+                is_default_store: 1,
+              },
             ],
             last_page: 1,
           },

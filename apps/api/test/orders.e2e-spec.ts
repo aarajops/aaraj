@@ -437,11 +437,13 @@ describe("COD Orders and checkout", () => {
                     store_id: 101,
                     store_name: "Active Test Store",
                     is_active: 1,
+                    is_default_store: 1,
                   },
                   {
                     store_id: 202,
                     store_name: "Inactive Test Store",
                     is_active: 0,
+                    is_default_store: 0,
                   },
                 ],
                 last_page: 1,
@@ -1707,11 +1709,7 @@ describe("COD Orders and checkout", () => {
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .set("Idempotency-Key", randomUUID())
-      .send({
-        storeId: 101,
-        parcelQuantity: 1,
-        parcelWeightKg: 0.75,
-      })
+      .send()
       .then((response) => response);
 
     await createStarted;
@@ -1797,11 +1795,7 @@ describe("COD Orders and checkout", () => {
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .set("Idempotency-Key", randomUUID())
-      .send({
-        storeId: 101,
-        parcelQuantity: 1,
-        parcelWeightKg: 0.75,
-      })
+      .send()
       .expect(409);
     expect(
       provider.requests.filter(
@@ -1815,7 +1809,7 @@ describe("COD Orders and checkout", () => {
     });
   });
 
-  it("books only active stores returned by Pathao and keeps booking separate from dispatch, delivery, and COD collection", async () => {
+  it("books with the active default store and derives package data from the Order", async () => {
     const fixture = await createGuestOrder(2, {
       instructions: "Call from the gate\nUse the east entrance",
     });
@@ -1824,38 +1818,20 @@ describe("COD Orders and checkout", () => {
     if (!order) throw new Error("Pathao booking Order fixture is missing.");
     const provider = mockPathaoApi({ orderReference: order.reference });
 
-    const stores = await request(app.getHttpServer())
-      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/stores`)
-      .set("Cookie", staff.cookie)
-      .expect(200);
-    expect(stores.body.stores).toEqual([
-      { storeId: 101, storeName: "Active Test Store", active: true },
-    ]);
-    expect(stores.body).not.toHaveProperty("deliveryType");
-    await request(app.getHttpServer())
-      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/stores`)
-      .set("Cookie", customer.cookie)
-      .expect(403);
-
     const bookingUrl = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`;
-    const bookingBody = {
-      storeId: 101,
-      parcelQuantity: 1,
-      parcelWeightKg: 0.75,
-    };
     const [firstBooking, competingBooking] = await Promise.all([
       request(app.getHttpServer())
         .post(bookingUrl)
         .set("Origin", origin)
         .set("Cookie", staff.cookie)
         .set("Idempotency-Key", randomUUID())
-        .send(bookingBody),
+        .send(),
       request(app.getHttpServer())
         .post(bookingUrl)
         .set("Origin", origin)
         .set("Cookie", secondStaff.cookie)
         .set("Idempotency-Key", randomUUID())
-        .send(bookingBody),
+        .send(),
     ]);
     expect(
       [firstBooking.status, competingBooking.status].sort(
@@ -1892,7 +1868,7 @@ describe("COD Orders and checkout", () => {
       delivery_type: 48,
       item_type: 2,
       item_quantity: 1,
-      item_weight: 0.75,
+      item_weight: 0.5,
       amount_to_collect: order.codAmountDueBdt,
     });
     expect(createRequest?.body).not.toHaveProperty("recipient_city");
@@ -1912,7 +1888,7 @@ describe("COD Orders and checkout", () => {
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .set("Idempotency-Key", randomUUID())
-      .send(bookingBody)
+      .send()
       .expect(201);
     const longInstructionRequest = provider.requests.find(
       ({ url, method, body }) =>
@@ -1923,29 +1899,6 @@ describe("COD Orders and checkout", () => {
     expect(longInstructionRequest?.body?.special_instruction).toBe(
       longInstruction,
     );
-    expect(
-      provider.requests.filter(
-        ({ url, method }) =>
-          url.endsWith("/aladdin/api/v1/orders") && method === "POST",
-      ),
-    ).toHaveLength(2);
-
-    const inactiveFixture = await createGuestOrder(2);
-    await confirmServiceable(inactiveFixture.id);
-    const inactiveStore = await request(app.getHttpServer())
-      .post(
-        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${inactiveFixture.id}/book`,
-      )
-      .set("Origin", origin)
-      .set("Cookie", secondStaff.cookie)
-      .set("Idempotency-Key", randomUUID())
-      .send({
-        storeId: 202,
-        parcelQuantity: 1,
-        parcelWeightKg: 0.75,
-      });
-    expect(inactiveStore.status).toBe(422);
-    expect(inactiveStore.body.errorCode).toBe("PATHAO_STORE_NOT_ACTIVE");
     expect(
       provider.requests.filter(
         ({ url, method }) =>
@@ -2154,11 +2107,7 @@ describe("COD Orders and checkout", () => {
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .set("Idempotency-Key", randomUUID())
-      .send({
-        storeId: 101,
-        parcelQuantity: 1,
-        parcelWeightKg: 0.5,
-      })
+      .send()
       .expect(201);
     await dispatchOrder(fixture.id, staff.cookie, randomUUID(), {
       deliveryProvider: "pathao",
@@ -2261,11 +2210,7 @@ describe("COD Orders and checkout", () => {
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .set("Idempotency-Key", randomUUID())
-      .send({
-        storeId: 101,
-        parcelQuantity: 1,
-        parcelWeightKg: 0.5,
-      })
+      .send()
       .expect(201);
 
     await request(app.getHttpServer())
@@ -2473,17 +2418,12 @@ describe("COD Orders and checkout", () => {
     });
     const commandId = randomUUID();
     const url = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`;
-    const body = {
-      storeId: 101,
-      parcelQuantity: 1,
-      parcelWeightKg: 0.5,
-    };
     const uncertain = await request(app.getHttpServer())
       .post(url)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .set("Idempotency-Key", commandId)
-      .send(body)
+      .send()
       .expect(201);
     expect(uncertain.body).toMatchObject({
       status: "outcome_unknown",
@@ -2499,7 +2439,7 @@ describe("COD Orders and checkout", () => {
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .set("Idempotency-Key", commandId)
-      .send(body)
+      .send()
       .expect(201);
     expect(replay.body.status).toBe("outcome_unknown");
     expect(
@@ -2520,9 +2460,6 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", randomUUID())
       .send({
         consignmentId: "PATHAO-TEST-AMBIG-01",
-        storeId: 101,
-        parcelQuantity: 1,
-        parcelWeightKg: 0.5,
         reason: "Verified the consignment against the Pathao Merchant Panel",
         verifiedInPathaoPanel: true,
       })
@@ -2606,9 +2543,6 @@ describe("COD Orders and checkout", () => {
       .set("Idempotency-Key", randomUUID())
       .send({
         consignmentId: "PATHAO-TEST-MANUAL-01",
-        storeId: 101,
-        parcelQuantity: 1,
-        parcelWeightKg: 0.5,
         reason: "Checking the manual consignment in the Pathao Merchant Panel",
         verifiedInPathaoPanel: true,
       })
@@ -2627,9 +2561,6 @@ describe("COD Orders and checkout", () => {
     const reconciliationCommandId = randomUUID();
     const reconciliationBody = {
       consignmentId: "PATHAO-TEST-MANUAL-01",
-      storeId: 101,
-      parcelQuantity: 1,
-      parcelWeightKg: 0.5,
       reason: "Verified the manual consignment in the Pathao Merchant Panel",
       verifiedInPathaoPanel: true,
     };
@@ -2744,11 +2675,7 @@ describe("COD Orders and checkout", () => {
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .set("Idempotency-Key", randomUUID())
-      .send({
-        storeId: 101,
-        parcelQuantity: 1,
-        parcelWeightKg: 0.5,
-      })
+      .send()
       .expect(201);
     expect(booked.body.consignmentId).toBe(consignmentId);
     await dispatchOrder(fixture.id, staff.cookie, randomUUID(), {

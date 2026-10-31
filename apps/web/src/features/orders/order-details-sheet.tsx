@@ -254,7 +254,7 @@ export function OrderDetailsSheet({
                 />
               </dl>
 
-              <PathaoBookingPanel order={order} />
+              <PathaoBookingPanel key={order.id} order={order} />
             </div>
           )}
         </div>

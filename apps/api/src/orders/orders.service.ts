@@ -646,6 +646,10 @@ export class OrdersService implements OrdersPathaoPort {
       recipientPhone: order.address.phone,
       recipientAddress,
       customerInstructions: order.address.instructions,
+      itemQuantity: order.lines.reduce(
+        (total, line) => total + line.quantity,
+        0,
+      ),
       codAmountDueBdt: order.codAmountDueBdt,
     };
   }
@@ -865,6 +869,10 @@ export class OrdersService implements OrdersPathaoPort {
       recipientPhone: address.phone,
       recipientAddress,
       customerInstructions: address.instructions,
+      itemQuantity: order.lines.reduce(
+        (total, line) => total + line.quantity,
+        0,
+      ),
       codAmountDueBdt: order.codAmountDueBdt,
     };
   }

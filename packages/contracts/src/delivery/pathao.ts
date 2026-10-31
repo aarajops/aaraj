@@ -9,26 +9,7 @@ import { OrderReferenceSchema } from "../orders/order-reference.js";
 export const PathaoDeliveryTypeSchema = z.union([z.literal(48), z.literal(12)]);
 export type PathaoDeliveryType = z.infer<typeof PathaoDeliveryTypeSchema>;
 
-export const PathaoStoreSchema = z.strictObject({
-  storeId: z.number().int().positive().max(2_147_483_647),
-  storeName: z.string().min(1).max(100),
-  active: z.boolean(),
-});
-
-export const PathaoStoreListSchema = z.array(PathaoStoreSchema).max(1000);
-export type PathaoStore = z.infer<typeof PathaoStoreSchema>;
-
-export const PathaoBookingOptionsSchema = z.strictObject({
-  stores: PathaoStoreListSchema,
-});
-export type PathaoBookingOptions = z.infer<typeof PathaoBookingOptionsSchema>;
-
-export const PathaoBookingInputSchema = z.strictObject({
-  storeId: z.number().int().positive().max(2_147_483_647),
-  parcelQuantity: z.number().int().positive().max(2_147_483_647),
-  parcelWeightKg: z.number().min(0.5).max(10),
-});
-export type PathaoBookingInput = z.infer<typeof PathaoBookingInputSchema>;
+export const PATHAO_MINIMUM_ITEM_WEIGHT_KG = 0.5;
 
 export const PathaoBookingStatusSchema = z.enum([
   "submitting",
@@ -165,9 +146,6 @@ export const PathaoManualReconciliationInputSchema = z.strictObject({
     .min(1)
     .max(120)
     .regex(/^[A-Za-z0-9_-]+$/),
-  storeId: z.number().int().positive().max(2_147_483_647),
-  parcelQuantity: z.number().int().positive().max(2_147_483_647),
-  parcelWeightKg: z.number().min(0.5).max(10),
   reason: z.string().trim().min(3).max(500),
   verifiedInPathaoPanel: z.literal(true),
 });

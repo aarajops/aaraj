@@ -1578,11 +1578,12 @@ test("catalog operator configures a product through to storefront visibility", a
   });
   await expect(pathaoPanel).toBeVisible();
   await expect(pathaoPanel.getByLabel("Pathao delivery type")).toHaveCount(0);
-  await expect(pathaoPanel.getByLabel("Active Pathao store")).toHaveValue(
-    "101",
+  await expect(pathaoPanel).toContainText("1 item");
+  await expect(pathaoPanel).toContainText("0.5 kg minimum");
+  await expect(pathaoPanel.getByLabel("Actual parcel count")).toHaveCount(0);
+  await expect(pathaoPanel.getByLabel("Actual parcel weight (kg)")).toHaveCount(
+    0,
   );
-  await pathaoPanel.getByLabel("Actual parcel count").fill("1");
-  await pathaoPanel.getByLabel("Actual parcel weight (kg)").fill("0.5");
   await expect(
     pathaoPanel.getByRole("button", { name: "Book order in Pathao" }),
   ).toBeVisible();
@@ -1592,7 +1593,7 @@ test("catalog operator configures a product through to storefront visibility", a
 
   const bookingRequests: Array<{
     commandId: string;
-    body: Record<string, unknown>;
+    hasBody: boolean;
   }> = [];
   const bookingPath =
     `**/api/v1/delivery/pathao/manage/orders/${customerOrderId}/book` as const;
@@ -1600,7 +1601,7 @@ test("catalog operator configures a product through to storefront visibility", a
     if (route.request().method() === "POST") {
       bookingRequests.push({
         commandId: route.request().headers()["idempotency-key"] ?? "",
-        body: route.request().postDataJSON() as Record<string, unknown>,
+        hasBody: route.request().postData() !== null,
       });
     }
     await route.continue();
@@ -1611,9 +1612,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(pathaoPanel).toContainText("Booked");
   await expect(pathaoPanel).toContainText("PATHAO-BROWSER-E2E-01");
   expect(bookingRequests).toHaveLength(1);
-  expect(bookingRequests[0]).toMatchObject({
-    body: { storeId: 101, parcelQuantity: 1, parcelWeightKg: 0.5 },
-  });
+  expect(bookingRequests[0]?.hasBody).toBe(false);
   expect(bookingRequests[0]?.commandId).toBeTruthy();
   await expect(
     pathaoPanel.getByRole("button", { name: "Record Pathao pickup" }),

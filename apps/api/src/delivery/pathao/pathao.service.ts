@@ -6,9 +6,7 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import {
-  PathaoBookingInputSchema,
   PathaoBookingManagementSchema,
-  PathaoBookingOptionsSchema,
   PathaoBookingSchema,
   PathaoCustomerTrackingSchema,
   PathaoManagementBookingSummariesSchema,
@@ -17,11 +15,9 @@ import {
   PathaoManualReconciliationInputSchema,
   PathaoWebhookResolutionInputSchema,
   PathaoWebhookResolutionResultSchema,
-  PathaoStoreListSchema,
+  PATHAO_MINIMUM_ITEM_WEIGHT_KG,
   type PathaoBooking,
-  type PathaoBookingInput,
   type PathaoBookingManagement,
-  type PathaoBookingOptions,
   type PathaoCustomerTracking,
   type PathaoDeliveryType,
   type PathaoManagementIssues,
@@ -51,6 +47,7 @@ import {
   PathaoApiClient,
   PathaoRequestError,
   type PathaoBookingRequest,
+  type PathaoStoreRecord,
 } from "./pathao-api.client.js";
 import {
   readPathaoConfiguration,
@@ -61,6 +58,7 @@ import { PathaoTokenService } from "./pathao-token.service.js";
 const PATHAO_WEBHOOK_INTEGRATION_SECRET =
   "f3992ecc-59da-4cbe-a049-a13da2018d51";
 const PATHAO_NORMAL_DELIVERY_TYPE = 48 satisfies PathaoDeliveryType;
+const PATHAO_PARCEL_ITEM_TYPE = 2;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -114,26 +112,10 @@ export class PathaoService {
     @Inject(ORDERS_PATHAO_PORT) private readonly orders: OrdersPathaoPort,
   ) {}
 
-  async listActiveStores(): Promise<PathaoBookingOptions> {
-    const { config, accessToken } = await this.tokens.getAccessToken();
-    const records = await this.api.listStores(config, accessToken);
-    const activeStores = records.filter((store) => store.active);
-    return PathaoBookingOptionsSchema.parse({
-      stores: PathaoStoreListSchema.parse(
-        activeStores.map((store) => ({
-          storeId: store.storeId,
-          storeName: store.storeName,
-          active: store.active,
-        })),
-      ),
-    });
-  }
-
   async createBooking(
     orderId: string,
     staffId: string,
     rawCommandId: string,
-    rawInput: PathaoBookingInput,
   ): Promise<PathaoBooking> {
     const commandId = rawCommandId.toLowerCase();
     if (!UUID_PATTERN.test(commandId)) {
@@ -144,40 +126,41 @@ export class PathaoService {
         },
       );
     }
-    const input = PathaoBookingInputSchema.parse(rawInput);
-    const config = requiredPathaoConfiguration();
-    const deliveryType = PATHAO_NORMAL_DELIVERY_TYPE;
-    const fingerprint = sha256(
-      JSON.stringify({
-        orderId,
-        input: {
-          storeId: input.storeId,
-          deliveryType,
-          parcelQuantity: input.parcelQuantity,
-          parcelWeightKg: input.parcelWeightKg,
-        },
-      }),
-    );
     const existing = await this.findBooking(orderId);
     if (existing) {
-      const replay = this.assertReplay(existing, commandId, fingerprint);
+      const replay = this.assertReplay(existing, commandId);
       await this.ensureBookingClaim(existing);
       return replay;
     }
+    const config = requiredPathaoConfiguration();
+    const deliveryType = PATHAO_NORMAL_DELIVERY_TYPE;
+    const bookingSnapshot = await this.orders.getPathaoBookingSnapshot(orderId);
     const { config: authenticatedConfig, accessToken } =
       await this.tokens.getAccessToken();
-    await this.assertActiveStore(
-      authenticatedConfig,
-      accessToken,
-      input.storeId,
-    );
+    const stores = await this.api.listStores(authenticatedConfig, accessToken);
+    const store = selectDefaultActiveStore(stores);
+    if (!store) {
+      throw new ServiceUnavailableException(
+        "Set one active default Pathao pickup store in the Merchant Panel.",
+        { errorCode: "PATHAO_DEFAULT_STORE_UNAVAILABLE" },
+      );
+    }
+    const itemQuantity = bookingSnapshot.itemQuantity;
+    const parcelWeightKg = PATHAO_MINIMUM_ITEM_WEIGHT_KG;
+    const fingerprint = bookingFingerprint({
+      orderId,
+      storeId: store.storeId,
+      deliveryType,
+      parcelQuantity: itemQuantity,
+      parcelWeightKg,
+    });
     const order = await this.orders.beginPathaoBookingClaim(
       orderId,
       commandId,
       fingerprint,
       "submitting",
     );
-    const providerRequest = toProviderRequest(order, input);
+    const providerRequest = toProviderRequest(order, store.storeId);
     const bookingId = randomUUID();
     let created: typeof pathaoBooking.$inferSelect | null = null;
     try {
@@ -188,10 +171,10 @@ export class PathaoService {
             id: bookingId,
             orderId,
             environment: config.mode,
-            storeId: input.storeId,
+            storeId: store.storeId,
             deliveryType,
-            parcelQuantity: input.parcelQuantity,
-            parcelWeightKg: input.parcelWeightKg,
+            parcelQuantity: order.itemQuantity,
+            parcelWeightKg,
             merchantOrderId: order.reference,
             commandId,
             requestFingerprint: fingerprint,
@@ -210,10 +193,10 @@ export class PathaoService {
             bookingId: row.id,
             commandId,
             environment: config.mode,
-            storeId: input.storeId,
+            storeId: store.storeId,
             deliveryType,
-            parcelQuantity: input.parcelQuantity,
-            parcelWeightKg: input.parcelWeightKg,
+            parcelQuantity: order.itemQuantity,
+            parcelWeightKg,
           },
         });
         return row;
@@ -222,7 +205,7 @@ export class PathaoService {
       if (!isUniqueViolation(error)) throw error;
       const existing = await this.findBooking(orderId);
       if (!existing) throw error;
-      return this.assertReplay(existing, commandId, fingerprint);
+      return this.assertReplay(existing, commandId);
     }
 
     if (!created) throw new Error("Pathao booking command was not persisted.");
@@ -657,19 +640,32 @@ export class PathaoService {
       return toBooking(current);
     }
 
-    if (current && current.storeId !== input.storeId) {
-      throw new ConflictException(
-        "The consignment store must match the existing booking command.",
-        { errorCode: "PATHAO_RECONCILIATION_STORE_MISMATCH" },
+    const { config: authenticatedConfig, accessToken } =
+      await this.tokens.getAccessToken();
+    let storeId = current?.storeId ?? null;
+    if (storeId === null) {
+      const stores = await this.api.listStores(
+        authenticatedConfig,
+        accessToken,
       );
+      const defaultStore = selectDefaultActiveStore(stores);
+      if (!defaultStore) {
+        throw new ServiceUnavailableException(
+          "Set one active default Pathao pickup store in the Merchant Panel.",
+          { errorCode: "PATHAO_DEFAULT_STORE_UNAVAILABLE" },
+        );
+      }
+      storeId = defaultStore.storeId;
     }
-    const { accessToken } = await this.tokens.getAccessToken();
     const order = await this.orders.beginPathaoBookingClaim(
       orderId,
       commandId,
       fingerprint,
       "reconciliation_required",
     );
+    const parcelQuantity = current?.parcelQuantity ?? order.itemQuantity;
+    const parcelWeightKg =
+      current?.parcelWeightKg ?? PATHAO_MINIMUM_ITEM_WEIGHT_KG;
     let info: Awaited<ReturnType<PathaoApiClient["getOrderInfo"]>>;
     try {
       info = await this.api.getOrderInfo(
@@ -756,13 +752,6 @@ export class PathaoService {
             );
           }
         }
-        if (existing && existing.storeId !== input.storeId) {
-          throw new ConflictException(
-            "The consignment store must match the existing booking command.",
-            { errorCode: "PATHAO_RECONCILIATION_STORE_MISMATCH" },
-          );
-        }
-
         let booking: typeof pathaoBooking.$inferSelect;
         if (existing) {
           const [updated] = await transaction
@@ -793,10 +782,10 @@ export class PathaoService {
               orderId,
               source: "manual",
               environment: config.mode,
-              storeId: input.storeId,
+              storeId,
               deliveryType: null,
-              parcelQuantity: input.parcelQuantity,
-              parcelWeightKg: input.parcelWeightKg,
+              parcelQuantity,
+              parcelWeightKg,
               merchantOrderId: order.reference,
               commandId,
               requestFingerprint: fingerprint,
@@ -831,7 +820,7 @@ export class PathaoService {
             bookingId: booking.id,
             commandId,
             consignmentId: input.consignmentId,
-            storeId: input.storeId,
+            storeId: booking.storeId,
             providerReferenceMatched: info.merchantOrderId === order.reference,
             referenceVerifiedInPathaoPanel: input.verifiedInPathaoPanel,
           },
@@ -1447,12 +1436,8 @@ export class PathaoService {
   private assertReplay(
     existing: typeof pathaoBooking.$inferSelect,
     commandId: string,
-    fingerprint: string,
   ): PathaoBooking {
-    if (
-      existing.commandId !== commandId ||
-      existing.requestFingerprint !== fingerprint
-    ) {
+    if (existing.commandId !== commandId) {
       throw new ConflictException(
         "This Order already has a Pathao booking command. Resolve its outcome before creating another consignment.",
         { errorCode: "PATHAO_BOOKING_ALREADY_EXISTS" },
@@ -1549,20 +1534,6 @@ export class PathaoService {
       status: existing.resultingState,
     });
   }
-
-  private async assertActiveStore(
-    config: PathaoConfiguration,
-    accessToken: string,
-    storeId: number,
-  ): Promise<void> {
-    const stores = await this.api.listStores(config, accessToken);
-    if (!stores.some((store) => store.storeId === storeId && store.active)) {
-      throw new UnprocessableEntityException(
-        "Choose an active Pathao store returned for this merchant account.",
-        { errorCode: "PATHAO_STORE_NOT_ACTIVE" },
-      );
-    }
-  }
 }
 
 export function isPathaoWebhookPayload(value: unknown): boolean {
@@ -1582,9 +1553,39 @@ function requiredPathaoConfiguration(): PathaoConfiguration {
   return config;
 }
 
+function selectDefaultActiveStore(
+  stores: readonly PathaoStoreRecord[],
+): PathaoStoreRecord | null {
+  const activeStores = stores.filter((store) => store.active);
+  const defaults = activeStores.filter((store) => store.isDefaultStore);
+  if (defaults.length === 1) return defaults[0] ?? null;
+  if (defaults.length > 1) return null;
+  return activeStores.length === 1 ? (activeStores[0] ?? null) : null;
+}
+
+function bookingFingerprint(input: {
+  orderId: string;
+  storeId: number;
+  deliveryType: PathaoDeliveryType;
+  parcelQuantity: number;
+  parcelWeightKg: number;
+}): string {
+  return sha256(
+    JSON.stringify({
+      orderId: input.orderId,
+      input: {
+        storeId: input.storeId,
+        deliveryType: input.deliveryType,
+        parcelQuantity: input.parcelQuantity,
+        parcelWeightKg: input.parcelWeightKg,
+      },
+    }),
+  );
+}
+
 export function toProviderRequest(
   order: Awaited<ReturnType<OrdersPathaoPort["getPathaoBookingSnapshot"]>>,
-  input: PathaoBookingInput,
+  storeId: number,
 ): PathaoBookingRequest {
   const recipientPhone = pathaoPhone(order.recipientPhone);
   const specialInstruction = sanitizeCustomerInstruction(
@@ -1602,16 +1603,16 @@ export function toProviderRequest(
     );
   }
   return {
-    store_id: input.storeId,
+    store_id: storeId,
     merchant_order_id: order.reference,
     recipient_name: order.recipientName.trim(),
     recipient_phone: recipientPhone,
     recipient_address: order.recipientAddress.trim(),
     ...(specialInstruction ? { special_instruction: specialInstruction } : {}),
     delivery_type: PATHAO_NORMAL_DELIVERY_TYPE,
-    item_type: 2,
-    item_quantity: input.parcelQuantity,
-    item_weight: input.parcelWeightKg,
+    item_type: PATHAO_PARCEL_ITEM_TYPE,
+    item_quantity: order.itemQuantity,
+    item_weight: PATHAO_MINIMUM_ITEM_WEIGHT_KG,
     amount_to_collect: order.codAmountDueBdt,
   };
 }

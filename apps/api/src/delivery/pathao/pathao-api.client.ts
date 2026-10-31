@@ -43,6 +43,7 @@ export type PathaoStoreRecord = {
   storeId: number;
   storeName: string;
   active: boolean;
+  isDefaultStore: boolean;
 };
 
 export class PathaoRequestError extends Error {
@@ -121,12 +122,18 @@ export class PathaoApiClient {
         throw new PathaoRequestError("PATHAO_STORES_RESPONSE_INVALID");
       }
       for (const value of data.data) {
+        if (!isObject(value)) {
+          throw new PathaoRequestError("PATHAO_STORES_RESPONSE_INVALID");
+        }
+        const defaultStore = value.is_default_store;
         if (
-          !isObject(value) ||
           typeof value.store_id !== "number" ||
           !Number.isSafeInteger(value.store_id) ||
           typeof value.store_name !== "string" ||
-          (value.is_active !== 0 && value.is_active !== 1)
+          (value.is_active !== 0 && value.is_active !== 1) ||
+          (typeof defaultStore !== "boolean" &&
+            defaultStore !== 0 &&
+            defaultStore !== 1)
         ) {
           throw new PathaoRequestError("PATHAO_STORES_RESPONSE_INVALID");
         }
@@ -134,6 +141,7 @@ export class PathaoApiClient {
           storeId: value.store_id,
           storeName: value.store_name,
           active: value.is_active === 1,
+          isDefaultStore: defaultStore === true || defaultStore === 1,
         });
       }
       const candidateLastPage = data.last_page;

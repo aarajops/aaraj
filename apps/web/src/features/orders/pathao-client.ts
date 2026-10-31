@@ -4,16 +4,13 @@ import "client-only";
 import {
   API_V1_BASE_PATH,
   ApiErrorResponseSchema,
-  PathaoBookingInputSchema,
   PathaoBookingManagementSchema,
-  PathaoBookingOptionsSchema,
   PathaoBookingSchema,
   PathaoCustomerTrackingSchema,
   PathaoManualReconciliationInputSchema,
   PathaoWebhookResolutionInputSchema,
   PathaoWebhookResolutionResultSchema,
   type PathaoManualReconciliationInput,
-  type PathaoBookingInput,
   type PathaoWebhookResolutionInput,
 } from "@aaraj/contracts";
 
@@ -25,17 +22,6 @@ export class PathaoClientError extends Error {
     super(message);
     this.name = "PathaoClientError";
   }
-}
-
-export async function getPathaoBookingOptions() {
-  const response = await fetch(
-    `${API_V1_BASE_PATH}/delivery/pathao/manage/stores`,
-    {
-      cache: "no-store",
-      credentials: "same-origin",
-    },
-  );
-  return read(response, PathaoBookingOptionsSchema);
 }
 
 export async function getPathaoBooking(orderId: string) {
@@ -59,7 +45,6 @@ export async function resolvePathaoWebhookIssue(
       cache: "no-store",
       credentials: "same-origin",
       headers: {
-        "Content-Type": "application/json",
         "Idempotency-Key": commandId,
       },
       body: JSON.stringify(validated),
@@ -68,12 +53,7 @@ export async function resolvePathaoWebhookIssue(
   return read(response, PathaoWebhookResolutionResultSchema);
 }
 
-export async function submitPathaoBooking(
-  orderId: string,
-  input: PathaoBookingInput,
-  commandId: string,
-) {
-  const validated = PathaoBookingInputSchema.parse(input);
+export async function submitPathaoBooking(orderId: string, commandId: string) {
   const response = await fetch(
     `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${encodeURIComponent(orderId)}/book`,
     {
@@ -84,7 +64,6 @@ export async function submitPathaoBooking(
         "Content-Type": "application/json",
         "Idempotency-Key": commandId,
       },
-      body: JSON.stringify(validated),
     },
   );
   return read(response, PathaoBookingSchema);
