@@ -14,16 +14,18 @@ import {
 } from "@aaraj/contracts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { CartQuote } from "@/features/cart/cart-quote";
 import { useCartStore } from "@/features/cart/cart-provider";
+import { CheckoutPageSkeleton } from "./order-page-skeleton";
 import { formatBdtPrice } from "@/lib/currency";
 import {
   cartItem,
@@ -38,15 +40,10 @@ import {
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
-const checkoutFormSchema = CheckoutAddressInputSchema.omit({
-  geographyVersion: true,
-  divisionId: true,
-  districtId: true,
-  upazilaId: true,
-  street: true,
-  house: true,
-  postalCode: true,
-  instructions: true,
+const checkoutFormSchema = CheckoutAddressInputSchema.pick({
+  recipientName: true,
+  phone: true,
+  doorstepDetails: true,
 });
 
 type CheckoutFormDraft = z.input<typeof checkoutFormSchema>;
@@ -55,7 +52,6 @@ type CheckoutFormValues = z.output<typeof checkoutFormSchema>;
 const initialForm: CheckoutFormDraft = {
   recipientName: "",
   phone: "",
-  locality: "",
   doorstepDetails: "",
 };
 
@@ -78,8 +74,11 @@ function SinglePageCheckout({
   const [quotePending, setQuotePending] = useState(Boolean(initialQuoteId));
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const checkoutEventSent = useRef(false);
+  const checkoutAttempt = useRef<{ quoteId: string; key: string } | null>(null);
   const {
+    clearErrors,
     register,
+    setError,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<CheckoutFormDraft, unknown, CheckoutFormValues>({
@@ -148,16 +147,21 @@ function SinglePageCheckout({
       setCheckoutError("Choose a delivery location to confirm the total.");
       return;
     }
-    const key = getOrCreateIdempotencyKey(quote.id);
+    const key = getOrCreateIdempotencyKey(quote.id, checkoutAttempt.current);
     if (!key) {
-      setCheckoutError("Checkout could not be prepared. Please try again.");
+      setCheckoutError(
+        "We couldn’t safely continue checkout because browser storage is unavailable. Enable site storage, then reload before trying again.",
+      );
       return;
     }
+    checkoutAttempt.current = { quoteId: quote.id, key };
     setCheckoutError(null);
+    clearErrors("phone");
     const input: CreateOrderInput = {
       quoteId: quote.id,
       address: {
         ...values,
+        phone: `+88${values.phone}`,
         geographyVersion: quote.destination.geographyVersion,
         divisionId: quote.destination.divisionId,
         districtId: quote.destination.districtId,
@@ -192,6 +196,17 @@ function SinglePageCheckout({
           }
         }
       }
+      if (
+        reason instanceof OrderRequestError &&
+        reason.errorCode === "ORDER_PHONE_INVALID"
+      ) {
+        setError(
+          "phone",
+          { type: "server", message: reason.message },
+          { shouldFocus: true },
+        );
+        return;
+      }
       setCheckoutError(
         reason instanceof OrderRequestError || reason instanceof Error
           ? reason.message
@@ -199,6 +214,8 @@ function SinglePageCheckout({
       );
     }
   }
+
+  if (!ready && !cartError) return <CheckoutPageSkeleton />;
 
   return (
     <main className="bg-background px-5 py-8 text-foreground sm:py-12">
@@ -224,12 +241,6 @@ function SinglePageCheckout({
               {cartLoading ? "Loading…" : "Retry"}
             </Button>
           </div>
-        )}
-
-        {!ready && !cartError && (
-          <p className="mt-8 text-sm text-muted-foreground" role="status">
-            Loading your cart…
-          </p>
         )}
 
         {ready && cart.lines.length === 0 && (
@@ -265,9 +276,6 @@ function SinglePageCheckout({
               >
                 <div>
                   <h2 className="text-xl font-semibold">Delivery details</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Required fields are marked *.
-                  </p>
                 </div>
                 {checkoutError && (
                   <p
@@ -279,7 +287,7 @@ function SinglePageCheckout({
                 )}
                 <Field>
                   <FieldLabel htmlFor="checkout-recipient-name">
-                    Recipient name
+                    Full name
                     <span aria-hidden="true" className="text-muted-foreground">
                       {" "}
                       *
@@ -306,28 +314,35 @@ function SinglePageCheckout({
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="checkout-phone">
-                    Bangladesh mobile number
+                    Mobile number
                     <span aria-hidden="true" className="text-muted-foreground">
                       {" "}
                       *
                     </span>
                   </FieldLabel>
-                  <Input
-                    id="checkout-phone"
-                    autoComplete="tel"
-                    inputMode="tel"
-                    maxLength={32}
-                    required
-                    aria-invalid={Boolean(errors.phone)}
-                    aria-describedby={`checkout-phone-description${
-                      errors.phone ? " checkout-phone-error" : ""
-                    }`}
-                    {...register("phone")}
-                  />
-                  <FieldDescription id="checkout-phone-description">
-                    Used by the courier to arrange delivery. Enter 01XXXXXXXXX
-                    or +8801XXXXXXXXX.
-                  </FieldDescription>
+                  <InputGroup>
+                    <InputGroupAddon className="h-full border-r border-input px-3 py-0">
+                      <InputGroupText className="font-medium text-foreground">
+                        +88
+                      </InputGroupText>
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      id="checkout-phone"
+                      type="tel"
+                      autoComplete="tel-national"
+                      inputMode="tel"
+                      placeholder="01XXXXXXXXX"
+                      maxLength={32}
+                      required
+                      aria-invalid={Boolean(errors.phone)}
+                      aria-describedby={
+                        errors.phone ? "checkout-phone-error" : undefined
+                      }
+                      {...register("phone", {
+                        onChange: () => clearErrors("phone"),
+                      })}
+                    />
+                  </InputGroup>
                   {errors.phone?.message && (
                     <FieldError id="checkout-phone-error">
                       {errors.phone.message}
@@ -335,33 +350,8 @@ function SinglePageCheckout({
                   )}
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="checkout-locality">
-                    Area / locality
-                    <span aria-hidden="true" className="text-muted-foreground">
-                      {" "}
-                      *
-                    </span>
-                  </FieldLabel>
-                  <Input
-                    id="checkout-locality"
-                    autoComplete="address-level3"
-                    maxLength={160}
-                    required
-                    aria-invalid={Boolean(errors.locality)}
-                    aria-describedby={
-                      errors.locality ? "checkout-locality-error" : undefined
-                    }
-                    {...register("locality")}
-                  />
-                  {errors.locality?.message && (
-                    <FieldError id="checkout-locality-error">
-                      {errors.locality.message}
-                    </FieldError>
-                  )}
-                </Field>
-                <Field>
                   <FieldLabel htmlFor="checkout-doorstep-details">
-                    Street address and directions
+                    Delivery address
                     <span aria-hidden="true" className="text-muted-foreground">
                       {" "}
                       *
@@ -371,19 +361,16 @@ function SinglePageCheckout({
                     id="checkout-doorstep-details"
                     autoComplete="street-address"
                     maxLength={400}
+                    placeholder="Area, house/street, nearby landmark"
                     required
                     aria-invalid={Boolean(errors.doorstepDetails)}
-                    aria-describedby={`checkout-doorstep-details-description${
+                    aria-describedby={
                       errors.doorstepDetails
-                        ? " checkout-doorstep-details-error"
-                        : ""
-                    }`}
+                        ? "checkout-doorstep-details-error"
+                        : undefined
+                    }
                     {...register("doorstepDetails")}
                   />
-                  <FieldDescription id="checkout-doorstep-details-description">
-                    Include your house or building, street, and a nearby
-                    landmark.
-                  </FieldDescription>
                   {errors.doorstepDetails?.message && (
                     <FieldError id="checkout-doorstep-details-error">
                       {errors.doorstepDetails.message}
@@ -422,13 +409,6 @@ function CheckoutOrderSummary({
   const hasUnavailableLines = cart.lines.some(
     (line) => line.availability === "unavailable",
   );
-  const subtotal =
-    quote?.merchandiseGrossBdt ??
-    cart.lines.reduce(
-      (total, line) => total + line.product.unitPriceBdt * line.quantity,
-      0,
-    );
-
   return (
     <aside
       aria-label="Order summary"
@@ -531,11 +511,13 @@ function CheckoutOrderSummary({
                 </Button>
               </div>
               <p className="col-start-3 row-start-1 shrink-0 text-right font-medium tabular-nums sm:col-start-4">
-                {formatBdtPrice({
-                  amountBdt:
-                    quotedLine?.grossAmountBdt ??
-                    line.product.unitPriceBdt * line.quantity,
-                })}
+                {quotedLine ? (
+                  formatBdtPrice({ amountBdt: quotedLine.grossAmountBdt })
+                ) : (
+                  <span className="text-muted-foreground">
+                    {quotePending ? "Calculating…" : "—"}
+                  </span>
+                )}
               </p>
             </li>
           );
@@ -544,7 +526,15 @@ function CheckoutOrderSummary({
       <dl className="grid gap-3 border-t border-border pt-4 text-sm">
         <div className="flex justify-between gap-4">
           <dt className="text-muted-foreground">Subtotal</dt>
-          <dd>{formatBdtPrice({ amountBdt: subtotal })}</dd>
+          <dd>
+            {quote ? (
+              formatBdtPrice({ amountBdt: quote.merchandiseGrossBdt })
+            ) : (
+              <span className="text-muted-foreground">
+                {quotePending ? "Calculating…" : "Select location"}
+              </span>
+            )}
+          </dd>
         </div>
         <div className="flex justify-between gap-4">
           <dt className="text-muted-foreground">Delivery</dt>
@@ -584,15 +574,21 @@ function CheckoutOrderSummary({
   );
 }
 
-function getOrCreateIdempotencyKey(quoteId: string): string | null {
+function getOrCreateIdempotencyKey(
+  quoteId: string,
+  currentAttempt: { quoteId: string; key: string } | null,
+): string | null {
+  if (currentAttempt?.quoteId === quoteId) return currentAttempt.key;
+
   const storageKey = `aaraj.checkout.idempotency:${quoteId}`;
   try {
     const storedKey = window.sessionStorage.getItem(storageKey);
     if (storedKey && /^[0-9a-f-]{36}$/i.test(storedKey)) return storedKey;
     const key = crypto.randomUUID();
     window.sessionStorage.setItem(storageKey, key);
-    return key;
+    return window.sessionStorage.getItem(storageKey) === key ? key : null;
   } catch {
-    return crypto.randomUUID();
+    // A new key could turn an uncertain retry into a second Order.
+    return null;
   }
 }

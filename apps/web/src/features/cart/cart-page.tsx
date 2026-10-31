@@ -5,6 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MAX_CART_QUANTITY_PER_VARIANT, type Cart } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CartPageContentSkeleton } from "./cart-page-skeleton";
 import { formatBdtPrice } from "@/lib/currency";
 import { CartRequestError, clearGuestCart } from "./cart-client";
 import {
@@ -16,6 +25,13 @@ import { useCartStore } from "./cart-provider";
 import { CartQuote } from "./cart-quote";
 
 type MergeMode = "none" | "required" | "retry" | "cleanup";
+const quantityOptions = Array.from(
+  { length: MAX_CART_QUANTITY_PER_VARIANT },
+  (_, index) => {
+    const value = String(index + 1);
+    return { label: value, value };
+  },
+);
 
 export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
   const router = useRouter();
@@ -177,10 +193,8 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
           </p>
         )}
 
-        {!ready && loading ? (
-          <p className="mt-8" role="status">
-            Loading cart…
-          </p>
+        {!ready && !error ? (
+          <CartPageContentSkeleton />
         ) : !ready ? (
           <section className="mt-8 rounded-2xl border border-border p-7">
             <p>{error ?? "The cart could not be loaded."}</p>
@@ -252,36 +266,32 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                       )}
                     </div>
                     <div className="flex items-center gap-3">
-                      <label
-                        className="sr-only"
-                        htmlFor={`quantity-${line.variantId}`}
-                      >
-                        Quantity for {line.product.name}, {line.product.color},{" "}
-                        {line.product.sizeLabel}
-                      </label>
-                      <select
-                        className="h-10 rounded-lg border border-input bg-background px-3"
+                      <Select
                         disabled={
                           mutating || line.availability === "unavailable"
                         }
-                        id={`quantity-${line.variantId}`}
-                        value={line.quantity}
-                        onChange={(event) =>
-                          void setLine(
-                            line.variantId,
-                            Number(event.currentTarget.value),
-                          )
-                        }
+                        items={quantityOptions}
+                        value={String(line.quantity)}
+                        onValueChange={(value) => {
+                          if (typeof value === "string") {
+                            void setLine(line.variantId, Number(value));
+                          }
+                        }}
                       >
-                        {Array.from(
-                          { length: MAX_CART_QUANTITY_PER_VARIANT },
-                          (_, index) => index + 1,
-                        ).map((quantity) => (
-                          <option key={quantity} value={quantity}>
-                            {quantity}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger
+                          aria-label={`Quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                          className="w-20"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="end">
+                          {quantityOptions.map(({ label, value }) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Button
                         disabled={mutating}
                         onClick={() => void removeLine(line.variantId)}
@@ -325,9 +335,27 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
             )}
             {!guestCart ? (
               !guestError && (
-                <p className="mt-4" role="status">
-                  Loading saved guest cart…
-                </p>
+                <div
+                  aria-busy="true"
+                  className="mt-4 grid gap-4"
+                  role="status"
+                >
+                  <span className="sr-only">Loading saved guest cart…</span>
+                  <div aria-hidden="true" className="grid gap-3">
+                    {[0, 1].map((line) => (
+                      <div
+                        className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-4 last:border-0"
+                        key={line}
+                      >
+                        <div className="grid gap-2">
+                          <Skeleton className="h-4 w-40 max-w-full" />
+                          <Skeleton className="h-4 w-32" />
+                        </div>
+                        <Skeleton className="h-10 w-20 rounded-lg" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )
             ) : guestCart.lines.length === 0 ? (
               <p className="mt-4">
@@ -354,30 +382,36 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                     </div>
                     <div className="flex items-center gap-2">
                       {line.availability === "available" && (
-                        <select
-                          aria-label={`Guest quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
-                          className="h-10 rounded-lg border border-input bg-background px-3"
+                        <Select
                           disabled={isResolving}
-                          value={line.quantity}
-                          onChange={(event) =>
-                            void resolveGuestLine(() =>
-                              setGuestCartLine(
-                                line.variantId,
-                                Number(event.currentTarget.value),
-                                guestCart.revision,
-                              ),
-                            )
-                          }
+                          items={quantityOptions}
+                          value={String(line.quantity)}
+                          onValueChange={(value) => {
+                            if (typeof value === "string") {
+                              void resolveGuestLine(() =>
+                                setGuestCartLine(
+                                  line.variantId,
+                                  Number(value),
+                                  guestCart.revision,
+                                ),
+                              );
+                            }
+                          }}
                         >
-                          {Array.from(
-                            { length: MAX_CART_QUANTITY_PER_VARIANT },
-                            (_, index) => index + 1,
-                          ).map((quantity) => (
-                            <option key={quantity} value={quantity}>
-                              {quantity}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger
+                            aria-label={`Guest quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                            className="w-20"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="end">
+                            {quantityOptions.map(({ label, value }) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                       <Button
                         disabled={isResolving}

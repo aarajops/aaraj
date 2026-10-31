@@ -269,7 +269,6 @@ describe("COD Orders and checkout", () => {
         recipientName: "E2E Recipient",
         phone: "01712345678",
         ...destinationRef(),
-        locality: "Dhanmondi",
         doorstepDetails: "House 12, Road 5, near the park",
         ...extra,
       },
@@ -908,7 +907,9 @@ describe("COD Orders and checkout", () => {
     expect((await stockFor(variantId)).quantityReserved).toBe(1);
     await placeOrder(
       checkoutCookie,
-      checkoutBody(quote.id, { locality: "Gulshan" }),
+      checkoutBody(quote.id, {
+        doorstepDetails: "House 14, Road 6, near the lake",
+      }),
       key,
     ).expect(409);
     expect(

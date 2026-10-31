@@ -246,7 +246,6 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
               {[
                 order.address.house,
                 order.address.street,
-                order.address.locality,
                 order.address.doorstepDetails,
                 order.address.upazilaName,
                 order.address.districtName,

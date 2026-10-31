@@ -283,7 +283,6 @@ describe("authoritative Bangladesh quotes", () => {
     );
     expect(response.body).not.toHaveProperty("recipientName");
     expect(response.body).not.toHaveProperty("recipientPhone");
-    expect(response.body).not.toHaveProperty("locality");
     expect(
       Date.parse(response.body.expiresAt) - Date.parse(response.body.createdAt),
     ).toBe(15 * 60 * 1000);

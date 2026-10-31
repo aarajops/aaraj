@@ -627,7 +627,6 @@ export class OrdersService implements OrdersPathaoPort {
     const recipientAddress = [
       address.house,
       address.street,
-      address.locality,
       address.doorstepDetails,
       address.upazilaName,
       address.districtName,
@@ -850,7 +849,6 @@ export class OrdersService implements OrdersPathaoPort {
     const recipientAddress = [
       address.house,
       address.street,
-      address.locality,
       address.doorstepDetails,
       address.upazilaName,
       address.districtName,
@@ -1395,7 +1393,6 @@ export class OrdersService implements OrdersPathaoPort {
       districtName: destination.district.name,
       upazilaId: destination.upazila?.id ?? null,
       upazilaName: destination.upazila?.name ?? null,
-      locality: normalizeAddressText(input.locality),
       doorstepDetails: normalizeAddressText(input.doorstepDetails),
       street: optionalAddressText(input.street),
       house: optionalAddressText(input.house),
@@ -1565,7 +1562,6 @@ function normalizeCheckoutInput(
     ...input,
     recipientName: normalizeAddressText(input.recipientName),
     phone: normalizeBangladeshMobile(input.phone),
-    locality: normalizeAddressText(input.locality),
     doorstepDetails: normalizeAddressText(input.doorstepDetails),
     ...(input.street !== undefined
       ? { street: optionalAddressText(input.street) ?? "" }

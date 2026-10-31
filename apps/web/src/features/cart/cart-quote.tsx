@@ -15,9 +15,17 @@ import {
   FieldError,
   FieldLabel,
 } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DeliveryLocationLoadingSkeleton } from "./cart-page-skeleton";
 import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import {
   fetchBangladeshGeography,
@@ -71,7 +79,6 @@ export function CartQuote({
     clearErrors,
     control,
     handleSubmit,
-    register,
     setError: setFormError,
     setValue,
     formState: { errors: locationErrors, isSubmitting },
@@ -84,9 +91,6 @@ export function CartQuote({
   const upazilaId = useWatch({ control, name: "upazilaId" });
   const upazilaRequired =
     Boolean(districtId) && upazilaRequiredForDistrict === districtId;
-  const divisionRegistration = register("divisionId");
-  const districtRegistration = register("districtId");
-  const upazilaRegistration = register("upazilaId");
 
   useEffect(() => {
     let active = true;
@@ -395,11 +399,6 @@ export function CartQuote({
       <h2 className="text-xl font-semibold">
         {mode === "checkout" ? "Delivery location" : "Delivery and order total"}
       </h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        {mode === "checkout"
-          ? "Choose your delivery location. The delivery charge and total update automatically."
-          : "Choose a Bangladesh delivery district. The server checks the destination and calculates the current price. Recipient and full delivery-address details will be collected during checkout."}
-      </p>
       {hasUnavailableLines && (
         <p className="mt-4 text-sm text-destructive" role="status">
           Remove unavailable items from your cart before continuing.
@@ -427,9 +426,7 @@ export function CartQuote({
         </div>
       )}
       {loadingLocations || loadingInitialQuote ? (
-        <p className="mt-5" role="status">
-          Loading delivery locations…
-        </p>
+        <DeliveryLocationLoadingSkeleton mode={mode} />
       ) : geography ? (
         <form
           className="mt-5 grid gap-4 sm:grid-cols-2"
@@ -437,35 +434,61 @@ export function CartQuote({
           onSubmit={handleSubmit(submitQuote)}
         >
           <Field>
-            <FieldLabel htmlFor="quote-division">Division</FieldLabel>
-            <select
-              id="quote-division"
-              aria-invalid={Boolean(locationErrors.divisionId)}
-              aria-describedby={
-                locationErrors.divisionId ? "quote-division-error" : undefined
-              }
-              className="h-10 rounded-lg border border-input bg-background px-3"
-              {...divisionRegistration}
-              onChange={(event) => {
-                void divisionRegistration.onChange(event);
-                setValue("districtId", "");
-                setValue("upazilaId", "");
-                setUpazilaRequiredForDistrict(null);
-                setQuote(null);
-                setLookupState("unchecked");
-                setQuoting(false);
-                setError(null);
-                automaticQuoteAttemptKey.current = null;
-                clearErrors(["districtId", "upazilaId"]);
-              }}
-            >
-              <option value="">Choose division</option>
-              {divisions.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
+            <FieldLabel id="quote-division-label" htmlFor="quote-division">
+              Division
+            </FieldLabel>
+            <Controller
+              control={control}
+              name="divisionId"
+              render={({ field }) => (
+                <Select
+                  items={[
+                    { label: "Choose division", value: null },
+                    ...divisions.map((location) => ({
+                      label: location.name,
+                      value: location.id,
+                    })),
+                  ]}
+                  value={field.value || null}
+                  onValueChange={(value) => {
+                    field.onChange(typeof value === "string" ? value : "");
+                    setValue("districtId", "");
+                    setValue("upazilaId", "");
+                    setUpazilaRequiredForDistrict(null);
+                    setQuote(null);
+                    setLookupState("unchecked");
+                    setQuoting(false);
+                    setError(null);
+                    automaticQuoteAttemptKey.current = null;
+                    clearErrors(["districtId", "upazilaId"]);
+                  }}
+                >
+                  <SelectTrigger
+                    id="quote-division"
+                    aria-labelledby="quote-division-label"
+                    aria-invalid={Boolean(locationErrors.divisionId)}
+                    aria-describedby={
+                      locationErrors.divisionId
+                        ? "quote-division-error"
+                        : undefined
+                    }
+                    aria-required="true"
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                  >
+                    <SelectValue placeholder="Choose division" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Choose division</SelectItem>
+                    {divisions.map((location) => (
+                      <SelectItem key={location.id} value={location.id}>
+                        {location.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {locationErrors.divisionId?.message && (
               <FieldError id="quote-division-error">
                 {locationErrors.divisionId.message}
@@ -473,35 +496,63 @@ export function CartQuote({
             )}
           </Field>
           <Field>
-            <FieldLabel htmlFor="quote-district">District</FieldLabel>
-            <select
-              id="quote-district"
-              aria-invalid={Boolean(locationErrors.districtId)}
-              aria-describedby={
-                locationErrors.districtId ? "quote-district-error" : undefined
-              }
-              className="h-10 rounded-lg border border-input bg-background px-3"
-              disabled={!divisionId}
-              {...districtRegistration}
-              onChange={(event) => {
-                void districtRegistration.onChange(event);
-                setValue("upazilaId", "");
-                setUpazilaRequiredForDistrict(null);
-                setQuote(null);
-                setLookupState("unchecked");
-                setQuoting(Boolean(divisionId && event.currentTarget.value));
-                setError(null);
-                automaticQuoteAttemptKey.current = null;
-                clearErrors("upazilaId");
-              }}
-            >
-              <option value="">Choose district</option>
-              {districts.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
+            <FieldLabel id="quote-district-label" htmlFor="quote-district">
+              District
+            </FieldLabel>
+            <Controller
+              control={control}
+              name="districtId"
+              render={({ field }) => (
+                <Select
+                  items={[
+                    { label: "Choose district", value: null },
+                    ...districts.map((location) => ({
+                      label: location.name,
+                      value: location.id,
+                    })),
+                  ]}
+                  disabled={!divisionId}
+                  value={field.value || null}
+                  onValueChange={(value) => {
+                    const nextDistrictId =
+                      typeof value === "string" ? value : "";
+                    field.onChange(nextDistrictId);
+                    setValue("upazilaId", "");
+                    setUpazilaRequiredForDistrict(null);
+                    setQuote(null);
+                    setLookupState("unchecked");
+                    setQuoting(Boolean(divisionId && nextDistrictId));
+                    setError(null);
+                    automaticQuoteAttemptKey.current = null;
+                    clearErrors("upazilaId");
+                  }}
+                >
+                  <SelectTrigger
+                    id="quote-district"
+                    aria-labelledby="quote-district-label"
+                    aria-invalid={Boolean(locationErrors.districtId)}
+                    aria-describedby={
+                      locationErrors.districtId
+                        ? "quote-district-error"
+                        : undefined
+                    }
+                    aria-required="true"
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                  >
+                    <SelectValue placeholder="Choose district" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={null}>Choose district</SelectItem>
+                    {districts.map((location) => (
+                      <SelectItem key={location.id} value={location.id}>
+                        {location.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {locationErrors.districtId?.message && (
               <FieldError id="quote-district-error">
                 {locationErrors.districtId.message}
@@ -510,43 +561,68 @@ export function CartQuote({
           </Field>
           {districtId && upazilas.length > 0 && (
             <Field>
-              <FieldLabel htmlFor="quote-upazila">
-                {upazilaRequired ? "Upazila *" : "Upazila (optional)"}
+              <FieldLabel id="quote-upazila-label" htmlFor="quote-upazila">
+                Upazila{upazilaRequired ? " *" : " (optional)"}
               </FieldLabel>
-              <select
-                id="quote-upazila"
-                required={upazilaRequired}
-                aria-invalid={
-                  Boolean(locationErrors.upazilaId) ||
-                  (upazilaRequired && !upazilaId)
-                }
-                aria-describedby={
-                  [
-                    upazilaRequired ? "quote-upazila-description" : null,
-                    locationErrors.upazilaId ? "quote-upazila-error" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" ") || undefined
-                }
-                className="h-10 rounded-lg border border-input bg-background px-3"
-                {...upazilaRegistration}
-                onChange={(event) => {
-                  void upazilaRegistration.onChange(event);
-                  setQuote(null);
-                  setLookupState("unchecked");
-                  setQuoting(true);
-                  setError(null);
-                  clearErrors("upazilaId");
-                  automaticQuoteAttemptKey.current = null;
-                }}
-              >
-                <option value="">Choose upazila</option>
-                {upazilas.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                control={control}
+                name="upazilaId"
+                render={({ field }) => (
+                  <Select
+                    items={[
+                      { label: "Choose upazila", value: null },
+                      ...upazilas.map((location) => ({
+                        label: location.name,
+                        value: location.id,
+                      })),
+                    ]}
+                    value={field.value || null}
+                    onValueChange={(value) => {
+                      field.onChange(typeof value === "string" ? value : "");
+                      setQuote(null);
+                      setLookupState("unchecked");
+                      setQuoting(true);
+                      setError(null);
+                      clearErrors("upazilaId");
+                      automaticQuoteAttemptKey.current = null;
+                    }}
+                  >
+                    <SelectTrigger
+                      id="quote-upazila"
+                      aria-labelledby="quote-upazila-label"
+                      aria-invalid={
+                        Boolean(locationErrors.upazilaId) ||
+                        (upazilaRequired && !upazilaId)
+                      }
+                      aria-describedby={
+                        [
+                          upazilaRequired
+                            ? "quote-upazila-description"
+                            : null,
+                          locationErrors.upazilaId
+                            ? "quote-upazila-error"
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || undefined
+                      }
+                      aria-required={upazilaRequired}
+                      ref={field.ref}
+                      onBlur={field.onBlur}
+                    >
+                      <SelectValue placeholder="Choose upazila" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={null}>Choose upazila</SelectItem>
+                      {upazilas.map((location) => (
+                        <SelectItem key={location.id} value={location.id}>
+                          {location.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
               {upazilaRequired && (
                 <FieldDescription id="quote-upazila-description">
                   Choose an upazila to calculate delivery for this district.

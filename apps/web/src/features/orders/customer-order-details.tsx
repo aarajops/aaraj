@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/date-time";
 import { fetchOrder, OrderRequestError } from "./orders-client";
 import { getPathaoCustomerTracking } from "./pathao-client";
 import type { PathaoCustomerTracking } from "@aaraj/contracts";
+import { CustomerOrderDetailsSkeleton } from "./order-page-skeleton";
 import {
   sendEcommerceEvent,
   variantEcommerceItem,
@@ -121,9 +122,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
             </Link>
           </section>
         ) : !order ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            Loading order…
-          </p>
+          <CustomerOrderDetailsSkeleton />
         ) : (
           <>
             <header className="border-b border-border pb-6">
@@ -225,7 +224,6 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                   {[
                     order.address.house,
                     order.address.street,
-                    order.address.locality,
                     order.address.doorstepDetails,
                     order.address.upazilaName,
                     order.address.districtName,

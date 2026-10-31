@@ -1279,8 +1279,8 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
 
   const quoteSection = page.getByRole("region", { name: "Delivery and quote" });
-  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
-  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await chooseSelectOption(page, "Division", "ঢাকা বিভাগ");
+  await chooseSelectOption(page, "District", "ঢাকা জেলা");
   const quoteRequestPromise = page.waitForRequest(
     (request) =>
       request.method() === "POST" && request.url().endsWith("/api/v1/quotes"),
@@ -1302,16 +1302,16 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBeVisible();
   await expect(quoteSection.getByText("৳80", { exact: true })).toBeVisible();
 
-  await page.getByLabel("Division").selectOption({ label: "চট্টগ্রাম বিভাগ" });
-  await page.getByLabel("District").selectOption({ label: "চট্টগ্রাম জেলা" });
+  await chooseSelectOption(page, "Division", "চট্টগ্রাম বিভাগ");
+  await chooseSelectOption(page, "District", "চট্টগ্রাম জেলা");
   await expect(
     quoteSection.getByRole("heading", { name: "Delivery quote" }),
   ).toHaveCount(0);
   await expect(
     quoteSection.getByRole("button", { name: "Get delivery quote" }),
   ).toBeVisible();
-  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
-  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await chooseSelectOption(page, "Division", "ঢাকা বিভাগ");
+  await chooseSelectOption(page, "District", "ঢাকা জেলা");
   await quoteSection
     .getByRole("button", { name: "Get delivery quote" })
     .click();
@@ -1319,12 +1319,15 @@ test("catalog operator configures a product through to storefront visibility", a
     quoteSection.getByRole("heading", { name: "Delivery quote" }),
   ).toBeVisible();
 
-  await page
-    .getByLabel(`Quantity for ${productName}, Black, S`)
-    .selectOption("2");
-  await expect(
-    page.getByLabel(`Quantity for ${productName}, Black, S`),
-  ).toHaveValue("2");
+  const quantitySelect = page.getByRole("combobox", {
+    name: `Quantity for ${productName}, Black, S`,
+  });
+  await chooseSelectOption(
+    page,
+    `Quantity for ${productName}, Black, S`,
+    "2",
+  );
+  await expect(quantitySelect).toHaveText("2");
   await expect(
     quoteSection
       .getByRole("status")
@@ -1338,9 +1341,7 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBeVisible();
   await expect(quoteSection.getByText("৳80", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(
-    page.getByLabel(`Quantity for ${productName}, Black, S`),
-  ).toHaveValue("2");
+  await expect(quantitySelect).toHaveText("2");
   await page.getByRole("button", { name: "Remove" }).click();
   await expect(page.getByText("Your cart is empty.")).toBeVisible();
 
@@ -1364,15 +1365,15 @@ test("catalog operator configures a product through to storefront visibility", a
       response.request().method() === "POST" &&
       response.url().endsWith("/api/v1/quotes"),
   );
-  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
-  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await chooseSelectOption(page, "Division", "ঢাকা বিভাগ");
+  await chooseSelectOption(page, "District", "ঢাকা জেলা");
   const directQuoteResponse = await directQuoteResponsePromise;
   expect(directQuoteResponse.status()).toBe(201);
   const directQuote = await directQuoteResponse.json();
   await expect(
     directCheckoutSummary.getByRole("button", { name: "Place COD order" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Recipient name")).toBeVisible();
+  await expect(page.getByLabel("Full name")).toBeVisible();
   await expect(
     directCheckoutSummary.getByText(
       `৳${Number(directQuote.totalBdt).toLocaleString("en-BD")}`,
@@ -1399,8 +1400,8 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(browserStorage.toLowerCase()).not.toContain("cart");
 
   await page.goto("/cart");
-  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
-  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await chooseSelectOption(page, "Division", "ঢাকা বিভাগ");
+  await chooseSelectOption(page, "District", "ঢাকা জেলা");
   const guestQuoteResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
@@ -1428,9 +1429,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto("/cart");
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
-  await expect(
-    page.getByLabel(`Quantity for ${productName}, Black, S`),
-  ).toHaveValue("1");
+  await expect(quantitySelect).toHaveText("1");
 
   const oldGuestQuoteQuery = new URLSearchParams({
     geographyVersion: guestQuote.destination.geographyVersion,
@@ -1445,8 +1444,8 @@ test("catalog operator configures a product through to storefront visibility", a
     ).status(),
   ).toBe(404);
 
-  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
-  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await chooseSelectOption(page, "Division", "ঢাকা বিভাগ");
+  await chooseSelectOption(page, "District", "ঢাকা জেলা");
   const customerQuoteResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
@@ -1468,11 +1467,10 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("heading", { name: "Checkout", level: 1 }),
   ).toBeVisible();
-  await page.getByLabel("Recipient name").fill("Integration Customer");
-  await page.getByLabel("Bangladesh mobile number").fill("01712345678");
-  await page.getByLabel("Area / locality").fill("Dhanmondi");
+  await page.getByLabel("Full name").fill("Integration Customer");
+  await page.getByLabel("Mobile number").fill("01712345678");
   await page
-    .getByLabel("Street address and directions")
+    .getByLabel("Delivery address")
     .fill("House 12, Road 5, beside the park");
 
   const checkoutUrl = page.url();
@@ -1495,11 +1493,10 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("heading", { name: "Checkout", level: 1 }),
   ).toBeVisible();
-  await page.getByLabel("Recipient name").fill("Integration Customer");
-  await page.getByLabel("Bangladesh mobile number").fill("01712345678");
-  await page.getByLabel("Area / locality").fill("Dhanmondi");
+  await page.getByLabel("Full name").fill("Integration Customer");
+  await page.getByLabel("Mobile number").fill("01712345678");
   await page
-    .getByLabel("Street address and directions")
+    .getByLabel("Delivery address")
     .fill("House 12, Road 5, beside the park");
   await page.getByRole("button", { name: "Place COD order" }).click();
   await expect(page).toHaveURL(/\/orders\/[0-9a-f-]{36}$/i);
@@ -1729,8 +1726,8 @@ test("catalog operator configures a product through to storefront visibility", a
   const guestQuoteSection = page.getByRole("region", {
     name: "Delivery and quote",
   });
-  await page.getByLabel("Division").selectOption({ label: "ঢাকা বিভাগ" });
-  await page.getByLabel("District").selectOption({ label: "ঢাকা জেলা" });
+  await chooseSelectOption(page, "Division", "ঢাকা বিভাগ");
+  await chooseSelectOption(page, "District", "ঢাকা জেলা");
   await guestQuoteSection
     .getByRole("button", { name: "Get delivery quote" })
     .click();
@@ -1740,11 +1737,10 @@ test("catalog operator configures a product through to storefront visibility", a
   await guestQuoteSection
     .getByRole("link", { name: "Continue to checkout" })
     .click();
-  await page.getByLabel("Recipient name").fill("Guest Integration Customer");
-  await page.getByLabel("Bangladesh mobile number").fill("01712345679");
-  await page.getByLabel("Area / locality").fill("Mirpur");
+  await page.getByLabel("Full name").fill("Guest Integration Customer");
+  await page.getByLabel("Mobile number").fill("01712345679");
   await page
-    .getByLabel("Street address and directions")
+    .getByLabel("Delivery address")
     .fill("House 8, Road 3, near the market");
   await page.getByRole("button", { name: "Place COD order" }).click();
   await expect(page).toHaveURL(/\/orders\/[0-9a-f-]{36}$/i);

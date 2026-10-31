@@ -742,7 +742,6 @@ test("customer Order page explains serviceability timeout cancellation", async (
           districtName: "Dhaka",
           upazilaId: null,
           upazilaName: null,
-          locality: "Dhanmondi",
           doorstepDetails: "House 12, Road 5",
           street: null,
           house: null,

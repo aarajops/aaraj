@@ -9,19 +9,28 @@ import { OrderReferenceSchema } from "./order-reference.js";
 
 export { OrderReferenceSchema } from "./order-reference.js";
 
-export const ORDER_PHONE_POLICY = "BD_MOBILE_E164_V1" as const;
-export const ORDER_GUEST_ACCESS_DAYS = 30;
 export const ORDER_CURRENCY = "BDT" as const;
 
 export const CheckoutAddressInputSchema = z.strictObject({
-  recipientName: z.string().trim().min(2).max(120),
-  phone: z.string().trim().min(6).max(32),
+  recipientName: z
+    .string()
+    .trim()
+    .min(2, { error: "Enter at least 2 characters." })
+    .max(120, { error: "Use 120 characters or fewer." }),
+  phone: z
+    .string()
+    .trim()
+    .min(6, { error: "Enter your mobile number." })
+    .max(32, { error: "Use 32 characters or fewer." }),
   geographyVersion: z.string().trim().min(1).max(80),
   divisionId: z.uuid(),
   districtId: z.uuid(),
   upazilaId: z.uuid().optional(),
-  locality: z.string().trim().min(2).max(160),
-  doorstepDetails: z.string().trim().min(3).max(400),
+  doorstepDetails: z
+    .string()
+    .trim()
+    .min(3, { error: "Enter your delivery address." })
+    .max(400, { error: "Use 400 characters or fewer." }),
   street: z.string().trim().max(160).optional(),
   house: z.string().trim().max(120).optional(),
   postalCode: z.string().trim().max(20).optional(),
@@ -130,7 +139,7 @@ const OrderLineSchema = z.strictObject({
   grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 });
 
-export const OrderAddressSchema = z.strictObject({
+export const OrderAddressSchema = z.object({
   recipientName: z.string().min(2).max(120),
   phone: z.string().regex(/^\+8801[3-9]\d{8}$/),
   geographyVersion: z.string().min(1).max(80),
@@ -140,7 +149,6 @@ export const OrderAddressSchema = z.strictObject({
   districtName: z.string().min(1).max(120),
   upazilaId: z.uuid().nullable(),
   upazilaName: z.string().min(1).max(120).nullable(),
-  locality: z.string().min(2).max(160),
   doorstepDetails: z.string().min(3).max(400),
   street: z.string().max(160).nullable(),
   house: z.string().max(120).nullable(),
