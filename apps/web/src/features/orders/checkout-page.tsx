@@ -272,7 +272,9 @@ function SinglePageCheckout({
                 className="grid content-start gap-5"
                 id="checkout-address-form"
                 noValidate
-                onSubmit={handleSubmit(submit)}
+                onSubmit={(event) => {
+                  void handleSubmit(submit)(event);
+                }}
               >
                 <div>
                   <h2 className="text-xl font-semibold">Delivery details</h2>

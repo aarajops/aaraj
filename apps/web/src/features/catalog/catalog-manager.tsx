@@ -141,7 +141,6 @@ export function CatalogManager({
   const hasProductChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const slugError = errors.slug?.message;
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [productRefreshError, setProductRefreshError] = useState<string | null>(
     null,
@@ -266,7 +265,6 @@ export function CatalogManager({
   async function saveProduct(submission: ProductSubmission) {
     if (submission.id && !hasProductChanges) return;
     setFormErrorMessage(null);
-    setErrorCode(null);
 
     try {
       let response: Response;
@@ -288,7 +286,6 @@ export function CatalogManager({
           });
           return;
         }
-        setErrorCode(problem?.errorCode ?? null);
         setFormErrorMessage(
           message ?? "The API returned an unreadable error response.",
         );
