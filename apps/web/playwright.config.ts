@@ -6,7 +6,12 @@ const apiPort = 3181;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["admin-datatables.spec.ts", "catalog.spec.ts", "orders.spec.ts"],
+  testMatch: [
+    "admin-datatables.spec.ts",
+    "analytics.spec.ts",
+    "catalog.spec.ts",
+    "orders.spec.ts",
+  ],
   fullyParallel: false,
   workers: 1,
   preserveOutput: "always",
