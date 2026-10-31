@@ -196,7 +196,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
             className="flex min-w-60 flex-1 gap-2"
             onSubmit={submitSearch}
           >
-            <InputGroup className="h-9">
+            <InputGroup className="h-9 has-[[data-slot=input-group-control]:focus-visible]:outline-solid has-[[data-slot=input-group-control]:focus-visible]:outline-2 has-[[data-slot=input-group-control]:focus-visible]:outline-offset-2 has-[[data-slot=input-group-control]:focus-visible]:outline-foreground">
               <InputGroupAddon>
                 <Search aria-hidden="true" />
               </InputGroupAddon>
