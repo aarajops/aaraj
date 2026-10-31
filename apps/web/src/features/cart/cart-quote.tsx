@@ -596,9 +596,7 @@ export function CartQuote({
                       }
                       aria-describedby={
                         [
-                          upazilaRequired
-                            ? "quote-upazila-description"
-                            : null,
+                          upazilaRequired ? "quote-upazila-description" : null,
                           locationErrors.upazilaId
                             ? "quote-upazila-error"
                             : null,

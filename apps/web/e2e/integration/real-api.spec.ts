@@ -1322,11 +1322,7 @@ test("catalog operator configures a product through to storefront visibility", a
   const quantitySelect = page.getByRole("combobox", {
     name: `Quantity for ${productName}, Black, S`,
   });
-  await chooseSelectOption(
-    page,
-    `Quantity for ${productName}, Black, S`,
-    "2",
-  );
+  await chooseSelectOption(page, `Quantity for ${productName}, Black, S`, "2");
   await expect(quantitySelect).toHaveText("2");
   await expect(
     quoteSection

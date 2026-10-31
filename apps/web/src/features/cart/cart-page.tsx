@@ -335,11 +335,7 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
             )}
             {!guestCart ? (
               !guestError && (
-                <div
-                  aria-busy="true"
-                  className="mt-4 grid gap-4"
-                  role="status"
-                >
+                <div aria-busy="true" className="mt-4 grid gap-4" role="status">
                   <span className="sr-only">Loading saved guest cart…</span>
                   <div aria-hidden="true" className="grid gap-3">
                     {[0, 1].map((line) => (

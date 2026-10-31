@@ -79,7 +79,9 @@ export function CartPageLoadingSkeleton() {
         <p className="text-sm font-semibold tracking-[0.16em] text-primary">
           AARAJ
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Your cart</h1>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+          Your cart
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Prices shown here are saved snapshots and may change before purchase.
         </p>
