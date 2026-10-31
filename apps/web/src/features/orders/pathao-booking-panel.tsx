@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Truck } from "lucide-react";
 import {
   PATHAO_MINIMUM_ITEM_WEIGHT_KG,
   type Order,
@@ -10,6 +11,7 @@ import {
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   getPathaoBooking,
   PathaoClientError,
@@ -22,12 +24,14 @@ export type PathaoAssignmentState =
 
 export function PathaoBookingPanel({
   order,
+  onFulfillmentUpdated,
   onAssignmentStateChange,
   onRecordPickup,
   handoffPending,
   handoffError,
 }: {
   order: Order;
+  onFulfillmentUpdated?: () => void;
   onAssignmentStateChange?: (state: PathaoAssignmentState) => void;
   onRecordPickup?: (consignmentId: string) => Promise<void>;
   handoffPending?: boolean;
@@ -54,6 +58,19 @@ export function PathaoBookingPanel({
     0,
   );
   const booking = details?.booking ?? null;
+  const showPanel = Boolean(
+    eligible ||
+    order.dispatch?.deliveryProvider === "pathao" ||
+    booking ||
+    details?.claimStatus,
+  );
+  const canReconcile = [
+    "submitting",
+    "outcome_unknown",
+    "reconciliation_required",
+  ].some(
+    (status) => booking?.status === status || details?.claimStatus === status,
+  );
 
   function applyDetails(booking: PathaoBookingManagement) {
     setDetails(booking);
@@ -67,6 +84,7 @@ export function PathaoBookingPanel({
     setError(null);
     try {
       applyDetails(await getPathaoBooking(order.id));
+      onFulfillmentUpdated?.();
       return true;
     } catch (reason) {
       onAssignmentStateChange?.("unavailable");
@@ -123,6 +141,7 @@ export function PathaoBookingPanel({
         observations: [],
       });
       onAssignmentStateChange?.(result.status);
+      onFulfillmentUpdated?.();
     } catch (reason) {
       const message =
         reason instanceof PathaoClientError || reason instanceof Error
@@ -161,6 +180,7 @@ export function PathaoBookingPanel({
         observations: [],
       });
       onAssignmentStateChange?.(result.status);
+      onFulfillmentUpdated?.();
       setConsignmentId("");
       setReconciliationReason("");
       setVerifiedInPanel(false);
@@ -175,11 +195,12 @@ export function PathaoBookingPanel({
     }
   }
 
-  if (!eligible && !booking) return null;
+  if (!showPanel) return null;
 
   return (
     <section
       aria-label="Pathao courier booking"
+      aria-busy={loading}
       className="grid gap-3 border-t border-border pt-4"
     >
       <h2 className="font-semibold">Pathao booking</h2>
@@ -205,13 +226,12 @@ export function PathaoBookingPanel({
         </p>
       )}
       {loading && !details ? (
-        <p
-          aria-busy="true"
-          className="text-sm text-muted-foreground"
-          role="status"
-        >
-          Loading booking…
-        </p>
+        <div aria-label="Loading Pathao booking details" role="status">
+          <div aria-hidden="true" className="grid gap-2">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-9 w-full rounded-lg" />
+          </div>
+        </div>
       ) : null}
 
       {booking ? (
@@ -279,71 +299,69 @@ export function PathaoBookingPanel({
             {PATHAO_MINIMUM_ITEM_WEIGHT_KG} kg minimum
           </p>
           <Button disabled={pending} onClick={() => void book()}>
+            <Truck aria-hidden="true" className="size-4" />
             {pending ? "Booking with Pathao…" : "Book order in Pathao"}
           </Button>
         </div>
       )}
 
-      {eligible &&
-        (booking?.status === "outcome_unknown" ||
-          booking?.status === "reconciliation_required" ||
-          details?.claimStatus) && (
-          <details className="rounded-xl border border-border p-4">
-            <summary className="cursor-pointer font-medium">
-              Reconcile an existing Pathao consignment
-            </summary>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Verify this consignment in the Pathao Merchant Panel before
-              reconciling it here.
-            </p>
-            <div className="mt-4 grid gap-4">
-              <label className="grid gap-2 text-sm font-medium">
-                Pathao consignment ID
-                <Input
-                  autoComplete="off"
-                  maxLength={120}
-                  value={consignmentId}
-                  onChange={(event) => setConsignmentId(event.target.value)}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-medium">
-                Reconciliation reason
-                <textarea
-                  className="min-h-24 rounded-md border border-input bg-background px-3 py-2"
-                  maxLength={500}
-                  value={reconciliationReason}
-                  onChange={(event) =>
-                    setReconciliationReason(event.target.value)
-                  }
-                />
-                <span className="font-normal text-muted-foreground">
-                  Record the provider-panel verification. Do not include
-                  customer personal information.
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  checked={verifiedInPanel}
-                  type="checkbox"
-                  onChange={(event) => setVerifiedInPanel(event.target.checked)}
-                />
-                I verified this consignment in the Pathao Merchant Panel.
-              </label>
-              <Button
-                disabled={
-                  pending ||
-                  !consignmentId ||
-                  !reconciliationReason.trim() ||
-                  !verifiedInPanel
+      {eligible && canReconcile && (
+        <details className="rounded-xl border border-border p-4">
+          <summary className="cursor-pointer font-medium">
+            Reconcile an existing Pathao consignment
+          </summary>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Verify this consignment in the Pathao Merchant Panel before
+            reconciling it here.
+          </p>
+          <div className="mt-4 grid gap-4">
+            <label className="grid gap-2 text-sm font-medium">
+              Pathao consignment ID
+              <Input
+                autoComplete="off"
+                maxLength={120}
+                value={consignmentId}
+                onChange={(event) => setConsignmentId(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Reconciliation reason
+              <textarea
+                className="min-h-24 rounded-md border border-input bg-background px-3 py-2"
+                maxLength={500}
+                value={reconciliationReason}
+                onChange={(event) =>
+                  setReconciliationReason(event.target.value)
                 }
-                variant="outline"
-                onClick={() => void reconcile()}
-              >
-                {pending ? "Verifying consignment…" : "Verify and reconcile"}
-              </Button>
-            </div>
-          </details>
-        )}
+              />
+              <span className="font-normal text-muted-foreground">
+                Record the provider-panel verification. Do not include customer
+                personal information.
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                checked={verifiedInPanel}
+                type="checkbox"
+                onChange={(event) => setVerifiedInPanel(event.target.checked)}
+              />
+              I verified this consignment in the Pathao Merchant Panel.
+            </label>
+            <Button
+              disabled={
+                pending ||
+                !consignmentId ||
+                !reconciliationReason.trim() ||
+                !verifiedInPanel
+              }
+              variant="outline"
+              onClick={() => void reconcile()}
+            >
+              {pending ? "Verifying consignment…" : "Verify and reconcile"}
+            </Button>
+          </div>
+        </details>
+      )}
     </section>
   );
 }

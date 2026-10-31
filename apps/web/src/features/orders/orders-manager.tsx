@@ -246,6 +246,7 @@ export function OrdersManager({
         />
       </div>
       <OrderDetailsSheet
+        onFulfillmentUpdated={() => router.refresh()}
         onOpenChange={(open) => {
           if (!open) setSelectedOrderId(null);
         }}
