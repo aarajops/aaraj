@@ -627,6 +627,8 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
 
   await page.getByRole("button", { name: "Apply orders search" }).focus();
   await page.keyboard.press("Tab");
+  await expect(page.getByRole("combobox", { name: "Order" })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(
     page.getByRole("combobox", { name: "Fulfillment" }),
   ).toBeFocused();
