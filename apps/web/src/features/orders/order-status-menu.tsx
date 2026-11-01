@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import type { Order, OrderStatusAction } from "@aaraj/contracts";
+import type { OrderStatusAction } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,17 +11,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 type OrderStatusMenuAction = Exclude<OrderStatusAction, "rejected">;
+const actionLabels: Record<OrderStatusMenuAction, string> = {
+  confirmed: "Confirm",
+  no_answer: "No Answer",
+  on_hold: "Hold",
+  cancelled: "Cancel",
+  pending: "Reopen",
+};
 
 export function OrderStatusMenu({
   actions,
   disabled = false,
   onSelect,
-  status,
 }: {
   actions: OrderStatusAction[];
   disabled?: boolean;
   onSelect: (action: OrderStatusMenuAction) => void;
-  status: Order["status"];
 }) {
   const availableActions = actions.filter(
     (action): action is OrderStatusMenuAction => action !== "rejected",
@@ -50,17 +55,7 @@ export function OrderStatusMenu({
             key={action}
             onClick={() => onSelect(action)}
           >
-            {action === "confirmed"
-              ? status === "on_hold"
-                ? "Confirm and resume"
-                : "Confirm order"
-              : action === "pending"
-                ? "Reopen as pending"
-                : action === "on_hold"
-                  ? "Put on hold"
-                  : action === "cancelled"
-                    ? "Cancel order"
-                    : "Mark no answer"}
+            {actionLabels[action]}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

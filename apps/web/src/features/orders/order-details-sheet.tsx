@@ -201,7 +201,6 @@ export function OrderDetailsSheet({
                         void updateStatus({ status: action });
                       }
                     }}
-                    status={order.status}
                   />
                 </div>
                 {cancelFormOpen && canCancelOrder && (

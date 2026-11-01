@@ -1571,30 +1571,20 @@ test("catalog operator configures a product through to storefront visibility", a
   });
   await updateStatusButton.focus();
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("menuitem", { name: "Confirm order" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Put on hold" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Cancel order" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Mark no answer" }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Confirm" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Hold" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Cancel" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "No Answer" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("menuitem", { name: "Confirm order" }),
-  ).toBeHidden();
+  await expect(page.getByRole("menuitem", { name: "Confirm" })).toBeHidden();
   await expect(updateStatusButton).toBeFocused();
   await updateStatusButton.click();
-  await page.getByRole("menuitem", { name: "Mark no answer" }).click();
+  await page.getByRole("menuitem", { name: "No Answer" }).click();
   await expect(
     orderStatusSection.getByText("No answer", { exact: true }),
   ).toBeVisible();
   await updateStatusButton.click();
-  await page.getByRole("menuitem", { name: "Cancel order" }).click();
+  await page.getByRole("menuitem", { name: "Cancel" }).click();
   const cancellationReason = orderStatusSection.getByLabel(
     "Cancellation reason",
   );
@@ -1616,15 +1606,15 @@ test("catalog operator configures a product through to storefront visibility", a
     name: "Update status",
   });
   await reviewStatusButton.click();
-  await page.getByRole("menuitem", { name: "Put on hold" }).click();
+  await page.getByRole("menuitem", { name: "Hold" }).click();
   await expect(
     page.getByRole("heading", { name: "Order on hold" }),
   ).toBeVisible();
   await reviewStatusButton.click();
-  await page.getByRole("menuitem", { name: "Confirm and resume" }).click();
+  await page.getByRole("menuitem", { name: "Confirm" }).click();
   await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
   await reviewStatusButton.click();
-  await page.getByRole("menuitem", { name: "Cancel order" }).click();
+  await page.getByRole("menuitem", { name: "Cancel" }).click();
   await expect(page.getByLabel("Cancellation reason")).toBeVisible();
   await page.getByRole("button", { name: "Keep order" }).click();
 

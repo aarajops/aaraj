@@ -280,7 +280,6 @@ export function OrderReview({
                     void updateStatus({ status: action });
                   }
                 }}
-                status={order.status}
               />
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
