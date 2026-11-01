@@ -31,10 +31,11 @@ import {
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { getRedisClient } from "../platform/redis/redis-client.js";
+import { lockCartOwner } from "./cart-owner-lock.js";
 import {
-  cartMergeReceipt,
   customerCart,
   customerCartLine,
+  guestCartRevisionReceipt,
 } from "./cart-schema.js";
 import {
   GUEST_CART_CHECKOUT_TOMBSTONE_TTL_SECONDS,
@@ -211,7 +212,10 @@ export class CartService {
     const id = parseGuestCartId(guestCartId);
     if (!id) return this.toCart(EMPTY_CART);
 
-    return this.toCart(await this.clearGuestCartState(id));
+    const state = await this.withGuestCartOwnerLock(id, () =>
+      this.clearGuestCartState(id),
+    );
+    return this.toCart(state);
   }
 
   async clearGuestCartForMergeResolution(
@@ -219,7 +223,49 @@ export class CartService {
   ): Promise<Cart> {
     const id = parseGuestCartId(guestCartId);
     if (!id) return this.toCart(EMPTY_CART);
-    return this.toCart(await this.clearGuestCartState(id));
+    const state = await this.withGuestCartOwnerLock(id, () =>
+      this.clearGuestCartState(id),
+    );
+    return this.toCart(state);
+  }
+
+  /** Called inside the checkout transaction while the shared guest-owner lock is held. */
+  async claimGuestCartRevisionForCheckout(
+    transaction: AuditTransaction,
+    guestCartId: string | undefined,
+    guestCartHash: string,
+    expectedRevision: number,
+  ): Promise<void> {
+    const id = parseGuestCartId(guestCartId);
+    if (!id)
+      throw new ConflictException("The guest cart is no longer available.");
+    const state = await this.readGuestState(id);
+    if ((state ?? EMPTY_CART).revision !== expectedRevision) {
+      throw new ConflictException(
+        "The cart changed during checkout. Request a fresh quote.",
+        { errorCode: "CART_REVISION_STALE" },
+      );
+    }
+    const [receipt] = await transaction
+      .select({ guestRevision: guestCartRevisionReceipt.guestRevision })
+      .from(guestCartRevisionReceipt)
+      .where(
+        and(
+          eq(guestCartRevisionReceipt.guestCartHash, guestCartHash),
+          eq(guestCartRevisionReceipt.guestRevision, expectedRevision),
+        ),
+      )
+      .limit(1);
+    if (receipt) {
+      throw new ConflictException(
+        "This guest cart revision has already been used. Refresh the cart before checking out.",
+        { errorCode: "CART_REVISION_ALREADY_CONSUMED" },
+      );
+    }
+    await transaction.insert(guestCartRevisionReceipt).values({
+      guestCartHash,
+      guestRevision: expectedRevision,
+    });
   }
 
   async clearCustomerCartForCheckout(
@@ -327,9 +373,12 @@ export class CartService {
       if (input.revision !== 0) throw staleRevision(0);
       id = randomBytes(32).toString("base64url");
     }
-    const state = await this.readGuestState(id);
-    const next = setStoredLine(state ?? EMPTY_CART, input.revision, line);
-    await this.writeGuestState(id, input.revision, next);
+    const next = await this.withGuestCartOwnerLock(id, async () => {
+      const state = await this.readGuestState(id);
+      const updated = setStoredLine(state ?? EMPTY_CART, input.revision, line);
+      await this.writeGuestState(id, input.revision, updated);
+      return updated;
+    });
     return { cart: await this.toCart(next), guestCartId: id };
   }
 
@@ -353,13 +402,16 @@ export class CartService {
       if (input.revision !== 0) throw staleRevision(0);
       return { cart: await this.toCart(EMPTY_CART), guestCartId: null };
     }
-    const state = await this.readGuestState(id);
-    if (!state) {
-      if (input.revision !== 0) throw staleRevision(0);
-      return { cart: await this.toCart(EMPTY_CART), guestCartId: null };
-    }
-    const next = removeStoredLine(state, variantId, input.revision);
-    await this.writeGuestState(id, input.revision, next);
+    const next = await this.withGuestCartOwnerLock(id, async () => {
+      const state = await this.readGuestState(id);
+      if (!state) {
+        if (input.revision !== 0) throw staleRevision(0);
+        return EMPTY_CART;
+      }
+      const updated = removeStoredLine(state, variantId, input.revision);
+      await this.writeGuestState(id, input.revision, updated);
+      return updated;
+    });
     return { cart: await this.toCart(next), guestCartId: id };
   }
 
@@ -391,32 +443,38 @@ export class CartService {
         toProductSnapshot(variant),
       ]),
     );
-    if (currentProducts.size !== guest.lines.length) {
-      throw new ConflictException({
-        statusCode: 409,
-        message:
-          "The guest cart contains a variant that is no longer available. Remove it before merging.",
-        error: "Conflict",
-        errorCode: "CART_VARIANT_UNAVAILABLE",
-      });
-    }
+    const hasUnavailableVariant = currentProducts.size !== guest.lines.length;
     const guestHash = createHash("sha256").update(id).digest("hex");
     let committed: CartStoredState;
     try {
       committed = await this.database.db.transaction(async (transaction) => {
+        await lockCartOwner(transaction, "guest", guestHash);
         const cartId = await ensureAndLockCustomerCart(transaction, customerId);
         const [receipt] = await transaction
-          .select({ guestRevision: cartMergeReceipt.guestRevision })
-          .from(cartMergeReceipt)
+          .select({ guestRevision: guestCartRevisionReceipt.guestRevision })
+          .from(guestCartRevisionReceipt)
           .where(
             and(
-              eq(cartMergeReceipt.guestCartHash, guestHash),
-              eq(cartMergeReceipt.guestRevision, guest.revision),
+              eq(guestCartRevisionReceipt.guestCartHash, guestHash),
+              eq(guestCartRevisionReceipt.guestRevision, guest.revision),
             ),
           )
           .limit(1);
         const current = await readCustomerCartState(transaction, customerId);
         if (receipt) return current;
+        const currentGuest = await this.readGuestState(id);
+        if (!currentGuest || currentGuest.revision !== guest.revision) {
+          throw staleRevision(currentGuest?.revision ?? 0);
+        }
+        if (hasUnavailableVariant) {
+          throw new ConflictException({
+            statusCode: 409,
+            message:
+              "The guest cart contains a variant that is no longer available. Remove it before merging.",
+            error: "Conflict",
+            errorCode: "CART_VARIANT_UNAVAILABLE",
+          });
+        }
 
         const combined = new Map(
           current.lines.map((line) => [line.variantId, line]),
@@ -495,7 +553,7 @@ export class CartService {
             .set({ revision, updatedAt: new Date() })
             .where(eq(customerCart.id, cartId));
         }
-        await transaction.insert(cartMergeReceipt).values({
+        await transaction.insert(guestCartRevisionReceipt).values({
           guestCartHash: guestHash,
           guestRevision: guest.revision,
         });
@@ -513,12 +571,12 @@ export class CartService {
       // A competing account may have committed this exact guest revision.
       // The receipt is globally unique, so returning the caller's own cart is safe.
       const receipt = await this.database.db
-        .select({ guestRevision: cartMergeReceipt.guestRevision })
-        .from(cartMergeReceipt)
+        .select({ guestRevision: guestCartRevisionReceipt.guestRevision })
+        .from(guestCartRevisionReceipt)
         .where(
           and(
-            eq(cartMergeReceipt.guestCartHash, guestHash),
-            eq(cartMergeReceipt.guestRevision, guest.revision),
+            eq(guestCartRevisionReceipt.guestCartHash, guestHash),
+            eq(guestCartRevisionReceipt.guestRevision, guest.revision),
           ),
         )
         .limit(1);
@@ -552,15 +610,18 @@ export class CartService {
       throw new ConflictException("The guest cart is no longer available.");
     const [variant] = await this.catalog.findPurchasableVariants([variantId]);
     if (!variant) throw new NotFoundException("Product variant not found.");
-    const state = await this.readGuestState(id);
-    if (!state)
-      throw new ConflictException("The guest cart is no longer available.");
-    const next = setStoredLine(state, input.revision, {
-      variantId,
-      quantity: input.quantity,
-      product: toProductSnapshot(variant),
+    const next = await this.withGuestCartOwnerLock(id, async () => {
+      const state = await this.readGuestState(id);
+      if (!state)
+        throw new ConflictException("The guest cart is no longer available.");
+      const updated = setStoredLine(state, input.revision, {
+        variantId,
+        quantity: input.quantity,
+        product: toProductSnapshot(variant),
+      });
+      await this.writeGuestState(id, input.revision, updated);
+      return updated;
     });
-    await this.writeGuestState(id, input.revision, next);
     return { cart: await this.toCart(next), guestCartId: id };
   }
 
@@ -572,11 +633,14 @@ export class CartService {
     const id = parseGuestCartId(guestCartId);
     if (!id)
       throw new ConflictException("The guest cart is no longer available.");
-    const state = await this.readGuestState(id);
-    if (!state)
-      throw new ConflictException("The guest cart is no longer available.");
-    const next = removeStoredLine(state, variantId, input.revision);
-    await this.writeGuestState(id, input.revision, next);
+    const next = await this.withGuestCartOwnerLock(id, async () => {
+      const state = await this.readGuestState(id);
+      if (!state)
+        throw new ConflictException("The guest cart is no longer available.");
+      const updated = removeStoredLine(state, variantId, input.revision);
+      await this.writeGuestState(id, input.revision, updated);
+      return updated;
+    });
     return { cart: await this.toCart(next), guestCartId: id };
   }
 
@@ -815,6 +879,17 @@ export class CartService {
       this.logger.warn("Guest cart cleanup could not reach Redis.");
       return false;
     }
+  }
+
+  private async withGuestCartOwnerLock<T>(
+    id: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const guestCartHash = createHash("sha256").update(id).digest("hex");
+    return this.database.db.transaction(async (transaction) => {
+      await lockCartOwner(transaction, "guest", guestCartHash);
+      return operation();
+    });
   }
 
   private guestKey(id: string): string {

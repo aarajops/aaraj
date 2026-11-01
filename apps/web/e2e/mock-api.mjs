@@ -87,7 +87,12 @@ const sizeGuides = Array.from({ length: 100 }, (_, index) =>
 );
 const managedOrders = Array.from({ length: 73 }, (_, index) => {
   const sequence = index + 1;
-  const status = ["awaiting_confirmation", "confirmed", "rejected"][index % 3];
+  const status = [
+    "pending",
+    "no_answer",
+    "confirmed",
+    "rejected",
+  ][index % 4];
   return {
     id: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
     reference: `ORD-026-${String(sequence).padStart(5, "0")}`,

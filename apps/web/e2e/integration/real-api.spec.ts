@@ -1499,7 +1499,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByTestId("order-reference")).toBeVisible();
   const customerOrderStatus = page.getByRole("status").filter({
     hasText:
-      "We’ll contact you to confirm your order and delivery details before dispatch.",
+      "We’ll contact you to verify your order and delivery details before dispatch.",
   });
   await expect(customerOrderStatus).toBeVisible();
   await expect(
@@ -1556,15 +1556,77 @@ test("catalog operator configures a product through to storefront visibility", a
     `/api/v1/orders/manage/${customerOrderId}`,
   );
   expect(managedOrderResponse.status()).toBe(200);
-  await page.goto(`/admin/orders/${customerOrderId}`);
+  await customerOrderRow
+    .getByRole("button", { name: orderReference, exact: true })
+    .click();
+  const orderDetailsSheet = page.getByRole("dialog");
+  const orderStatusSection = orderDetailsSheet.getByRole("region", {
+    name: "Order status",
+  });
   await expect(
-    page.getByRole("heading", { name: "Customer confirmation" }),
+    orderStatusSection.getByText("Pending", { exact: true }),
   ).toBeVisible();
+  const updateStatusButton = orderStatusSection.getByRole("button", {
+    name: "Update status",
+  });
+  await updateStatusButton.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("menuitem", { name: "Confirm order" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Put on hold" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Cancel order" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Mark no answer" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("menuitem", { name: "Confirm order" }),
+  ).toBeHidden();
+  await expect(updateStatusButton).toBeFocused();
+  await updateStatusButton.click();
+  await page.getByRole("menuitem", { name: "Mark no answer" }).click();
+  await expect(
+    orderStatusSection.getByText("No answer", { exact: true }),
+  ).toBeVisible();
+  await updateStatusButton.click();
+  await page.getByRole("menuitem", { name: "Cancel order" }).click();
+  const cancellationReason = orderStatusSection.getByLabel(
+    "Cancellation reason",
+  );
+  await expect(cancellationReason).toBeVisible();
+  const cancelOrderButton = orderStatusSection.getByRole("button", {
+    name: "Cancel order",
+  });
+  await expect(cancelOrderButton).toBeDisabled();
+  await cancellationReason.fill("Customer changed their mind");
+  await expect(cancelOrderButton).toBeEnabled();
+  await orderStatusSection.getByRole("button", { name: "Keep order" }).click();
+  await orderDetailsSheet
+    .getByRole("link", { name: "Open full order review" })
+    .click();
+  await expect(page).toHaveURL(`/admin/orders/${customerOrderId}`);
+  await expect(page.getByRole("heading", { name: "No answer" })).toBeVisible();
   await expect(page.getByText("Integration Customer")).toBeVisible();
-  await page.getByRole("button", { name: "Confirm order" }).click();
+  const reviewStatusButton = page.getByRole("button", {
+    name: "Update status",
+  });
+  await reviewStatusButton.click();
+  await page.getByRole("menuitem", { name: "Put on hold" }).click();
   await expect(
-    page.getByText("Confirmed · Serviceable", { exact: true }),
+    page.getByRole("heading", { name: "Order on hold" }),
   ).toBeVisible();
+  await reviewStatusButton.click();
+  await page.getByRole("menuitem", { name: "Confirm and resume" }).click();
+  await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
+  await reviewStatusButton.click();
+  await page.getByRole("menuitem", { name: "Cancel order" }).click();
+  await expect(page.getByLabel("Cancellation reason")).toBeVisible();
+  await page.getByRole("button", { name: "Keep order" }).click();
 
   const pathaoPanel = page.getByRole("region", {
     name: "Pathao courier booking",
@@ -1579,9 +1641,6 @@ test("catalog operator configures a product through to storefront visibility", a
   );
   await expect(
     pathaoPanel.getByRole("button", { name: "Book order in Pathao" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Cancel order and release reserved stock", { exact: true }),
   ).toBeVisible();
 
   const bookingRequests: Array<{

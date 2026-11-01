@@ -20,7 +20,7 @@ import {
 import { formatBdtPrice } from "@/lib/currency";
 import type { ManagedOrderRow, ManagedOrdersPage } from "./orders-view-model";
 import { OrderDetailsSheet } from "./order-details-sheet";
-import { currentOrderStatusLabel, humanize } from "./orders-format";
+import { humanize, humanizeOrderStatus } from "./orders-format";
 
 const columnHelper = createDataTableColumnHelper<ManagedOrderRow>();
 
@@ -150,13 +150,10 @@ export function OrdersManager({
       }),
       columnHelper.display({
         id: "status",
-        header: "Status",
+        header: "Order status",
         cell: ({ row }) => (
           <Badge variant={orderStatusVariant(row.original.status)}>
-            {currentOrderStatusLabel(
-              row.original.status,
-              row.original.fulfillmentStatus,
-            )}
+            {humanizeOrderStatus(row.original.status)}
           </Badge>
         ),
       }),
@@ -219,6 +216,23 @@ export function OrdersManager({
           pathname="/admin/orders"
           query={query}
           filters={[
+            {
+              name: "status",
+              label: "Order",
+              value: query.status ?? "",
+              allLabel: "All order statuses",
+              options: [
+                {
+                  label: "Pending",
+                  value: "pending",
+                },
+                { label: "No answer", value: "no_answer" },
+                { label: "Confirmed", value: "confirmed" },
+                { label: "On hold", value: "on_hold" },
+                { label: "Rejected", value: "rejected" },
+                { label: "Cancelled", value: "cancelled" },
+              ],
+            },
             {
               name: "fulfillmentStatus",
               label: "Fulfillment",

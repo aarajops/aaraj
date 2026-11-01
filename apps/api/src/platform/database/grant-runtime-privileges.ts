@@ -38,7 +38,7 @@ const runtimeTableGrants = [
   ["inventory", "reservation_command", ["SELECT", "INSERT"]],
   ["cart", "customer_cart", ["SELECT", "INSERT", "UPDATE"]],
   ["cart", "customer_cart_line", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
-  ["cart", "merge_receipt", ["SELECT", "INSERT"]],
+  ["cart", "guest_cart_revision_receipt", ["SELECT", "INSERT"]],
   ["geography", "snapshot", ["SELECT"]],
   ["geography", "location", ["SELECT"]],
   ["delivery", "tariff", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
@@ -393,7 +393,9 @@ async function main(): Promise<void> {
     await runtimePool.query(
       'SELECT 1 FROM "cart"."customer_cart_line" LIMIT 0',
     );
-    await runtimePool.query('SELECT 1 FROM "cart"."merge_receipt" LIMIT 0');
+    await runtimePool.query(
+      'SELECT 1 FROM "cart"."guest_cart_revision_receipt" LIMIT 0',
+    );
     await runtimePool.query('SELECT 1 FROM "geography"."snapshot" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "geography"."location" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "delivery"."tariff" LIMIT 0');

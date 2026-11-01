@@ -83,8 +83,8 @@ export const customerCartLine = cartSchema.table(
   ],
 );
 
-export const cartMergeReceipt = cartSchema.table(
-  "merge_receipt",
+export const guestCartRevisionReceipt = cartSchema.table(
+  "guest_cart_revision_receipt",
   {
     guestCartHash: text("guest_cart_hash").notNull(),
     guestRevision: bigint("guest_revision", { mode: "number" }).notNull(),
@@ -95,11 +95,11 @@ export const cartMergeReceipt = cartSchema.table(
   (table) => [
     primaryKey({ columns: [table.guestCartHash, table.guestRevision] }),
     check(
-      "cart_merge_receipt_hash_check",
+      "guest_cart_revision_receipt_hash_check",
       sql`${table.guestCartHash} ~ '^[0-9a-f]{64}$'`,
     ),
     check(
-      "cart_merge_receipt_revision_check",
+      "guest_cart_revision_receipt_revision_check",
       sql`${table.guestRevision} between 0 and ${sql.raw(String(Number.MAX_SAFE_INTEGER))}`,
     ),
   ],

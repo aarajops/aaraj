@@ -7,6 +7,7 @@ import {
   Headers,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   Res,
@@ -25,7 +26,6 @@ import {
 } from "@thallesp/nestjs-better-auth";
 import {
   CreateOrderInputSchema,
-  OrderCancellationInputSchema,
   OrderCollectionInputSchema,
   OrderDispatchCommandIdSchema,
   OrderDispatchInputSchema,
@@ -33,14 +33,13 @@ import {
   OrderIdempotencyKeySchema,
   OrderIdSchema,
   OrderListQuerySchema,
-  OrderServiceabilityInputSchema,
+  OrderStatusUpdateInputSchema,
   type CreateOrderInput,
-  type OrderCancellationInput,
   type OrderCollectionInput,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
   type OrderListQuery,
-  type OrderServiceabilityInput,
+  type OrderStatusUpdateInput,
 } from "@aaraj/contracts";
 import { CART_COOKIE_NAME, getCartCookieOptions } from "../cart/cart-cookie.js";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
@@ -176,21 +175,21 @@ export class OrdersController {
   getForManagement(
     @Param("orderId", { schema: OrderIdSchema }) orderId: string,
   ) {
-    return this.orders.getForManagement(orderId);
+    return this.orders.getManagementDetail(orderId);
   }
 
-  @Post("manage/:orderId/serviceability")
+  @Patch("manage/:orderId/status")
   @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
   @Can(OrdersPolicy, "manage")
   @UseGuards(CookieMutationGuard)
-  reviewServiceability(
+  updateManualStatus(
     @Session() session: UserSession,
     @Param("orderId", { schema: OrderIdSchema }) orderId: string,
-    @Body({ schema: OrderServiceabilityInputSchema })
-    input: OrderServiceabilityInput,
+    @Body({ schema: OrderStatusUpdateInputSchema })
+    input: OrderStatusUpdateInput,
   ) {
-    return this.orders.reviewServiceability(orderId, session.user.id, input);
+    return this.orders.updateManualStatus(orderId, session.user.id, input);
   }
 
   @Post("manage/:orderId/dispatch")
@@ -218,20 +217,6 @@ export class OrdersController {
       parsedCommandId.data.toLowerCase(),
       input,
     );
-  }
-
-  @Post("manage/:orderId/cancel")
-  @ApiCookieAuth()
-  @Header("Cache-Control", "no-store")
-  @Can(OrdersPolicy, "manage")
-  @UseGuards(CookieMutationGuard)
-  cancelAwaitingDispatch(
-    @Session() session: UserSession,
-    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
-    @Body({ schema: OrderCancellationInputSchema })
-    input: OrderCancellationInput,
-  ) {
-    return this.orders.cancelAwaitingDispatch(orderId, session.user.id, input);
   }
 
   @Post("manage/:orderId/fulfillment-outcome")

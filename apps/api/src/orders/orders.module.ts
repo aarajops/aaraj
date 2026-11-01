@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { CartModule } from "../cart/cart.module.js";
+import { CatalogModule } from "../catalog/catalog.module.js";
 import { GeographyModule } from "../geography/geography.module.js";
 import { InventoryModule } from "../inventory/inventory.module.js";
 import { AuditModule } from "../platform/audit/audit.module.js";
@@ -16,6 +17,7 @@ import { ORDERS_PATHAO_PORT } from "./orders-pathao.port.js";
     AuditModule,
     PlatformAuthorizationModule,
     CartModule,
+    CatalogModule,
     QuoteModule,
     GeographyModule,
     InventoryModule,

@@ -19,6 +19,7 @@ import {
 } from "@aaraj/contracts";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
+import { lockCartOwner } from "../cart/cart-owner-lock.js";
 import {
   CATALOG_CART_PORT,
   type CatalogCartPort,
@@ -107,7 +108,7 @@ export class QuoteService {
       BigInt(merchandiseGrossBdt) + BigInt(tariff.feeBdt),
     );
     const [saved] = await this.database.db.transaction(async (transaction) => {
-      await lockQuoteOwner(transaction, owner);
+      await lockCartQuoteOwner(transaction, owner);
       const [latest] = await transaction
         .select({ createdAt: quoteSnapshot.createdAt })
         .from(quoteSnapshot)
@@ -291,7 +292,7 @@ export class QuoteService {
     quote: AuthoritativeQuote,
     owner: CartQuoteOwner,
   ): Promise<void> {
-    await lockQuoteOwner(transaction, owner);
+    await lockCartQuoteOwner(transaction, owner);
 
     const [row] = await transaction
       .select({ id: quoteSnapshot.id })
@@ -419,17 +420,14 @@ function quoteOwnerCondition(owner: CartQuoteOwner) {
     : eq(quoteSnapshot.guestCartHash, owner.guestCartHash);
 }
 
-async function lockQuoteOwner(
+async function lockCartQuoteOwner(
   transaction: AuditTransaction,
   owner: CartQuoteOwner,
 ): Promise<void> {
-  const resource = JSON.stringify([
-    "aaraj/quote-owner/v1",
+  await lockCartOwner(
+    transaction,
     owner.kind,
     owner.kind === "customer" ? owner.customerId : owner.guestCartHash,
-  ]);
-  await transaction.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${resource}, 0))`,
   );
 }
 

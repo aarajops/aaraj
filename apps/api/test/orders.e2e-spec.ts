@@ -317,11 +317,11 @@ describe("COD Orders and checkout", () => {
 
   async function confirmServiceable(orderId: string) {
     await request(app.getHttpServer())
-      .post(`${API_V1_BASE_PATH}/orders/manage/${orderId}/serviceability`)
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${orderId}/status`)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
-      .send({ outcome: "serviceable", reason: "Destination is serviceable" })
-      .expect(201);
+      .send({ status: "confirmed", reason: "Destination is serviceable" })
+      .expect(200);
   }
 
   async function stockFor(variantId: string) {
@@ -719,7 +719,7 @@ describe("COD Orders and checkout", () => {
     ).expect(201);
     expect(response.body).toMatchObject({
       reference: expect.stringMatching(/^ORD-[0-9]{3}-[0-9]{5}$/),
-      status: "awaiting_confirmation",
+      status: "pending",
       serviceability: "pending_manual_review",
       paymentMethod: "cod",
       collectionStatus: "uncollected",
@@ -1030,6 +1030,46 @@ describe("COD Orders and checkout", () => {
     }
   });
 
+  it("rejects a guest cart change between checkout preflight and commit", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const quote = await createQuote(cart.cookie);
+    const key = randomUUID();
+    const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
+    const quoteService = app.get(QuoteService);
+    const lockAndValidate =
+      quoteService.lockAndValidateForOrderCheckout.bind(quoteService);
+    const finalValidation = vi
+      .spyOn(quoteService, "lockAndValidateForOrderCheckout")
+      .mockImplementationOnce(async (...args) => {
+        await request(app.getHttpServer())
+          .put(`${API_V1_BASE_PATH}/cart/lines/${variantId}`)
+          .set("Origin", origin)
+          .set("Cookie", cart.cookie)
+          .send({ revision: cart.revision, quantity: 2 })
+          .expect(200);
+        return lockAndValidate(...args);
+      });
+
+    try {
+      const response = await placeOrder(
+        checkoutCookie,
+        checkoutBody(quote.id),
+        key,
+      ).expect(409);
+      expect(response.body.errorCode).toBe("CART_REVISION_STALE");
+      expect((await stockFor(variantId)).quantityReserved).toBe(0);
+      expect(
+        await database.db
+          .select()
+          .from(customerOrder)
+          .where(eq(customerOrder.quoteId, quote.id)),
+      ).toHaveLength(0);
+    } finally {
+      finalValidation.mockRestore();
+    }
+  });
+
   it("rechecks delivery pricing at the order transaction boundary", async () => {
     const variantId = await createVariant(2);
     const cart = await newGuestCart([variantId]);
@@ -1289,7 +1329,7 @@ describe("COD Orders and checkout", () => {
     expect(privateOrder.body.fulfillmentStatus).toBe("not_started");
   });
 
-  it("authorizes staff manual serviceability decisions and releases stock on rejection", async () => {
+  it("uses the status PATCH for staff rejection and releases stock", async () => {
     const variantId = await createVariant(2);
     const cart = await newGuestCart([variantId]);
     const quote = await createQuote(cart.cookie);
@@ -1308,27 +1348,188 @@ describe("COD Orders and checkout", () => {
       .set("Cookie", customer.cookie)
       .expect(403);
     await request(app.getHttpServer())
-      .post(
-        `${API_V1_BASE_PATH}/orders/manage/${created.body.id}/serviceability`,
-      )
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${created.body.id}/status`)
       .set("Origin", origin)
       .set("Cookie", customer.cookie)
-      .send({ outcome: "serviceable", reason: "Destination can be served" })
+      .send({ status: "confirmed" })
       .expect(403);
     await request(app.getHttpServer())
-      .post(
-        `${API_V1_BASE_PATH}/orders/manage/${created.body.id}/serviceability`,
-      )
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${created.body.id}/status`)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
-      .send({ outcome: "unserviceable", reason: "Courier does not cover area" })
-      .expect(201)
+      .send({ status: "rejected", reason: "Courier does not cover area" })
+      .expect(200)
       .expect(({ body }) => {
         expect(body.status).toBe("rejected");
         expect(body.serviceability).toBe("unserviceable");
         expect(body.fulfillmentStatus).toBe("cancelled");
       });
     expect((await stockFor(variantId)).quantityReserved).toBe(0);
+  });
+
+  it("manages pending orders and holds through one audited PATCH flow", async () => {
+    const fixture = await createGuestOrder();
+    const statusUrl = `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`;
+
+    await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", customer.cookie)
+      .send({ status: "on_hold" })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "rejected" })
+      .expect(400);
+
+    const heldPending = await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "on_hold", reason: "Customer asked us to call tomorrow" })
+      .expect(200);
+    expect(heldPending.body).toMatchObject({
+      status: "on_hold",
+      serviceability: "pending_manual_review",
+      fulfillmentStatus: "not_started",
+    });
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+
+    const confirmed = await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "confirmed", reason: "Customer confirmed by phone" })
+      .expect(200);
+    expect(confirmed.body).toMatchObject({
+      status: "confirmed",
+      serviceability: "serviceable",
+      fulfillmentStatus: "awaiting_dispatch",
+    });
+
+    const heldConfirmed = await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        status: "on_hold",
+        reason: "Customer asked us to pause dispatch",
+      })
+      .expect(200);
+    expect(heldConfirmed.body.status).toBe("on_hold");
+    expect(heldConfirmed.body.fulfillmentStatus).toBe("awaiting_dispatch");
+
+    const resumed = await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "confirmed", reason: "Customer reconfirmed by phone" })
+      .expect(200);
+    expect(resumed.body.status).toBe("confirmed");
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+  });
+
+  it("records no answer without releasing the order reservation", async () => {
+    const fixture = await createGuestOrder();
+    const statusUrl = `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`;
+    const initialDetail = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(initialDetail.body.availableStatusActions).toContain("no_answer");
+
+    const noAnswer = await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "no_answer" })
+      .expect(200);
+    expect(noAnswer.body).toMatchObject({
+      status: "no_answer",
+      serviceability: "pending_manual_review",
+      fulfillmentStatus: "not_started",
+    });
+    expect(noAnswer.body.availableStatusActions).toEqual(
+      expect.arrayContaining(["confirmed", "on_hold", "cancelled"]),
+    );
+    expect(noAnswer.body.availableStatusActions).not.toContain("no_answer");
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+
+    const [reservation] = await database.db
+      .select({ status: inventoryStockReservation.status })
+      .from(inventoryStockReservation)
+      .where(eq(inventoryStockReservation.id, fixture.reservationId));
+    expect(reservation?.status).toBe("held");
+
+    await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "no_answer" })
+      .expect(200);
+    const noAnswerAudits = await database.db
+      .select({ id: auditEvent.id })
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.subjectId, fixture.id),
+          eq(auditEvent.eventType, "commerce.cod_order_no_answer"),
+        ),
+      );
+    expect(noAnswerAudits).toHaveLength(1);
+
+    const confirmed = await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "confirmed" })
+      .expect(200);
+    expect(confirmed.body.status).toBe("confirmed");
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+  });
+
+  it("filters the management list by order status", async () => {
+    const older = await createGuestOrder();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const newer = await createGuestOrder();
+    for (const fixture of [older, newer]) {
+      await request(app.getHttpServer())
+        .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`)
+        .set("Origin", origin)
+        .set("Cookie", staff.cookie)
+        .send({ status: "on_hold" })
+        .expect(200);
+    }
+
+    const response = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage`)
+      .set("Cookie", staff.cookie)
+      .query({ status: "on_hold" });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+
+    const orderIds = response.body.rows.map((row: { id: string }) => row.id);
+    expect(orderIds).toEqual(expect.arrayContaining([older.id, newer.id]));
+    expect(response.body.rows).toHaveLength(2);
+
+    const noAnswer = await createGuestOrder();
+    await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${noAnswer.id}/status`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "no_answer" })
+      .expect(200);
+
+    const noAnswerResponse = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage`)
+      .set("Cookie", staff.cookie)
+      .query({ status: "no_answer" })
+      .expect(200);
+    expect(
+      noAnswerResponse.body.rows.map((row: { id: string }) => row.id),
+    ).toEqual([noAnswer.id]);
   });
 
   it("paginates managed Orders with reference search and stable ordering", async () => {
@@ -1478,11 +1679,14 @@ describe("COD Orders and checkout", () => {
     await confirmServiceable(fixture.id);
 
     const response = await request(app.getHttpServer())
-      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/cancel`)
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
-      .send({ reason: "Customer confirmed cancellation by phone" })
-      .expect(201);
+      .send({
+        status: "cancelled",
+        reason: "Customer confirmed cancellation by phone",
+      })
+      .expect(200);
 
     expect(response.body).toMatchObject({
       status: "cancelled",
@@ -3067,15 +3271,13 @@ describe("COD Orders and checkout", () => {
     const rejectedFixture = await createGuestOrder(2);
     const [rejection, concurrentDispatch] = await Promise.all([
       request(app.getHttpServer())
-        .post(
-          `${API_V1_BASE_PATH}/orders/manage/${rejectedFixture.id}/serviceability`,
-        )
+        .patch(`${API_V1_BASE_PATH}/orders/manage/${rejectedFixture.id}/status`)
         .set("Origin", origin)
         .set("Cookie", staff.cookie)
-        .send({ outcome: "unserviceable", reason: "Destination not served" }),
+        .send({ status: "rejected", reason: "Destination not served" }),
       dispatchOrder(rejectedFixture.id, staff.cookie),
     ]);
-    expect(rejection.status).toBe(201);
+    expect(rejection.status).toBe(200);
     expect(concurrentDispatch.status).toBe(409);
     expect((await stockFor(rejectedFixture.variantId)).quantityOnHand).toBe(2);
     expect((await stockFor(rejectedFixture.variantId)).quantityReserved).toBe(
@@ -3089,7 +3291,7 @@ describe("COD Orders and checkout", () => {
     );
     expect(pendingDispatch.status).toBe(409);
     expect((await orderById(pendingFixture.id))?.status).toBe(
-      "awaiting_confirmation",
+      "pending",
     );
     expect((await stockFor(pendingFixture.variantId)).quantityOnHand).toBe(2);
     expect((await stockFor(pendingFixture.variantId)).quantityReserved).toBe(1);
@@ -3157,14 +3359,14 @@ describe("COD Orders and checkout", () => {
     await setOrderAge(fixture.id, 365 * 24);
 
     const stillPending = await orderById(fixture.id);
-    expect(stillPending?.status).toBe("awaiting_confirmation");
+    expect(stillPending?.status).toBe("pending");
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
 
     const reviewed = await app
       .get(OrdersService)
-      .reviewServiceability(fixture.id, staff.id, {
-        outcome: "serviceable",
-        reason: "Destination can be served",
+      .updateManualStatus(fixture.id, staff.id, {
+        status: "confirmed",
+        reason: "Customer confirmed and destination can be served",
       });
 
     expect(reviewed.status).toBe("confirmed");

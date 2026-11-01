@@ -5,9 +5,9 @@ import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
 import {
   API_V1_BASE_PATH,
   OrderListQuerySchema,
+  OrderManagementDetailSchema,
   OrderManagementListSchema,
-  OrderSchema,
-  type Order,
+  type OrderManagementDetail,
   type OrderListQuery,
   type OrderManagementList,
 } from "@aaraj/contracts";
@@ -16,6 +16,7 @@ export type OrdersPageSearchParams = {
   limit?: string | string[];
   offset?: string | string[];
   search?: string | string[];
+  status?: string | string[];
   fulfillmentStatus?: string | string[];
 };
 
@@ -28,6 +29,7 @@ export function parseOrdersPageQuery(
     Array.isArray(searchParams.limit) ||
     Array.isArray(searchParams.offset) ||
     Array.isArray(searchParams.search) ||
+    Array.isArray(searchParams.status) ||
     Array.isArray(searchParams.fulfillmentStatus)
   ) {
     return defaultOrderListQuery;
@@ -55,6 +57,7 @@ export async function getManagedOrders(
       offset: String(query.offset),
     });
     if (query.search) search.set("search", query.search);
+    if (query.status) search.set("status", query.status);
     if (query.fulfillmentStatus) {
       search.set("fulfillmentStatus", query.fulfillmentStatus);
     }
@@ -74,7 +77,7 @@ export async function getManagedOrders(
 
 export async function getManagedOrder(
   orderId: string,
-): Promise<StaffOrderResult<Order>> {
+): Promise<StaffOrderResult<OrderManagementDetail>> {
   try {
     const response = await fetch(
       `${getApiInternalUrl()}${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}`,
@@ -84,7 +87,7 @@ export async function getManagedOrder(
     if (response.status === 403) return { kind: "forbidden" };
     if (response.status === 404) return { kind: "not-found" };
     if (!response.ok) return { kind: "unavailable" };
-    const parsed = OrderSchema.safeParse(await response.json());
+    const parsed = OrderManagementDetailSchema.safeParse(await response.json());
     return parsed.success ? { value: parsed.data } : { kind: "unavailable" };
   } catch {
     return { kind: "unavailable" };

@@ -9,32 +9,45 @@ import {
 import {
   OrderDispatchInputSchema,
   type Order,
+  type OrderManagementDetail,
+  type OrderStatusAction,
+  type OrderStatusUpdateInput,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
 } from "@aaraj/contracts";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
 import {
-  cancelAwaitingDispatchOrder,
   dispatchCodOrder,
   OrderRequestError,
   recordOrderCodCollection,
   recordOrderFulfillmentOutcome,
-  updateOrderServiceability,
+  updateOrderStatus,
 } from "./orders-client";
 import { humanize, humanizeOrderStatus } from "./orders-format";
 import {
   PathaoBookingPanel,
   type PathaoAssignmentState,
 } from "./pathao-booking-panel";
+import { OrderStatusMenu } from "./order-status-menu";
 
-export function OrderReview({ initialOrder }: { initialOrder: Order }) {
-  const [order, setOrder] = useState(initialOrder);
+type OrderReviewOrder = Order & {
+  availableStatusActions?: OrderStatusAction[];
+};
+
+export function OrderReview({
+  initialOrder,
+}: {
+  initialOrder: OrderManagementDetail;
+}) {
+  const [order, setOrder] = useState<OrderReviewOrder>(initialOrder);
   const [reason, setReason] = useState("");
   const [cancelReason, setCancelReason] = useState("");
+  const [cancelFormOpen, setCancelFormOpen] = useState(false);
   const [outcomeReason, setOutcomeReason] = useState("");
   const [collectionReason, setCollectionReason] = useState("");
   const [collectionAmount, setCollectionAmount] = useState("");
@@ -49,15 +62,35 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
     null,
   );
 
-  async function decide(outcome: "serviceable" | "unserviceable") {
+  function applyOrderUpdate(updatedOrder: Order) {
+    setOrder(updatedOrder);
+  }
+
+  async function updateStatus(input: OrderStatusUpdateInput) {
     setPending(true);
     setError(null);
     try {
-      setOrder(
-        await updateOrderServiceability(
-          order.id,
-          outcome === "serviceable" ? { outcome } : { outcome, reason },
-        ),
+      applyOrderUpdate(await updateOrderStatus(order.id, input));
+    } catch (reasonError) {
+      setError(
+        reasonError instanceof Error
+          ? reasonError.message
+          : "The order status could not be updated.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function rejectAsUnserviceable() {
+    setPending(true);
+    setError(null);
+    try {
+      applyOrderUpdate(
+        await updateOrderStatus(order.id, {
+          status: "rejected",
+          reason,
+        }),
       );
       setReason("");
     } catch (reasonError) {
@@ -86,7 +119,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
     setPending(true);
     setError(null);
     try {
-      setOrder(await dispatchCodOrder(order.id, input, command.id));
+      applyOrderUpdate(await dispatchCodOrder(order.id, input, command.id));
     } catch (reasonError) {
       setError(
         reasonError instanceof OrderRequestError
@@ -121,12 +154,14 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
     setPending(true);
     setError(null);
     try {
-      setOrder(
-        await cancelAwaitingDispatchOrder(order.id, {
-          reason: cancelReason,
+      applyOrderUpdate(
+        await updateOrderStatus(order.id, {
+          status: "cancelled",
+          reason: cancelReason.trim(),
         }),
       );
       setCancelReason("");
+      setCancelFormOpen(false);
     } catch (reasonError) {
       setError(
         reasonError instanceof Error
@@ -144,7 +179,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
     setPending(true);
     setError(null);
     try {
-      setOrder(
+      applyOrderUpdate(
         await recordOrderFulfillmentOutcome(order.id, {
           outcome,
           reason: outcomeReason,
@@ -165,7 +200,7 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
     setPending(true);
     setError(null);
     try {
-      setOrder(
+      applyOrderUpdate(
         await recordOrderCodCollection(order.id, {
           collectedAmountBdt: Number(collectionAmount),
           reason: collectionReason,
@@ -190,6 +225,23 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
         : order.fulfillmentStatus === "partially_delivered"
           ? ["partially_delivered", "delivered", "returned"]
           : [];
+  const canConfirmOrder = order.availableStatusActions?.includes("confirmed");
+  const canPutOnHold = order.availableStatusActions?.includes("on_hold");
+  const canMarkNoAnswer = order.availableStatusActions?.includes("no_answer");
+  const canRejectAsUnserviceable =
+    order.availableStatusActions?.includes("rejected");
+  const canCancelBeforeDispatch =
+    order.availableStatusActions?.includes("cancelled");
+  const canReopenAsPending = order.availableStatusActions?.includes(
+    "pending",
+  );
+  const canManageCustomerDecision =
+    canConfirmOrder ||
+    canPutOnHold ||
+    canMarkNoAnswer ||
+    canCancelBeforeDispatch ||
+    canReopenAsPending ||
+    canRejectAsUnserviceable;
 
   return (
     <>
@@ -205,11 +257,34 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
         />
         <section className="mt-6 grid gap-5 rounded-2xl border border-border p-5 sm:grid-cols-2 sm:p-7">
           <div>
-            <h2 className="font-semibold">Order state</h2>
-            <p className="mt-2">
-              {humanizeOrderStatus(order.status)} ·{" "}
-              {humanize(order.serviceability)}
-            </p>
+            <h2 className="font-semibold">Order status</h2>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+              <Badge
+                variant={
+                  order.status === "cancelled" || order.status === "rejected"
+                    ? "destructive"
+                    : order.status === "confirmed"
+                      ? "default"
+                      : "secondary"
+                }
+              >
+                {humanizeOrderStatus(order.status)}
+              </Badge>
+              <OrderStatusMenu
+                actions={order.availableStatusActions ?? []}
+                disabled={pending}
+                onSelect={(action) => {
+                  if (action === "cancelled") {
+                    setError(null);
+                    setCancelReason("");
+                    setCancelFormOpen(true);
+                  } else {
+                    void updateStatus({ status: action });
+                  }
+                }}
+                status={order.status}
+              />
+            </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {humanize(order.fulfillmentStatus)} · COD{" "}
               {humanize(order.collectionStatus)}
@@ -282,6 +357,59 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
             </ul>
           </div>
         </section>
+        {cancelFormOpen && canCancelBeforeDispatch && (
+          <section
+            aria-label="Cancel order"
+            className="mt-4 rounded-2xl border border-border p-5 sm:p-7"
+          >
+            <h2 className="font-semibold">Cancel order</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Cancelling releases the reserved stock. This is available before
+              courier booking or physical handoff.
+            </p>
+            <form
+              className="mt-4 grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void cancelBeforeDispatch();
+              }}
+            >
+              <label className="grid gap-2 text-sm font-medium">
+                Cancellation reason
+                <Textarea
+                  autoFocus
+                  maxLength={500}
+                  minLength={3}
+                  required
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                />
+              </label>
+              {error && (
+                <p className="text-sm text-destructive" role="alert">
+                  {error}
+                </p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  disabled={pending}
+                  onClick={() => setCancelFormOpen(false)}
+                  type="button"
+                  variant="outline"
+                >
+                  Keep order
+                </Button>
+                <Button
+                  disabled={pending || cancelReason.trim().length < 3}
+                  type="submit"
+                  variant="destructive"
+                >
+                  {pending ? "Cancelling…" : "Cancel order"}
+                </Button>
+              </div>
+            </form>
+          </section>
+        )}
         {order.status === "cancelled" && (
           <p className="mt-6 rounded-xl border border-border p-5 text-sm">
             {order.cancellationReason === "serviceability_review_timeout"
@@ -296,30 +424,32 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
           onRecordPickup={recordPathaoPickup}
           order={order}
         />
-        {order.status === "awaiting_confirmation" &&
-          order.serviceability === "pending_manual_review" && (
-            <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
-              <h2 className="text-xl font-semibold">Customer confirmation</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Call the customer using the number above. After they confirm the
-                order and delivery details, confirm here. Once the order is
-                packed, book it with Pathao from the panel above. If the
-                destination cannot be served, reject the order to release its
-                reserved stock.
+        {canManageCustomerDecision && (
+          <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
+            <h2 className="text-xl font-semibold">
+              {order.status === "on_hold"
+                ? "Order on hold"
+                : order.status === "confirmed"
+                  ? "Confirmed order"
+                  : order.status === "no_answer"
+                    ? "No answer"
+                    : "Customer contact"}
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {order.status === "on_hold"
+                ? "The customer asked to pause this order. Resume only after verifying they still want it and the address is serviceable. The reserved stock remains held."
+                : order.status === "confirmed"
+                  ? "The customer can still request a pause before dispatch. Putting the order on hold keeps the stock reserved."
+                  : order.status === "no_answer"
+                    ? "The customer did not answer the call. The order remains pending and its stock stays reserved. Try again before dispatch."
+                    : "Call the customer using the number above. Verify that they agree to the items and delivery details, and that the address is serviceable. Put the order on hold if they ask to wait, or cancel it if they no longer want it."}
+            </p>
+            {error && (
+              <p className="mt-4 text-sm text-destructive" role="alert">
+                {error}
               </p>
-              {error && (
-                <p className="mt-4 text-sm text-destructive" role="alert">
-                  {error}
-                </p>
-              )}
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Button
-                  disabled={pending}
-                  onClick={() => void decide("serviceable")}
-                >
-                  {pending ? "Confirming…" : "Confirm order"}
-                </Button>
-              </div>
+            )}
+            {canRejectAsUnserviceable && (
               <details className="mt-4 rounded-lg border border-border p-4">
                 <summary className="cursor-pointer text-sm font-medium">
                   Reject as unserviceable
@@ -341,13 +471,14 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
                   className="mt-3"
                   disabled={pending || reason.trim().length < 3}
                   variant="destructive"
-                  onClick={() => void decide("unserviceable")}
+                  onClick={() => void rejectAsUnserviceable()}
                 >
                   {pending ? "Rejecting…" : "Reject order and release stock"}
                 </Button>
               </details>
-            </section>
-          )}
+            )}
+          </section>
+        )}
         {order.status === "confirmed" &&
           order.serviceability === "serviceable" &&
           order.fulfillmentStatus === "awaiting_dispatch" &&
@@ -399,42 +530,6 @@ export function OrderReview({ initialOrder }: { initialOrder: Order }) {
                     : dispatchAttempted
                       ? "Retry dispatch"
                       : "Record dispatch"}
-                </Button>
-              </div>
-            </details>
-          )}
-        {order.status === "confirmed" &&
-          order.fulfillmentStatus === "awaiting_dispatch" &&
-          pathaoAssignment === "none" && (
-            <details className="mt-4 rounded-2xl border border-border">
-              <summary className="cursor-pointer p-5 font-semibold sm:px-7">
-                Cancel order and release reserved stock
-              </summary>
-              <div className="grid gap-4 px-5 pb-5 sm:px-7">
-                <p className="text-sm text-muted-foreground">
-                  Available before a courier booking or physical handoff.
-                </p>
-                <label className="mt-4 grid gap-2 text-sm font-medium">
-                  Cancellation reason
-                  <Textarea
-                    maxLength={500}
-                    minLength={3}
-                    value={cancelReason}
-                    onChange={(event) => setCancelReason(event.target.value)}
-                  />
-                </label>
-                {error && (
-                  <p className="mt-4 text-sm text-destructive" role="alert">
-                    {error}
-                  </p>
-                )}
-                <Button
-                  className="mt-4"
-                  disabled={pending || cancelReason.trim().length < 3}
-                  variant="destructive"
-                  onClick={() => void cancelBeforeDispatch()}
-                >
-                  {pending ? "Cancelling…" : "Cancel Order and release stock"}
                 </Button>
               </div>
             </details>

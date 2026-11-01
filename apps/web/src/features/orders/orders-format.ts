@@ -6,15 +6,7 @@ export function humanize(value: string): string {
 }
 
 export function humanizeOrderStatus(status: string): string {
-  return status === "awaiting_confirmation" ? "Pending" : humanize(status);
-}
-
-export function currentOrderStatusLabel(
-  status: string,
-  fulfillmentStatus: string,
-): string {
-  if (status === "confirmed" && fulfillmentStatus !== "awaiting_dispatch") {
-    return humanize(fulfillmentStatus);
-  }
-  return humanizeOrderStatus(status);
+  if (status === "pending") return "Pending";
+  if (status === "no_answer") return "No answer";
+  return humanize(status);
 }

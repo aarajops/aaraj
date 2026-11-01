@@ -10,20 +10,22 @@ import {
   OrderAddressSchema,
   OrderCreatedSchema,
   DeliveryZoneSchema,
+  OrderManagementDetailSchema,
   OrderManagementListSchema,
   OrderSchema,
   MAX_LIST_OFFSET,
   type CheckoutAddressInput,
   type CreateOrderInput,
   type Order,
+  type OrderManagementDetail,
   type OrderAddress,
   type OrderCreated,
   type OrderDispatchInput,
-  type OrderCancellationInput,
   type OrderCollectionInput,
   type OrderFulfillmentOutcomeInput,
   type OrderListQuery,
-  type OrderServiceabilityInput,
+  type OrderStatusUpdateInput,
+  type OrderStatusAction,
 } from "@aaraj/contracts";
 import {
   createCipheriv,
@@ -36,6 +38,10 @@ import {
 } from "node:crypto";
 import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
+import {
+  CATALOG_CART_PORT,
+  type CatalogCartPort,
+} from "../catalog/catalog-cart.port.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import {
   readOrderPiiKeyring,
@@ -74,6 +80,52 @@ const MAX_ORDER_LINES = 50;
 type OrderRow = typeof customerOrder.$inferSelect;
 type IdempotencyRow = typeof orderIdempotency.$inferSelect;
 type NormalizedAddress = OrderAddress;
+
+function availableOrderStatusActions(
+  row: Pick<
+    OrderRow,
+    "status" | "serviceability" | "fulfillmentStatus" | "cancellationReason"
+  >,
+  hasPathaoClaim: boolean,
+): OrderStatusAction[] {
+  const pending =
+    (row.status === "pending" || row.status === "no_answer") &&
+    row.serviceability === "pending_manual_review" &&
+    row.fulfillmentStatus === "not_started";
+  const held =
+    row.status === "on_hold" &&
+    ((row.serviceability === "pending_manual_review" &&
+      row.fulfillmentStatus === "not_started") ||
+      (row.serviceability === "serviceable" &&
+        row.fulfillmentStatus === "awaiting_dispatch"));
+  const confirmed =
+    row.status === "confirmed" &&
+    row.serviceability === "serviceable" &&
+    row.fulfillmentStatus === "awaiting_dispatch";
+  const actions: OrderStatusAction[] = [];
+
+  if (
+    row.status === "cancelled" &&
+    row.fulfillmentStatus === "cancelled" &&
+    row.cancellationReason !== null &&
+    !hasPathaoClaim
+  ) {
+    actions.push("pending");
+  }
+  if (pending || held) actions.push("confirmed");
+  if (pending && row.status === "pending") {
+    actions.push("no_answer");
+  }
+  if (pending || (held && row.serviceability === "pending_manual_review")) {
+    actions.push("rejected");
+  }
+  if (!hasPathaoClaim && (pending || confirmed)) actions.push("on_hold");
+  if (!hasPathaoClaim && (pending || held || confirmed)) {
+    actions.push("cancelled");
+  }
+  return actions;
+}
+
 @Injectable()
 export class OrdersService implements OrdersPathaoPort {
   constructor(
@@ -82,6 +134,8 @@ export class OrdersService implements OrdersPathaoPort {
     private readonly quotes: QuoteService,
     private readonly geography: GeographyService,
     private readonly audit: AuditService,
+    @Inject(CATALOG_CART_PORT)
+    private readonly catalog: CatalogCartPort,
     @Inject(INVENTORY_RESERVATION_PORT)
     private readonly inventory: InventoryReservationPort,
   ) {}
@@ -218,6 +272,12 @@ export class OrdersService implements OrdersPathaoPort {
               { errorCode: "ORDER_CART_ALREADY_CHECKED_OUT" },
             );
           }
+          await this.cart.claimGuestCartRevisionForCheckout(
+            transaction,
+            guestCartId,
+            owner.guestCartHash,
+            quote.cartRevision,
+          );
         }
 
         const [counter] = await transaction
@@ -266,7 +326,7 @@ export class OrdersService implements OrdersPathaoPort {
             cartRevision: quote.cartRevision,
             reservationId: reservation.id,
             addressCiphertext: encryptedAddress,
-            status: "awaiting_confirmation",
+            status: "pending",
             serviceability: "pending_manual_review",
             paymentMethod: "cod",
             collectionStatus: "uncollected",
@@ -584,6 +644,7 @@ export class OrdersService implements OrdersPathaoPort {
           searchPattern
             ? ilike(customerOrder.reference, searchPattern)
             : undefined,
+          query.status ? eq(customerOrder.status, query.status) : undefined,
           query.fulfillmentStatus
             ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
             : undefined,
@@ -662,6 +723,24 @@ export class OrdersService implements OrdersPathaoPort {
       .limit(1);
     if (!row) throw orderNotFound();
     return this.loadPrivateOrder(row);
+  }
+
+  async getManagementDetail(orderId: string): Promise<OrderManagementDetail> {
+    const [row] = await this.database.db
+      .select()
+      .from(customerOrder)
+      .where(eq(customerOrder.id, orderId))
+      .limit(1);
+    if (!row) throw orderNotFound();
+
+    const pathaoClaimStatus = await this.getPathaoBookingClaimStatus(orderId);
+    return OrderManagementDetailSchema.parse({
+      ...(await this.loadPrivateOrder(row)),
+      availableStatusActions: availableOrderStatusActions(
+        row,
+        pathaoClaimStatus !== null,
+      ),
+    });
   }
 
   async getPathaoBookingSnapshot(
@@ -962,10 +1041,10 @@ export class OrdersService implements OrdersPathaoPort {
     await this.getForOwner(orderId, customerId, signedCookies);
   }
 
-  async reviewServiceability(
+  private async rejectAsUnserviceable(
     orderId: string,
     staffId: string,
-    input: OrderServiceabilityInput,
+    reason: string,
   ): Promise<Order> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
@@ -975,35 +1054,32 @@ export class OrdersService implements OrdersPathaoPort {
         .for("update")
         .limit(1);
       if (!row) throw orderNotFound();
-      if (
-        row.serviceability === input.outcome &&
-        (row.status === "confirmed" || row.status === "rejected")
-      ) {
+      if (row.serviceability === "unserviceable" && row.status === "rejected") {
         return;
       }
-      if (
-        row.status !== "awaiting_confirmation" ||
-        row.serviceability !== "pending_manual_review"
-      ) {
-        throw new ConflictException(
-          "This Order is no longer pending confirmation or review.",
-          { errorCode: "ORDER_REVIEW_ALREADY_COMPLETED" },
-        );
+      if (!availableOrderStatusActions(row, false).includes("rejected")) {
+        throw new ConflictException("This Order is no longer pending review.", {
+          errorCode: "ORDER_REVIEW_ALREADY_COMPLETED",
+        });
       }
+
+      await this.inventory.releaseWithinTransaction(transaction, {
+        commandId: randomUUID(),
+        reservationId: row.reservationId,
+      });
 
       const [reviewed] = await transaction
         .update(customerOrder)
         .set({
-          status: input.outcome === "serviceable" ? "confirmed" : "rejected",
-          serviceability: input.outcome,
-          fulfillmentStatus:
-            input.outcome === "serviceable" ? "awaiting_dispatch" : "cancelled",
+          status: "rejected",
+          serviceability: "unserviceable",
+          fulfillmentStatus: "cancelled",
           updatedAt: sql`clock_timestamp()`,
         })
         .where(
           and(
             eq(customerOrder.id, row.id),
-            eq(customerOrder.status, "awaiting_confirmation"),
+            eq(customerOrder.status, row.status),
             eq(customerOrder.serviceability, "pending_manual_review"),
           ),
         )
@@ -1016,26 +1092,304 @@ export class OrdersService implements OrdersPathaoPort {
         );
       }
 
-      if (input.outcome === "unserviceable") {
-        await this.inventory.releaseWithinTransaction(transaction, {
-          commandId: randomUUID(),
-          reservationId: row.reservationId,
-        });
-      }
       await this.audit.append(transaction, {
         actorType: "user",
         actorId: staffId,
-        eventType:
-          input.outcome === "serviceable"
-            ? "commerce.cod_order_confirmed"
-            : "commerce.cod_order_rejected_unserviceable",
+        eventType: "commerce.cod_order_rejected_unserviceable",
         subjectType: "order",
         subjectId: row.id,
-        reason: input.reason,
-        metadata: { outcome: input.outcome },
+        reason,
+        metadata: { outcome: "unserviceable" },
       });
     });
     return this.getForManagement(orderId);
+  }
+
+  async updateManualStatus(
+    orderId: string,
+    staffId: string,
+    input: OrderStatusUpdateInput,
+  ): Promise<OrderManagementDetail> {
+    if (input.status === "pending") {
+      await this.reopenCancelledOrder(orderId, staffId);
+      return this.getManagementDetail(orderId);
+    }
+    if (input.status === "cancelled") {
+      await this.cancelBeforeDispatch(orderId, staffId, input.reason);
+      return this.getManagementDetail(orderId);
+    }
+    if (input.status === "rejected") {
+      await this.rejectAsUnserviceable(orderId, staffId, input.reason);
+      return this.getManagementDetail(orderId);
+    }
+    if (input.status === "no_answer") {
+      await this.markNoAnswer(orderId, staffId);
+      return this.getManagementDetail(orderId);
+    }
+
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+
+      if (input.status === "confirmed") {
+        if (
+          row.status === "confirmed" &&
+          row.serviceability === "serviceable"
+        ) {
+          return;
+        }
+        if (!availableOrderStatusActions(row, false).includes("confirmed")) {
+          throw new ConflictException(
+            "Only a pending or on-hold order can be confirmed.",
+            { errorCode: "ORDER_STATUS_TRANSITION_INVALID" },
+          );
+        }
+
+        const [updated] = await transaction
+          .update(customerOrder)
+          .set({
+            status: "confirmed",
+            serviceability: "serviceable",
+            fulfillmentStatus: "awaiting_dispatch",
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(eq(customerOrder.id, row.id))
+          .returning({ updatedAt: customerOrder.updatedAt });
+        if (!updated?.updatedAt) {
+          throw new ConflictException(
+            "The Order changed before its status could be updated.",
+            { errorCode: "ORDER_STATUS_TRANSITION_CONFLICT" },
+          );
+        }
+
+        await this.audit.append(transaction, {
+          actorType: "user",
+          actorId: staffId,
+          eventType:
+            row.status === "on_hold"
+              ? "commerce.cod_order_resumed"
+              : "commerce.cod_order_confirmed",
+          subjectType: "order",
+          subjectId: row.id,
+          occurredAt: updated.updatedAt,
+          reason:
+            input.reason ??
+            "Customer confirmed the order and delivery serviceability was verified.",
+          metadata: { previousStatus: row.status, status: "confirmed" },
+        });
+        return;
+      }
+
+      if (row.status === "on_hold") return;
+      if (!availableOrderStatusActions(row, false).includes("on_hold")) {
+        throw new ConflictException(
+          "Only a pending or dispatch-ready order can be put on hold.",
+          { errorCode: "ORDER_STATUS_TRANSITION_INVALID" },
+        );
+      }
+
+      const [pathaoClaim] = await transaction
+        .select({ status: orderPathaoBookingClaim.status })
+        .from(orderPathaoBookingClaim)
+        .where(eq(orderPathaoBookingClaim.orderId, row.id))
+        .limit(1);
+      if (pathaoClaim) {
+        throw new ConflictException(
+          "Resolve the Pathao consignment before putting this Order on hold.",
+          { errorCode: "ORDER_PATHAO_BOOKING_REQUIRES_RECONCILIATION" },
+        );
+      }
+
+      const [updated] = await transaction
+        .update(customerOrder)
+        .set({ status: "on_hold", updatedAt: sql`clock_timestamp()` })
+        .where(eq(customerOrder.id, row.id))
+        .returning({ updatedAt: customerOrder.updatedAt });
+      if (!updated?.updatedAt) {
+        throw new ConflictException(
+          "The Order changed before it could be put on hold.",
+          { errorCode: "ORDER_STATUS_TRANSITION_CONFLICT" },
+        );
+      }
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_put_on_hold",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: updated.updatedAt,
+        reason: input.reason ?? "Customer requested the order be put on hold.",
+        metadata: { previousStatus: row.status, status: "on_hold" },
+      });
+    });
+    return this.getManagementDetail(orderId);
+  }
+
+  private async reopenCancelledOrder(
+    orderId: string,
+    staffId: string,
+  ): Promise<void> {
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+      if (row.status === "pending") return;
+      if (row.status !== "cancelled" || row.fulfillmentStatus !== "cancelled") {
+        throw new ConflictException(
+          "Only a cancelled Order can be reopened as pending.",
+          { errorCode: "ORDER_STATUS_TRANSITION_INVALID" },
+        );
+      }
+
+      const [pathaoClaim] = await transaction
+        .select({ status: orderPathaoBookingClaim.status })
+        .from(orderPathaoBookingClaim)
+        .where(eq(orderPathaoBookingClaim.orderId, row.id))
+        .for("update")
+        .limit(1);
+      if (pathaoClaim) {
+        throw new ConflictException(
+          "Resolve the Pathao consignment before reopening this Order.",
+          { errorCode: "ORDER_PATHAO_BOOKING_REQUIRES_RECONCILIATION" },
+        );
+      }
+
+      const lines = await transaction
+        .select({
+          variantId: customerOrderLine.variantId,
+          quantity: customerOrderLine.quantity,
+        })
+        .from(customerOrderLine)
+        .where(eq(customerOrderLine.orderId, row.id));
+      const currentVariants =
+        await this.catalog.findPurchasableVariantsWithinTransaction(
+          transaction,
+          lines.map(({ variantId }) => variantId),
+        );
+      const purchasableVariantIds = new Set(
+        currentVariants.map((variant) => variant.variantId),
+      );
+      if (
+        lines.length === 0 ||
+        lines.some(({ variantId }) => !purchasableVariantIds.has(variantId))
+      ) {
+        throw new ConflictException(
+          "This Order cannot be reopened because an item is no longer for sale. Create a new Order instead.",
+          { errorCode: "ORDER_REOPEN_REQUIRES_REORDER" },
+        );
+      }
+
+      const reservation = await this.inventory.reserveWithinTransaction(
+        transaction,
+        {
+          commandId: randomUUID(),
+          lines: lines.map(({ variantId, quantity }) => ({
+            variantId,
+            quantity,
+          })),
+        },
+      );
+      const [reopened] = await transaction
+        .update(customerOrder)
+        .set({
+          status: "pending",
+          serviceability: "pending_manual_review",
+          fulfillmentStatus: "not_started",
+          reservationId: reservation.id,
+          cancellationReason: null,
+          cancelledAt: null,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(customerOrder.id, row.id),
+            eq(customerOrder.status, "cancelled"),
+            eq(customerOrder.fulfillmentStatus, "cancelled"),
+          ),
+        )
+        .returning({ updatedAt: customerOrder.updatedAt });
+      if (!reopened?.updatedAt) {
+        throw new ConflictException(
+          "The Order changed before it could be reopened.",
+          { errorCode: "ORDER_STATUS_TRANSITION_CONFLICT" },
+        );
+      }
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_reopened",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: reopened.updatedAt,
+        reason: "Staff reopened the Order for customer confirmation.",
+        metadata: {
+          previousStatus: "cancelled",
+          status: "pending",
+          previousReservationId: row.reservationId,
+          reservationId: reservation.id,
+        },
+      });
+    });
+  }
+
+  private async markNoAnswer(orderId: string, staffId: string): Promise<void> {
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+      if (row.status === "no_answer") return;
+      if (!availableOrderStatusActions(row, false).includes("no_answer")) {
+        throw new ConflictException(
+          "Only a pending order can be marked no answer.",
+          { errorCode: "ORDER_STATUS_TRANSITION_INVALID" },
+        );
+      }
+
+      const [updated] = await transaction
+        .update(customerOrder)
+        .set({ status: "no_answer", updatedAt: sql`clock_timestamp()` })
+        .where(
+          and(
+            eq(customerOrder.id, row.id),
+            eq(customerOrder.status, "pending"),
+            eq(customerOrder.serviceability, "pending_manual_review"),
+            eq(customerOrder.fulfillmentStatus, "not_started"),
+          ),
+        )
+        .returning({ updatedAt: customerOrder.updatedAt });
+      if (!updated?.updatedAt) {
+        throw new ConflictException(
+          "The Order changed before the no-answer outcome could be saved.",
+          { errorCode: "ORDER_STATUS_TRANSITION_CONFLICT" },
+        );
+      }
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_no_answer",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: updated.updatedAt,
+        reason: "Customer did not answer the order call.",
+        metadata: { previousStatus: row.status, status: "no_answer" },
+      });
+    });
   }
 
   async dispatch(
@@ -1191,10 +1545,10 @@ export class OrdersService implements OrdersPathaoPort {
     return this.getForManagement(orderId);
   }
 
-  async cancelAwaitingDispatch(
+  async cancelBeforeDispatch(
     orderId: string,
     staffId: string,
-    input: OrderCancellationInput,
+    reason: string,
   ): Promise<Order> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
@@ -1205,13 +1559,9 @@ export class OrdersService implements OrdersPathaoPort {
         .limit(1);
       if (!row) throw orderNotFound();
       if (row.status === "cancelled") return;
-      if (
-        row.status !== "confirmed" ||
-        row.serviceability !== "serviceable" ||
-        row.fulfillmentStatus !== "awaiting_dispatch"
-      ) {
+      if (!availableOrderStatusActions(row, false).includes("cancelled")) {
         throw new ConflictException(
-          "Only confirmed Orders awaiting dispatch can be cancelled.",
+          "Only a pending, on-hold, or dispatch-ready order can be cancelled.",
           { errorCode: "ORDER_NOT_CANCELLABLE" },
         );
       }
@@ -1245,8 +1595,8 @@ export class OrdersService implements OrdersPathaoPort {
         .where(
           and(
             eq(customerOrder.id, row.id),
-            eq(customerOrder.status, "confirmed"),
-            eq(customerOrder.fulfillmentStatus, "awaiting_dispatch"),
+            eq(customerOrder.status, row.status),
+            eq(customerOrder.fulfillmentStatus, row.fulfillmentStatus),
           ),
         )
         .returning({ cancelledAt: customerOrder.cancelledAt });
@@ -1264,7 +1614,7 @@ export class OrdersService implements OrdersPathaoPort {
         subjectType: "order",
         subjectId: row.id,
         occurredAt: cancelled.cancelledAt,
-        reason: input.reason,
+        reason,
         metadata: {
           cancellationReason: "staff_cancelled",
           reservationId: row.reservationId,

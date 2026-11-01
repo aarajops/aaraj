@@ -46,6 +46,19 @@ export type CreateOrderInput = z.infer<typeof CreateOrderInputSchema>;
 
 export const OrderIdSchema = z.uuid();
 export const OrderIdempotencyKeySchema = z.uuid();
+export const OrderStatusSchema = z.enum([
+  "pending",
+  "no_answer",
+  "confirmed",
+  "on_hold",
+  "rejected",
+  "cancelled",
+]);
+export type OrderStatus = z.infer<typeof OrderStatusSchema>;
+
+export const OrderStatusActionSchema = OrderStatusSchema;
+export type OrderStatusAction = OrderStatus;
+
 export const OrderFulfillmentStatusSchema = z.enum([
   "not_started",
   "awaiting_dispatch",
@@ -70,22 +83,39 @@ const OptionalOrderReferenceSearchSchema = z.preprocess(
 
 export const OrderListQuerySchema = OffsetPaginationQuerySchema.extend({
   search: OptionalOrderReferenceSearchSchema,
+  status: OrderStatusSchema.optional(),
   fulfillmentStatus: OrderFulfillmentStatusSchema.optional(),
 });
 export type OrderListQuery = z.infer<typeof OrderListQuerySchema>;
 
-export const OrderServiceabilityInputSchema = z.discriminatedUnion("outcome", [
+const OptionalOrderStatusReasonSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(500)
+  .optional();
+export const OrderStatusUpdateInputSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("pending") }),
   z.strictObject({
-    outcome: z.literal("serviceable"),
-    reason: z.string().trim().min(3).max(500).optional(),
+    status: z.literal("confirmed"),
+    reason: OptionalOrderStatusReasonSchema,
+  }),
+  z.strictObject({ status: z.literal("no_answer") }),
+  z.strictObject({
+    status: z.literal("on_hold"),
+    reason: OptionalOrderStatusReasonSchema,
   }),
   z.strictObject({
-    outcome: z.literal("unserviceable"),
+    status: z.literal("rejected"),
+    reason: z.string().trim().min(3).max(500),
+  }),
+  z.strictObject({
+    status: z.literal("cancelled"),
     reason: z.string().trim().min(3).max(500),
   }),
 ]);
-export type OrderServiceabilityInput = z.infer<
-  typeof OrderServiceabilityInputSchema
+export type OrderStatusUpdateInput = z.infer<
+  typeof OrderStatusUpdateInputSchema
 >;
 
 export const OrderDispatchCommandIdSchema = z.uuid();
@@ -95,13 +125,6 @@ export const OrderDispatchInputSchema = z.strictObject({
   handoffReference: z.string().trim().min(1).max(160).optional(),
 });
 export type OrderDispatchInput = z.infer<typeof OrderDispatchInputSchema>;
-
-export const OrderCancellationInputSchema = z.strictObject({
-  reason: z.string().trim().min(3).max(500),
-});
-export type OrderCancellationInput = z.infer<
-  typeof OrderCancellationInputSchema
->;
 
 export const OrderFulfillmentOutcomeInputSchema = z.strictObject({
   outcome: z.enum([
@@ -161,12 +184,7 @@ export const OrderSchema = z.strictObject({
   id: OrderIdSchema,
   reference: OrderReferenceSchema,
   currency: z.literal(ORDER_CURRENCY),
-  status: z.enum([
-    "awaiting_confirmation",
-    "confirmed",
-    "rejected",
-    "cancelled",
-  ]),
+  status: OrderStatusSchema,
   serviceability: z.enum([
     "pending_manual_review",
     "serviceable",
@@ -207,17 +225,17 @@ export const OrderSchema = z.strictObject({
 });
 export type Order = z.infer<typeof OrderSchema>;
 
+export const OrderManagementDetailSchema = OrderSchema.extend({
+  availableStatusActions: z.array(OrderStatusActionSchema),
+});
+export type OrderManagementDetail = z.infer<typeof OrderManagementDetailSchema>;
+
 export const OrderCreatedSchema = z.strictObject({
   id: OrderIdSchema,
   reference: OrderReferenceSchema,
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   codAmountDueBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  status: z.enum([
-    "awaiting_confirmation",
-    "confirmed",
-    "rejected",
-    "cancelled",
-  ]),
+  status: OrderStatusSchema,
   serviceability: z.enum([
     "pending_manual_review",
     "serviceable",
@@ -259,12 +277,7 @@ export const OrderManagementListSchema = z.strictObject({
           }),
         )
         .max(50),
-      status: z.enum([
-        "awaiting_confirmation",
-        "confirmed",
-        "rejected",
-        "cancelled",
-      ]),
+      status: OrderStatusSchema,
       fulfillmentStatus: z.enum([
         "not_started",
         "awaiting_dispatch",

@@ -46,7 +46,9 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   useEffect(() => {
     if (
       !order ||
-      !["awaiting_confirmation", "confirmed"].includes(order.status) ||
+      !["pending", "no_answer", "confirmed"].includes(
+        order.status,
+      ) ||
       purchaseTracked.current === order.id
     ) {
       return;
@@ -347,7 +349,7 @@ function getOrderPresentation(order: Order) {
       message:
         order.cancellationReason === "serviceability_review_timeout"
           ? `This order was cancelled under the previous review policy${cancelledDate}. No payment is due.`
-          : `AARAJ cancelled this order before dispatch${cancelledDate}. No payment is due.`,
+          : `This order was cancelled before dispatch${cancelledDate}. No payment is due.`,
     };
   }
 
@@ -358,6 +360,27 @@ function getOrderPresentation(order: Order) {
       statusClass: "bg-muted text-muted-foreground",
       message:
         "We’re unable to deliver to this address, so the order was closed. No payment is due.",
+    };
+  }
+
+  if (order.status === "no_answer") {
+    return {
+      title: "Order pending",
+      statusLabel: "No answer",
+      statusClass:
+        "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+      message: "We could not reach you by phone. Your order remains pending.",
+    };
+  }
+
+  if (order.status === "on_hold") {
+    return {
+      title: "Order on hold",
+      statusLabel: "On hold",
+      statusClass:
+        "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+      message:
+        "Your order is paused as requested. We’ll contact you before preparing it for dispatch.",
     };
   }
 
@@ -411,11 +434,11 @@ function getOrderPresentation(order: Order) {
   if (order.serviceability === "pending_manual_review") {
     return {
       title: "Order received",
-      statusLabel: "Pending confirmation",
+      statusLabel: "Pending",
       statusClass:
         "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
       message:
-        "We’ll contact you to confirm your order and delivery details before dispatch.",
+        "We’ll contact you to verify your order and delivery details before dispatch.",
     };
   }
 

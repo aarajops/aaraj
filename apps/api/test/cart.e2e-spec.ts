@@ -11,7 +11,7 @@ import { CartService } from "../src/cart/cart.service.js";
 import { configureApp } from "../src/configure-app.js";
 import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 import {
-  cartMergeReceipt,
+  guestCartRevisionReceipt,
   customerCart,
   customerCartLine,
 } from "../src/cart/cart-schema.js";
@@ -357,7 +357,11 @@ describe("storefront cart", () => {
       evalSpy.mockRestore();
     }
 
-    const receipts = await database.db.select().from(cartMergeReceipt);
+    const guestHash = createHash("sha256").update(guest.guestId).digest("hex");
+    const receipts = await database.db
+      .select()
+      .from(guestCartRevisionReceipt)
+      .where(eq(guestCartRevisionReceipt.guestCartHash, guestHash));
     expect(receipts).toHaveLength(1);
     await request(app.getHttpServer())
       .post(`${API_V1_BASE_PATH}/cart/merge`)
@@ -506,8 +510,8 @@ describe("storefront cart", () => {
     const guestHash = createHash("sha256").update(guest.guestId).digest("hex");
     const receipts = await database.db
       .select()
-      .from(cartMergeReceipt)
-      .where(eq(cartMergeReceipt.guestCartHash, guestHash));
+      .from(guestCartRevisionReceipt)
+      .where(eq(guestCartRevisionReceipt.guestCartHash, guestHash));
     expect(receipts).toHaveLength(1);
   });
 

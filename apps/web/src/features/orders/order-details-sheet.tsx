@@ -2,8 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, FileText } from "lucide-react";
-import type { Order } from "@aaraj/contracts";
+import { FileText } from "lucide-react";
+import type {
+  Order,
+  OrderManagementDetail,
+  OrderStatusUpdateInput,
+} from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,10 +19,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
 import { cn } from "cn";
-import { fetchManagedOrder, updateOrderServiceability } from "./orders-client";
+import { OrderStatusMenu } from "./order-status-menu";
+import { fetchManagedOrder, updateOrderStatus } from "./orders-client";
 import { humanize, humanizeOrderStatus } from "./orders-format";
 import { PathaoBookingPanel } from "./pathao-booking-panel";
 
@@ -39,16 +45,18 @@ export function OrderDetailsSheet({
         orderId: string;
         requestVersion: number;
         status: "success";
-        order: Order;
+        order: OrderManagementDetail;
       }
     | null
   >(null);
   const [requestVersion, setRequestVersion] = useState(0);
-  const [confirmationPending, setConfirmationPending] = useState(false);
-  const [confirmationError, setConfirmationError] = useState<{
+  const [statusPending, setStatusPending] = useState(false);
+  const [statusError, setStatusError] = useState<{
     orderId: string;
     message: string;
   } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelFormOpen, setCancelFormOpen] = useState(false);
   const currentDetails =
     details?.orderId === orderId && details.requestVersion === requestVersion
       ? details
@@ -57,34 +65,33 @@ export function OrderDetailsSheet({
     currentDetails?.status === "success" ? currentDetails.order : null;
   const loading = open && orderId !== null && currentDetails === null;
   const error = currentDetails?.status === "error";
-  const canConfirmOrder =
-    order?.status === "awaiting_confirmation" &&
-    order.serviceability === "pending_manual_review";
+  const availableStatusActions = order?.availableStatusActions ?? [];
+  const canCancelOrder = availableStatusActions.includes("cancelled");
 
-  async function confirmOrder() {
-    if (!order || !canConfirmOrder || confirmationPending) return;
-    setConfirmationPending(true);
-    setConfirmationError(null);
+  async function updateStatus(input: OrderStatusUpdateInput) {
+    if (!order || statusPending) return;
+    setStatusPending(true);
+    setStatusError(null);
     try {
-      const confirmedOrder = await updateOrderServiceability(order.id, {
-        outcome: "serviceable",
-      });
+      const updatedOrder = await updateOrderStatus(order.id, input);
       setDetails((current) =>
-        current?.status === "success" && current.orderId === confirmedOrder.id
-          ? { ...current, order: confirmedOrder }
+        current?.status === "success" && current.orderId === updatedOrder.id
+          ? { ...current, order: updatedOrder }
           : current,
       );
+      setCancelFormOpen(false);
+      setCancelReason("");
       onFulfillmentUpdated();
     } catch (reason) {
-      setConfirmationError({
+      setStatusError({
         orderId: order.id,
         message:
           reason instanceof Error
             ? reason.message
-            : "The order could not be confirmed.",
+            : "The order status could not be updated.",
       });
     } finally {
-      setConfirmationPending(false);
+      setStatusPending(false);
     }
   }
 
@@ -173,17 +180,80 @@ export function OrderDetailsSheet({
           {order && !loading && (
             <div className="grid gap-5">
               <section aria-label="Order status" className="grid gap-3">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={orderStatusVariant(order.status)}>
-                    {humanizeOrderStatus(order.status)}
-                  </Badge>
-                  <Badge variant="secondary">
-                    {humanize(order.fulfillmentStatus)}
-                  </Badge>
-                  <Badge variant="outline">
-                    {humanize(order.serviceability)}
-                  </Badge>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant={orderStatusVariant(order.status)}>
+                      {humanizeOrderStatus(order.status)}
+                    </Badge>
+                    <Badge variant="secondary">
+                      {humanize(order.fulfillmentStatus)}
+                    </Badge>
+                  </div>
+                  <OrderStatusMenu
+                    actions={availableStatusActions}
+                    disabled={statusPending}
+                    onSelect={(action) => {
+                      if (action === "cancelled") {
+                        setStatusError(null);
+                        setCancelReason("");
+                        setCancelFormOpen(true);
+                      } else {
+                        void updateStatus({ status: action });
+                      }
+                    }}
+                    status={order.status}
+                  />
                 </div>
+                {cancelFormOpen && canCancelOrder && (
+                  <form
+                    className="grid gap-3 rounded-lg border border-border p-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void updateStatus({
+                        status: "cancelled",
+                        reason: cancelReason.trim(),
+                      });
+                    }}
+                  >
+                    <label className="grid gap-2 text-sm font-medium">
+                      Cancellation reason
+                      <Textarea
+                        autoFocus
+                        maxLength={500}
+                        minLength={3}
+                        required
+                        value={cancelReason}
+                        onChange={(event) =>
+                          setCancelReason(event.target.value)
+                        }
+                      />
+                    </label>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        disabled={statusPending}
+                        onClick={() => setCancelFormOpen(false)}
+                        type="button"
+                        variant="outline"
+                      >
+                        Keep order
+                      </Button>
+                      <Button
+                        disabled={
+                          statusPending || cancelReason.trim().length < 3
+                        }
+                        type="submit"
+                        variant="destructive"
+                      >
+                        {statusPending ? "Cancelling…" : "Cancel order"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+                {statusError?.orderId === order.id && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {statusError.message}
+                  </p>
+                )}
                 <dl className="divide-y divide-border text-sm">
                   {order.collectedAmountBdt !== null && (
                     <DetailRow
@@ -309,45 +379,14 @@ export function OrderDetailsSheet({
 
         {order && (
           <SheetFooter className="border-t border-border">
-            {confirmationError?.orderId === order.id && (
-              <p className="text-sm text-destructive" role="alert">
-                {confirmationError.message}
-              </p>
-            )}
-            {canConfirmOrder ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Confirm the order and delivery details with the customer
-                  before proceeding.
-                </p>
-                <Button
-                  className="w-full"
-                  disabled={confirmationPending}
-                  onClick={() => void confirmOrder()}
-                  size="lg"
-                >
-                  <Check aria-hidden="true" className="size-4" />
-                  {confirmationPending ? "Confirming…" : "Confirm order"}
-                </Button>
-                <Link
-                  className="inline-flex items-center justify-center gap-2 py-1 text-sm text-muted-foreground hover:text-foreground"
-                  href={`/admin/orders/${order.id}`}
-                  onClick={() => onOpenChange(false)}
-                >
-                  <FileText aria-hidden="true" className="size-4" />
-                  Open full order review
-                </Link>
-              </>
-            ) : (
-              <Link
-                className="inline-flex items-center justify-center gap-2 py-1 text-sm text-muted-foreground hover:text-foreground"
-                href={`/admin/orders/${order.id}`}
-                onClick={() => onOpenChange(false)}
-              >
-                <FileText aria-hidden="true" className="size-4" />
-                Open full order review
-              </Link>
-            )}
+            <Link
+              className="inline-flex items-center justify-center gap-2 py-1 text-sm text-muted-foreground hover:text-foreground"
+              href={`/admin/orders/${order.id}`}
+              onClick={() => onOpenChange(false)}
+            >
+              <FileText aria-hidden="true" className="size-4" />
+              Open full order review
+            </Link>
           </SheetFooter>
         )}
       </SheetContent>

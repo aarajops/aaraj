@@ -14,7 +14,7 @@ import { composeManagedOrdersPage } from "@/features/orders/orders-view-model";
 export const metadata: Metadata = {
   title: "Order management",
   description:
-    "Review COD Orders and verify Bangladesh delivery serviceability.",
+    "Confirm customer COD Orders, put them on hold, and manage dispatch.",
 };
 
 export default async function AdminOrdersPage({
@@ -74,6 +74,7 @@ function ordersPageHref(query: {
   limit: number;
   offset: number;
   search?: string;
+  status?: string;
   fulfillmentStatus?: string;
 }): string {
   const params = new URLSearchParams();
@@ -82,6 +83,7 @@ function ordersPageHref(query: {
   }
   if (query.offset > 0) params.set("offset", String(query.offset));
   if (query.search) params.set("search", query.search);
+  if (query.status) params.set("status", query.status);
   if (query.fulfillmentStatus) {
     params.set("fulfillmentStatus", query.fulfillmentStatus);
   }

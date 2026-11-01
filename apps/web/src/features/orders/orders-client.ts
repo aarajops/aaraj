@@ -4,22 +4,22 @@ import "client-only";
 import {
   API_V1_BASE_PATH,
   ApiErrorResponseSchema,
-  OrderCancellationInputSchema,
   OrderCollectionInputSchema,
   CreateOrderInputSchema,
   OrderCreatedSchema,
   OrderDispatchInputSchema,
   OrderFulfillmentOutcomeInputSchema,
+  OrderManagementDetailSchema,
   OrderSchema,
-  OrderServiceabilityInputSchema,
+  OrderStatusUpdateInputSchema,
   type CreateOrderInput,
-  type OrderCancellationInput,
   type OrderCollectionInput,
   type OrderCreated,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
   type Order,
-  type OrderServiceabilityInput,
+  type OrderManagementDetail,
+  type OrderStatusUpdateInput,
 } from "@aaraj/contracts";
 
 export class OrderRequestError extends Error {
@@ -87,30 +87,32 @@ export async function fetchOrder(orderId: string): Promise<Order> {
   return readResponse(response, OrderSchema);
 }
 
-export async function fetchManagedOrder(orderId: string): Promise<Order> {
+export async function fetchManagedOrder(
+  orderId: string,
+): Promise<OrderManagementDetail> {
   const response = await fetch(
     `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}`,
     { cache: "no-store", credentials: "same-origin" },
   );
-  return readResponse(response, OrderSchema);
+  return readResponse(response, OrderManagementDetailSchema);
 }
 
-export async function updateOrderServiceability(
+export async function updateOrderStatus(
   orderId: string,
-  input: OrderServiceabilityInput,
-): Promise<Order> {
-  const validatedInput = OrderServiceabilityInputSchema.parse(input);
+  input: OrderStatusUpdateInput,
+): Promise<OrderManagementDetail> {
+  const validatedInput = OrderStatusUpdateInputSchema.parse(input);
   const response = await fetch(
-    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/serviceability`,
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/status`,
     {
-      method: "POST",
+      method: "PATCH",
       cache: "no-store",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(validatedInput),
     },
   );
-  return readResponse(response, OrderSchema);
+  return readResponse(response, OrderManagementDetailSchema);
 }
 
 export async function dispatchCodOrder(
@@ -129,24 +131,6 @@ export async function dispatchCodOrder(
         "Content-Type": "application/json",
         "Idempotency-Key": commandId,
       },
-      body: JSON.stringify(validatedInput),
-    },
-  );
-  return readResponse(response, OrderSchema);
-}
-
-export async function cancelAwaitingDispatchOrder(
-  orderId: string,
-  input: OrderCancellationInput,
-): Promise<Order> {
-  const validatedInput = OrderCancellationInputSchema.parse(input);
-  const response = await fetch(
-    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/cancel`,
-    {
-      method: "POST",
-      cache: "no-store",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(validatedInput),
     },
   );
