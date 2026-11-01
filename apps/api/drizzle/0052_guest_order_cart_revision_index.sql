@@ -1,0 +1,1 @@
+CREATE INDEX "order_guest_cart_revision_idx" ON "orders"."order_header" USING btree ("guest_cart_hash","cart_revision") WHERE "orders"."order_header"."guest_cart_hash" is not null;

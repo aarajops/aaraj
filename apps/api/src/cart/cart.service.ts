@@ -36,7 +36,11 @@ import {
   customerCart,
   customerCartLine,
 } from "./cart-schema.js";
-import { GUEST_CART_TTL_SECONDS, parseGuestCartId } from "./cart-cookie.js";
+import {
+  GUEST_CART_CHECKOUT_TOMBSTONE_TTL_SECONDS,
+  GUEST_CART_TTL_SECONDS,
+  parseGuestCartId,
+} from "./cart-cookie.js";
 
 const CartStoredProductSnapshotSchema = z.object(
   CartProductSnapshotSchema.shape,
@@ -101,6 +105,25 @@ redis.call('DEL', KEYS[1])
 return 1
 `;
 
+const GUEST_CART_CHECKOUT_CLEAR_SCRIPT = `
+local expected = tonumber(ARGV[1])
+if not expected or expected < 0 or expected >= 9007199254740991
+  or expected ~= math.floor(expected) then return 'CHANGED' end
+local raw = redis.call('GET', KEYS[1])
+if raw then
+  local ok, current = pcall(cjson.decode, raw)
+  if not ok or type(current) ~= 'table' or current.schemaVersion ~= 1
+    or type(current.revision) ~= 'number' or current.revision ~= expected then
+    return 'CHANGED'
+  end
+end
+local revision = expected + 1
+local state = '{"schemaVersion":1,"currency":"BDT","revision":'
+  .. string.format('%.0f', revision) .. ',"lines":[]}'
+redis.call('SET', KEYS[1], state, 'EX', ARGV[2])
+return 'CLEARED'
+`;
+
 const GUEST_CART_CLEAR_SCRIPT = `
 local raw = redis.call('GET', KEYS[1])
 local revision = 1
@@ -142,25 +165,38 @@ export class CartService {
     customerId: string | undefined,
     guestCartId: string | undefined,
   ): Promise<CartQuoteContext> {
-    if (customerId) {
+    const owner = this.identifyQuoteOwner(customerId, guestCartId);
+    if (owner?.kind === "customer") {
       return {
         cart: await this.toCart(
-          await this.getCustomerCartState(customerId),
+          await this.getCustomerCartState(owner.customerId),
           false,
         ),
-        owner: { kind: "customer", customerId },
+        owner,
       };
     }
     const id = parseGuestCartId(guestCartId);
-    if (!id) return { cart: await this.toCart(EMPTY_CART), owner: null };
+    if (!id || !owner)
+      return { cart: await this.toCart(EMPTY_CART), owner: null };
     const state = await this.readGuestState(id);
     return {
       cart: await this.toCart(state ?? EMPTY_CART, false),
-      owner: {
-        kind: "guest",
-        guestCartHash: createHash("sha256").update(id).digest("hex"),
-      },
+      owner,
     };
+  }
+
+  identifyQuoteOwner(
+    customerId: string | undefined,
+    guestCartId: string | undefined,
+  ): CartQuoteOwner | null {
+    if (customerId) return { kind: "customer", customerId };
+    const id = parseGuestCartId(guestCartId);
+    return id
+      ? {
+          kind: "guest",
+          guestCartHash: createHash("sha256").update(id).digest("hex"),
+        }
+      : null;
   }
 
   async clearCart(
@@ -213,10 +249,22 @@ export class CartService {
   async clearGuestCartAfterCheckout(
     guestCartId: string | undefined,
     expectedRevision: number,
-  ): Promise<boolean> {
+  ): Promise<"cleared" | "changed" | "unavailable"> {
     const id = parseGuestCartId(guestCartId);
-    if (!id) return false;
-    return this.deleteGuestState(id, expectedRevision);
+    if (!id) return "changed";
+    try {
+      const result = await getRedisClient().eval(
+        GUEST_CART_CHECKOUT_CLEAR_SCRIPT,
+        1,
+        this.guestKey(id),
+        String(expectedRevision),
+        String(GUEST_CART_CHECKOUT_TOMBSTONE_TTL_SECONDS),
+      );
+      return result === "CLEARED" ? "cleared" : "changed";
+    } catch {
+      this.logger.warn("Guest cart checkout cleanup could not reach Redis.");
+      return "unavailable";
+    }
   }
 
   private async clearGuestCartState(id: string): Promise<CartStoredState> {
@@ -764,7 +812,7 @@ export class CartService {
       );
       return result === 1;
     } catch {
-      this.logger.warn("Guest cart cleanup is pending after merge commit.");
+      this.logger.warn("Guest cart cleanup could not reach Redis.");
       return false;
     }
   }

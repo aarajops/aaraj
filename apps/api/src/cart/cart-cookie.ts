@@ -4,6 +4,7 @@ import { getStorefrontOrigin } from "../platform/config/storefront-origin.js";
 
 export const CART_COOKIE_NAME = "aaraj_guest_cart";
 export const GUEST_CART_TTL_SECONDS = 7 * 24 * 60 * 60;
+export const GUEST_CART_CHECKOUT_TOMBSTONE_TTL_SECONDS = 31 * 24 * 60 * 60;
 const GUEST_CART_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 export function deriveCartCookieSigningSecret(): string {

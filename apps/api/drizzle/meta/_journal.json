@@ -365,6 +365,13 @@
       "when": 1793091360633,
       "tag": "0051_size_guide_one_decimal",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793514430812,
+      "tag": "0052_guest_order_cart_revision_index",
+      "breakpoints": true
     }
   ]
 }

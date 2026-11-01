@@ -93,7 +93,7 @@ export async function reconcilePathaoBooking(
 
 export async function getPathaoCustomerTracking(orderId: string) {
   const response = await fetch(
-    `${API_V1_BASE_PATH}/delivery/pathao/orders/${encodeURIComponent(orderId)}/tracking`,
+    `${API_V1_BASE_PATH}/orders/${encodeURIComponent(orderId)}/tracking`,
     { cache: "no-store", credentials: "same-origin" },
   );
   return read(response, PathaoCustomerTrackingSchema);

@@ -133,7 +133,7 @@ export class PathaoManagementController {
 }
 
 @OptionalAuth()
-@Controller("delivery/pathao/orders")
+@Controller("orders")
 @UsePipes(StandardSchemaValidationPipe)
 export class PathaoCustomerTrackingController {
   constructor(private readonly pathao: PathaoService) {}

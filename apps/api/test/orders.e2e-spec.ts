@@ -22,7 +22,10 @@ import {
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
 import { bangladeshBusinessDate } from "../src/delivery/delivery.service.js";
-import { deliveryTariff } from "../src/delivery/delivery-schema.js";
+import {
+  deliveryTariff,
+  deliveryTariffDistrict,
+} from "../src/delivery/delivery-schema.js";
 import { AccessService } from "../src/platform/authorization/access.service.js";
 import { AuditService } from "../src/platform/audit/audit.service.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
@@ -50,6 +53,8 @@ import {
 } from "../src/delivery/pathao/pathao-schema.js";
 import { PathaoService } from "../src/delivery/pathao/pathao.service.js";
 import { PathaoTokenService } from "../src/delivery/pathao/pathao-token.service.js";
+import { getRedisClient } from "../src/platform/redis/redis-client.js";
+import { QuoteService } from "../src/quote/quote.service.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
 
 const origin = "http://localhost:3000";
@@ -987,6 +992,190 @@ describe("COD Orders and checkout", () => {
       changedKey,
     ).expect(409);
     expect((await stockFor(changedVariant)).quantityReserved).toBe(0);
+  });
+
+  it("rechecks the newest quote at the order transaction boundary", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const quote = await createQuote(cart.cookie);
+    const key = randomUUID();
+    const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
+    const quoteService = app.get(QuoteService);
+    const getCurrentForCheckout =
+      quoteService.getCurrentForCheckout.bind(quoteService);
+    const preflight = vi
+      .spyOn(quoteService, "getCurrentForCheckout")
+      .mockImplementationOnce(async (...args) => {
+        const current = await getCurrentForCheckout(...args);
+        await createQuote(cart.cookie);
+        return current;
+      });
+
+    try {
+      const response = await placeOrder(
+        checkoutCookie,
+        checkoutBody(quote.id),
+        key,
+      ).expect(409);
+      expect(response.body.errorCode).toBe("QUOTE_STALE");
+      expect((await stockFor(variantId)).quantityReserved).toBe(0);
+      expect(
+        await database.db
+          .select()
+          .from(customerOrder)
+          .where(eq(customerOrder.quoteId, quote.id)),
+      ).toHaveLength(0);
+    } finally {
+      preflight.mockRestore();
+    }
+  });
+
+  it("rechecks delivery pricing at the order transaction boundary", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const quote = await createQuote(cart.cookie);
+    const key = randomUUID();
+    const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
+    const [snapshot] = await database.db
+      .select({
+        tariffVersion: quoteSnapshot.deliveryTariffVersion,
+        geographyVersion: quoteSnapshot.geographyVersion,
+        districtId: quoteSnapshot.districtId,
+      })
+      .from(quoteSnapshot)
+      .where(eq(quoteSnapshot.id, quote.id));
+    if (!snapshot) throw new Error("Quote fixture is missing.");
+    const [districtRate] = await database.db
+      .select()
+      .from(deliveryTariffDistrict)
+      .where(
+        and(
+          eq(deliveryTariffDistrict.tariffVersion, snapshot.tariffVersion),
+          eq(
+            deliveryTariffDistrict.geographyVersion,
+            snapshot.geographyVersion,
+          ),
+          eq(deliveryTariffDistrict.districtId, snapshot.districtId),
+        ),
+      );
+    if (!districtRate) throw new Error("Delivery rate fixture is missing.");
+
+    const quoteService = app.get(QuoteService);
+    const getCurrentForCheckout =
+      quoteService.getCurrentForCheckout.bind(quoteService);
+    const preflight = vi
+      .spyOn(quoteService, "getCurrentForCheckout")
+      .mockImplementationOnce(async (...args) => {
+        const current = await getCurrentForCheckout(...args);
+        await database.db
+          .update(deliveryTariffDistrict)
+          .set({ feeBdt: districtRate.feeBdt + 1 })
+          .where(
+            and(
+              eq(
+                deliveryTariffDistrict.tariffVersion,
+                districtRate.tariffVersion,
+              ),
+              eq(
+                deliveryTariffDistrict.geographyVersion,
+                districtRate.geographyVersion,
+              ),
+              eq(deliveryTariffDistrict.districtId, districtRate.districtId),
+            ),
+          );
+        return current;
+      });
+
+    try {
+      const response = await placeOrder(
+        checkoutCookie,
+        checkoutBody(quote.id),
+        key,
+      ).expect(409);
+      expect(response.body.errorCode).toBe("QUOTE_STALE");
+      expect((await stockFor(variantId)).quantityReserved).toBe(0);
+      expect(
+        await database.db
+          .select()
+          .from(customerOrder)
+          .where(eq(customerOrder.quoteId, quote.id)),
+      ).toHaveLength(0);
+    } finally {
+      preflight.mockRestore();
+      await database.db
+        .update(deliveryTariffDistrict)
+        .set({ feeBdt: districtRate.feeBdt })
+        .where(
+          and(
+            eq(
+              deliveryTariffDistrict.tariffVersion,
+              districtRate.tariffVersion,
+            ),
+            eq(
+              deliveryTariffDistrict.geographyVersion,
+              districtRate.geographyVersion,
+            ),
+            eq(deliveryTariffDistrict.districtId, districtRate.districtId),
+          ),
+        );
+    }
+  });
+
+  it("retries durable guest cart cleanup on idempotent checkout replay", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const quote = await createQuote(cart.cookie);
+    const key = randomUUID();
+    const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
+    const redis = getRedisClient();
+    const originalEval = redis.eval.bind(redis);
+    const guestCartKeyPrefix =
+      process.env.CART_REDIS_KEY_PREFIX?.trim() || "aaraj:cart:guest:";
+    let injectedFailure = false;
+    const cleanupFailure = vi
+      .spyOn(redis, "eval")
+      .mockImplementation((...args) => {
+        const keyArgument = args[2];
+        if (
+          !injectedFailure &&
+          typeof keyArgument === "string" &&
+          keyArgument.startsWith(guestCartKeyPrefix)
+        ) {
+          injectedFailure = true;
+          return Promise.reject(new Error("Injected guest-cart Redis outage"));
+        }
+        return originalEval(...args);
+      });
+
+    try {
+      const interrupted = await placeOrder(
+        checkoutCookie,
+        checkoutBody(quote.id),
+        key,
+      ).expect(503);
+      expect(interrupted.body.errorCode).toBe("ORDER_CART_CLEANUP_PENDING");
+      const created = await database.db
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.quoteId, quote.id));
+      expect(created).toHaveLength(1);
+      expect((await stockFor(variantId)).quantityReserved).toBe(1);
+
+      const replay = await placeOrder(
+        checkoutCookie,
+        checkoutBody(quote.id),
+        key,
+      ).expect(201);
+      expect(replay.body).toMatchObject({ id: created[0]?.id, replayed: true });
+      expect((await stockFor(variantId)).quantityReserved).toBe(1);
+      const clearedCart = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/cart`)
+        .set("Cookie", cart.cookie)
+        .expect(200);
+      expect(clearedCart.body.lines).toEqual([]);
+    } finally {
+      cleanupFailure.mockRestore();
+    }
   });
 
   it("rejects invalid Bangladesh addresses and geography without creating an Order", async () => {
@@ -2059,7 +2248,7 @@ describe("COD Orders and checkout", () => {
     await app.get(PathaoService).processPendingWebhooks();
 
     const customerTracking = await request(app.getHttpServer())
-      .get(`${API_V1_BASE_PATH}/delivery/pathao/orders/${fixture.id}/tracking`)
+      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}/tracking`)
       .set("Cookie", fixture.cookie)
       .expect(200);
     expect(customerTracking.headers["cache-control"]).toContain("no-store");
@@ -2075,7 +2264,7 @@ describe("COD Orders and checkout", () => {
     });
     expect(customerTracking.body).not.toHaveProperty("providerOrderStatus");
     await request(app.getHttpServer())
-      .get(`${API_V1_BASE_PATH}/delivery/pathao/orders/${fixture.id}/tracking`)
+      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}/tracking`)
       .set("Cookie", customer.cookie)
       .expect(404);
     const customerOrderResponse = await request(app.getHttpServer())
@@ -2170,7 +2359,7 @@ describe("COD Orders and checkout", () => {
       }),
     );
     const customerTracking = await request(app.getHttpServer())
-      .get(`${API_V1_BASE_PATH}/delivery/pathao/orders/${fixture.id}/tracking`)
+      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}/tracking`)
       .set("Cookie", fixture.cookie)
       .expect(200);
     expect(customerTracking.body.observations[0]).not.toHaveProperty(

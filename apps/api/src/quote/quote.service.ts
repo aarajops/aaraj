@@ -55,6 +55,7 @@ export class QuoteService {
         },
       );
     }
+    const owner = context.owner;
     if (context.cart.lines.some((line) => line.availability !== "available")) {
       throw new UnprocessableEntityException(
         "Remove unavailable items before requesting a quote.",
@@ -105,34 +106,44 @@ export class QuoteService {
     const totalBdt = safeAmount(
       BigInt(merchandiseGrossBdt) + BigInt(tariff.feeBdt),
     );
-    const [saved] = await this.database.db
-      .insert(quoteSnapshot)
-      .values({
-        schemaVersion: QUOTE_SCHEMA_VERSION,
-        customerId:
-          context.owner.kind === "customer" ? context.owner.customerId : null,
-        guestCartHash:
-          context.owner.kind === "guest" ? context.owner.guestCartHash : null,
-        cartRevision: context.cart.revision,
-        geographyVersion: input.geographyVersion,
-        divisionId: destination.division.id,
-        divisionName: destination.division.name,
-        districtId: destination.district.id,
-        districtName: destination.district.name,
-        upazilaId: destination.upazila?.id ?? null,
-        upazilaName: destination.upazila?.name ?? null,
-        deliveryTariffVersion: tariff.version,
-        deliveryTariffEffectiveFrom: tariff.effectiveFrom,
-        deliveryZone: tariff.zone,
-        deliveryAmountBdt: tariff.feeBdt,
-        lines,
-        merchandiseGrossBdt,
-        totalBdt,
-        validityPolicyVersion: QUOTE_VALIDITY_POLICY_VERSION,
-        createdAt: sql`now()`,
-        expiresAt: sql`now() + interval '15 minutes'`,
-      })
-      .returning();
+    const [saved] = await this.database.db.transaction(async (transaction) => {
+      await lockQuoteOwner(transaction, owner);
+      const [latest] = await transaction
+        .select({ createdAt: quoteSnapshot.createdAt })
+        .from(quoteSnapshot)
+        .where(quoteOwnerCondition(owner))
+        .orderBy(desc(quoteSnapshot.createdAt), desc(quoteSnapshot.id))
+        .limit(1);
+      const createdAt = latest
+        ? sql`greatest(statement_timestamp(), ${latest.createdAt}::timestamptz + interval '1 millisecond')`
+        : sql`statement_timestamp()`;
+      return transaction
+        .insert(quoteSnapshot)
+        .values({
+          schemaVersion: QUOTE_SCHEMA_VERSION,
+          customerId: owner.kind === "customer" ? owner.customerId : null,
+          guestCartHash: owner.kind === "guest" ? owner.guestCartHash : null,
+          cartRevision: context.cart.revision,
+          geographyVersion: input.geographyVersion,
+          divisionId: destination.division.id,
+          divisionName: destination.division.name,
+          districtId: destination.district.id,
+          districtName: destination.district.name,
+          upazilaId: destination.upazila?.id ?? null,
+          upazilaName: destination.upazila?.name ?? null,
+          deliveryTariffVersion: tariff.version,
+          deliveryTariffEffectiveFrom: tariff.effectiveFrom,
+          deliveryZone: tariff.zone,
+          deliveryAmountBdt: tariff.feeBdt,
+          lines,
+          merchandiseGrossBdt,
+          totalBdt,
+          validityPolicyVersion: QUOTE_VALIDITY_POLICY_VERSION,
+          createdAt,
+          expiresAt: sql`${createdAt} + interval '15 minutes'`,
+        })
+        .returning();
+    });
     if (!saved)
       throw new ServiceUnavailableException("The quote could not be saved.");
     return this.toPublicQuote(saved);
@@ -184,11 +195,6 @@ export class QuoteService {
     );
     if (!sameCatalogLines(row.lines, variants))
       return stale(row.id, "catalog_changed");
-
-    const currentTariffVersion = await this.delivery.getCurrentVersion();
-    if (currentTariffVersion !== row.deliveryTariffVersion) {
-      return stale(row.id, "delivery_tariff_changed");
-    }
 
     let currentTariff: Awaited<
       ReturnType<DeliveryService["resolveDeliveryFee"]>
@@ -283,13 +289,17 @@ export class QuoteService {
   async lockAndValidateForOrderCheckout(
     transaction: AuditTransaction,
     quote: AuthoritativeQuote,
+    owner: CartQuoteOwner,
   ): Promise<void> {
+    await lockQuoteOwner(transaction, owner);
+
     const [row] = await transaction
       .select({ id: quoteSnapshot.id })
       .from(quoteSnapshot)
       .where(
         and(
           eq(quoteSnapshot.id, quote.id),
+          quoteOwnerCondition(owner),
           sql`${quoteSnapshot.expiresAt} > clock_timestamp()`,
         ),
       )
@@ -300,6 +310,19 @@ export class QuoteService {
       });
     }
 
+    const [newest] = await transaction
+      .select({ id: quoteSnapshot.id })
+      .from(quoteSnapshot)
+      .where(quoteOwnerCondition(owner))
+      .orderBy(desc(quoteSnapshot.createdAt), desc(quoteSnapshot.id))
+      .limit(1);
+    if (!newest || newest.id !== quote.id) {
+      throw new ConflictException(
+        "A newer delivery quote exists. Request a fresh quote.",
+        { errorCode: "QUOTE_STALE" },
+      );
+    }
+
     const variants =
       await this.catalog.findPurchasableVariantsWithinTransaction(
         transaction,
@@ -308,6 +331,43 @@ export class QuoteService {
     if (!sameCatalogLines(quote.lines, variants)) {
       throw new ConflictException(
         "The catalog changed during checkout. Request a fresh quote.",
+        { errorCode: "QUOTE_STALE" },
+      );
+    }
+
+    let currentTariff: Awaited<
+      ReturnType<DeliveryService["resolveDeliveryFee"]>
+    >;
+    try {
+      currentTariff = await this.delivery.resolveDeliveryFeeWithinTransaction(
+        transaction,
+        quote.destination.geographyVersion,
+        quote.destination.districtId,
+        quote.destination.upazilaId ?? undefined,
+      );
+    } catch (error) {
+      if (
+        error instanceof UnprocessableEntityException &&
+        ["DELIVERY_UPAZILA_REQUIRED", "DELIVERY_UNAVAILABLE"].includes(
+          exceptionErrorCode(error) ?? "",
+        )
+      ) {
+        throw new ConflictException(
+          "Delivery pricing changed during checkout. Request a fresh quote.",
+          { errorCode: "QUOTE_STALE" },
+        );
+      }
+      throw error;
+    }
+    if (
+      currentTariff.version !== quote.delivery.tariffVersion ||
+      currentTariff.effectiveFrom !== quote.delivery.effectiveFrom ||
+      currentTariff.geographyVersion !== quote.destination.geographyVersion ||
+      currentTariff.zone !== quote.delivery.zone ||
+      currentTariff.feeBdt !== quote.delivery.grossAmountBdt
+    ) {
+      throw new ConflictException(
+        "Delivery pricing changed during checkout. Request a fresh quote.",
         { errorCode: "QUOTE_STALE" },
       );
     }
@@ -357,6 +417,20 @@ function quoteOwnerCondition(owner: CartQuoteOwner) {
   return owner.kind === "customer"
     ? eq(quoteSnapshot.customerId, owner.customerId)
     : eq(quoteSnapshot.guestCartHash, owner.guestCartHash);
+}
+
+async function lockQuoteOwner(
+  transaction: AuditTransaction,
+  owner: CartQuoteOwner,
+): Promise<void> {
+  const resource = JSON.stringify([
+    "aaraj/quote-owner/v1",
+    owner.kind,
+    owner.kind === "customer" ? owner.customerId : owner.guestCartHash,
+  ]);
+  await transaction.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${resource}, 0))`,
+  );
 }
 
 function sameDestination(

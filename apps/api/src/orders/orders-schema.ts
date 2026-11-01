@@ -103,6 +103,9 @@ export const customerOrder = ordersSchema.table(
       table.serviceability,
       table.createdAt,
     ),
+    index("order_guest_cart_revision_idx")
+      .on(table.guestCartHash, table.cartRevision)
+      .where(sql`${table.guestCartHash} is not null`),
     uniqueIndex("order_dispatch_command_uidx").on(table.dispatchCommandId),
     check(
       "order_reference_check",

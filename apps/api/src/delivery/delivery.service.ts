@@ -60,13 +60,49 @@ export class DeliveryService {
       .where(activeTariffCondition(businessDate))
       .limit(2);
     if (activeTariffs.length !== 1) throw tariffUnavailable();
-    const tariff = activeTariffs[0]!;
+    return this.resolveFeeForTariff(
+      this.database.db,
+      activeTariffs[0]!,
+      geographyVersion,
+      districtId,
+      upazilaId,
+    );
+  }
 
+  async resolveDeliveryFeeWithinTransaction(
+    transaction: AuditTransaction,
+    geographyVersion: string,
+    districtId: string,
+    upazilaId?: string,
+  ): Promise<ResolvedDeliveryTariff> {
+    const activeTariffs = await transaction
+      .select()
+      .from(deliveryTariff)
+      .where(activeTariffCondition(bangladeshBusinessDate()))
+      .for("share")
+      .limit(2);
+    if (activeTariffs.length !== 1) throw tariffUnavailable();
+    return this.resolveFeeForTariff(
+      transaction,
+      activeTariffs[0]!,
+      geographyVersion,
+      districtId,
+      upazilaId,
+    );
+  }
+
+  private async resolveFeeForTariff(
+    database: DeliveryDatabase,
+    tariff: TariffRow,
+    geographyVersion: string,
+    districtId: string,
+    upazilaId?: string,
+  ): Promise<ResolvedDeliveryTariff> {
     if (hasZoneFees(tariff)) {
       if (tariff.geographyVersion !== geographyVersion) {
         throw tariffUnavailable();
       }
-      const areaRules = await this.database.db
+      const areaRules = await database
         .select({
           locationId: deliveryTariffArea.locationId,
           zone: deliveryTariffArea.zone,
@@ -129,7 +165,7 @@ export class DeliveryService {
     ) {
       throw tariffUnavailable();
     }
-    const [entry] = await this.database.db
+    const [entry] = await database
       .select({ feeBdt: deliveryTariffDistrict.feeBdt })
       .from(deliveryTariffDistrict)
       .where(
@@ -307,17 +343,6 @@ export class DeliveryService {
     });
 
     return this.getManagementSettings(actor);
-  }
-
-  async getCurrentVersion(): Promise<string> {
-    const businessDate = bangladeshBusinessDate();
-    const activeTariffs = await this.database.db
-      .select({ version: deliveryTariff.version })
-      .from(deliveryTariff)
-      .where(activeTariffCondition(businessDate))
-      .limit(2);
-    if (activeTariffs.length !== 1) throw tariffUnavailable();
-    return activeTariffs[0]!.version;
   }
 
   private async getActiveGeographyVersion(

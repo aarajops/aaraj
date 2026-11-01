@@ -1755,6 +1755,16 @@ test("catalog operator configures a product through to storefront visibility", a
     sameSite: "Lax",
     path: `/api/v1/orders/${guestOrderId}`,
   });
+  const guestTracking = await page.evaluate(async (orderId) => {
+    const response = await fetch(`/api/v1/orders/${orderId}/tracking`, {
+      cache: "no-store",
+    });
+    return { status: response.status, body: await response.json() };
+  }, guestOrderId);
+  expect(guestTracking).toEqual({
+    status: 200,
+    body: { booking: null, observations: [] },
+  });
   expect(
     (await page.context().cookies()).some(({ name }) =>
       name.startsWith("aaraj_order_attempt_"),

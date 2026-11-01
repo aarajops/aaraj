@@ -2,7 +2,6 @@ import {
   ConflictException,
   Inject,
   Injectable,
-  Logger,
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
@@ -77,8 +76,6 @@ type IdempotencyRow = typeof orderIdempotency.$inferSelect;
 type NormalizedAddress = OrderAddress;
 @Injectable()
 export class OrdersService implements OrdersPathaoPort {
-  private readonly logger = new Logger(OrdersService.name);
-
   constructor(
     private readonly database: DatabaseService,
     private readonly cart: CartService,
@@ -96,9 +93,8 @@ export class OrdersService implements OrdersPathaoPort {
     idempotencyKey: string,
     signedCookies: Record<string, string>,
   ): Promise<{ order: OrderCreated; guestCredential: string | null }> {
-    const context = await this.cart.getQuoteContext(customerId, guestCartId);
-    if (!context.owner) throw orderNotFound();
-    const owner = context.owner;
+    const owner = this.cart.identifyQuoteOwner(customerId, guestCartId);
+    if (!owner) throw orderNotFound();
     const normalizedInput = normalizeCheckoutInput(input.address);
     const piiKeyring = readOrderPiiKeyring();
     const requestFingerprint = fingerprintCheckout(
@@ -115,8 +111,17 @@ export class OrdersService implements OrdersPathaoPort {
       requestFingerprint,
     );
     if (replay) {
-      return this.resolveReplay(replay, owner, idempotencyKey, signedCookies);
+      return this.resolveReplay(
+        replay,
+        owner,
+        idempotencyKey,
+        signedCookies,
+        guestCartId,
+      );
     }
+
+    const context = await this.cart.getQuoteContext(customerId, guestCartId);
+    if (!context.owner) throw orderNotFound();
 
     if (context.cart.lines.length === 0) {
       throw new ConflictException("The cart is empty or no longer available.", {
@@ -190,7 +195,30 @@ export class OrdersService implements OrdersPathaoPort {
           return row;
         }
 
-        await this.quotes.lockAndValidateForOrderCheckout(transaction, quote);
+        await this.quotes.lockAndValidateForOrderCheckout(
+          transaction,
+          quote,
+          owner,
+        );
+
+        if (owner.kind === "guest") {
+          const [consumedCartRevision] = await transaction
+            .select({ id: customerOrder.id })
+            .from(customerOrder)
+            .where(
+              guestCartRevisionCondition(
+                owner.guestCartHash,
+                quote.cartRevision,
+              ),
+            )
+            .limit(1);
+          if (consumedCartRevision) {
+            throw new ConflictException(
+              "This guest cart was already checked out. Refresh the cart before starting another checkout.",
+              { errorCode: "ORDER_CART_ALREADY_CHECKED_OUT" },
+            );
+          }
+        }
 
         const [counter] = await transaction
           .insert(orderReferenceCounter)
@@ -308,9 +336,26 @@ export class OrdersService implements OrdersPathaoPort {
             );
           }
         }
+
         return row;
       });
     } catch (error) {
+      if (isGuestCartAlreadyCheckedOut(error) && owner.kind === "guest") {
+        const [priorOrder] = await this.database.db
+          .select()
+          .from(customerOrder)
+          .where(
+            guestCartRevisionCondition(owner.guestCartHash, quote.cartRevision),
+          )
+          .limit(1);
+        if (priorOrder) {
+          await this.cleanupGuestCartAfterCheckout(
+            priorOrder,
+            owner,
+            guestCartId,
+          );
+        }
+      }
       if (isUniqueViolation(error)) {
         const existing = await this.findIdempotencyReplay(
           ownerHash,
@@ -323,6 +368,7 @@ export class OrdersService implements OrdersPathaoPort {
             owner,
             idempotencyKey,
             signedCookies,
+            guestCartId,
           );
         }
         throw new ConflictException(
@@ -333,18 +379,7 @@ export class OrdersService implements OrdersPathaoPort {
       throw error;
     }
 
-    if (owner.kind === "guest") {
-      try {
-        await this.cart.clearGuestCartAfterCheckout(
-          guestCartId,
-          quote.cartRevision,
-        );
-      } catch {
-        this.logger.warn(
-          "Guest cart cleanup deferred after COD Order creation.",
-        );
-      }
-    }
+    await this.cleanupGuestCartAfterCheckout(saved, owner, guestCartId);
     return {
       order: toCreated(saved, replayed),
       guestCredential: guestCredential ?? null,
@@ -358,9 +393,9 @@ export class OrdersService implements OrdersPathaoPort {
     signedCookies: Record<string, string>,
   ): Promise<string | null> {
     if (customerId) return null;
-    const context = await this.cart.getQuoteContext(customerId, guestCartId);
-    if (context.owner?.kind !== "guest") throw orderNotFound();
-    const ownerHash = hashOwner(context.owner);
+    const owner = this.cart.identifyQuoteOwner(customerId, guestCartId);
+    if (owner?.kind !== "guest") throw orderNotFound();
+    const ownerHash = hashOwner(owner);
     const keyHash = sha256(idempotencyKey);
     const attemptCookieName = guestOrderAttemptCookieName(idempotencyKey);
     const currentAttempt = signedCookies[attemptCookieName];
@@ -383,10 +418,14 @@ export class OrdersService implements OrdersPathaoPort {
         isGuestAttemptCredential(currentAttempt, idempotencyKey) &&
         (await this.matchesGuestCredential(row, currentAttempt))
       ) {
+        await this.cleanupGuestCartAfterCheckout(row, owner, guestCartId);
         return currentAttempt;
       }
       const orderCookie = signedCookies[guestOrderCookieName(row.id)];
-      if (await this.matchesGuestCredential(row, orderCookie)) return null;
+      if (await this.matchesGuestCredential(row, orderCookie)) {
+        await this.cleanupGuestCartAfterCheckout(row, owner, guestCartId);
+        return null;
+      }
       throw orderAccessUnavailable();
     }
     if (isGuestAttemptCredential(currentAttempt, idempotencyKey)) {
@@ -401,10 +440,10 @@ export class OrdersService implements OrdersPathaoPort {
     idempotencyKey: string,
     signedCookies: Record<string, string>,
   ): Promise<{ order: OrderCreated; guestCredential: string | null }> {
-    const context = await this.cart.getQuoteContext(customerId, guestCartId);
-    if (!context.owner) throw orderNotFound();
+    const owner = this.cart.identifyQuoteOwner(customerId, guestCartId);
+    if (!owner) throw orderNotFound();
     const row = await this.findIdempotencyReplay(
-      hashOwner(context.owner),
+      hashOwner(owner),
       sha256(idempotencyKey),
       undefined,
     );
@@ -415,9 +454,10 @@ export class OrdersService implements OrdersPathaoPort {
     }
     return this.resolveReplay(
       row,
-      context.owner,
+      owner,
       idempotencyKey,
       signedCookies,
+      guestCartId,
     );
   }
 
@@ -426,6 +466,7 @@ export class OrdersService implements OrdersPathaoPort {
     owner: CartQuoteOwner,
     idempotencyKey: string,
     signedCookies: Record<string, string>,
+    guestCartId: string | undefined,
   ): Promise<{ order: OrderCreated; guestCredential: string | null }> {
     if (owner.kind === "customer") {
       if (row.customerId !== owner.customerId) throw orderNotFound();
@@ -440,13 +481,33 @@ export class OrdersService implements OrdersPathaoPort {
       isGuestAttemptCredential(attempt, idempotencyKey) &&
       (await this.matchesGuestCredential(row, attempt))
     ) {
+      await this.cleanupGuestCartAfterCheckout(row, owner, guestCartId);
       return { order: toCreated(row, true), guestCredential: attempt };
     }
     const existingOrderCookie = signedCookies[guestOrderCookieName(row.id)];
     if (await this.matchesGuestCredential(row, existingOrderCookie)) {
+      await this.cleanupGuestCartAfterCheckout(row, owner, guestCartId);
       return { order: toCreated(row, true), guestCredential: null };
     }
     throw orderAccessUnavailable();
+  }
+
+  private async cleanupGuestCartAfterCheckout(
+    row: OrderRow,
+    owner: CartQuoteOwner,
+    guestCartId: string | undefined,
+  ): Promise<void> {
+    if (owner.kind !== "guest") return;
+    const result = await this.cart.clearGuestCartAfterCheckout(
+      guestCartId,
+      row.cartRevision,
+    );
+    if (result === "unavailable") {
+      throw new ServiceUnavailableException(
+        "The Order was created, but cart cleanup is pending. Retry checkout to resume safely.",
+        { errorCode: "ORDER_CART_CLEANUP_PENDING" },
+      );
+    }
   }
 
   private async matchesGuestCredential(
@@ -1828,6 +1889,24 @@ function orderAccessUnavailable(): ConflictException {
   return new ConflictException(
     "Online guest Order access is unavailable and cannot be restored automatically.",
     { errorCode: "ORDER_ACCESS_UNAVAILABLE" },
+  );
+}
+
+function guestCartRevisionCondition(guestCartHash: string, revision: number) {
+  return and(
+    eq(customerOrder.guestCartHash, guestCartHash),
+    eq(customerOrder.cartRevision, revision),
+  );
+}
+
+function isGuestCartAlreadyCheckedOut(error: unknown): boolean {
+  if (!(error instanceof ConflictException)) return false;
+  const response = error.getResponse();
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    "errorCode" in response &&
+    response.errorCode === "ORDER_CART_ALREADY_CHECKED_OUT"
   );
 }
 

@@ -177,9 +177,19 @@ function SinglePageCheckout({
     } catch (reason) {
       if (
         reason instanceof OrderRequestError &&
-        ["IDEMPOTENCY_KEY_REUSED", "ORDER_CHECKOUT_CONFLICT"].includes(
-          reason.errorCode ?? "",
-        )
+        reason.errorCode === "ORDER_CART_ALREADY_CHECKED_OUT"
+      ) {
+        await refreshCart();
+        setCheckoutError(reason.message);
+        return;
+      }
+      if (
+        reason instanceof OrderRequestError &&
+        [
+          "IDEMPOTENCY_KEY_REUSED",
+          "ORDER_CHECKOUT_CONFLICT",
+          "ORDER_CART_CLEANUP_PENDING",
+        ].includes(reason.errorCode ?? "")
       ) {
         try {
           const existing = await resumeCodOrder(key);
