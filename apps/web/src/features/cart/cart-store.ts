@@ -1,5 +1,9 @@
 import { createStore } from "zustand/vanilla";
-import type { Cart, CartMergeResult } from "@aaraj/contracts";
+import {
+  CART_CURRENCY,
+  type Cart,
+  type CartMergeResult,
+} from "@aaraj/contracts";
 import {
   cartItem,
   sendEcommerceEvent,
@@ -15,7 +19,7 @@ import {
 
 const EMPTY_CART: Cart = {
   schemaVersion: 1,
-  currency: "BDT",
+  currency: CART_CURRENCY,
   revision: 0,
   lines: [],
 };

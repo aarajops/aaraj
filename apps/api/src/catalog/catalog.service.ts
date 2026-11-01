@@ -27,6 +27,7 @@ import {
   CATALOG_PRODUCT_SLUG_MAX_LENGTH,
   CatalogMediaDerivativesSchema,
   MAX_CATALOG_PRODUCT_MEDIA,
+  CURRENCY,
 } from "@aaraj/contracts";
 import {
   invalidatePublishedFilterOptionsCache,
@@ -143,7 +144,7 @@ export class CatalogService {
           color: row.color,
           sizeLabel: row.sizeLabel,
           unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
-          currency: "BDT" as const,
+          currency: CURRENCY,
           image: image ? { ...image.card, altText: image.altText } : null,
         },
       ];

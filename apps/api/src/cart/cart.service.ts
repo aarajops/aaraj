@@ -119,7 +119,7 @@ if raw then
   end
 end
 local revision = expected + 1
-local state = '{"schemaVersion":1,"currency":"BDT","revision":'
+local state = '{"schemaVersion":1,"currency":"${CART_CURRENCY}","revision":'
   .. string.format('%.0f', revision) .. ',"lines":[]}'
 redis.call('SET', KEYS[1], state, 'EX', ARGV[2])
 return 'CLEARED'
@@ -137,7 +137,7 @@ if raw then
     revision = current.revision + 1
   end
 end
-local state = '{"schemaVersion":1,"currency":"BDT","revision":' .. string.format('%.0f', revision) .. ',"lines":[]}'
+local state = '{"schemaVersion":1,"currency":"${CART_CURRENCY}","revision":' .. string.format('%.0f', revision) .. ',"lines":[]}'
 redis.call('SET', KEYS[1], state, 'EX', ARGV[1])
 return { 'OK', tostring(revision) }
 `;

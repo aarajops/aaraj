@@ -61,6 +61,9 @@ const runtimeTableGrants = [
 ] as const;
 const runtimeColumnGrants = [
   ["storefront", "banner_asset", "publicly_released_at", ["UPDATE"]],
+  ["inventory", "stock_reservation_line", "quantity", ["UPDATE"]],
+  ["orders", "order_line", "quantity", ["UPDATE"]],
+  ["orders", "order_line", "gross_amount_bdt", ["UPDATE"]],
 ] as const;
 const runtimeTablePrivilegeMap: ReadonlyMap<string, readonly string[]> =
   new Map(

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { AddToCart } from "@/features/cart/add-to-cart";
 import { formatBdtPrice } from "@/lib/currency";
+import { CURRENCY } from "@aaraj/contracts";
 import { catalogMeasurementLabels } from "@/features/catalog/size-guide-labels";
 import { CircleHelp } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -91,7 +92,7 @@ export function ProductPurchase({
     if (viewedProductId.current === productId) return;
     viewedProductId.current = productId;
     sendEcommerceEvent("view_item", {
-      currency: "BDT",
+      currency: CURRENCY,
       ...(viewItemPriceBdt !== null ? { value: viewItemPriceBdt } : {}),
       items: [
         {

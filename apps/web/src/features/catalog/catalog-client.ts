@@ -67,6 +67,7 @@ export function uploadCatalogCategoryImage(
 
 export function fetchManagedProducts(
   query: CatalogProductListQuery,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const search = new URLSearchParams({
     limit: String(query.limit),
@@ -78,7 +79,22 @@ export function fetchManagedProducts(
   return fetch(`${API_V1_BASE_PATH}/catalog/products/manage?${search}`, {
     cache: "no-store",
     credentials: "same-origin",
+    signal,
   });
+}
+
+export function fetchManagedProductDetail(
+  productId: string,
+  signal?: AbortSignal,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}`,
+    {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal,
+    },
+  );
 }
 
 export function fetchManagedSizeGuides(

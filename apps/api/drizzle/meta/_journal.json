@@ -379,6 +379,13 @@
       "when": 1793526401913,
       "tag": "0053_order_flow_consistency",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1793532942442,
+      "tag": "0054_order_item_reservation_extension",
+      "breakpoints": true
     }
   ]
 }

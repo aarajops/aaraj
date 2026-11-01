@@ -81,7 +81,7 @@ export const inventoryReservationCommand = inventorySchema.table(
       .notNull()
       .references(() => inventoryStockReservation.id, { onDelete: "restrict" }),
     operation: text("operation")
-      .$type<"reserve" | "release" | "consume">()
+      .$type<"reserve" | "extend" | "release" | "consume">()
       .notNull(),
     requestFingerprint: text("request_fingerprint").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -94,7 +94,7 @@ export const inventoryReservationCommand = inventorySchema.table(
       .where(sql`${table.operation} = 'reserve'`),
     check(
       "reservation_command_operation_check",
-      sql`${table.operation} in ('reserve', 'release', 'consume')`,
+      sql`${table.operation} in ('reserve', 'extend', 'release', 'consume')`,
     ),
     check(
       "reservation_command_fingerprint_check",

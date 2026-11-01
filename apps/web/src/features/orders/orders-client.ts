@@ -9,6 +9,7 @@ import {
   OrderCreatedSchema,
   OrderDispatchInputSchema,
   OrderFulfillmentOutcomeInputSchema,
+  OrderItemAddInputSchema,
   OrderManagementDetailSchema,
   OrderSchema,
   OrderStatusUpdateInputSchema,
@@ -17,6 +18,7 @@ import {
   type OrderCreated,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
+  type OrderItemAddInput,
   type Order,
   type OrderManagementDetail,
   type OrderStatusUpdateInput,
@@ -104,6 +106,24 @@ export async function updateOrderStatus(
   const validatedInput = OrderStatusUpdateInputSchema.parse(input);
   const response = await fetch(
     `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/status`,
+    {
+      method: "PATCH",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validatedInput),
+    },
+  );
+  return readResponse(response, OrderManagementDetailSchema);
+}
+
+export async function addOrderItem(
+  orderId: string,
+  input: OrderItemAddInput,
+): Promise<OrderManagementDetail> {
+  const validatedInput = OrderItemAddInputSchema.parse(input);
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/items`,
     {
       method: "PATCH",
       cache: "no-store",

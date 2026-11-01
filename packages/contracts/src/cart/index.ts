@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { CatalogProductImageVariantSchema } from "../catalog/media.js";
+import { CURRENCY } from "../platform/system-config.js";
 
 /** Approved AARAJ cart policy; these values are product decisions. */
 export const MAX_CART_LINES = 50;
 export const MAX_CART_QUANTITY_PER_VARIANT = 10;
 export const CART_SCHEMA_VERSION = 1;
-export const CART_CURRENCY = "BDT" as const;
+export const CART_CURRENCY = CURRENCY;
 export const CartVariantIdSchema = z.uuid();
 
 const CartRevisionSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);

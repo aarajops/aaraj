@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { MAX_CART_QUANTITY_PER_VARIANT } from "../cart/index.js";
 import { QuoteIdSchema, type AuthoritativeQuote } from "../quote/index.js";
 import { DeliveryZoneSchema } from "../delivery/index.js";
+import { CURRENCY } from "../platform/system-config.js";
 import {
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
@@ -9,7 +11,7 @@ import { OrderReferenceSchema } from "./order-reference.js";
 
 export { OrderReferenceSchema } from "./order-reference.js";
 
-export const ORDER_CURRENCY = "BDT" as const;
+export const MAX_ORDER_LINES = 50;
 
 export const CheckoutAddressInputSchema = z.strictObject({
   recipientName: z
@@ -118,6 +120,22 @@ export type OrderStatusUpdateInput = z.infer<
   typeof OrderStatusUpdateInputSchema
 >;
 
+export const OrderItemAddInputSchema = z.strictObject({
+  variantId: z.uuid(),
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+  expectedCurrentQuantity: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_CART_QUANTITY_PER_VARIANT),
+  expectedUnitPriceBdt: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(Number.MAX_SAFE_INTEGER),
+});
+export type OrderItemAddInput = z.infer<typeof OrderItemAddInputSchema>;
+
 export const OrderDispatchCommandIdSchema = z.uuid();
 export const OrderDispatchInputSchema = z.strictObject({
   deliveryProvider: z.enum(["manual", "pathao"]).default("manual"),
@@ -157,7 +175,7 @@ const OrderLineSchema = z.strictObject({
   productName: z.string().min(1).max(160),
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),
-  quantity: z.number().int().min(1).max(10),
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
   unitPriceBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 });
@@ -183,7 +201,7 @@ export type OrderAddress = z.infer<typeof OrderAddressSchema>;
 export const OrderSchema = z.strictObject({
   id: OrderIdSchema,
   reference: OrderReferenceSchema,
-  currency: z.literal(ORDER_CURRENCY),
+  currency: z.literal(CURRENCY),
   status: OrderStatusSchema,
   serviceability: z.enum([
     "pending_manual_review",
@@ -200,7 +218,7 @@ export const OrderSchema = z.strictObject({
     .nullable(),
   fulfillmentStatus: OrderFulfillmentStatusSchema,
   dispatch: OrderDispatchDetailsSchema.nullable(),
-  lines: z.array(OrderLineSchema).min(1).max(50),
+  lines: z.array(OrderLineSchema).min(1).max(MAX_ORDER_LINES),
   merchandiseGrossBdt: z
     .number()
     .int()
@@ -227,6 +245,7 @@ export type Order = z.infer<typeof OrderSchema>;
 
 export const OrderManagementDetailSchema = OrderSchema.extend({
   availableStatusActions: z.array(OrderStatusActionSchema),
+  canAddItems: z.boolean().default(false),
 });
 export type OrderManagementDetail = z.infer<typeof OrderManagementDetailSchema>;
 
@@ -273,10 +292,14 @@ export const OrderManagementListSchema = z.strictObject({
             productName: z.string().min(1).max(160),
             color: z.string().max(80).nullable(),
             sizeLabel: z.string().max(80).nullable(),
-            quantity: z.number().int().min(1).max(10),
+            quantity: z
+              .number()
+              .int()
+              .min(1)
+              .max(MAX_CART_QUANTITY_PER_VARIANT),
           }),
         )
-        .max(50),
+        .max(MAX_ORDER_LINES),
       status: OrderStatusSchema,
       fulfillmentStatus: z.enum([
         "not_started",

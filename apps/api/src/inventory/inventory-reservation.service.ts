@@ -30,6 +30,7 @@ import type {
   InventoryReservationOperation,
   InventoryReservationStatus,
   InventoryReserveCommand,
+  InventoryReservationExtendCommand,
   InventoryReservationTransitionCommand,
   InventoryReservationPort,
   InventoryReservationLine,
@@ -152,6 +153,136 @@ export class InventoryReservationService implements InventoryReservationPort {
 
     const result = await loadReservation(transaction, reservation.id);
     if (!result) throw new Error("Created reservation could not be read.");
+    return result;
+  }
+
+  async extendWithinTransaction(
+    transaction: AuditTransaction,
+    command: InventoryReservationExtendCommand,
+  ): Promise<InventoryReservation> {
+    const commandId = requireUuid(command.commandId, "commandId");
+    const reservationId = requireUuid(command.reservationId, "reservationId");
+    const lines = aggregateLines(command.lines);
+    const fingerprint = fingerprintRequest("extend", { reservationId, lines });
+
+    await lockReservationCommand(transaction, commandId);
+    const existing = await findCommand(transaction, commandId);
+    if (existing) {
+      return this.replayInTransaction(
+        transaction,
+        existing,
+        "extend",
+        fingerprint,
+      );
+    }
+
+    const [reservation] = await transaction
+      .select()
+      .from(inventoryStockReservation)
+      .where(eq(inventoryStockReservation.id, reservationId))
+      .for("update")
+      .limit(1);
+    if (!reservation) throw new NotFoundException("Reservation not found.");
+    if (reservation.status !== "held") {
+      throw new ConflictException(
+        "Items can only be added while the Order stock reservation is held.",
+        { errorCode: "ORDER_RESERVATION_NOT_HELD" },
+      );
+    }
+
+    const existingLines = await transaction
+      .select({
+        variantId: inventoryStockReservationLine.variantId,
+        quantity: inventoryStockReservationLine.quantity,
+      })
+      .from(inventoryStockReservationLine)
+      .where(eq(inventoryStockReservationLine.reservationId, reservationId));
+    const existingQuantities = new Map(
+      existingLines.map(({ variantId, quantity }) => [variantId, quantity]),
+    );
+    if (
+      lines.some(
+        ({ variantId, quantity }) =>
+          (existingQuantities.get(variantId) ?? 0) + quantity >
+          MAX_CART_QUANTITY_PER_VARIANT,
+      )
+    ) {
+      throw new ConflictException(
+        `A reserved variant cannot exceed ${MAX_CART_QUANTITY_PER_VARIANT} units.`,
+        { errorCode: "ORDER_ITEM_QUANTITY_LIMIT_REACHED" },
+      );
+    }
+
+    for (const line of lines) {
+      await transaction
+        .insert(inventoryStockBalance)
+        .values({ variantId: line.variantId, quantityOnHand: 0 })
+        .onConflictDoNothing({ target: inventoryStockBalance.variantId });
+
+      const [balance] = await transaction
+        .update(inventoryStockBalance)
+        .set({
+          quantityReserved: sql`${inventoryStockBalance.quantityReserved} + ${line.quantity}`,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(inventoryStockBalance.variantId, line.variantId),
+            sql`${inventoryStockBalance.quantityOnHand}::bigint - ${inventoryStockBalance.quantityReserved}::bigint >= ${line.quantity}`,
+          ),
+        )
+        .returning({ variantId: inventoryStockBalance.variantId });
+
+      if (!balance) {
+        throw new ConflictException(
+          "One or more variants do not have enough available stock.",
+          { errorCode: "ORDER_ITEM_STOCK_UNAVAILABLE" },
+        );
+      }
+    }
+
+    for (const line of lines) {
+      const currentQuantity = existingQuantities.get(line.variantId);
+      if (currentQuantity === undefined) {
+        await transaction.insert(inventoryStockReservationLine).values({
+          reservationId,
+          ...line,
+        });
+      } else {
+        const [updatedLine] = await transaction
+          .update(inventoryStockReservationLine)
+          .set({ quantity: currentQuantity + line.quantity })
+          .where(
+            and(
+              eq(inventoryStockReservationLine.reservationId, reservationId),
+              eq(inventoryStockReservationLine.variantId, line.variantId),
+              eq(inventoryStockReservationLine.quantity, currentQuantity),
+            ),
+          )
+          .returning({ variantId: inventoryStockReservationLine.variantId });
+        if (!updatedLine) {
+          throw new ConflictException(
+            "The Order stock reservation changed before it could be extended.",
+            { errorCode: "ORDER_RESERVATION_UPDATE_CONFLICT" },
+          );
+        }
+      }
+    }
+    await transaction.insert(inventoryReservationCommand).values({
+      commandId,
+      reservationId,
+      operation: "extend",
+      requestFingerprint: fingerprint,
+    });
+    await this.appendTransitionAudit(transaction, {
+      operation: "extend",
+      commandId,
+      reservationId,
+      lines,
+    });
+
+    const result = await loadReservation(transaction, reservationId);
+    if (!result) throw new Error("Extended reservation could not be read.");
     return result;
   }
 
@@ -393,7 +524,7 @@ export class InventoryReservationService implements InventoryReservationPort {
     return this.audit.append(transaction, {
       actorType: "service",
       actorId: "inventory",
-      eventType: `inventory.stock_${input.operation === "reserve" ? "reserved" : input.operation === "release" ? "released" : "consumed"}`,
+      eventType: `inventory.stock_${input.operation === "reserve" ? "reserved" : input.operation === "extend" ? "extended" : input.operation === "release" ? "released" : "consumed"}`,
       subjectType: "inventory_reservation",
       subjectId: input.reservationId,
       metadata: {

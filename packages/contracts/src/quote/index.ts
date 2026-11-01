@@ -4,9 +4,10 @@ import {
   MAX_CART_QUANTITY_PER_VARIANT,
 } from "../cart/index.js";
 import { DeliveryZoneSchema } from "../delivery/index.js";
+import { CURRENCY } from "../platform/system-config.js";
 
 export const QUOTE_SCHEMA_VERSION = 1 as const;
-export const QUOTE_CURRENCY = "BDT" as const;
+export const QUOTE_CURRENCY = CURRENCY;
 export const QUOTE_VALIDITY_POLICY_VERSION =
   "AARAJ_QUOTE_VALIDITY_2026_10_07_V1" as const;
 export const QUOTE_VALIDITY_SECONDS = 15 * 60;

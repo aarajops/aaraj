@@ -13,9 +13,13 @@ import {
   OrderManagementDetailSchema,
   OrderManagementListSchema,
   OrderSchema,
+  CURRENCY,
+  MAX_ORDER_LINES,
   MAX_LIST_OFFSET,
+  MAX_CART_QUANTITY_PER_VARIANT,
   type CheckoutAddressInput,
   type CreateOrderInput,
+  type OrderItemAddInput,
   type Order,
   type OrderManagementDetail,
   type OrderAddress,
@@ -75,8 +79,6 @@ import type {
 
 const ORDER_GUEST_COOKIE_PREFIX = "aaraj_order_";
 const ORDER_ATTEMPT_COOKIE_PREFIX = "aaraj_order_attempt_";
-const MAX_ORDER_LINES = 50;
-
 type OrderRow = typeof customerOrder.$inferSelect;
 type IdempotencyRow = typeof orderIdempotency.$inferSelect;
 type NormalizedAddress = OrderAddress;
@@ -124,6 +126,24 @@ function availableOrderStatusActions(
     actions.push("cancelled");
   }
   return actions;
+}
+
+function canAddOrderItems(row: OrderRow, hasPathaoClaim: boolean): boolean {
+  const pendingManualReview =
+    row.status === "pending" &&
+    row.serviceability === "pending_manual_review" &&
+    row.fulfillmentStatus === "not_started";
+  const confirmedAndAwaitingDispatch =
+    row.status === "confirmed" &&
+    row.serviceability === "serviceable" &&
+    row.fulfillmentStatus === "awaiting_dispatch";
+
+  return (
+    !hasPathaoClaim &&
+    row.collectionStatus === "uncollected" &&
+    row.collectedAmountBdt === null &&
+    (pendingManualReview || confirmedAndAwaitingDispatch)
+  );
 }
 
 @Injectable()
@@ -734,13 +754,220 @@ export class OrdersService implements OrdersPathaoPort {
     if (!row) throw orderNotFound();
 
     const pathaoClaimStatus = await this.getPathaoBookingClaimStatus(orderId);
+    const order = await this.loadPrivateOrder(row);
     return OrderManagementDetailSchema.parse({
-      ...(await this.loadPrivateOrder(row)),
+      ...order,
       availableStatusActions: availableOrderStatusActions(
         row,
         pathaoClaimStatus !== null,
       ),
+      canAddItems: canAddOrderItems(row, pathaoClaimStatus !== null),
     });
+  }
+
+  async addCatalogItem(
+    orderId: string,
+    staffId: string,
+    input: OrderItemAddInput,
+  ): Promise<OrderManagementDetail> {
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+
+      const lines = await transaction
+        .select()
+        .from(customerOrderLine)
+        .where(eq(customerOrderLine.orderId, row.id))
+        .orderBy(asc(customerOrderLine.variantId));
+      const existingLine = lines.find(
+        ({ variantId }) => variantId === input.variantId,
+      );
+      if ((existingLine?.quantity ?? 0) !== input.expectedCurrentQuantity) {
+        throw new ConflictException(
+          "The item quantity changed. Refresh the Order before trying again.",
+          { errorCode: "ORDER_ITEM_QUANTITY_CHANGED" },
+        );
+      }
+      if (
+        existingLine &&
+        existingLine.quantity + input.quantity > MAX_CART_QUANTITY_PER_VARIANT
+      ) {
+        throw new ConflictException(
+          `The quantity for this variant cannot exceed ${MAX_CART_QUANTITY_PER_VARIANT}.`,
+          { errorCode: "ORDER_ITEM_QUANTITY_LIMIT_REACHED" },
+        );
+      }
+      if (!existingLine && lines.length >= MAX_ORDER_LINES) {
+        throw new ConflictException("This Order has reached its item limit.", {
+          errorCode: "ORDER_ITEM_LIMIT_REACHED",
+        });
+      }
+
+      const [pathaoClaim] = await transaction
+        .select({ orderId: orderPathaoBookingClaim.orderId })
+        .from(orderPathaoBookingClaim)
+        .where(eq(orderPathaoBookingClaim.orderId, row.id))
+        .for("update")
+        .limit(1);
+      if (pathaoClaim) {
+        throw new ConflictException(
+          "Items cannot be changed while a Pathao consignment exists for this Order.",
+          { errorCode: "ORDER_PATHAO_BOOKING_BLOCKS_ITEM_EDIT" },
+        );
+      }
+      if (!canAddOrderItems(row, false)) {
+        throw new ConflictException(
+          "Only pending or confirmed, unbooked Orders with an uncollected COD amount can have items added.",
+          { errorCode: "ORDER_ITEMS_NOT_EDITABLE" },
+        );
+      }
+
+      const [variant] =
+        await this.catalog.findPurchasableVariantsWithinTransaction(
+          transaction,
+          [input.variantId],
+        );
+      if (!variant) {
+        throw new UnprocessableEntityException(
+          "This product variant is no longer available for sale.",
+          { errorCode: "ORDER_ITEM_VARIANT_UNAVAILABLE" },
+        );
+      }
+      const unitPriceBdt = existingLine?.unitPriceBdt ?? variant.unitPriceBdt;
+      if (unitPriceBdt !== input.expectedUnitPriceBdt) {
+        throw new ConflictException(
+          existingLine
+            ? "The saved Order price changed. Refresh the Order before trying again."
+            : "The product price changed. Confirm the updated price with the customer before adding it.",
+          { errorCode: "ORDER_ITEM_PRICE_CHANGED" },
+        );
+      }
+
+      const currentMerchandiseBdt = lines.reduce(
+        (total, line) => total + line.grossAmountBdt,
+        0,
+      );
+      if (
+        currentMerchandiseBdt !== row.merchandiseGrossBdt ||
+        !Number.isSafeInteger(currentMerchandiseBdt)
+      ) {
+        throw new Error("The Order item totals do not match its saved total.");
+      }
+      const grossAmountBdt = unitPriceBdt * input.quantity;
+      const merchandiseGrossBdt = currentMerchandiseBdt + grossAmountBdt;
+      const totalBdt = merchandiseGrossBdt + row.deliveryAmountBdt;
+      if (
+        !Number.isSafeInteger(grossAmountBdt) ||
+        !Number.isSafeInteger(merchandiseGrossBdt) ||
+        !Number.isSafeInteger(totalBdt)
+      ) {
+        throw new UnprocessableEntityException(
+          "The updated Order amount exceeds the supported limit.",
+          { errorCode: "ORDER_AMOUNT_LIMIT_EXCEEDED" },
+        );
+      }
+
+      const reservation = await this.inventory.extendWithinTransaction(
+        transaction,
+        {
+          commandId: randomUUID(),
+          reservationId: row.reservationId,
+          lines: [{ variantId: input.variantId, quantity: input.quantity }],
+        },
+      );
+      if (reservation.status !== "held") {
+        throw new ConflictException(
+          "The Order stock reservation is no longer active.",
+          { errorCode: "ORDER_RESERVATION_NOT_HELD" },
+        );
+      }
+
+      if (existingLine) {
+        const [updatedLine] = await transaction
+          .update(customerOrderLine)
+          .set({
+            quantity: existingLine.quantity + input.quantity,
+            grossAmountBdt: existingLine.grossAmountBdt + grossAmountBdt,
+          })
+          .where(
+            and(
+              eq(customerOrderLine.id, existingLine.id),
+              eq(customerOrderLine.quantity, existingLine.quantity),
+            ),
+          )
+          .returning({ id: customerOrderLine.id });
+        if (!updatedLine) {
+          throw new ConflictException(
+            "The Order item changed before its quantity could be increased.",
+            { errorCode: "ORDER_ITEMS_UPDATE_CONFLICT" },
+          );
+        }
+      } else {
+        await transaction.insert(customerOrderLine).values({
+          orderId: row.id,
+          variantId: variant.variantId,
+          quantity: input.quantity,
+          unitPriceBdt,
+          grossAmountBdt,
+          productSnapshot: {
+            productName: variant.name,
+            color: variant.color,
+            sizeLabel: variant.sizeLabel,
+          },
+        });
+      }
+
+      const [updated] = await transaction
+        .update(customerOrder)
+        .set({
+          merchandiseGrossBdt,
+          totalBdt,
+          codAmountDueBdt: totalBdt,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(customerOrder.id, row.id))
+        .returning({ updatedAt: customerOrder.updatedAt });
+      if (!updated?.updatedAt) {
+        throw new ConflictException(
+          "The Order changed before the item could be added.",
+          { errorCode: "ORDER_ITEMS_UPDATE_CONFLICT" },
+        );
+      }
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: existingLine
+          ? "commerce.cod_order_item_quantity_increased"
+          : "commerce.cod_order_item_added",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: updated.updatedAt,
+        reason: existingLine
+          ? "Staff increased an existing Order item quantity."
+          : "Staff added a catalog item to the Order.",
+        metadata: {
+          variantId: variant.variantId,
+          quantity: input.quantity,
+          previousQuantity: existingLine?.quantity ?? 0,
+          resultingQuantity: (existingLine?.quantity ?? 0) + input.quantity,
+          unitPriceBdt,
+          grossAmountBdt,
+          previousMerchandiseGrossBdt: row.merchandiseGrossBdt,
+          merchandiseGrossBdt,
+          previousCodAmountDueBdt: row.codAmountDueBdt,
+          codAmountDueBdt: totalBdt,
+          reservationId: row.reservationId,
+        },
+      });
+    });
+
+    return this.getManagementDetail(orderId);
   }
 
   async getPathaoBookingSnapshot(
@@ -1862,7 +2089,7 @@ export class OrdersService implements OrdersPathaoPort {
     return OrderSchema.parse({
       id: row.id,
       reference: row.reference,
-      currency: "BDT",
+      currency: CURRENCY,
       status: row.status,
       serviceability: row.serviceability,
       paymentMethod: row.paymentMethod,

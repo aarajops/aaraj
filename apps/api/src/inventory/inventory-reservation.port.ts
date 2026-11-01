@@ -3,7 +3,8 @@ import type { AuditTransaction } from "../platform/audit/audit.types.js";
 export const INVENTORY_RESERVATION_PORT = Symbol("INVENTORY_RESERVATION_PORT");
 
 export type InventoryReservationStatus = "held" | "released" | "consumed";
-export type InventoryReservationOperation = "reserve" | "release" | "consume";
+export type InventoryReservationOperation =
+  "reserve" | "extend" | "release" | "consume";
 
 export interface InventoryReservationLine {
   variantId: string;
@@ -20,6 +21,10 @@ export interface InventoryReservationTransitionCommand {
   reservationId: string;
 }
 
+export interface InventoryReservationExtendCommand extends InventoryReservationTransitionCommand {
+  lines: readonly InventoryReservationLine[];
+}
+
 export interface InventoryReservation {
   id: string;
   status: InventoryReservationStatus;
@@ -31,10 +36,13 @@ export interface InventoryReservation {
 /** Internal module contract for Order; it is not exposed as a customer API. */
 export interface InventoryReservationPort {
   reserve(command: InventoryReserveCommand): Promise<InventoryReservation>;
-  /** Caller has revalidated current catalog sellability before entering this transaction. */
   reserveWithinTransaction(
     transaction: AuditTransaction,
     command: InventoryReserveCommand,
+  ): Promise<InventoryReservation>;
+  extendWithinTransaction(
+    transaction: AuditTransaction,
+    command: InventoryReservationExtendCommand,
   ): Promise<InventoryReservation>;
   release(
     command: InventoryReservationTransitionCommand,

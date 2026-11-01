@@ -12,3 +12,4 @@ export * from "./storefront/index.js";
 export * from "./orders/index.js";
 export * from "./platform/api-version.js";
 export * from "./platform/health.js";
+export * from "./platform/system-config.js";

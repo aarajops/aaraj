@@ -1,4 +1,5 @@
 import { sendGTMEvent } from "@next/third-parties/google";
+import type { CURRENCY } from "@aaraj/contracts";
 
 export type EcommerceEvent =
   "view_item" | "add_to_cart" | "begin_checkout" | "purchase";
@@ -22,7 +23,7 @@ export type EcommerceItem = {
 };
 
 export type EcommercePayload = {
-  currency: "BDT";
+  currency: typeof CURRENCY;
   value?: number;
   shipping?: number;
   transaction_id?: string;

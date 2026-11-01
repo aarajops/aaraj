@@ -41,6 +41,7 @@ import {
 import { auditEvent } from "../src/platform/audit/audit-schema.js";
 import {
   customerOrder,
+  customerOrderLine,
   orderIdempotency,
   orderPathaoBookingClaim,
 } from "../src/orders/orders-schema.js";
@@ -1430,6 +1431,134 @@ describe("COD Orders and checkout", () => {
       .expect(200);
     expect(resumed.body.status).toBe("confirmed");
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+  });
+
+  it("adds a zero-priced catalog item to a pending Order and reserves its stock", async () => {
+    const fixture = await createGuestOrder(4);
+    const freeVariantId = await createVariant(3, 0);
+    const before = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+
+    expect(before.body.canAddItems).toBe(true);
+    const response = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        variantId: freeVariantId,
+        quantity: 1,
+        expectedCurrentQuantity: 0,
+        expectedUnitPriceBdt: 0,
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      status: "pending",
+      canAddItems: true,
+      merchandiseGrossBdt: before.body.merchandiseGrossBdt,
+      totalBdt: before.body.totalBdt,
+      codAmountDueBdt: before.body.codAmountDueBdt,
+    });
+    expect(response.body.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          variantId: freeVariantId,
+          quantity: 1,
+          unitPriceBdt: 0,
+          grossAmountBdt: 0,
+        }),
+      ]),
+    );
+    expect((await stockFor(freeVariantId)).quantityReserved).toBe(1);
+  });
+
+  it("increases an existing Order line at its saved price and rejects a stale quantity", async () => {
+    const fixture = await createGuestOrder(4);
+    const before = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    const savedLine = before.body.lines.find(
+      (line: { variantId: string }) => line.variantId === fixture.variantId,
+    ) as { quantity: number; unitPriceBdt: number; grossAmountBdt: number };
+
+    await database.db
+      .update(catalogProductVariant)
+      .set({ priceBdt: savedLine.unitPriceBdt + 100 })
+      .where(eq(catalogProductVariant.id, fixture.variantId));
+
+    const response = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        variantId: fixture.variantId,
+        quantity: 1,
+        expectedCurrentQuantity: savedLine.quantity,
+        expectedUnitPriceBdt: savedLine.unitPriceBdt,
+      })
+      .expect(200);
+
+    const updatedLine = response.body.lines.find(
+      (line: { variantId: string }) => line.variantId === fixture.variantId,
+    );
+    expect(updatedLine).toMatchObject({
+      quantity: 2,
+      unitPriceBdt: savedLine.unitPriceBdt,
+      grossAmountBdt: savedLine.grossAmountBdt * 2,
+    });
+    expect(response.body.merchandiseGrossBdt).toBe(
+      before.body.merchandiseGrossBdt + savedLine.unitPriceBdt,
+    );
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(2);
+
+    await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        variantId: fixture.variantId,
+        quantity: 1,
+        expectedCurrentQuantity: savedLine.quantity,
+        expectedUnitPriceBdt: savedLine.unitPriceBdt,
+      })
+      .expect(409);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(2);
+  });
+
+  it("rejects zero-priced item changes that do not match the held reservation", async () => {
+    const fixture = await createGuestOrder();
+    const freeVariantId = await createVariant(2, 0);
+
+    await expect(
+      database.db.transaction(async (transaction) => {
+        await transaction.insert(customerOrderLine).values({
+          orderId: fixture.id,
+          variantId: freeVariantId,
+          quantity: 1,
+          unitPriceBdt: 0,
+          grossAmountBdt: 0,
+          productSnapshot: {
+            productName: "Free E2E product",
+            color: "Blue",
+            sizeLabel: "M",
+          },
+        });
+        await transaction
+          .update(customerOrder)
+          .set({ updatedAt: sql`clock_timestamp()` })
+          .where(eq(customerOrder.id, fixture.id));
+      }),
+    ).rejects.toThrow(/Order item lines must match the held stock reservation/);
+
+    const lines = await database.db
+      .select()
+      .from(customerOrderLine)
+      .where(eq(customerOrderLine.orderId, fixture.id));
+    expect(lines).toHaveLength(1);
+    expect((await stockFor(freeVariantId)).quantityReserved).toBe(0);
   });
 
   it("records no answer without releasing the order reservation", async () => {

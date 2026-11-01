@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { FileText } from "lucide-react";
-import type {
-  Order,
-  OrderManagementDetail,
-  OrderStatusUpdateInput,
+import { FileText, Plus } from "lucide-react";
+import {
+  MAX_CART_QUANTITY_PER_VARIANT,
+  MAX_ORDER_LINES,
+  type Order,
+  type OrderManagementDetail,
+  type OrderStatusUpdateInput,
 } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -23,8 +26,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
 import { cn } from "cn";
+import {
+  CatalogVariantSearch,
+  type CatalogVariantSelection,
+} from "../catalog/catalog-variant-search";
 import { OrderStatusMenu } from "./order-status-menu";
-import { fetchManagedOrder, updateOrderStatus } from "./orders-client";
+import {
+  addOrderItem,
+  fetchManagedOrder,
+  updateOrderStatus,
+} from "./orders-client";
 import { humanize, humanizeOrderStatus } from "./orders-format";
 import { PathaoBookingPanel } from "./pathao-booking-panel";
 
@@ -57,6 +68,12 @@ export function OrderDetailsSheet({
   } | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
+  const [itemEditorOpen, setItemEditorOpen] = useState(false);
+  const [itemPending, setItemPending] = useState(false);
+  const [itemError, setItemError] = useState<string | null>(null);
+  const [catalogSelection, setCatalogSelection] =
+    useState<CatalogVariantSelection | null>(null);
+  const [itemQuantity, setItemQuantity] = useState("1");
   const currentDetails =
     details?.orderId === orderId && details.requestVersion === requestVersion
       ? details
@@ -68,8 +85,16 @@ export function OrderDetailsSheet({
   const availableStatusActions = order?.availableStatusActions ?? [];
   const canCancelOrder = availableStatusActions.includes("cancelled");
 
+  useEffect(() => {
+    setItemEditorOpen(false);
+    setItemPending(false);
+    setItemError(null);
+    setCatalogSelection(null);
+    setItemQuantity("1");
+  }, [orderId]);
+
   async function updateStatus(input: OrderStatusUpdateInput) {
-    if (!order || statusPending) return;
+    if (!order || statusPending || itemPending) return;
     setStatusPending(true);
     setStatusError(null);
     try {
@@ -92,6 +117,47 @@ export function OrderDetailsSheet({
       });
     } finally {
       setStatusPending(false);
+    }
+  }
+
+  async function addItem() {
+    if (!order || !catalogSelection || statusPending || itemPending) return;
+    const quantity = Number(itemQuantity);
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      quantity + catalogSelection.currentQuantity >
+        MAX_CART_QUANTITY_PER_VARIANT
+    ) {
+      return;
+    }
+
+    setItemPending(true);
+    setItemError(null);
+    try {
+      const updatedOrder = await addOrderItem(order.id, {
+        variantId: catalogSelection.variantId,
+        quantity,
+        expectedCurrentQuantity: catalogSelection.currentQuantity,
+        expectedUnitPriceBdt: catalogSelection.unitPriceBdt,
+      });
+      setDetails((current) =>
+        current?.status === "success" && current.orderId === updatedOrder.id
+          ? { ...current, order: updatedOrder }
+          : current,
+      );
+      setItemEditorOpen(false);
+      setCatalogSelection(null);
+      setItemQuantity("1");
+      onFulfillmentUpdated();
+    } catch (reason) {
+      setItemError(
+        reason instanceof Error
+          ? reason.message
+          : "The item could not be added to this order.",
+      );
+    } finally {
+      setItemPending(false);
     }
   }
 
@@ -162,7 +228,7 @@ export function OrderDetailsSheet({
           )}
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           {loading && <OrderDetailsSkeleton />}
 
           {error && !loading && (
@@ -178,7 +244,7 @@ export function OrderDetailsSheet({
           )}
 
           {order && !loading && (
-            <div className="grid gap-5">
+            <div className="grid min-w-0 gap-5">
               <section aria-label="Order status" className="grid gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap gap-2">
@@ -191,7 +257,7 @@ export function OrderDetailsSheet({
                   </div>
                   <OrderStatusMenu
                     actions={availableStatusActions}
-                    disabled={statusPending}
+                    disabled={statusPending || itemPending || itemEditorOpen}
                     onSelect={(action) => {
                       if (action === "cancelled") {
                         setStatusError(null);
@@ -280,7 +346,7 @@ export function OrderDetailsSheet({
 
               <section
                 aria-labelledby="order-customer-heading"
-                className="grid gap-2 border-t border-border pt-4"
+                className="grid min-w-0 gap-2 border-t border-border pt-4"
               >
                 <h3 className="font-semibold" id="order-customer-heading">
                   Customer
@@ -314,12 +380,29 @@ export function OrderDetailsSheet({
 
               <section
                 aria-labelledby="order-items-heading"
-                className="grid gap-2 border-t border-border pt-4"
+                className="grid min-w-0 gap-2 border-t border-border pt-4"
               >
-                <h3 className="font-semibold" id="order-items-heading">
-                  Items ({order.lines.length})
-                </h3>
-                <ul className="divide-y divide-border border-y border-border">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-semibold" id="order-items-heading">
+                    Items ({order.lines.length})
+                  </h3>
+                  {order.canAddItems && !itemEditorOpen && !cancelFormOpen && (
+                    <Button
+                      disabled={statusPending || itemPending}
+                      onClick={() => {
+                        setItemError(null);
+                        setItemEditorOpen(true);
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Plus aria-hidden="true" />
+                      Add item
+                    </Button>
+                  )}
+                </div>
+                <ul className="min-w-0 divide-y divide-border border-y border-border">
                   {order.lines.map((line) => (
                     <li
                       className="flex justify-between gap-4 py-3 text-sm"
@@ -339,6 +422,113 @@ export function OrderDetailsSheet({
                     </li>
                   ))}
                 </ul>
+                {itemEditorOpen && order.canAddItems && (
+                  <div className="grid min-w-0 gap-3 rounded-lg border border-border p-3">
+                    <CatalogVariantSearch
+                      disabled={itemPending}
+                      existingVariants={order.lines.map(
+                        ({ variantId, quantity, unitPriceBdt }) => ({
+                          variantId,
+                          quantity,
+                          unitPriceBdt,
+                        }),
+                      )}
+                      lineLimitReached={order.lines.length >= MAX_ORDER_LINES}
+                      onSelect={(selection) => {
+                        setCatalogSelection(selection);
+                        setItemQuantity("1");
+                      }}
+                    />
+                    {catalogSelection && (
+                      <>
+                        <label className="grid gap-2 text-sm font-medium">
+                          {catalogSelection.currentQuantity > 0
+                            ? "Additional quantity"
+                            : "Quantity"}
+                          <Input
+                            disabled={itemPending}
+                            max={
+                              MAX_CART_QUANTITY_PER_VARIANT -
+                              catalogSelection.currentQuantity
+                            }
+                            min={1}
+                            onChange={(event) =>
+                              setItemQuantity(event.target.value)
+                            }
+                            type="number"
+                            value={itemQuantity}
+                          />
+                        </label>
+                        {catalogSelection.currentQuantity > 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            Current quantity is{" "}
+                            {catalogSelection.currentQuantity}. Added units use
+                            the order’s saved unit price.
+                          </p>
+                        )}
+                        <p className="text-sm text-muted-foreground">
+                          Estimated COD due:{" "}
+                          {formatBdtPrice({
+                            amountBdt:
+                              order.codAmountDueBdt +
+                              catalogSelection.unitPriceBdt *
+                                (Number(itemQuantity) || 0),
+                          })}
+                        </p>
+                      </>
+                    )}
+                    {itemError && (
+                      <p className="text-sm text-destructive" role="alert">
+                        {itemError}
+                      </p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        disabled={itemPending}
+                        onClick={() => {
+                          setItemEditorOpen(false);
+                          setCatalogSelection(null);
+                          setItemQuantity("1");
+                          setItemError(null);
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        disabled={
+                          !catalogSelection ||
+                          !Number.isInteger(Number(itemQuantity)) ||
+                          Number(itemQuantity) < 1 ||
+                          Number(itemQuantity) +
+                            (catalogSelection?.currentQuantity ?? 0) >
+                            MAX_CART_QUANTITY_PER_VARIANT ||
+                          itemPending ||
+                          statusPending
+                        }
+                        onClick={() => void addItem()}
+                        type="button"
+                      >
+                        {itemPending
+                          ? "Adding…"
+                          : catalogSelection?.currentQuantity
+                            ? "Add quantity"
+                            : "Add to order"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {!order.canAddItems &&
+                  order.status === "confirmed" &&
+                  order.fulfillmentStatus === "awaiting_dispatch" &&
+                  order.collectionStatus === "uncollected" &&
+                  order.collectedAmountBdt === null && (
+                    <p className="text-sm text-muted-foreground">
+                      This order has a Pathao consignment. Its items and COD
+                      amount are locked after booking.
+                    </p>
+                  )}
               </section>
 
               <dl className="grid gap-2 border-t border-border pt-4 text-sm">

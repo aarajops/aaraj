@@ -26,6 +26,7 @@ import {
 } from "@thallesp/nestjs-better-auth";
 import {
   CreateOrderInputSchema,
+  OrderItemAddInputSchema,
   OrderCollectionInputSchema,
   OrderDispatchCommandIdSchema,
   OrderDispatchInputSchema,
@@ -35,6 +36,7 @@ import {
   OrderListQuerySchema,
   OrderStatusUpdateInputSchema,
   type CreateOrderInput,
+  type OrderItemAddInput,
   type OrderCollectionInput,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
@@ -176,6 +178,19 @@ export class OrdersController {
     @Param("orderId", { schema: OrderIdSchema }) orderId: string,
   ) {
     return this.orders.getManagementDetail(orderId);
+  }
+
+  @Patch("manage/:orderId/items")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  addCatalogItem(
+    @Session() session: UserSession,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @Body({ schema: OrderItemAddInputSchema }) input: OrderItemAddInput,
+  ) {
+    return this.orders.addCatalogItem(orderId, session.user.id, input);
   }
 
   @Patch("manage/:orderId/status")
