@@ -1532,8 +1532,9 @@ describe("COD Orders and checkout", () => {
     const fixture = await createGuestOrder();
     const freeVariantId = await createVariant(2, 0);
 
-    await expect(
-      database.db.transaction(async (transaction) => {
+    let mutationError: unknown;
+    try {
+      await database.db.transaction(async (transaction) => {
         await transaction.insert(customerOrderLine).values({
           orderId: fixture.id,
           variantId: freeVariantId,
@@ -1550,8 +1551,16 @@ describe("COD Orders and checkout", () => {
           .update(customerOrder)
           .set({ updatedAt: sql`clock_timestamp()` })
           .where(eq(customerOrder.id, fixture.id));
-      }),
-    ).rejects.toThrow(/Order item lines must match the held stock reservation/);
+      });
+    } catch (error) {
+      mutationError = error;
+    }
+    expect(mutationError).toBeInstanceOf(Error);
+    expect((mutationError as Error).cause).toMatchObject({
+      message: expect.stringContaining(
+        "Order item lines must match the held stock reservation",
+      ),
+    });
 
     const lines = await database.db
       .select()

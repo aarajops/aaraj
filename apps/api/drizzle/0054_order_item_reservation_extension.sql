@@ -9,7 +9,7 @@ DECLARE
   order_serviceability text;
   order_fulfillment_status text;
   order_collection_status text;
-  collected_amount_bdt bigint;
+  order_collected_amount_bdt bigint;
   reservation_id uuid;
   reservation_status text;
 BEGIN
@@ -27,12 +27,13 @@ BEGIN
     RAISE EXCEPTION 'An Order item can only increase its quantity without changing its saved price or product details';
   END IF;
 
-  SELECT "status", "serviceability", "fulfillment_status", "collection_status",
-         "collected_amount_bdt", "reservation_id"
+  SELECT order_row."status", order_row."serviceability",
+         order_row."fulfillment_status", order_row."collection_status",
+         order_row."collected_amount_bdt", order_row."reservation_id"
     INTO order_status, order_serviceability, order_fulfillment_status,
-         order_collection_status, collected_amount_bdt, reservation_id
-  FROM "orders"."order_header"
-  WHERE "id" = OLD."order_id"
+         order_collection_status, order_collected_amount_bdt, reservation_id
+  FROM "orders"."order_header" AS order_row
+  WHERE order_row."id" = OLD."order_id"
   FOR UPDATE;
   IF NOT (
        (order_status = 'pending'
@@ -43,7 +44,7 @@ BEGIN
            AND order_fulfillment_status = 'awaiting_dispatch')
      )
      OR order_collection_status IS DISTINCT FROM 'uncollected'
-     OR collected_amount_bdt IS NOT NULL THEN
+     OR order_collected_amount_bdt IS NOT NULL THEN
     RAISE EXCEPTION 'Order quantities can only increase while pending or confirmed, before dispatch or collection';
   END IF;
   IF EXISTS (
