@@ -24,5 +24,7 @@
   "0048_size_guide_input_unit.sql": "compatible",
   "0049_storefront_banner_order.sql": "compatible",
   "0050_size_guide_inches_only.sql": "maintenance",
-  "0051_size_guide_one_decimal.sql": "maintenance"
+  "0051_size_guide_one_decimal.sql": "maintenance",
+  "0052_guest_order_cart_revision_index.sql": "maintenance",
+  "0053_order_flow_consistency.sql": "maintenance"
 }
