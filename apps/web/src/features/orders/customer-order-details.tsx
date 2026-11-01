@@ -46,9 +46,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   useEffect(() => {
     if (
       !order ||
-      !["pending", "no_answer", "confirmed"].includes(
-        order.status,
-      ) ||
+      !["pending", "no_answer", "confirmed"].includes(order.status) ||
       purchaseTracked.current === order.id
     ) {
       return;

@@ -3290,9 +3290,7 @@ describe("COD Orders and checkout", () => {
       staff.cookie,
     );
     expect(pendingDispatch.status).toBe(409);
-    expect((await orderById(pendingFixture.id))?.status).toBe(
-      "pending",
-    );
+    expect((await orderById(pendingFixture.id))?.status).toBe("pending");
     expect((await stockFor(pendingFixture.variantId)).quantityOnHand).toBe(2);
     expect((await stockFor(pendingFixture.variantId)).quantityReserved).toBe(1);
   });

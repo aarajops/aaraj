@@ -232,9 +232,7 @@ export function OrderReview({
     order.availableStatusActions?.includes("rejected");
   const canCancelBeforeDispatch =
     order.availableStatusActions?.includes("cancelled");
-  const canReopenAsPending = order.availableStatusActions?.includes(
-    "pending",
-  );
+  const canReopenAsPending = order.availableStatusActions?.includes("pending");
   const canManageCustomerDecision =
     canConfirmOrder ||
     canPutOnHold ||
