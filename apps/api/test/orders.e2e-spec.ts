@@ -34,10 +34,6 @@ import {
   inventoryStockBalance,
   inventoryStockReservation,
 } from "../src/inventory/inventory-schema.js";
-import {
-  INVENTORY_RESERVATION_PORT,
-  type InventoryReservationPort,
-} from "../src/inventory/inventory-reservation.port.js";
 import { auditEvent } from "../src/platform/audit/audit-schema.js";
 import {
   customerOrder,
@@ -315,12 +311,15 @@ describe("COD Orders and checkout", () => {
       .send(input);
   }
 
-  async function confirmServiceable(orderId: string) {
+  async function confirmOrder(orderId: string) {
     await request(app.getHttpServer())
       .patch(`${API_V1_BASE_PATH}/orders/manage/${orderId}/status`)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
-      .send({ status: "confirmed", reason: "Destination is serviceable" })
+      .send({
+        status: "confirmed",
+        reason: "Customer confirmed delivery details",
+      })
       .expect(200);
   }
 
@@ -538,65 +537,6 @@ describe("COD Orders and checkout", () => {
     });
   }
 
-  async function createLegacyTimeoutCancellation(fixture: {
-    id: string;
-    reservationId: string;
-  }) {
-    const inventory = app.get<InventoryReservationPort>(
-      INVENTORY_RESERVATION_PORT,
-    );
-    const audit = app.get(AuditService);
-    await database.db.transaction(async (transaction) => {
-      await transaction.execute(
-        sql`ALTER TABLE orders.order_header DISABLE TRIGGER order_header_protect_update`,
-      );
-      try {
-        const cancellation = await transaction.execute<{
-          cancelled_at: string | Date;
-        }>(sql`
-          WITH fixture_time AS (
-            SELECT clock_timestamp() - interval '1 hour' AS created_at
-          )
-          UPDATE orders.order_header AS order_row
-          SET created_at = fixture_time.created_at,
-              guest_access_expires_at = fixture_time.created_at + interval '30 days',
-              status = 'cancelled',
-              fulfillment_status = 'cancelled',
-              cancellation_reason = 'serviceability_review_timeout',
-              cancelled_at = clock_timestamp(),
-              updated_at = clock_timestamp()
-          FROM fixture_time
-          WHERE order_row.id = ${fixture.id}::uuid
-          RETURNING order_row.cancelled_at
-        `);
-        const cancelled = cancellation.rows[0];
-        if (!cancelled?.cancelled_at)
-          throw new Error("Legacy cancellation fixture could not be created.");
-        const cancelledAt = new Date(cancelled.cancelled_at);
-        await inventory.releaseWithinTransaction(transaction, {
-          commandId: randomUUID(),
-          reservationId: fixture.reservationId,
-        });
-        await audit.append(transaction, {
-          actorType: "service",
-          eventType: "commerce.cod_order_manual_review_timeout_cancelled",
-          subjectType: "order",
-          subjectId: fixture.id,
-          occurredAt: cancelledAt,
-          reason: "Legacy automatic cancellation record.",
-          metadata: {
-            cancellationReason: "serviceability_review_timeout",
-            reservationId: fixture.reservationId,
-          },
-        });
-      } finally {
-        await transaction.execute(
-          sql`ALTER TABLE orders.order_header ENABLE TRIGGER order_header_protect_update`,
-        );
-      }
-    });
-  }
-
   beforeAll(async () => {
     for (const key of pathaoEnvironmentKeys) {
       previousPathaoEnvironment.set(key, process.env[key]);
@@ -628,7 +568,7 @@ describe("COD Orders and checkout", () => {
       reason: "Order E2E bootstrap",
     });
     await access.changeRole(bootstrap, staff.id, "staff", "grant", {
-      reason: "COD serviceability review E2E operator",
+      reason: "COD order review E2E operator",
     });
     await access.changeRole(bootstrap, secondStaff.id, "staff", "grant", {
       reason: "COD dispatch concurrency E2E operator",
@@ -719,13 +659,13 @@ describe("COD Orders and checkout", () => {
     expect(response.body).toMatchObject({
       reference: expect.stringMatching(/^ORD-[0-9]{3}-[0-9]{5}$/),
       status: "pending",
-      serviceability: "pending_manual_review",
       paymentMethod: "cod",
       collectionStatus: "uncollected",
       fulfillmentStatus: "not_started",
       codAmountDueBdt: quote.totalBdt,
       replayed: false,
     });
+    expect(response.body).not.toHaveProperty("serviceability");
     expect(JSON.stringify(response.body)).not.toContain("01712345678");
     const cookieValue = setCookieHeaders(response.headers).find((value) =>
       value.startsWith(`aaraj_order_${response.body.id}=`),
@@ -1328,7 +1268,7 @@ describe("COD Orders and checkout", () => {
     expect(privateOrder.body.fulfillmentStatus).toBe("not_started");
   });
 
-  it("uses the status PATCH for staff rejection and releases stock", async () => {
+  it("uses the status PATCH to cancel a pending order and releases stock", async () => {
     const variantId = await createVariant(2);
     const cart = await newGuestCart([variantId]);
     const quote = await createQuote(cart.cookie);
@@ -1356,12 +1296,16 @@ describe("COD Orders and checkout", () => {
       .patch(`${API_V1_BASE_PATH}/orders/manage/${created.body.id}/status`)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
-      .send({ status: "rejected", reason: "Courier does not cover area" })
+      .send({
+        status: "cancelled",
+        reason: "Courier does not cover area",
+      })
       .expect(200)
       .expect(({ body }) => {
-        expect(body.status).toBe("rejected");
-        expect(body.serviceability).toBe("unserviceable");
+        expect(body.status).toBe("cancelled");
         expect(body.fulfillmentStatus).toBe("cancelled");
+        expect(body.cancellationReason).toBe("staff_cancelled");
+        expect(body.cancelledAt).toBeTruthy();
       });
     expect((await stockFor(variantId)).quantityReserved).toBe(0);
   });
@@ -1381,7 +1325,7 @@ describe("COD Orders and checkout", () => {
       .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
-      .send({ status: "rejected" })
+      .send({ status: "rejected", reason: "The old status is unsupported" })
       .expect(400);
 
     const heldPending = await request(app.getHttpServer())
@@ -1392,7 +1336,6 @@ describe("COD Orders and checkout", () => {
       .expect(200);
     expect(heldPending.body).toMatchObject({
       status: "on_hold",
-      serviceability: "pending_manual_review",
       fulfillmentStatus: "not_started",
     });
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
@@ -1405,7 +1348,6 @@ describe("COD Orders and checkout", () => {
       .expect(200);
     expect(confirmed.body).toMatchObject({
       status: "confirmed",
-      serviceability: "serviceable",
       fulfillmentStatus: "awaiting_dispatch",
     });
 
@@ -1585,7 +1527,6 @@ describe("COD Orders and checkout", () => {
       .expect(200);
     expect(noAnswer.body).toMatchObject({
       status: "no_answer",
-      serviceability: "pending_manual_review",
       fulfillmentStatus: "not_started",
     });
     expect(noAnswer.body.availableStatusActions).toEqual(
@@ -1794,7 +1735,7 @@ describe("COD Orders and checkout", () => {
   it("filters managed Orders by fulfillment status", async () => {
     const awaitingDispatch = await createGuestOrder();
     const awaitingReview = await createGuestOrder();
-    await confirmServiceable(awaitingDispatch.id);
+    await confirmOrder(awaitingDispatch.id);
 
     const response = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/orders/manage`)
@@ -1812,7 +1753,7 @@ describe("COD Orders and checkout", () => {
 
   it("cancels a confirmed undispatched Order and releases its reservation atomically", async () => {
     const fixture = await createGuestOrder();
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
 
     const response = await request(app.getHttpServer())
       .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`)
@@ -1852,7 +1793,7 @@ describe("COD Orders and checkout", () => {
 
   it("records delivery outcomes and COD collection through guarded transitions", async () => {
     const fixture = await createGuestOrder();
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     await dispatchOrder(fixture.id, staff.cookie).expect(201);
 
     const delivery = await request(app.getHttpServer())
@@ -1920,7 +1861,7 @@ describe("COD Orders and checkout", () => {
 
     await dispatchOrder(fixture.id, staff.cookie).expect(409);
     await dispatchOrder(fixture.id, customer.cookie).expect(403);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
 
     const commandId = randomUUID();
     const input = {
@@ -1936,7 +1877,6 @@ describe("COD Orders and checkout", () => {
     expect(dispatched.body).toMatchObject({
       id: fixture.id,
       status: "confirmed",
-      serviceability: "serviceable",
       fulfillmentStatus: "dispatched",
       paymentMethod: "cod",
       collectionStatus: "uncollected",
@@ -2033,7 +1973,7 @@ describe("COD Orders and checkout", () => {
 
   it("serializes two staff dispatches to one inventory consumption", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const input = {
       deliveryOperator: "AARAJ Dispatch Desk",
       handoffReference: "RACE-TEST-01",
@@ -2060,7 +2000,7 @@ describe("COD Orders and checkout", () => {
 
   it("rolls back Inventory consumption and Order state when the dispatch audit cannot be written", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const audit = app.get(AuditService);
     const appendAudit = audit.append.bind(audit);
     const append = vi
@@ -2102,7 +2042,7 @@ describe("COD Orders and checkout", () => {
 
   it("lets the database reject dispatch without the matching consumed reservation", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const before = await stockFor(fixture.variantId);
     let transitionError: unknown;
     try {
@@ -2214,7 +2154,7 @@ describe("COD Orders and checkout", () => {
 
   it("blocks dispatch during Pathao booking, attaches an early webhook, and allows the confirmed Pathao handoff", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Pathao race Order fixture is missing.");
     let startCreate!: () => void;
@@ -2315,7 +2255,7 @@ describe("COD Orders and checkout", () => {
 
   it("rejects Pathao booking after a manual dispatch has consumed the reservation", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const provider = mockPathaoApi();
     await dispatchOrder(fixture.id, staff.cookie).expect(201);
     await request(app.getHttpServer())
@@ -2343,7 +2283,7 @@ describe("COD Orders and checkout", () => {
     const fixture = await createGuestOrder(2, {
       instructions: "Call from the gate\nUse the east entrance",
     });
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Pathao booking Order fixture is missing.");
     const provider = mockPathaoApi({ orderReference: order.reference });
@@ -2410,7 +2350,7 @@ describe("COD Orders and checkout", () => {
     const longInstructionFixture = await createGuestOrder(2, {
       instructions: longInstruction,
     });
-    await confirmServiceable(longInstructionFixture.id);
+    await confirmOrder(longInstructionFixture.id);
     await request(app.getHttpServer())
       .post(
         `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${longInstructionFixture.id}/book`,
@@ -2621,7 +2561,7 @@ describe("COD Orders and checkout", () => {
 
   it("keeps delivered and paid courier observations separate from COD collection and Inventory", async () => {
     const fixture = await createGuestOrder(1);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Pathao delivery Order fixture is missing.");
     const consignmentId = `PATHAO-DELIVERED-${randomUUID().slice(0, 8).toUpperCase()}`;
@@ -2724,7 +2664,7 @@ describe("COD Orders and checkout", () => {
 
   it("quarantines mismatched stores, consignment IDs, and unknown events without changing Order or stock", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Pathao mismatch Order fixture is missing.");
     const consignmentId = `PATHAO-MISMATCH-${randomUUID().slice(0, 8).toUpperCase()}`;
@@ -2938,7 +2878,7 @@ describe("COD Orders and checkout", () => {
 
   it("does not blindly retry an ambiguous create and supports guarded staff reconciliation", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const order = await orderById(fixture.id);
     if (!order)
       throw new Error("Pathao reconciliation Order fixture is missing.");
@@ -3031,7 +2971,7 @@ describe("COD Orders and checkout", () => {
 
   it("reconciles a verified manually created consignment without matching webhook references automatically", async () => {
     const fixture = await createGuestOrder(1);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Manual Pathao Order fixture is missing.");
     const provider = mockPathaoApi({ orderReference: order.reference });
@@ -3166,7 +3106,7 @@ describe("COD Orders and checkout", () => {
 
   it("recovers a crashed booking and expired webhook lease in a fresh API process", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Pathao recovery Order fixture is missing.");
 
@@ -3297,7 +3237,7 @@ describe("COD Orders and checkout", () => {
 
   it("releases only a stale claim with no durable Pathao request row", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     await database.db.insert(orderPathaoBookingClaim).values({
       orderId: fixture.id,
       commandId: randomUUID(),
@@ -3368,7 +3308,7 @@ describe("COD Orders and checkout", () => {
 
   it("replays a committed dispatch from a fresh API process after the caller loses its response", async () => {
     const fixture = await createGuestOrder(2);
-    await confirmServiceable(fixture.id);
+    await confirmOrder(fixture.id);
     const commandId = randomUUID();
     const input = {
       deliveryOperator: "AARAJ Dispatch Desk",
@@ -3403,20 +3343,25 @@ describe("COD Orders and checkout", () => {
     });
   });
 
-  it("does not dispatch rejected or pending-review Orders", async () => {
-    const rejectedFixture = await createGuestOrder(2);
-    const [rejection, concurrentDispatch] = await Promise.all([
+  it("does not dispatch cancelled or pending-review Orders", async () => {
+    const cancelledFixture = await createGuestOrder(2);
+    const [cancellation, concurrentDispatch] = await Promise.all([
       request(app.getHttpServer())
-        .patch(`${API_V1_BASE_PATH}/orders/manage/${rejectedFixture.id}/status`)
+        .patch(
+          `${API_V1_BASE_PATH}/orders/manage/${cancelledFixture.id}/status`,
+        )
         .set("Origin", origin)
         .set("Cookie", staff.cookie)
-        .send({ status: "rejected", reason: "Destination not served" }),
-      dispatchOrder(rejectedFixture.id, staff.cookie),
+        .send({
+          status: "cancelled",
+          reason: "Destination not served",
+        }),
+      dispatchOrder(cancelledFixture.id, staff.cookie),
     ]);
-    expect(rejection.status).toBe(200);
+    expect(cancellation.status).toBe(200);
     expect(concurrentDispatch.status).toBe(409);
-    expect((await stockFor(rejectedFixture.variantId)).quantityOnHand).toBe(2);
-    expect((await stockFor(rejectedFixture.variantId)).quantityReserved).toBe(
+    expect((await stockFor(cancelledFixture.variantId)).quantityOnHand).toBe(2);
+    expect((await stockFor(cancelledFixture.variantId)).quantityReserved).toBe(
       0,
     );
 
@@ -3506,31 +3451,6 @@ describe("COD Orders and checkout", () => {
     expect(reviewed.status).toBe("confirmed");
     expect(reviewed.cancellationReason).toBeNull();
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
-  });
-
-  it("preserves a historical serviceability-timeout Order", async () => {
-    const fixture = await createGuestOrder();
-    await createLegacyTimeoutCancellation(fixture);
-    const before = await orderById(fixture.id);
-
-    const after = await orderById(fixture.id);
-    expect(after?.status).toBe("cancelled");
-    expect(after?.cancelledAt).toEqual(before?.cancelledAt);
-    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
-    const releaseCommands = await database.db
-      .select()
-      .from(inventoryReservationCommand)
-      .where(
-        eq(inventoryReservationCommand.reservationId, fixture.reservationId),
-      );
-    expect(
-      releaseCommands.filter((command) => command.operation === "release"),
-    ).toHaveLength(1);
-    const visibleOrder = await request(app.getHttpServer())
-      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}`)
-      .set("Cookie", fixture.cookie)
-      .expect(200);
-    expect(visibleOrder.body.status).toBe("cancelled");
   });
 });
 

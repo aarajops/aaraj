@@ -655,7 +655,7 @@ function DetailRow({
 function orderStatusVariant(
   status: Order["status"],
 ): "default" | "secondary" | "destructive" {
-  if (status === "cancelled" || status === "rejected") return "destructive";
+  if (status === "cancelled") return "destructive";
   if (status === "confirmed") return "default";
   return "secondary";
 }

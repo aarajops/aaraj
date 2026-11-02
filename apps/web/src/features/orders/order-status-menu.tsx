@@ -10,8 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type OrderStatusMenuAction = Exclude<OrderStatusAction, "rejected">;
-const actionLabels: Record<OrderStatusMenuAction, string> = {
+const actionLabels: Record<OrderStatusAction, string> = {
   confirmed: "Confirm",
   no_answer: "No Answer",
   on_hold: "Hold",
@@ -26,13 +25,9 @@ export function OrderStatusMenu({
 }: {
   actions: OrderStatusAction[];
   disabled?: boolean;
-  onSelect: (action: OrderStatusMenuAction) => void;
+  onSelect: (action: OrderStatusAction) => void;
 }) {
-  const availableActions = actions.filter(
-    (action): action is OrderStatusMenuAction => action !== "rejected",
-  );
-
-  if (availableActions.length === 0) return null;
+  if (actions.length === 0) return null;
 
   return (
     <DropdownMenu>
@@ -44,7 +39,7 @@ export function OrderStatusMenu({
         <ChevronDown aria-hidden="true" className="size-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        {availableActions.map((action) => (
+        {actions.map((action) => (
           <DropdownMenuItem
             className={
               action === "cancelled"

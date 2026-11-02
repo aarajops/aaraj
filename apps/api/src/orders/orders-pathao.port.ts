@@ -6,7 +6,6 @@ export type PathaoOrderBookingSnapshot = {
   id: string;
   reference: string;
   status: Order["status"];
-  serviceability: Order["serviceability"];
   fulfillmentStatus: Order["fulfillmentStatus"];
   recipientName: string;
   recipientPhone: string;

@@ -7,7 +7,7 @@ import { getManagedOrder } from "@/features/orders/orders-queries";
 
 export const metadata: Metadata = {
   title: "Review Order",
-  description: "Review COD Order details and delivery serviceability.",
+  description: "Review COD Order details and customer confirmation.",
 };
 
 export default async function AdminOrderPage({

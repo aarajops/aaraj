@@ -386,6 +386,13 @@
       "when": 1793532942442,
       "tag": "0054_order_item_reservation_extension",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793615798137,
+      "tag": "0055_simplify_order_status",
+      "breakpoints": true
     }
   ]
 }

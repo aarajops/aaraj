@@ -179,6 +179,11 @@ describe("migration 0023 historical upgrade", () => {
           SELECT 1 FROM pg_trigger
           WHERE tgname = 'order_header_pathao_dispatch_guard' AND NOT tgisinternal
         ) AS pathao_dispatch_trigger,
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'orders' AND table_name = 'order_header'
+            AND column_name = 'serviceability'
+        ) AS serviceability_column,
         (SELECT count(*)::int FROM drizzle.__drizzle_migrations) AS migrations
     `);
 
@@ -189,11 +194,12 @@ describe("migration 0023 historical upgrade", () => {
       delivery_to_orders_fk: false,
       lifecycle_trigger: true,
       pathao_dispatch_trigger: true,
+      serviceability_column: false,
       migrations: await currentMigrationCount(),
     });
   });
 
-  it("upgrades valid pre-0023 COD and Pathao history without changing Orders or Inventory", async () => {
+  it("upgrades valid pre-0023 COD and Pathao history while preserving Orders and Inventory", async () => {
     const afterOrders = await readHistoricalOrders(upgradePool);
     const afterInventory = await readInventory(upgradePool);
     const afterAuditCount = Number(
@@ -671,7 +677,7 @@ async function readHistoricalOrders(
 ): Promise<Record<string, unknown>[]> {
   return (
     await pool.query(`
-      SELECT id, reference, status, serviceability, fulfillment_status,
+      SELECT id, reference, status, fulfillment_status,
              dispatch_command_id, dispatch_request_fingerprint, delivery_operator,
              handoff_reference, dispatched_by, dispatched_at, collection_status
       FROM orders.order_header ORDER BY reference

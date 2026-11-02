@@ -229,7 +229,6 @@ export function OrdersManager({
                 { label: "No answer", value: "no_answer" },
                 { label: "Confirmed", value: "confirmed" },
                 { label: "On hold", value: "on_hold" },
-                { label: "Rejected", value: "rejected" },
                 { label: "Cancelled", value: "cancelled" },
               ],
             },
@@ -337,7 +336,7 @@ function CourierStatus({
 function orderStatusVariant(
   status: OrderManagementList["rows"][number]["status"],
 ): "default" | "secondary" | "destructive" {
-  if (status === "cancelled" || status === "rejected") return "destructive";
+  if (status === "cancelled") return "destructive";
   if (status === "confirmed") return "default";
   return "secondary";
 }

@@ -84,26 +84,18 @@ type IdempotencyRow = typeof orderIdempotency.$inferSelect;
 type NormalizedAddress = OrderAddress;
 
 function availableOrderStatusActions(
-  row: Pick<
-    OrderRow,
-    "status" | "serviceability" | "fulfillmentStatus" | "cancellationReason"
-  >,
+  row: Pick<OrderRow, "status" | "fulfillmentStatus" | "cancellationReason">,
   hasPathaoClaim: boolean,
 ): OrderStatusAction[] {
   const pending =
     (row.status === "pending" || row.status === "no_answer") &&
-    row.serviceability === "pending_manual_review" &&
     row.fulfillmentStatus === "not_started";
   const held =
     row.status === "on_hold" &&
-    ((row.serviceability === "pending_manual_review" &&
-      row.fulfillmentStatus === "not_started") ||
-      (row.serviceability === "serviceable" &&
-        row.fulfillmentStatus === "awaiting_dispatch"));
+    (row.fulfillmentStatus === "not_started" ||
+      row.fulfillmentStatus === "awaiting_dispatch");
   const confirmed =
-    row.status === "confirmed" &&
-    row.serviceability === "serviceable" &&
-    row.fulfillmentStatus === "awaiting_dispatch";
+    row.status === "confirmed" && row.fulfillmentStatus === "awaiting_dispatch";
   const actions: OrderStatusAction[] = [];
 
   if (
@@ -118,9 +110,6 @@ function availableOrderStatusActions(
   if (pending && row.status === "pending") {
     actions.push("no_answer");
   }
-  if (pending || (held && row.serviceability === "pending_manual_review")) {
-    actions.push("rejected");
-  }
   if (!hasPathaoClaim && (pending || confirmed)) actions.push("on_hold");
   if (!hasPathaoClaim && (pending || held || confirmed)) {
     actions.push("cancelled");
@@ -130,13 +119,9 @@ function availableOrderStatusActions(
 
 function canAddOrderItems(row: OrderRow, hasPathaoClaim: boolean): boolean {
   const pendingManualReview =
-    row.status === "pending" &&
-    row.serviceability === "pending_manual_review" &&
-    row.fulfillmentStatus === "not_started";
+    row.status === "pending" && row.fulfillmentStatus === "not_started";
   const confirmedAndAwaitingDispatch =
-    row.status === "confirmed" &&
-    row.serviceability === "serviceable" &&
-    row.fulfillmentStatus === "awaiting_dispatch";
+    row.status === "confirmed" && row.fulfillmentStatus === "awaiting_dispatch";
 
   return (
     !hasPathaoClaim &&
@@ -347,7 +332,6 @@ export class OrdersService implements OrdersPathaoPort {
             reservationId: reservation.id,
             addressCiphertext: encryptedAddress,
             status: "pending",
-            serviceability: "pending_manual_review",
             paymentMethod: "cod",
             collectionStatus: "uncollected",
             fulfillmentStatus: "not_started",
@@ -399,7 +383,6 @@ export class OrdersService implements OrdersPathaoPort {
             reservationId: reservation.id,
             lineCount: quote.lines.length,
             totalBdt: quote.totalBdt,
-            serviceability: "pending_manual_review",
           },
         });
 
@@ -981,11 +964,10 @@ export class OrdersService implements OrdersPathaoPort {
     if (!row) throw orderNotFound();
     if (
       row.status !== "confirmed" ||
-      row.serviceability !== "serviceable" ||
       row.fulfillmentStatus !== "awaiting_dispatch"
     ) {
       throw new ConflictException(
-        "Only confirmed, serviceable Orders awaiting dispatch can be booked with Pathao.",
+        "Only confirmed Orders awaiting dispatch can be booked with Pathao.",
         { errorCode: "PATHAO_ORDER_NOT_ELIGIBLE" },
       );
     }
@@ -1006,7 +988,6 @@ export class OrdersService implements OrdersPathaoPort {
       id: order.id,
       reference: order.reference,
       status: order.status,
-      serviceability: order.serviceability,
       fulfillmentStatus: order.fulfillmentStatus,
       recipientName: order.address.recipientName,
       recipientPhone: order.address.phone,
@@ -1066,11 +1047,10 @@ export class OrdersService implements OrdersPathaoPort {
       if (!row) throw orderNotFound();
       if (
         row.status !== "confirmed" ||
-        row.serviceability !== "serviceable" ||
         row.fulfillmentStatus !== "awaiting_dispatch"
       ) {
         throw new ConflictException(
-          "Only confirmed, serviceable Orders awaiting dispatch can be booked with Pathao.",
+          "Only confirmed Orders awaiting dispatch can be booked with Pathao.",
           { errorCode: "PATHAO_ORDER_NOT_ELIGIBLE" },
         );
       }
@@ -1228,7 +1208,6 @@ export class OrdersService implements OrdersPathaoPort {
       id: order.id,
       reference: order.reference,
       status: order.status,
-      serviceability: order.serviceability,
       fulfillmentStatus: order.fulfillmentStatus,
       recipientName: address.recipientName,
       recipientPhone: address.phone,
@@ -1268,70 +1247,6 @@ export class OrdersService implements OrdersPathaoPort {
     await this.getForOwner(orderId, customerId, signedCookies);
   }
 
-  private async rejectAsUnserviceable(
-    orderId: string,
-    staffId: string,
-    reason: string,
-  ): Promise<Order> {
-    await this.database.db.transaction(async (transaction) => {
-      const [row] = await transaction
-        .select()
-        .from(customerOrder)
-        .where(eq(customerOrder.id, orderId))
-        .for("update")
-        .limit(1);
-      if (!row) throw orderNotFound();
-      if (row.serviceability === "unserviceable" && row.status === "rejected") {
-        return;
-      }
-      if (!availableOrderStatusActions(row, false).includes("rejected")) {
-        throw new ConflictException("This Order is no longer pending review.", {
-          errorCode: "ORDER_REVIEW_ALREADY_COMPLETED",
-        });
-      }
-
-      await this.inventory.releaseWithinTransaction(transaction, {
-        commandId: randomUUID(),
-        reservationId: row.reservationId,
-      });
-
-      const [reviewed] = await transaction
-        .update(customerOrder)
-        .set({
-          status: "rejected",
-          serviceability: "unserviceable",
-          fulfillmentStatus: "cancelled",
-          updatedAt: sql`clock_timestamp()`,
-        })
-        .where(
-          and(
-            eq(customerOrder.id, row.id),
-            eq(customerOrder.status, row.status),
-            eq(customerOrder.serviceability, "pending_manual_review"),
-          ),
-        )
-        .returning({ id: customerOrder.id });
-
-      if (!reviewed) {
-        throw new ConflictException(
-          "This Order changed before the decision was saved.",
-          { errorCode: "ORDER_REVIEW_ALREADY_COMPLETED" },
-        );
-      }
-
-      await this.audit.append(transaction, {
-        actorType: "user",
-        actorId: staffId,
-        eventType: "commerce.cod_order_rejected_unserviceable",
-        subjectType: "order",
-        subjectId: row.id,
-        reason,
-        metadata: { outcome: "unserviceable" },
-      });
-    });
-    return this.getForManagement(orderId);
-  }
-
   async updateManualStatus(
     orderId: string,
     staffId: string,
@@ -1343,10 +1258,6 @@ export class OrdersService implements OrdersPathaoPort {
     }
     if (input.status === "cancelled") {
       await this.cancelBeforeDispatch(orderId, staffId, input.reason);
-      return this.getManagementDetail(orderId);
-    }
-    if (input.status === "rejected") {
-      await this.rejectAsUnserviceable(orderId, staffId, input.reason);
       return this.getManagementDetail(orderId);
     }
     if (input.status === "no_answer") {
@@ -1366,7 +1277,7 @@ export class OrdersService implements OrdersPathaoPort {
       if (input.status === "confirmed") {
         if (
           row.status === "confirmed" &&
-          row.serviceability === "serviceable"
+          row.fulfillmentStatus === "awaiting_dispatch"
         ) {
           return;
         }
@@ -1381,7 +1292,6 @@ export class OrdersService implements OrdersPathaoPort {
           .update(customerOrder)
           .set({
             status: "confirmed",
-            serviceability: "serviceable",
             fulfillmentStatus: "awaiting_dispatch",
             updatedAt: sql`clock_timestamp()`,
           })
@@ -1406,7 +1316,7 @@ export class OrdersService implements OrdersPathaoPort {
           occurredAt: updated.updatedAt,
           reason:
             input.reason ??
-            "Customer confirmed the order and delivery serviceability was verified.",
+            "Customer confirmed the order and delivery details.",
           metadata: { previousStatus: row.status, status: "confirmed" },
         });
         return;
@@ -1530,7 +1440,6 @@ export class OrdersService implements OrdersPathaoPort {
         .update(customerOrder)
         .set({
           status: "pending",
-          serviceability: "pending_manual_review",
           fulfillmentStatus: "not_started",
           reservationId: reservation.id,
           cancellationReason: null,
@@ -1594,7 +1503,6 @@ export class OrdersService implements OrdersPathaoPort {
           and(
             eq(customerOrder.id, row.id),
             eq(customerOrder.status, "pending"),
-            eq(customerOrder.serviceability, "pending_manual_review"),
             eq(customerOrder.fulfillmentStatus, "not_started"),
           ),
         )
@@ -1653,11 +1561,10 @@ export class OrdersService implements OrdersPathaoPort {
 
         if (
           row.status !== "confirmed" ||
-          row.serviceability !== "serviceable" ||
           row.fulfillmentStatus !== "awaiting_dispatch"
         ) {
           throw new ConflictException(
-            "Only a confirmed, serviceable Order awaiting dispatch can be dispatched.",
+            "Only a confirmed Order awaiting dispatch can be dispatched.",
             { errorCode: "ORDER_NOT_DISPATCHABLE" },
           );
         }
@@ -1720,7 +1627,6 @@ export class OrdersService implements OrdersPathaoPort {
             and(
               eq(customerOrder.id, row.id),
               eq(customerOrder.status, "confirmed"),
-              eq(customerOrder.serviceability, "serviceable"),
               eq(customerOrder.fulfillmentStatus, "awaiting_dispatch"),
             ),
           )
@@ -2091,7 +1997,6 @@ export class OrdersService implements OrdersPathaoPort {
       reference: row.reference,
       currency: CURRENCY,
       status: row.status,
-      serviceability: row.serviceability,
       paymentMethod: row.paymentMethod,
       collectionStatus: row.collectionStatus,
       collectedAmountBdt: row.collectedAmountBdt,
@@ -2342,7 +2247,6 @@ function toCreated(row: OrderRow, replayed: boolean): OrderCreated {
     totalBdt: row.totalBdt,
     codAmountDueBdt: row.codAmountDueBdt,
     status: row.status,
-    serviceability: row.serviceability,
     paymentMethod: row.paymentMethod,
     collectionStatus: row.collectionStatus,
     fulfillmentStatus: row.fulfillmentStatus,

@@ -693,9 +693,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
 });
 
-test("customer Order page explains serviceability timeout cancellation", async ({
-  page,
-}) => {
+test("customer Order page explains cancellation", async ({ page }) => {
   const orderId = "b7e38a23-2ef7-49f0-a30f-8c25877e631e";
   await page.route(`**/api/v1/orders/${orderId}`, async (route) =>
     route.fulfill({
@@ -705,7 +703,6 @@ test("customer Order page explains serviceability timeout cancellation", async (
         reference: "ORD-026-00001",
         currency: "BDT",
         status: "cancelled",
-        serviceability: "pending_manual_review",
         paymentMethod: "cod",
         collectionStatus: "uncollected",
         collectedAmountBdt: null,
@@ -730,7 +727,7 @@ test("customer Order page explains serviceability timeout cancellation", async (
         },
         totalBdt: 330,
         codAmountDueBdt: 330,
-        cancellationReason: "serviceability_review_timeout",
+        cancellationReason: "staff_cancelled",
         cancelledAt: "2026-10-08T12:00:00.000Z",
         address: {
           recipientName: "Test Recipient",
@@ -756,9 +753,7 @@ test("customer Order page explains serviceability timeout cancellation", async (
 
   await page.goto(`/orders/${orderId}`);
   await expect(
-    page.getByRole("status").filter({
-      hasText: "cancelled under the previous review policy",
-    }),
+    page.getByRole("status").filter({ hasText: "cancelled before dispatch" }),
   ).toBeVisible();
   await expect(page.getByText("Nothing is payable")).toBeVisible();
 });

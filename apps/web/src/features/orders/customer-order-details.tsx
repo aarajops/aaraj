@@ -344,20 +344,7 @@ function getOrderPresentation(order: Order) {
       title: "Order cancelled",
       statusLabel: "Cancelled",
       statusClass: "bg-muted text-muted-foreground",
-      message:
-        order.cancellationReason === "serviceability_review_timeout"
-          ? `This order was cancelled under the previous review policy${cancelledDate}. No payment is due.`
-          : `This order was cancelled before dispatch${cancelledDate}. No payment is due.`,
-    };
-  }
-
-  if (order.status === "rejected") {
-    return {
-      title: "Delivery unavailable",
-      statusLabel: "Order closed",
-      statusClass: "bg-muted text-muted-foreground",
-      message:
-        "We’re unable to deliver to this address, so the order was closed. No payment is due.",
+      message: `This order was cancelled before dispatch${cancelledDate}. No payment is due.`,
     };
   }
 
@@ -429,7 +416,7 @@ function getOrderPresentation(order: Order) {
     };
   }
 
-  if (order.serviceability === "pending_manual_review") {
+  if (order.status === "pending") {
     return {
       title: "Order received",
       statusLabel: "Pending",
@@ -440,9 +427,9 @@ function getOrderPresentation(order: Order) {
     };
   }
 
-  if (order.serviceability === "serviceable") {
+  if (order.status === "confirmed") {
     return {
-      title: "Delivery confirmed",
+      title: "Order confirmed",
       statusLabel: "Preparing for dispatch",
       statusClass: "bg-muted text-foreground",
       message: "We’re preparing your order for dispatch.",
@@ -458,7 +445,7 @@ function getOrderPresentation(order: Order) {
 }
 
 function getSettlementSummary(order: Order) {
-  if (order.status === "cancelled" || order.status === "rejected") {
+  if (order.status === "cancelled") {
     return {
       label: "Order total",
       detail: "Cash on Delivery · Nothing is payable",

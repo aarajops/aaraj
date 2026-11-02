@@ -6,7 +6,6 @@ const order: PathaoOrderBookingSnapshot = {
   id: "00000000-0000-4000-8000-000000000001",
   reference: "AA-0123456789AB",
   status: "confirmed",
-  serviceability: "serviceable",
   fulfillmentStatus: "awaiting_dispatch",
   recipientName: "Aaraj Customer",
   recipientPhone: "+8801712345678",

@@ -53,7 +53,6 @@ export const OrderStatusSchema = z.enum([
   "no_answer",
   "confirmed",
   "on_hold",
-  "rejected",
   "cancelled",
 ]);
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
@@ -106,10 +105,6 @@ export const OrderStatusUpdateInputSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("on_hold"),
     reason: OptionalOrderStatusReasonSchema,
-  }),
-  z.strictObject({
-    status: z.literal("rejected"),
-    reason: z.string().trim().min(3).max(500),
   }),
   z.strictObject({
     status: z.literal("cancelled"),
@@ -203,11 +198,6 @@ export const OrderSchema = z.strictObject({
   reference: OrderReferenceSchema,
   currency: z.literal(CURRENCY),
   status: OrderStatusSchema,
-  serviceability: z.enum([
-    "pending_manual_review",
-    "serviceable",
-    "unserviceable",
-  ]),
   paymentMethod: z.literal("cod"),
   collectionStatus: z.enum(["uncollected", "collected", "discrepancy"]),
   collectedAmountBdt: z
@@ -232,10 +222,7 @@ export const OrderSchema = z.strictObject({
   }),
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   codAmountDueBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  // Keep the former timeout reason so pre-0047 cancelled Orders remain readable.
-  cancellationReason: z
-    .enum(["serviceability_review_timeout", "staff_cancelled"])
-    .nullable(),
+  cancellationReason: z.literal("staff_cancelled").nullable(),
   cancelledAt: z.iso.datetime().nullable(),
   address: OrderAddressSchema,
   createdAt: z.iso.datetime(),
@@ -255,11 +242,6 @@ export const OrderCreatedSchema = z.strictObject({
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   codAmountDueBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   status: OrderStatusSchema,
-  serviceability: z.enum([
-    "pending_manual_review",
-    "serviceable",
-    "unserviceable",
-  ]),
   paymentMethod: z.literal("cod"),
   collectionStatus: z.enum(["uncollected", "collected", "discrepancy"]),
   fulfillmentStatus: z.enum([

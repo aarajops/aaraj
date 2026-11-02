@@ -39,19 +39,9 @@ export const customerOrder = ordersSchema.table(
       .references(() => inventoryStockReservation.id, { onDelete: "restrict" }),
     addressCiphertext: text("address_ciphertext").notNull(),
     status: text("status")
-      .$type<
-        | "pending"
-        | "no_answer"
-        | "confirmed"
-        | "on_hold"
-        | "rejected"
-        | "cancelled"
-      >()
+      .$type<"pending" | "no_answer" | "confirmed" | "on_hold" | "cancelled">()
       .notNull()
       .default("pending"),
-    serviceability: text("serviceability")
-      .$type<"pending_manual_review" | "serviceable" | "unserviceable">()
-      .notNull(),
     paymentMethod: text("payment_method").notNull().default("cod"),
     collectionStatus: text("collection_status")
       .$type<"uncollected" | "collected" | "discrepancy">()
@@ -82,9 +72,7 @@ export const customerOrder = ordersSchema.table(
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     fulfillmentOutcomeReason: text("fulfillment_outcome_reason"),
     // The timeout value remains for Orders cancelled before migration 0047.
-    cancellationReason: text("cancellation_reason").$type<
-      "serviceability_review_timeout" | "staff_cancelled"
-    >(),
+    cancellationReason: text("cancellation_reason").$type<"staff_cancelled">(),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     merchandiseGrossBdt: bigint("merchandise_gross_bdt", {
       mode: "number",
@@ -107,10 +95,6 @@ export const customerOrder = ordersSchema.table(
     uniqueIndex("order_quote_uidx").on(table.quoteId),
     index("order_customer_created_idx").on(table.customerId, table.createdAt),
     index("order_status_created_idx").on(table.status, table.createdAt),
-    index("order_serviceability_created_idx").on(
-      table.serviceability,
-      table.createdAt,
-    ),
     index("order_guest_cart_revision_idx")
       .on(table.guestCartHash, table.cartRevision)
       .where(sql`${table.guestCartHash} is not null`),
@@ -133,23 +117,15 @@ export const customerOrder = ordersSchema.table(
     ),
     check(
       "order_status_check",
-      sql`${table.status} in ('pending', 'no_answer', 'confirmed', 'on_hold', 'rejected', 'cancelled')`,
-    ),
-    check(
-      "order_serviceability_check",
-      sql`${table.serviceability} in ('pending_manual_review', 'serviceable', 'unserviceable')`,
+      sql`${table.status} in ('pending', 'no_answer', 'confirmed', 'on_hold', 'cancelled')`,
     ),
     check(
       "order_initial_state_check",
-      sql`(${table.status} <> 'pending' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'not_started'))
-        and (${table.status} <> 'no_answer' or (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'not_started'))
-        and (${table.status} <> 'on_hold' or (
-          (${table.serviceability} = 'pending_manual_review' and ${table.fulfillmentStatus} = 'not_started')
-          or (${table.serviceability} = 'serviceable' and ${table.fulfillmentStatus} = 'awaiting_dispatch')
-        ))
-        and (${table.status} <> 'confirmed' or (${table.serviceability} = 'serviceable' and ${table.fulfillmentStatus} in ('awaiting_dispatch', 'dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.cancellationReason} is null and ${table.cancelledAt} is null))
-        and (${table.status} <> 'rejected' or (${table.serviceability} = 'unserviceable' and ${table.fulfillmentStatus} = 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null))
-        and (${table.status} <> 'cancelled' or (${table.fulfillmentStatus} = 'cancelled' and ${table.cancelledAt} is not null and ${table.cancelledAt} >= ${table.createdAt} and (((${table.serviceability} = 'pending_manual_review' or ${table.serviceability} = 'serviceable') and ${table.cancellationReason} = 'staff_cancelled') or (${table.serviceability} = 'pending_manual_review' and ${table.cancellationReason} = 'serviceability_review_timeout'))))
+      sql`(${table.status} <> 'pending' or ${table.fulfillmentStatus} = 'not_started')
+        and (${table.status} <> 'no_answer' or ${table.fulfillmentStatus} = 'not_started')
+        and (${table.status} <> 'on_hold' or ${table.fulfillmentStatus} in ('not_started', 'awaiting_dispatch'))
+        and (${table.status} <> 'confirmed' or (${table.fulfillmentStatus} in ('awaiting_dispatch', 'dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.cancellationReason} is null and ${table.cancelledAt} is null))
+        and (${table.status} <> 'cancelled' or (${table.fulfillmentStatus} = 'cancelled' and ${table.cancelledAt} is not null and ${table.cancelledAt} >= ${table.createdAt} and ${table.cancellationReason} = 'staff_cancelled'))
         and ((${table.status} = 'cancelled' and ${table.cancellationReason} is not null and ${table.cancelledAt} is not null) or (${table.status} <> 'cancelled' and ${table.cancellationReason} is null and ${table.cancelledAt} is null))
         and ((${table.fulfillmentStatus} in ('dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.dispatchCommandId} is not null and ${table.dispatchRequestFingerprint} is not null and ${table.dispatchRequestFingerprint} ~ '^[0-9a-f]{64}$' and ${table.deliveryOperator} is not null and ${table.deliveryOperator} = btrim(${table.deliveryOperator}) and length(${table.deliveryOperator}) between 2 and 120 and ${table.dispatchedBy} is not null and ${table.dispatchedAt} is not null) or (${table.fulfillmentStatus} not in ('dispatched', 'partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.dispatchCommandId} is null and ${table.dispatchRequestFingerprint} is null and ${table.deliveryOperator} is null and ${table.handoffReference} is null and ${table.dispatchedBy} is null and ${table.dispatchedAt} is null))
         and ((${table.fulfillmentStatus} in ('partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.fulfillmentOutcomeReason} is not null and ${table.fulfillmentOutcomeReason} = btrim(${table.fulfillmentOutcomeReason}) and length(${table.fulfillmentOutcomeReason}) between 3 and 500) or (${table.fulfillmentStatus} not in ('partially_delivered', 'delivered', 'delivery_failed', 'returned') and ${table.fulfillmentOutcomeReason} is null))

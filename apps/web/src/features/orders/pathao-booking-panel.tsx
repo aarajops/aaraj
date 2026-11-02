@@ -39,7 +39,6 @@ export function PathaoBookingPanel({
 }) {
   const eligible =
     order.status === "confirmed" &&
-    order.serviceability === "serviceable" &&
     order.fulfillmentStatus === "awaiting_dispatch";
   const [details, setDetails] = useState<PathaoBookingManagement | null>(null);
   const [consignmentId, setConsignmentId] = useState("");
