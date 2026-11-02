@@ -55,8 +55,6 @@ import {
 } from "./pathao-config.js";
 import { PathaoTokenService } from "./pathao-token.service.js";
 
-const PATHAO_WEBHOOK_INTEGRATION_SECRET =
-  "f3992ecc-59da-4cbe-a049-a13da2018d51";
 const PATHAO_NORMAL_DELIVERY_TYPE = 48 satisfies PathaoDeliveryType;
 const PATHAO_PARCEL_ITEM_TYPE = 2;
 const UUID_PATTERN =
@@ -998,6 +996,9 @@ export class PathaoService {
     if (event.event === "webhook_integration") {
       return { handshake: true, duplicate: false };
     }
+    if (event.event === "store.created" || event.event === "store.updated") {
+      return { handshake: false, duplicate: false };
+    }
     const config = requiredPathaoConfiguration();
     const providerTimestamp = parseProviderTimestamp(
       event.timestamp ?? event.updated_at,
@@ -1126,10 +1127,6 @@ export class PathaoService {
       .digest();
     const presented = createHash("sha256").update(signature, "utf8").digest();
     return timingSafeEqual(configured, presented);
-  }
-
-  webhookIntegrationResponseSecret(): string {
-    return PATHAO_WEBHOOK_INTEGRATION_SECRET;
   }
 
   private async verifyWebhookObservation(

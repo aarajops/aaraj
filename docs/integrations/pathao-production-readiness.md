@@ -1,7 +1,7 @@
 # Pathao fulfillment readiness
 
-**Reviewed:** 2026-10-31
-**Status:** The integration code passes local type and format checks. The Pathao merchant account has not returned a successful API response, so provider readiness is not verified.
+**Reviewed:** 2026-11-02
+**Status:** GitHub Environment `aaraj-production` has the five generic Pathao secrets and `AARAJ_PUBLIC_BASE_URL=https://aarajbd.com`. The staged release workflow maps those names to the runtime; the currently deployed host is unchanged until that workflow is released. The Pathao merchant account has not returned a successful API response, so provider readiness is not verified.
 
 ## Fulfillment flow
 
@@ -11,13 +11,13 @@ Pathao returns the consignment ID for the panel. A later staff handoff records p
 
 ## Configuration
 
-For live use, `PATHAO_BASE_URL` must be `https://api-hermes.pathao.com` and the matching `PATHAO_LIVE_CLIENT_ID`, `PATHAO_LIVE_CLIENT_SECRET`, `PATHAO_LIVE_USERNAME`, `PATHAO_LIVE_PASSWORD`, and `PATHAO_LIVE_WEBHOOK_SECRET` must be supplied through the protected deployment environment. The existing `ORDER_PII_ENCRYPTION_KEY` or `ORDER_PII_KEYRING` protects saved Pathao tokens; Pathao does not require a separate AARAJ token-encryption setting.
+The production API endpoint is fixed to `https://api-hermes.pathao.com`. The five generic Pathao credentials are configured as GitHub Environment secrets and use the same names in the runtime. `PATHAO_WEBHOOK_SECRET` must match the secret registered with Pathao. The webhook callback is `https://aarajbd.com/api/v1/delivery/pathao/webhook`; the Pathao Merchant Panel registration has not been inspected. The existing `ORDER_PII_ENCRYPTION_KEY` or `ORDER_PII_KEYRING` protects saved Pathao tokens; Pathao does not require a separate AARAJ token-encryption setting.
 
 `delivery_type=48` is the fixed AARAJ Normal Delivery policy. There is no `PATHAO_DELIVERY_TYPE` setting, per-order store selector, manual parcel-count/weight form, Pathao price lookup, or Pathao charge calculation in the customer tariff.
 
 ## Remaining limits
 
-- The recorded sandbox token request returned HTTP `522`; no successful Pathao authentication, store listing, order creation, or webhook has been verified. No provider request or deployment was made during this review.
+- No successful live Pathao authentication, store listing, order creation, or webhook has been verified. A prior non-production token request returned HTTP `522`; no provider request or deployment was made during the 2026-11-02 configuration review.
 - The supplied Pathao token contract uses the password grant. [RFC 9700 §2.4](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.4) says clients must not use that grant. Pathao's account owner must confirm whether a safer supported grant exists; otherwise the appropriate security owner must accept this provider-required exception before live use.
 - Pathao's supplied capture does not document Create Order idempotency. AARAJ therefore preserves an uncertain booking outcome and requires reconciliation before any repeat booking.
 - The app receives tracking through Pathao webhooks; it does not poll for missed events. Staff must check Pathao's panel when a callback is missing.
@@ -25,4 +25,4 @@ For live use, `PATHAO_BASE_URL` must be `https://api-hermes.pathao.com` and the 
 
 ## Local verification
 
-On 2026-10-31, `pnpm run typecheck` and `pnpm run format:check` passed. Automated tests, database migrations, provider calls, and deployment were not run in this review.
+On 2026-10-31, `pnpm run typecheck` and `pnpm run format:check` passed. On 2026-11-02, GitHub secret and variable names were checked and `git diff --check` passed; tests, provider calls, and deployment were not run in this configuration review.

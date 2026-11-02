@@ -10,35 +10,11 @@ const RUNTIME_ENV_PATH = "/etc/sites/aaraj/runtime.env";
 const MAX_RUNTIME_BYTES = 1024 * 1024;
 const MAX_INPUT_BYTES = 32 * 1024;
 const PATHAO_KEYS = [
-  "PATHAO_BASE_URL",
-  "PATHAO_SANDBOX_CLIENT_ID",
-  "PATHAO_SANDBOX_CLIENT_SECRET",
-  "PATHAO_SANDBOX_USERNAME",
-  "PATHAO_SANDBOX_PASSWORD",
-  "PATHAO_SANDBOX_WEBHOOK_SECRET",
-  "PATHAO_LIVE_CLIENT_ID",
-  "PATHAO_LIVE_CLIENT_SECRET",
-  "PATHAO_LIVE_USERNAME",
-  "PATHAO_LIVE_PASSWORD",
-  "PATHAO_LIVE_WEBHOOK_SECRET",
-];
-const PATHAO_BASE_URLS = new Map([
-  ["https://courier-api-sandbox.pathao.com", "sandbox"],
-  ["https://api-hermes.pathao.com", "live"],
-]);
-const SANDBOX_CREDENTIAL_KEYS = [
-  "PATHAO_SANDBOX_CLIENT_ID",
-  "PATHAO_SANDBOX_CLIENT_SECRET",
-  "PATHAO_SANDBOX_USERNAME",
-  "PATHAO_SANDBOX_PASSWORD",
-  "PATHAO_SANDBOX_WEBHOOK_SECRET",
-];
-const LIVE_CREDENTIAL_KEYS = [
-  "PATHAO_LIVE_CLIENT_ID",
-  "PATHAO_LIVE_CLIENT_SECRET",
-  "PATHAO_LIVE_USERNAME",
-  "PATHAO_LIVE_PASSWORD",
-  "PATHAO_LIVE_WEBHOOK_SECRET",
+  "PATHAO_CLIENT_ID",
+  "PATHAO_CLIENT_SECRET",
+  "PATHAO_USERNAME",
+  "PATHAO_PASSWORD",
+  "PATHAO_WEBHOOK_SECRET",
 ];
 function fail(message) {
   throw new Error(message);
@@ -144,40 +120,12 @@ function validateCredential(value, name) {
     fail(`${name} contains unsupported characters.`);
 }
 
-function pathaoEnvironment(baseUrl) {
-  if (!baseUrl) return null;
-  const environment = PATHAO_BASE_URLS.get(baseUrl);
-  if (!environment) {
-    fail("PATHAO_BASE_URL must match Pathao's documented sandbox or live URL.");
-  }
-  return environment;
-}
-
 function validateConfiguration(inputValues) {
-  const baseUrl = inputValues.get("PATHAO_BASE_URL");
-  const mode = pathaoEnvironment(baseUrl);
-
   const result = new Map(PATHAO_KEYS.map((key) => [key, ""]));
-  result.set("PATHAO_BASE_URL", baseUrl);
+  const isConfigured = PATHAO_KEYS.some((key) => inputValues.get(key) !== "");
+  if (!isConfigured) return result;
 
-  if (!mode) {
-    for (const key of [...SANDBOX_CREDENTIAL_KEYS, ...LIVE_CREDENTIAL_KEYS]) {
-      if (inputValues.get(key) !== "") {
-        fail(`${key} must be empty when PATHAO_BASE_URL is absent.`);
-      }
-    }
-    return result;
-  }
-
-  const selectedCredentialKeys =
-    mode === "sandbox" ? SANDBOX_CREDENTIAL_KEYS : LIVE_CREDENTIAL_KEYS;
-  const inactiveCredentialKeys =
-    mode === "sandbox" ? LIVE_CREDENTIAL_KEYS : SANDBOX_CREDENTIAL_KEYS;
-  for (const key of inactiveCredentialKeys) {
-    if (inputValues.get(key) !== "")
-      fail(`${key} must be empty for the selected PATHAO_BASE_URL.`);
-  }
-  for (const key of selectedCredentialKeys) {
+  for (const key of PATHAO_KEYS) {
     const value = inputValues.get(key);
     validateCredential(value, key);
     result.set(key, value);
@@ -186,20 +134,7 @@ function validateConfiguration(inputValues) {
 }
 
 function buildPayload(environment) {
-  const baseUrl = environment.PATHAO_BASE_URL ?? "";
-  const mode = pathaoEnvironment(baseUrl);
-
-  const values = new Map(PATHAO_KEYS.map((key) => [key, ""]));
-  values.set("PATHAO_BASE_URL", baseUrl);
-  if (mode === "sandbox") {
-    for (const key of SANDBOX_CREDENTIAL_KEYS) {
-      values.set(key, environment[key] ?? "");
-    }
-  } else if (mode === "live") {
-    for (const key of LIVE_CREDENTIAL_KEYS) {
-      values.set(key, environment[key] ?? "");
-    }
-  }
+  const values = new Map(PATHAO_KEYS.map((key) => [key, environment[key] ?? ""]));
   for (const [key, value] of values) {
     if (typeof value !== "string" || /[\r\n\0]/.test(value)) {
       fail(`Configuration value ${key} contains unsafe content.`);

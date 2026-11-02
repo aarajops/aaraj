@@ -25,12 +25,12 @@ Pathao also published a 2026-07-26 announcement describing **Pathao Commerce Ins
 
 The token request parameter table describes `username` as the test login email or production login email and `password` as the test password or production login password. The Production/Live Environment table itself lists only base URL, client ID, and client secret; the supplied material does not further describe how production login values are issued.
 
-The API page describes OAuth 2.0 access tokens. It says to persist the token for subsequent API calls. AARAJ maps the documented values into its GitHub-managed runtime configuration:
+The API page describes OAuth 2.0 access tokens. It says to persist the token for subsequent API calls. The table records Pathao's published endpoints; AARAJ runtime configuration is production-only and always uses `https://api-hermes.pathao.com`:
 
-- `PATHAO_BASE_URL` is set to exactly one documented URL from the table above. AARAJ derives the internal environment label from this URL.
+- The sandbox endpoint is not accepted by AARAJ configuration. Mocked tests do not call Pathao; they intercept requests to the production host.
 - Pathao requires `delivery_type` on every Create Order request: `48` means Normal Delivery and `12` means On-Demand. AARAJ's regular nationwide fulfillment uses the documented Normal Delivery value `48`; this fixed service policy is not an environment variable. Pathao's Merchant Panel describes standard/nationwide delivery separately from the faster On-Demand option.
 - OAuth tokens are encrypted at rest using AARAJ's existing `ORDER_PII_ENCRYPTION_KEY` or `ORDER_PII_KEYRING`; token ciphertext records its key ID so the existing keyring rotation rules apply. This is AARAJ's internal storage protection, not a Pathao credential or an additional Pathao setting.
-- The `PATHAO_SANDBOX_*` and `PATHAO_LIVE_*` GitHub Environment Secrets contain the respective credentials and webhook secret. The deployment provisions only the credential set matching `PATHAO_BASE_URL`.
+- Configure `PATHAO_CLIENT_ID`, `PATHAO_CLIENT_SECRET`, `PATHAO_USERNAME`, `PATHAO_PASSWORD`, and `PATHAO_WEBHOOK_SECRET` as GitHub Environment secrets. These same names are used in the API runtime. `PATHAO_WEBHOOK_SECRET` must match the merchant webhook secret set in Pathao. Leave all five empty to keep Pathao disabled.
 - AARAJ obtains pickup stores from Pathao's documented `GET /aladdin/api/v1/stores` response. Store setup belongs to the merchant account in Pathao's Merchant Panel; ecommerce does not create or edit stores. Booking uses the active default store. If the merchant has exactly one active store and Pathao does not mark a default, that sole store is unambiguous; with multiple active stores and no unique default, booking waits for the merchant to set the default in Pathao.
 
 These `PATHAO_*` names are AARAJ deployment mappings, not names prescribed by Pathao. Provider credential rotation must be performed in the merchant account and deployment secret store; the application does not rotate credentials on the merchant's behalf.
@@ -55,7 +55,7 @@ The response values and expiry shown are examples, not an AARAJ guarantee. Never
 - Documented success status: HTTP `200`.
 - The response table again lists bearer token type, expiry, access token, and refresh token.
 
-**Source-example defect:** the supplied refresh-token cURL body is not valid JSON: it omits a comma after `grant_type` and includes a trailing comma. AARAJ constructs a valid JSON object using the documented field table. Whether Pathao accepts refresh calls and rotates refresh tokens remains unverified until a successful sandbox roundtrip.
+**Source-example defect:** the supplied refresh-token cURL body is not valid JSON: it omits a comma after `grant_type` and includes a trailing comma. AARAJ constructs a valid JSON object using the documented field table. Whether Pathao accepts refresh calls and rotates refresh tokens remains unverified until a successful live roundtrip.
 
 The supplied documentation does not state refresh-token rotation/reuse rules, revocation behavior, concurrent refresh behavior, or a guaranteed lifetime beyond the example response. Treat those as unverified.
 
@@ -145,6 +145,7 @@ The sample quotes `store_id` as a string, while the parameter table says integer
 
 The supplied Webhook Integration page says to provide a callback URL and a webhook secret. It lists these callback conditions:
 
+- Register the configured `AARAJ_PUBLIC_BASE_URL` followed by `/api/v1/delivery/pathao/webhook` (for example, `https://shop.example/api/v1/delivery/pathao/webhook`). The callback path is fixed in the API; no separate webhook URL setting is needed.
 - URL is reachable and resolves within three redirects.
 - HTTPS uses a valid certificate.
 - URL responds within 10 seconds.
@@ -153,13 +154,13 @@ The supplied Webhook Integration page says to provide a callback URL and a webho
 
 The overview says that header value must be **exactly** the documented value; the per-event pages say it should **contain** the value. AARAJ returns the exact value, which satisfies the stricter wording. Confirm the provider's comparison behavior if the documentation changes.
 
-The integration handshake header value is distinct from the webhook secret entered during registration. Do not use the fixed handshake value as the merchant's webhook secret.
+The integration handshake response header has a fixed documented value and is distinct from the webhook secret entered during registration. Do not configure the fixed handshake value as the merchant's webhook secret; AARAJ returns it automatically.
 
 ### Incoming event headers and payloads
 
 The documentation says Pathao sends `X-PATHAO-Signature` with the secret supplied during webhook integration and `Content-Type: application/json`. It does not describe a signature/HMAC algorithm, canonical payload format, timestamp tolerance, replay window, retry schedule, or event ordering guarantee. AARAJ currently verifies the supplied header value against its configured shared secret; this is an implementation behavior, not a documented Pathao cryptographic-signature guarantee.
 
-The Pathao-maintained [`pathao-eng/courier-woocommerce-plugin`](https://github.com/pathao-eng/courier-woocommerce-plugin/blob/main/plugin-api.php) compares the incoming `X-PATHAO-SIGNATURE` value directly with its configured webhook secret. That public implementation is consistent with AARAJ's shared-secret check, but it does not replace an end-to-end sandbox callback verification for this merchant account.
+The Pathao-maintained [`pathao-eng/courier-woocommerce-plugin`](https://github.com/pathao-eng/courier-woocommerce-plugin/blob/main/plugin-api.php) compares the incoming `X-PATHAO-SIGNATURE` value directly with its configured webhook secret. That public implementation is consistent with AARAJ's shared-secret check, but it does not replace provider callback verification for this merchant account.
 
 The supplied page lists these event labels and example event names:
 
@@ -192,26 +193,26 @@ The supplied page lists these event labels and example event names:
 
 Example payloads in the supplied material include `consignment_id`, `merchant_order_id`, `store_id`, `event`, `updated_at`, and `timestamp`. Depending on event, examples also include `delivery_fee`, `collected_amount`, `invoice_id`, `return_consignment_id`, `return_type`, and `reason`. The page explicitly says `reason` may be absent in some cases. These are examples, not a complete required-field schema for every event.
 
-**AARAJ coverage gap:** the current webhook ingress schema persists the common event/order fields, delivery fee, and collected amount. It does not currently retain all documented sample fields such as `invoice_id`, `return_consignment_id`, `return_type`, or `reason`. Store-created and store-updated events are not in AARAJ's recognized order-event set. Confirm whether these fields/events are required for AARAJ's approved workflow before relying on them.
+**AARAJ coverage limits:** the webhook ingress schema persists the common event/order fields, delivery fee, and collected amount. It does not currently retain all documented sample fields such as `invoice_id`, `return_consignment_id`, `return_type`, or `reason`. Store-created and store-updated events are acknowledged and ignored because AARAJ reads the active default store through the documented store-list API when booking; they do not belong in order tracking. Payment and exchange events are accepted as observations but do not change AARAJ order, fulfillment, or collection status.
 
 ## Current AARAJ implementation and release status
 
 The relevant implementation is in `apps/api/src/delivery/pathao/`. It implements token issuance/refresh, store listing, order creation, order-info lookup for booking reconciliation, and the webhook callback. AARAJ sends `delivery_type=48` for Normal Delivery on every booking; no delivery-type environment setting is required. The webhook route is `/api/v1/delivery/pathao/webhook` and returns HTTP `202` with the integration handshake header. The `order.delivery-failed` event maps to its own tracking state. Tracking updates are webhook-first; AARAJ does not poll for missed tracking events. Staff must review discrepancies with the Pathao merchant panel and the provider before taking a supported action.
 
-Those code facts do not establish that a real Pathao request has succeeded. Local tests use deterministic mocks. The production workflow reads deployment values from the protected GitHub Environment, but its live state was not independently inspected during this review. A recorded sandbox token request returned HTTP/2 `522` from Cloudflare; Pathao did not return an API token response, so the result does not establish whether the supplied credentials are valid. This review did not repeat that request. No successful sandbox order or provider-delivered webhook has been verified. The API has no provider credential-rotation control.
+Those code facts do not establish that a real Pathao request has succeeded. Local tests use deterministic mocks. On 2026-11-02, GitHub Environment `aaraj-production` was checked: the five generic Pathao secret names are present and `AARAJ_PUBLIC_BASE_URL` is `https://aarajbd.com`. GitHub does not reveal secret values in its listing. No production release was run during this configuration review, the Pathao Merchant Panel callback registration was not inspected, and no successful live authentication, order, or provider-delivered webhook has been verified. A prior non-production token request returned HTTP/2 `522` from Cloudflare; Pathao did not return an API token response. The API has no provider credential-rotation control.
 
 ## Production qualification
 
-**Not qualified:** the supplied sandbox credentials have not completed an API request in this environment. The recorded token request received HTTP/2 `522` from Cloudflare, not a Pathao API authentication response. Authentication, store listing, order creation/lookup, webhook delivery, timeout reconciliation, cancellation, and COD semantics therefore remain unverified. The selected base URL is the environment selector; no additional AARAJ live-booking flag is used. Keep the sandbox URL configured until the merchant product, account settings, and operational handling are confirmed. Missed tracking callbacks have no automated recovery and require staff/provider review. Use manual delivery until qualification succeeds. Mocked CI is not provider qualification.
+**Not yet qualified for live use:** the recorded non-production token request received HTTP/2 `522` from Cloudflare, not a Pathao API authentication response. GitHub now has the production credentials configured, but the current production host has not received them through a release. Live authentication, store listing, order creation/lookup, webhook delivery, timeout reconciliation, cancellation, and COD semantics remain unverified. The Pathao Merchant Panel callback registration also remains unverified; its callback should be `https://aarajbd.com/api/v1/delivery/pathao/webhook`. Missed tracking callbacks have no automated recovery and require staff/provider review. Mocked CI is not provider qualification.
 
 ## Environment configuration interpretation
 
 For GitHub Environment `aaraj-production`:
 
-- The environment's current values were not independently inspected. A prior 2026-10-10 record says the base URL had been removed; verify the actual GitHub Environment and host runtime before relying on that historical state. The helper clears Pathao credentials from `runtime.env` when the base URL is absent and preserves unrelated application settings; a running process keeps its current configuration until the next apply and restart.
-- Use the Environment **Variable** `PATHAO_BASE_URL` to select sandbox or live. AARAJ always sends Pathao's documented Normal Delivery code `48` when creating a booking.
-- Use Environment **Secrets** for the sandbox/live client IDs, client secrets, usernames, passwords, and webhook secrets. AARAJ uses its existing order-data encryption key from the application runtime; Pathao setup adds no encryption-key secret.
-- The release workflow selects credentials from the URL, validates the configuration, and provisions it through the root-owned helper before activation. Changing GitHub Environment values alone does not apply them.
+- The five generic `PATHAO_*` GitHub secrets are configured; `PATHAO_WEBHOOK_SECRET` must match the secret in the Pathao Merchant Panel. The callback URL is derived from `AARAJ_PUBLIC_BASE_URL` and the fixed API route above.
+- The production API URL is fixed to Pathao's documented live endpoint. AARAJ always sends Pathao's Normal Delivery code `48` when creating a booking.
+- AARAJ uses its existing order-data encryption key from the application runtime; Pathao setup adds no encryption-key secret.
+- The release workflow validates and provisions the live credentials through the root-owned helper before activation. Changing GitHub Environment values alone does not apply them; a production release is required.
 
 These environment-variable names describe AARAJ's deployment mapping, not Pathao's own configuration interface.
 

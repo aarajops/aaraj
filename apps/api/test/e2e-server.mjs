@@ -108,19 +108,18 @@ try {
   process.env.CLIENT_URL = `http://${process.env.HOST ?? "127.0.0.1"}:3180`;
 
   Object.assign(process.env, {
-    PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
-    PATHAO_SANDBOX_CLIENT_ID: "pathao-browser-e2e-client",
-    PATHAO_SANDBOX_CLIENT_SECRET: "pathao-browser-e2e-client-secret",
-    PATHAO_SANDBOX_USERNAME: "pathao-browser-e2e@example.invalid",
-    PATHAO_SANDBOX_PASSWORD: "pathao-browser-e2e-only-password",
-    PATHAO_SANDBOX_WEBHOOK_SECRET: "pathao-browser-e2e-webhook-secret",
+    PATHAO_CLIENT_ID: "pathao-browser-e2e-client",
+    PATHAO_CLIENT_SECRET: "pathao-browser-e2e-client-secret",
+    PATHAO_USERNAME: "pathao-browser-e2e@example.invalid",
+    PATHAO_PASSWORD: "pathao-browser-e2e-only-password",
+    PATHAO_WEBHOOK_SECRET: "pathao-browser-e2e-webhook-secret",
   });
 
   const networkFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = async (input, init) => {
     const requestUrl = input instanceof Request ? input.url : input.toString();
     const url = new URL(requestUrl);
-    if (url.origin !== "https://courier-api-sandbox.pathao.com") {
+    if (url.origin !== "https://api-hermes.pathao.com") {
       return networkFetch(input, init);
     }
     if (url.pathname.endsWith("/issue-token")) {

@@ -121,12 +121,11 @@ describe("COD Orders and checkout", () => {
   let dhaka: BangladeshGeography["locations"][number];
   let dhakaDivision: BangladeshGeography["locations"][number];
   const pathaoEnvironmentKeys = [
-    "PATHAO_BASE_URL",
-    "PATHAO_SANDBOX_CLIENT_ID",
-    "PATHAO_SANDBOX_CLIENT_SECRET",
-    "PATHAO_SANDBOX_USERNAME",
-    "PATHAO_SANDBOX_PASSWORD",
-    "PATHAO_SANDBOX_WEBHOOK_SECRET",
+    "PATHAO_CLIENT_ID",
+    "PATHAO_CLIENT_SECRET",
+    "PATHAO_USERNAME",
+    "PATHAO_PASSWORD",
+    "PATHAO_WEBHOOK_SECRET",
   ];
   const previousPathaoEnvironment = new Map<string, string | undefined>();
   const orderPiiEnvironmentKeys = [
@@ -603,12 +602,11 @@ describe("COD Orders and checkout", () => {
       previousPathaoEnvironment.set(key, process.env[key]);
     }
     Object.assign(process.env, {
-      PATHAO_BASE_URL: "https://courier-api-sandbox.pathao.com",
-      PATHAO_SANDBOX_CLIENT_ID: "pathao-test-client",
-      PATHAO_SANDBOX_CLIENT_SECRET: "pathao-test-secret",
-      PATHAO_SANDBOX_USERNAME: "pathao-test@example.invalid",
-      PATHAO_SANDBOX_PASSWORD: "test-only-password",
-      PATHAO_SANDBOX_WEBHOOK_SECRET: "pathao-test-webhook-secret",
+      PATHAO_CLIENT_ID: "pathao-test-client",
+      PATHAO_CLIENT_SECRET: "pathao-test-secret",
+      PATHAO_USERNAME: "pathao-test@example.invalid",
+      PATHAO_PASSWORD: "test-only-password",
+      PATHAO_WEBHOOK_SECRET: "pathao-test-webhook-secret",
     });
     const module = await Test.createTestingModule({
       imports: [AppModule],
@@ -3181,7 +3179,7 @@ describe("COD Orders and checkout", () => {
     await database.db.insert(pathaoBooking).values({
       id: interruptedId,
       orderId: interruptedFixture.id,
-      environment: "sandbox",
+      environment: "live",
       storeId: 101,
       deliveryType: 48,
       parcelQuantity: 1,

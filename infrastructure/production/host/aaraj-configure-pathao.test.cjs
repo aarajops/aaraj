@@ -16,38 +16,18 @@ const {
 } = require("./aaraj-configure-pathao.cjs");
 
 const CLIENT_SECRET = "dummy-client-secret-123";
-const SANDBOX_URL = "https://courier-api-sandbox.pathao.com";
-const LIVE_URL = "https://api-hermes.pathao.com";
 const DUMMY_CREDENTIALS = {
-  PATHAO_SANDBOX_CLIENT_ID: "dummy-client-id",
-  PATHAO_SANDBOX_CLIENT_SECRET: CLIENT_SECRET,
-  PATHAO_SANDBOX_USERNAME: "ops@example.invalid",
-  PATHAO_SANDBOX_PASSWORD: "dummy-password-456",
-  PATHAO_SANDBOX_WEBHOOK_SECRET: "dummy-webhook-secret-789",
-};
-const DUMMY_LIVE_CREDENTIALS = {
-  PATHAO_LIVE_CLIENT_ID: "dummy-live-client-id",
-  PATHAO_LIVE_CLIENT_SECRET: "dummy-live-client-secret",
-  PATHAO_LIVE_USERNAME: "live-ops@example.invalid",
-  PATHAO_LIVE_PASSWORD: "dummy-live-password",
-  PATHAO_LIVE_WEBHOOK_SECRET: "dummy-live-webhook-secret",
+  PATHAO_CLIENT_ID: "dummy-live-client-id",
+  PATHAO_CLIENT_SECRET: CLIENT_SECRET,
+  PATHAO_USERNAME: "live-ops@example.invalid",
+  PATHAO_PASSWORD: "dummy-live-password",
+  PATHAO_WEBHOOK_SECRET: "dummy-live-webhook-secret",
 };
 
-function configuration(environment = "sandbox", overrides = {}) {
+function configuration(configured = true, overrides = {}) {
   const values = new Map(PATHAO_KEYS.map((key) => [key, ""]));
-  values.set(
-    "PATHAO_BASE_URL",
-    environment === "sandbox"
-      ? SANDBOX_URL
-      : environment === "live"
-        ? LIVE_URL
-        : "",
-  );
-  if (environment === "sandbox") {
+  if (configured) {
     for (const [key, value] of Object.entries(DUMMY_CREDENTIALS))
-      values.set(key, value);
-  } else if (environment === "live") {
-    for (const [key, value] of Object.entries(DUMMY_LIVE_CREDENTIALS))
       values.set(key, value);
   }
   for (const [key, value] of Object.entries(overrides)) values.set(key, value);
@@ -84,7 +64,7 @@ function runtimeValues(fx) {
   return parseEnv(fs.readFileSync(fx.runtimeEnvPath, "utf8"));
 }
 
-test("applies complete sandbox settings atomically and preserves unrelated entries and comments", (t) => {
+test("applies complete live settings atomically and preserves unrelated entries and comments", (t) => {
   const fx = fixture(t);
   const ownerBefore = fs.statSync(fx.runtimeEnvPath);
   const result = apply(fx);
@@ -92,9 +72,7 @@ test("applies complete sandbox settings atomically and preserves unrelated entri
   assert.doesNotMatch(result, /dummy|secret/i);
   const contents = fs.readFileSync(fx.runtimeEnvPath, "utf8");
   const env = runtimeValues(fx);
-  assert.equal(env.PATHAO_BASE_URL, SANDBOX_URL);
-  assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, CLIENT_SECRET);
-  assert.equal(env.PATHAO_LIVE_CLIENT_SECRET, "");
+  assert.equal(env.PATHAO_CLIENT_SECRET, CLIENT_SECRET);
   assert.match(contents, /^# Keep this comment$/m);
   assert.equal(env.APP_NAME, "aaraj");
   assert.equal(env.OTHER_SECRET, "unrelated-value");
@@ -104,7 +82,7 @@ test("applies complete sandbox settings atomically and preserves unrelated entri
   assert.equal(ownerAfter.gid, ownerBefore.gid);
   assert.doesNotMatch(
     contents,
-    /PATHAO_SANDBOX_CLIENT_SECRET=dummy-client-secret/,
+    /PATHAO_CLIENT_SECRET=dummy-client-secret/,
   );
 });
 
@@ -114,18 +92,18 @@ test("keeps shell-looking credential text literal in the Node env file", (t) => 
   assert.equal(
     apply(
       fx,
-      configuration("sandbox", {
-        PATHAO_SANDBOX_PASSWORD: literal,
+      configuration(true, {
+        PATHAO_PASSWORD: literal,
       }),
     ),
     "applied",
   );
-  assert.equal(runtimeValues(fx).PATHAO_SANDBOX_PASSWORD, literal);
+  assert.equal(runtimeValues(fx).PATHAO_PASSWORD, literal);
   const sourced = spawnSync(
     "/bin/bash",
     [
       "-c",
-      '. "$1"; printf %s "$PATHAO_SANDBOX_PASSWORD"',
+      '. "$1"; printf %s "$PATHAO_PASSWORD"',
       "bash",
       fx.runtimeEnvPath,
     ],
@@ -143,7 +121,7 @@ test("removes stale Pathao runtime entries while preserving other settings", (t)
     "",
   ].join("\n");
   const fx = fixture(t, initial);
-  assert.equal(apply(fx, configuration("unconfigured")), "applied");
+  assert.equal(apply(fx, configuration(false)), "applied");
   const updated = runtimeValues(fx);
   assert.equal(updated.PATHAO_UNRECOGNIZED_SETTING, undefined);
   assert.equal(updated.APP_NAME, "aaraj");
@@ -157,28 +135,19 @@ test("accepts an already-unconfigured Pathao integration in the runtime environm
   const fx = fixture(t, example);
   const original = fs.readFileSync(fx.runtimeEnvPath, "utf8");
   const existing = runtimeValues(fx);
-  assert.equal(existing.PATHAO_BASE_URL, "");
-  assert.equal(apply(fx, configuration("unconfigured")), "already-applied");
+  assert.equal(existing.PATHAO_CLIENT_ID, "");
+  assert.equal(apply(fx, configuration(false)), "already-applied");
   assert.equal(fs.readFileSync(fx.runtimeEnvPath, "utf8"), original);
 });
 
 test("rejects incomplete or malformed Pathao configuration before writing", (t) => {
   const fx = fixture(t);
-  const missing = configuration("unconfigured", {
-    PATHAO_BASE_URL: "https://invalid.example",
-  });
-  assert.throws(() => apply(fx, missing), /PATHAO_BASE_URL/);
-  assert.equal(
-    fs.readFileSync(fx.runtimeEnvPath, "utf8"),
-    "# Keep this comment\nAPP_NAME=aaraj\nOTHER_SECRET=unrelated-value\n",
-  );
-
   for (const [key, value, expected] of [
-    ["PATHAO_SANDBOX_CLIENT_SECRET", "", /PATHAO_SANDBOX_CLIENT_SECRET/],
-    ["PATHAO_SANDBOX_USERNAME", "   ", /PATHAO_SANDBOX_USERNAME/],
-    ["PATHAO_SANDBOX_PASSWORD", "bad'password", /unsupported characters/],
+    ["PATHAO_CLIENT_SECRET", "", /PATHAO_CLIENT_SECRET/],
+    ["PATHAO_USERNAME", "   ", /PATHAO_USERNAME/],
+    ["PATHAO_PASSWORD", "bad'password", /unsupported characters/],
   ]) {
-    const invalid = configuration("sandbox", { [key]: value });
+    const invalid = configuration(true, { [key]: value });
     assert.throws(() => apply(fx, invalid), expected, key);
     assert.equal(
       fs.readFileSync(fx.runtimeEnvPath, "utf8"),
@@ -187,73 +156,44 @@ test("rejects incomplete or malformed Pathao configuration before writing", (t) 
   }
 });
 
-test("builds GitHub payloads from the official base URL and clears inactive credentials", () => {
-  const unconfiguredPayload = buildPayload({
-    PATHAO_SANDBOX_CLIENT_SECRET: "stale-github-secret",
-  });
-  const unconfigured = parsePayload(unconfiguredPayload);
-  assert.equal(unconfigured.get("PATHAO_BASE_URL"), "");
-  assert.equal(unconfigured.get("PATHAO_SANDBOX_CLIENT_SECRET"), "");
-  assert.doesNotMatch(unconfiguredPayload, /stale-github-secret/);
-
-  const sandboxPayload = buildPayload({
-    PATHAO_BASE_URL: SANDBOX_URL,
-    ...DUMMY_CREDENTIALS,
-  });
-  assert.equal(
-    parsePayload(sandboxPayload).get("PATHAO_SANDBOX_CLIENT_SECRET"),
-    CLIENT_SECRET,
-  );
-  const livePayload = buildPayload({
-    PATHAO_BASE_URL: LIVE_URL,
-    ...DUMMY_LIVE_CREDENTIALS,
-  });
+test("builds the runtime payload from live merchant credentials", () => {
+  const livePayload = buildPayload(DUMMY_CREDENTIALS);
   const live = parsePayload(livePayload);
-  assert.equal(live.get("PATHAO_BASE_URL"), LIVE_URL);
-  assert.equal(
-    live.get("PATHAO_LIVE_CLIENT_SECRET"),
-    DUMMY_LIVE_CREDENTIALS.PATHAO_LIVE_CLIENT_SECRET,
-  );
-  assert.equal(live.get("PATHAO_SANDBOX_CLIENT_ID"), "");
+  assert.equal(live.get("PATHAO_CLIENT_SECRET"), CLIENT_SECRET);
   assert.throws(
     () =>
       buildPayload({
-        PATHAO_BASE_URL: SANDBOX_URL,
-      }),
-    /PATHAO_SANDBOX_CLIENT_ID/,
-  );
-  assert.throws(
-    () =>
-      buildPayload({
-        PATHAO_BASE_URL: SANDBOX_URL,
         ...DUMMY_CREDENTIALS,
-        PATHAO_SANDBOX_PASSWORD:
-          "line1\nPATHAO_BASE_URL=https://api-hermes.pathao.com",
+        PATHAO_PASSWORD: "line1\nPATHAO_CLIENT_ID=extra",
       }),
     /unsafe content/,
   );
 });
 
-test("applies live settings using Pathao's documented live URL", (t) => {
+test("applies live settings and removes obsolete selectors and credentials", (t) => {
   const fx = fixture(t);
-  const live = configuration("live");
-  assert.equal(apply(fx, live), "applied");
+  fs.writeFileSync(
+    fx.runtimeEnvPath,
+    "APP_NAME=aaraj\nPATHAO_BASE_URL=https://old.example\nPATHAO_OLD_PASSWORD=old\n",
+  );
+  fs.chmodSync(fx.runtimeEnvPath, 0o640);
+  assert.equal(apply(fx), "applied");
   const env = runtimeValues(fx);
-  assert.equal(env.PATHAO_BASE_URL, LIVE_URL);
-  assert.equal(env.PATHAO_LIVE_CLIENT_SECRET, "dummy-live-client-secret");
-  assert.equal(env.PATHAO_SANDBOX_CLIENT_SECRET, "");
-  assert.doesNotMatch(apply(fx, live), /dummy-live/);
+  assert.equal(env.PATHAO_CLIENT_SECRET, CLIENT_SECRET);
+  assert.equal(env.PATHAO_BASE_URL, undefined);
+  assert.equal(env.PATHAO_OLD_PASSWORD, undefined);
+  assert.doesNotMatch(apply(fx), /dummy-live/);
 });
 
 test("rejects duplicate, unauthorized, and injection-shaped payload entries without leaking values", (t) => {
   const fx = fixture(t);
   const valid = payload();
   const secret = CLIENT_SECRET;
-  const duplicate = `${valid}PATHAO_BASE_URL=${SANDBOX_URL}\n`;
+  const duplicate = `${valid}PATHAO_CLIENT_ID=duplicate\n`;
   assert.throws(
     () => parsePayload(duplicate),
     (error) => {
-      assert.match(error.message, /duplicate key PATHAO_BASE_URL/);
+      assert.match(error.message, /duplicate key PATHAO_CLIENT_ID/);
       assert.doesNotMatch(error.message, new RegExp(secret));
       return true;
     },
@@ -273,29 +213,19 @@ test("rejects duplicate, unauthorized, and injection-shaped payload entries with
   assert.throws(
     () =>
       parsePayload(
-        valid.replace("PATHAO_SANDBOX_PASSWORD=dummy-password-456\n", ""),
+        valid.replace("PATHAO_PASSWORD=dummy-live-password\n", ""),
       ),
-    /missing PATHAO_SANDBOX_PASSWORD/,
+    /missing PATHAO_PASSWORD/,
   );
   assert.throws(
     () =>
       parsePayload(
         valid.replace(
-          "PATHAO_SANDBOX_PASSWORD=dummy-password-456",
-          `PATHAO_SANDBOX_PASSWORD=harmless\nPATHAO_BASE_URL=${SANDBOX_URL}`,
+          "PATHAO_PASSWORD=dummy-live-password",
+          "PATHAO_PASSWORD=harmless\nPATHAO_CLIENT_ID=duplicate",
         ),
       ),
-    /duplicate key PATHAO_BASE_URL/,
-  );
-  assert.throws(
-    () =>
-      parsePayload(
-        valid.replace(
-          `PATHAO_BASE_URL=${SANDBOX_URL}`,
-          `PATHAO_BASE_URL=${SANDBOX_URL}\r`,
-        ),
-      ),
-    /line endings/,
+    /duplicate key PATHAO_CLIENT_ID/,
   );
 
   const duplicateRuntime = fixture(t, "A=one\nA=two\n");
@@ -305,10 +235,10 @@ test("rejects duplicate, unauthorized, and injection-shaped payload entries with
   assert.equal(runtimeValues(unknownPathao).PATHAO_OBSOLETE_FIELD, undefined);
   const unrewritablePathao = fixture(
     t,
-    'PATHAO_BASE_URL=\nPATHAO_SANDBOX_PASSWORD="cannot\'be-rewritten"\n',
+    'PATHAO_PASSWORD="cannot\'be-rewritten"\n',
   );
   assert.throws(
-    () => apply(unrewritablePathao, configuration("unconfigured")),
+    () => apply(unrewritablePathao, configuration(false)),
     /cannot be safely rewritten/,
   );
 });
@@ -345,8 +275,8 @@ test("applies the requested configuration directly and accepts idempotent retrie
   const fx = fixture(t);
   assert.equal(apply(fx), "applied");
   assert.equal(apply(fx), "already-applied");
-  assert.equal(apply(fx, configuration("unconfigured")), "applied");
-  assert.equal(runtimeValues(fx).PATHAO_BASE_URL, "");
+  assert.equal(apply(fx, configuration(false)), "applied");
+  assert.equal(runtimeValues(fx).PATHAO_CLIENT_ID, "");
 });
 
 test("keeps the sudoers and installation contract narrowly scoped", (t) => {
@@ -430,16 +360,11 @@ test("validates and applies Pathao before staging and migration", () => {
     /buildPayload\(process\.env[\s\S]*?deploy-release\.sh pathao-apply/,
   );
   for (const secret of [
-    "PATHAO_SANDBOX_CLIENT_ID",
-    "PATHAO_SANDBOX_CLIENT_SECRET",
-    "PATHAO_SANDBOX_USERNAME",
-    "PATHAO_SANDBOX_PASSWORD",
-    "PATHAO_SANDBOX_WEBHOOK_SECRET",
-    "PATHAO_LIVE_CLIENT_ID",
-    "PATHAO_LIVE_CLIENT_SECRET",
-    "PATHAO_LIVE_USERNAME",
-    "PATHAO_LIVE_PASSWORD",
-    "PATHAO_LIVE_WEBHOOK_SECRET",
+    "PATHAO_CLIENT_ID",
+    "PATHAO_CLIENT_SECRET",
+    "PATHAO_USERNAME",
+    "PATHAO_PASSWORD",
+    "PATHAO_WEBHOOK_SECRET",
   ]) {
     assert.equal(
       workflow.split(`secrets.${secret}`).length - 1,
@@ -447,11 +372,8 @@ test("validates and applies Pathao before staging and migration", () => {
       `${secret} must be scoped only to Pathao provisioning`,
     );
   }
-  for (const variable of ["PATHAO_BASE_URL"]) {
-    assert.equal(
-      workflow.split(`vars.${variable}`).length - 1,
-      1,
-      `${variable} must be read from GitHub Environment Variables`,
-    );
-  }
+  assert.doesNotMatch(
+    workflow.slice(provision, activation),
+    /PATHAO_(?:BASE_URL|SANDBOX)/,
+  );
 });

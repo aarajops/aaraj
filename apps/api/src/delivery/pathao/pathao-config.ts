@@ -3,10 +3,8 @@ import {
   type OrderPiiKeyring,
 } from "../../platform/crypto/order-pii-keyring.js";
 
-export type PathaoEnvironment = "sandbox" | "live";
-
 export type PathaoConfiguration = {
-  mode: PathaoEnvironment;
+  mode: "live";
   baseUrl: string;
   clientId: string;
   clientSecret: string;
@@ -16,51 +14,42 @@ export type PathaoConfiguration = {
   tokenEncryptionKeyring: OrderPiiKeyring;
 };
 
-const PATHAO_BASE_URLS = {
-  "https://courier-api-sandbox.pathao.com": "sandbox",
-  "https://api-hermes.pathao.com": "live",
-} as const satisfies Record<string, PathaoEnvironment>;
+const PATHAO_API_BASE_URL = "https://api-hermes.pathao.com";
 
 export function readPathaoConfiguration(
   environment: NodeJS.ProcessEnv = process.env,
 ): PathaoConfiguration | null {
-  const baseUrl = environment.PATHAO_BASE_URL?.trim() ?? "";
-  if (!baseUrl) {
-    const hasCredentials = Object.entries(environment).some(
-      ([key, value]) => key.startsWith("PATHAO_") && Boolean(value?.trim()),
-    );
-    if (hasCredentials) {
-      throw new Error(
-        "PATHAO_BASE_URL must be configured when Pathao credentials are present.",
-      );
-    }
-    return null;
-  }
+  const isConfigured = [
+    environment.PATHAO_CLIENT_ID,
+    environment.PATHAO_CLIENT_SECRET,
+    environment.PATHAO_USERNAME,
+    environment.PATHAO_PASSWORD,
+    environment.PATHAO_WEBHOOK_SECRET,
+  ].some((value) => value !== undefined && value !== "");
+  if (!isConfigured) return null;
 
-  const mode = PATHAO_BASE_URLS[baseUrl as keyof typeof PATHAO_BASE_URLS];
-  if (!mode) {
-    throw new Error(
-      "PATHAO_BASE_URL must match Pathao's documented sandbox or live URL.",
-    );
-  }
-
-  const prefix = mode === "sandbox" ? "PATHAO_SANDBOX" : "PATHAO_LIVE";
   return {
-    mode,
-    baseUrl,
+    mode: "live",
+    baseUrl: PATHAO_API_BASE_URL,
     clientId: required(
-      environment[`${prefix}_CLIENT_ID`],
-      `${prefix}_CLIENT_ID`,
+      environment.PATHAO_CLIENT_ID,
+      "PATHAO_CLIENT_ID",
     ),
     clientSecret: required(
-      environment[`${prefix}_CLIENT_SECRET`],
-      `${prefix}_CLIENT_SECRET`,
+      environment.PATHAO_CLIENT_SECRET,
+      "PATHAO_CLIENT_SECRET",
     ),
-    username: required(environment[`${prefix}_USERNAME`], `${prefix}_USERNAME`),
-    password: required(environment[`${prefix}_PASSWORD`], `${prefix}_PASSWORD`),
+    username: required(
+      environment.PATHAO_USERNAME,
+      "PATHAO_USERNAME",
+    ),
+    password: required(
+      environment.PATHAO_PASSWORD,
+      "PATHAO_PASSWORD",
+    ),
     webhookSecret: required(
-      environment[`${prefix}_WEBHOOK_SECRET`],
-      `${prefix}_WEBHOOK_SECRET`,
+      environment.PATHAO_WEBHOOK_SECRET,
+      "PATHAO_WEBHOOK_SECRET",
     ),
     tokenEncryptionKeyring: readOrderPiiKeyring(environment),
   };
