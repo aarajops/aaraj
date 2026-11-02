@@ -134,7 +134,9 @@ function validateConfiguration(inputValues) {
 }
 
 function buildPayload(environment) {
-  const values = new Map(PATHAO_KEYS.map((key) => [key, environment[key] ?? ""]));
+  const values = new Map(
+    PATHAO_KEYS.map((key) => [key, environment[key] ?? ""]),
+  );
   for (const [key, value] of values) {
     if (typeof value !== "string" || /[\r\n\0]/.test(value)) {
       fail(`Configuration value ${key} contains unsafe content.`);

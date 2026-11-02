@@ -31,22 +31,13 @@ export function readPathaoConfiguration(
   return {
     mode: "live",
     baseUrl: PATHAO_API_BASE_URL,
-    clientId: required(
-      environment.PATHAO_CLIENT_ID,
-      "PATHAO_CLIENT_ID",
-    ),
+    clientId: required(environment.PATHAO_CLIENT_ID, "PATHAO_CLIENT_ID"),
     clientSecret: required(
       environment.PATHAO_CLIENT_SECRET,
       "PATHAO_CLIENT_SECRET",
     ),
-    username: required(
-      environment.PATHAO_USERNAME,
-      "PATHAO_USERNAME",
-    ),
-    password: required(
-      environment.PATHAO_PASSWORD,
-      "PATHAO_PASSWORD",
-    ),
+    username: required(environment.PATHAO_USERNAME, "PATHAO_USERNAME"),
+    password: required(environment.PATHAO_PASSWORD, "PATHAO_PASSWORD"),
     webhookSecret: required(
       environment.PATHAO_WEBHOOK_SECRET,
       "PATHAO_WEBHOOK_SECRET",

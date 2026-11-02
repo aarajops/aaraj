@@ -80,10 +80,7 @@ test("applies complete live settings atomically and preserves unrelated entries 
   assert.equal(ownerAfter.mode & 0o777, 0o640);
   assert.equal(ownerAfter.uid, ownerBefore.uid);
   assert.equal(ownerAfter.gid, ownerBefore.gid);
-  assert.doesNotMatch(
-    contents,
-    /PATHAO_CLIENT_SECRET=dummy-client-secret/,
-  );
+  assert.doesNotMatch(contents, /PATHAO_CLIENT_SECRET=dummy-client-secret/);
 });
 
 test("keeps shell-looking credential text literal in the Node env file", (t) => {
@@ -101,12 +98,7 @@ test("keeps shell-looking credential text literal in the Node env file", (t) => 
   assert.equal(runtimeValues(fx).PATHAO_PASSWORD, literal);
   const sourced = spawnSync(
     "/bin/bash",
-    [
-      "-c",
-      '. "$1"; printf %s "$PATHAO_PASSWORD"',
-      "bash",
-      fx.runtimeEnvPath,
-    ],
+    ["-c", '. "$1"; printf %s "$PATHAO_PASSWORD"', "bash", fx.runtimeEnvPath],
     { encoding: "utf8" },
   );
   assert.equal(sourced.status, 0, sourced.stderr);
@@ -212,9 +204,7 @@ test("rejects duplicate, unauthorized, and injection-shaped payload entries with
   );
   assert.throws(
     () =>
-      parsePayload(
-        valid.replace("PATHAO_PASSWORD=dummy-live-password\n", ""),
-      ),
+      parsePayload(valid.replace("PATHAO_PASSWORD=dummy-live-password\n", "")),
     /missing PATHAO_PASSWORD/,
   );
   assert.throws(
