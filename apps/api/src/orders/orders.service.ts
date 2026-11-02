@@ -62,7 +62,6 @@ import { QuoteService } from "../quote/quote.service.js";
 import type {
   OrdersPathaoPort,
   PathaoBookingClaimSnapshot,
-  PathaoFulfillmentSnapshot,
   PathaoOrderBookingSnapshot,
 } from "./orders-pathao.port.js";
 import {
@@ -1218,24 +1217,6 @@ export class OrdersService implements OrdersPathaoPort {
         0,
       ),
       codAmountDueBdt: order.codAmountDueBdt,
-    };
-  }
-
-  async getPathaoFulfillmentSnapshot(
-    orderId: string,
-  ): Promise<PathaoFulfillmentSnapshot> {
-    const [row] = await this.database.db
-      .select({
-        fulfillmentStatus: customerOrder.fulfillmentStatus,
-        dispatchedAt: customerOrder.dispatchedAt,
-      })
-      .from(customerOrder)
-      .where(eq(customerOrder.id, orderId))
-      .limit(1);
-    if (!row) throw orderNotFound();
-    return {
-      fulfillmentStatus: row.fulfillmentStatus,
-      dispatchedAt: row.dispatchedAt?.toISOString() ?? null,
     };
   }
 

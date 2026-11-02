@@ -15,11 +15,6 @@ export type PathaoOrderBookingSnapshot = {
   codAmountDueBdt: number;
 };
 
-export type PathaoFulfillmentSnapshot = {
-  fulfillmentStatus: Order["fulfillmentStatus"];
-  dispatchedAt: string | null;
-};
-
 export type PathaoBookingClaimStatus =
   "submitting" | "booked" | "outcome_unknown" | "reconciliation_required";
 
@@ -48,9 +43,6 @@ export interface OrdersPathaoPort {
   getPathaoBookingSnapshot(
     orderId: string,
   ): Promise<PathaoOrderBookingSnapshot>;
-  getPathaoFulfillmentSnapshot(
-    orderId: string,
-  ): Promise<PathaoFulfillmentSnapshot>;
   beginPathaoBookingClaim(
     orderId: string,
     commandId: string,

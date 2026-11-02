@@ -97,6 +97,33 @@ const PATHAO_ORDER_EVENTS = new Set([
   "order.paid",
 ]);
 
+const PATHAO_STATUS_EVENTS: Readonly<Record<string, string>> = {
+  pending: "order.created",
+  created: "order.created",
+  ordercreated: "order.created",
+  pickuprequested: "order.pickup-requested",
+  assignedforpickup: "order.assigned-for-pickup",
+  picked: "order.picked",
+  pickupfailed: "order.pickup-failed",
+  pickupcancelled: "order.pickup-cancelled",
+  atthesortinghub: "order.at-the-sorting-hub",
+  intransit: "order.in-transit",
+  receivedatlastmilehub: "order.received-at-last-mile-hub",
+  assignedfordelivery: "order.assigned-for-delivery",
+  delivered: "order.delivered",
+  partialdelivery: "order.partial-delivery",
+  deliveryfailed: "order.delivery-failed",
+  onhold: "order.on-hold",
+  return: "order.returned",
+  returned: "order.returned",
+  returnidcreated: "order.return-id-created",
+  returnintransit: "order.return-in-transit",
+  returnedtomerchant: "order.returned-to-merchant",
+  paidreturn: "order.paid-return",
+  exchange: "order.exchanged",
+  exchanged: "order.exchanged",
+};
+
 type Progress = PathaoBooking["trackingProgress"];
 type InboxRow = typeof pathaoWebhookInbox.$inferSelect;
 
@@ -1196,30 +1223,9 @@ export class PathaoService {
       return;
     }
 
-    const progress = progressFromEvent(payload.event);
-    if (progress !== null && progress !== "booked") {
-      const fulfillment = await this.orders.getPathaoFulfillmentSnapshot(
-        booking.orderId,
-      );
-      if (fulfillment.dispatchedAt === null) {
-        await this.finishWebhook(
-          event.id,
-          leaseOwner,
-          "reconciliation_required",
-          info.orderStatus,
-          "PATHAO_ACTIVITY_BEFORE_AARAJ_DISPATCH",
-        );
-        return;
-      }
-    }
-    const expectedStatus = payload.event.startsWith("order.")
-      ? normalizeStatus(payload.event.slice("order.".length))
-      : null;
-    const currentStatus = info.orderStatus
-      ? normalizeStatus(info.orderStatus)
-      : null;
-    const materialStatus = progress !== null && progress !== "booked";
-    if (materialStatus && expectedStatus !== currentStatus) {
+    const eventProgress = progressFromEvent(payload.event);
+    const providerProgress = progressFromStatus(info.orderStatus);
+    if (eventProgress !== null && providerProgress === null) {
       await this.finishWebhook(
         event.id,
         leaseOwner,
@@ -1230,86 +1236,57 @@ export class PathaoService {
       return;
     }
 
-    const finalState = await this.database.db.transaction(
-      async (transaction) => {
-        const [lockedEvent] = await transaction
-          .select()
-          .from(pathaoWebhookInbox)
-          .where(eq(pathaoWebhookInbox.id, event.id))
-          .for("update")
-          .limit(1);
-        if (
-          !lockedEvent ||
-          lockedEvent.processingState !== "processing" ||
-          lockedEvent.processingLeaseOwner !== leaseOwner
-        ) {
-          return "lease_lost" as const;
-        }
-        const [lockedBooking] = await transaction
-          .select()
-          .from(pathaoBooking)
-          .where(eq(pathaoBooking.id, booking.id))
-          .for("update")
-          .limit(1);
-        if (!lockedBooking) return "lease_lost" as const;
-        const projected = mergeProgress(
-          lockedBooking.trackingProgress as Progress,
-          progress,
-        );
-        await transaction
-          .update(pathaoBooking)
-          .set({
-            trackingProgress: projected.progress,
-            providerOrderStatus: info.orderStatus,
-            updatedAt: sql`clock_timestamp()`,
-          })
-          .where(eq(pathaoBooking.id, booking.id));
-        const state = projected.reconciliationRequired
-          ? "reconciliation_required"
-          : "verified";
-        await transaction
-          .update(pathaoWebhookInbox)
-          .set({
-            processingState: state,
-            providerOrderStatus: info.orderStatus,
-            providerCollectedAmountBdt:
-              typeof payload.collectedAmount === "number"
-                ? payload.collectedAmount
-                : null,
-            lastErrorCode: projected.reconciliationRequired
-              ? "PATHAO_CONFLICTING_TERMINAL_STATUS"
+    await this.database.db.transaction(async (transaction) => {
+      const [lockedEvent] = await transaction
+        .select()
+        .from(pathaoWebhookInbox)
+        .where(eq(pathaoWebhookInbox.id, event.id))
+        .for("update")
+        .limit(1);
+      if (
+        !lockedEvent ||
+        lockedEvent.processingState !== "processing" ||
+        lockedEvent.processingLeaseOwner !== leaseOwner
+      ) {
+        return;
+      }
+      const [lockedBooking] = await transaction
+        .select()
+        .from(pathaoBooking)
+        .where(eq(pathaoBooking.id, booking.id))
+        .for("update")
+        .limit(1);
+      if (!lockedBooking) return;
+      await transaction
+        .update(pathaoBooking)
+        .set({
+          trackingProgress:
+            providerProgress ?? (lockedBooking.trackingProgress as Progress),
+          providerOrderStatus: info.orderStatus,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(pathaoBooking.id, booking.id));
+      await transaction
+        .update(pathaoWebhookInbox)
+        .set({
+          processingState: "verified",
+          providerOrderStatus: info.orderStatus,
+          providerCollectedAmountBdt:
+            typeof payload.collectedAmount === "number"
+              ? payload.collectedAmount
               : null,
-            processedAt: sql`clock_timestamp()`,
-            processingLeaseExpiresAt: null,
-            processingLeaseOwner: null,
-          })
-          .where(
-            and(
-              eq(pathaoWebhookInbox.id, event.id),
-              eq(pathaoWebhookInbox.processingLeaseOwner, leaseOwner),
-            ),
-          );
-        return state;
-      },
-    );
-
-    if (finalState === "lease_lost") return;
-    if (finalState === "reconciliation_required") {
-      await this.database.db.transaction(async (transaction) => {
-        await this.audit.append(transaction, {
-          actorType: "service",
-          eventType: "commerce.pathao_tracking_reconciliation_required",
-          subjectType: "order",
-          subjectId: booking.orderId,
-          reason: "Pathao reported conflicting terminal tracking observations.",
-          metadata: {
-            bookingId: booking.id,
-            webhookObservationId: event.id,
-            eventName: event.eventName,
-          },
-        });
-      });
-    }
+          lastErrorCode: null,
+          processedAt: sql`clock_timestamp()`,
+          processingLeaseExpiresAt: null,
+          processingLeaseOwner: null,
+        })
+        .where(
+          and(
+            eq(pathaoWebhookInbox.id, event.id),
+            eq(pathaoWebhookInbox.processingLeaseOwner, leaseOwner),
+          ),
+        );
+    });
   }
 
   private async retryWebhook(
@@ -1742,52 +1719,12 @@ export function progressFromEvent(event: string): Progress | null {
   }
 }
 
-function mergeProgress(
-  current: Progress,
-  next: Progress | null,
-): { progress: Progress; reconciliationRequired: boolean } {
-  if (next === null)
-    return { progress: current, reconciliationRequired: false };
-  if (current === "reconciliation_required") {
-    return { progress: current, reconciliationRequired: true };
-  }
-  const currentTerminal = terminalProgress(current);
-  const nextTerminal = terminalProgress(next);
-  if (currentTerminal && nextTerminal && current !== next) {
-    return {
-      progress: "reconciliation_required",
-      reconciliationRequired: true,
-    };
-  }
-  if (progressRank(next) < progressRank(current)) {
-    return { progress: current, reconciliationRequired: false };
-  }
-  return { progress: next, reconciliationRequired: false };
-}
-
-function terminalProgress(value: Progress): boolean {
-  return ["delivered", "partial_delivery", "returned"].includes(value);
-}
-
-function progressRank(value: Progress): number {
-  switch (value) {
-    case "booked":
-      return 0;
-    case "pickup":
-      return 1;
-    case "in_transit":
-    case "on_hold":
-      return 2;
-    case "out_for_delivery":
-      return 3;
-    case "delivered":
-    case "partial_delivery":
-    case "delivery_failed":
-    case "returning":
-      return 4;
-    case "returned":
-      return 5;
-    case "reconciliation_required":
-      return 6;
-  }
+export function progressFromStatus(status: string | null): Progress | null {
+  if (!status) return null;
+  const normalizedStatus = normalizeStatus(status);
+  const statusName = normalizedStatus.startsWith("order")
+    ? normalizedStatus.slice("order".length)
+    : normalizedStatus;
+  const event = PATHAO_STATUS_EVENTS[statusName];
+  return event ? progressFromEvent(event) : null;
 }

@@ -2424,8 +2424,9 @@ describe("COD Orders and checkout", () => {
         ),
       );
     expect(preDispatchEvent).toMatchObject({
-      processingState: "reconciliation_required",
-      lastErrorCode: "PATHAO_ACTIVITY_BEFORE_AARAJ_DISPATCH",
+      processingState: "verified",
+      providerOrderStatus: "picked",
+      lastErrorCode: null,
     });
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
     expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(2);
@@ -2508,9 +2509,15 @@ describe("COD Orders and checkout", () => {
       .orderBy(desc(pathaoWebhookInbox.receivedAt))
       .limit(1);
     expect(staleEvent).toMatchObject({
-      processingState: "reconciliation_required",
-      lastErrorCode: "PATHAO_STATUS_REQUIRES_REVIEW",
+      processingState: "verified",
+      providerOrderStatus: "in-transit",
+      lastErrorCode: null,
     });
+    const [trackingAfterStaleEvent] = await database.db
+      .select({ trackingProgress: pathaoBooking.trackingProgress })
+      .from(pathaoBooking)
+      .where(eq(pathaoBooking.orderId, fixture.id));
+    expect(trackingAfterStaleEvent?.trackingProgress).toBe("in_transit");
 
     provider.state.infoStatus = "returned-to-merchant";
     await request(app.getHttpServer())
