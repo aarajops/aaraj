@@ -116,7 +116,7 @@ function availableOrderStatusActions(
   return actions;
 }
 
-function canAddOrderItems(row: OrderRow, hasPathaoClaim: boolean): boolean {
+function canEditOrderItems(row: OrderRow, hasPathaoClaim: boolean): boolean {
   const pendingManualReview =
     row.status === "pending" && row.fulfillmentStatus === "not_started";
   const confirmedAndAwaitingDispatch =
@@ -743,7 +743,7 @@ export class OrdersService implements OrdersPathaoPort {
         row,
         pathaoClaimStatus !== null,
       ),
-      canAddItems: canAddOrderItems(row, pathaoClaimStatus !== null),
+      canEditItems: canEditOrderItems(row, pathaoClaimStatus !== null),
     });
   }
 
@@ -769,7 +769,7 @@ export class OrdersService implements OrdersPathaoPort {
       const existingLine = lines.find(
         ({ variantId }) => variantId === input.variantId,
       );
-      if ((existingLine?.quantity ?? 0) !== input.expectedCurrentQuantity) {
+      if ((existingLine?.quantity ?? 0) !== input.expectedQuantity) {
         throw new ConflictException(
           "The item quantity changed. Refresh the Order before trying again.",
           { errorCode: "ORDER_ITEM_QUANTITY_CHANGED" },
@@ -802,7 +802,7 @@ export class OrdersService implements OrdersPathaoPort {
           { errorCode: "ORDER_PATHAO_BOOKING_BLOCKS_ITEM_EDIT" },
         );
       }
-      if (!canAddOrderItems(row, false)) {
+      if (!canEditOrderItems(row, false)) {
         throw new ConflictException(
           "Only pending or confirmed, unbooked Orders with an uncollected COD amount can have items added.",
           { errorCode: "ORDER_ITEMS_NOT_EDITABLE" },
@@ -940,6 +940,163 @@ export class OrdersService implements OrdersPathaoPort {
           resultingQuantity: (existingLine?.quantity ?? 0) + input.quantity,
           unitPriceBdt,
           grossAmountBdt,
+          previousMerchandiseGrossBdt: row.merchandiseGrossBdt,
+          merchandiseGrossBdt,
+          previousCodAmountDueBdt: row.codAmountDueBdt,
+          codAmountDueBdt: totalBdt,
+          reservationId: row.reservationId,
+        },
+      });
+    });
+
+    return this.getManagementDetail(orderId);
+  }
+
+  async removeCatalogItem(
+    orderId: string,
+    variantId: string,
+    expectedQuantity: number,
+    staffId: string,
+  ): Promise<OrderManagementDetail> {
+    const normalizedVariantId = variantId.toLowerCase();
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+
+      const lines = await transaction
+        .select()
+        .from(customerOrderLine)
+        .where(eq(customerOrderLine.orderId, row.id))
+        .orderBy(asc(customerOrderLine.variantId));
+      const line = lines.find((item) => item.variantId === normalizedVariantId);
+      if (!line || line.quantity !== expectedQuantity) {
+        throw new ConflictException(
+          "The Order item changed. Refresh the Order before trying again.",
+          { errorCode: "ORDER_ITEM_QUANTITY_CHANGED" },
+        );
+      }
+      if (lines.length < 2) {
+        throw new ConflictException(
+          "An Order must contain at least one item. Cancel the Order to close it.",
+          { errorCode: "ORDER_LAST_ITEM" },
+        );
+      }
+
+      const [pathaoClaim] = await transaction
+        .select({ orderId: orderPathaoBookingClaim.orderId })
+        .from(orderPathaoBookingClaim)
+        .where(eq(orderPathaoBookingClaim.orderId, row.id))
+        .for("update")
+        .limit(1);
+      if (pathaoClaim) {
+        throw new ConflictException(
+          "Items cannot be changed while a Pathao consignment exists for this Order.",
+          { errorCode: "ORDER_PATHAO_BOOKING_BLOCKS_ITEM_EDIT" },
+        );
+      }
+      if (!canEditOrderItems(row, false)) {
+        throw new ConflictException(
+          "Only pending or confirmed, unbooked Orders with an uncollected COD amount can have items changed.",
+          { errorCode: "ORDER_ITEMS_NOT_EDITABLE" },
+        );
+      }
+
+      const currentMerchandiseBdt = lines.reduce(
+        (total, item) => total + item.grossAmountBdt,
+        0,
+      );
+      if (
+        currentMerchandiseBdt !== row.merchandiseGrossBdt ||
+        row.totalBdt !== row.merchandiseGrossBdt + row.deliveryAmountBdt ||
+        row.codAmountDueBdt !== row.totalBdt ||
+        !Number.isSafeInteger(currentMerchandiseBdt)
+      ) {
+        throw new Error("The Order item totals do not match its saved total.");
+      }
+
+      const merchandiseGrossBdt = currentMerchandiseBdt - line.grossAmountBdt;
+      const totalBdt = merchandiseGrossBdt + row.deliveryAmountBdt;
+      if (
+        merchandiseGrossBdt < 0 ||
+        !Number.isSafeInteger(merchandiseGrossBdt) ||
+        !Number.isSafeInteger(totalBdt) ||
+        totalBdt <= 0
+      ) {
+        throw new UnprocessableEntityException(
+          "The updated Order amount is invalid.",
+          { errorCode: "ORDER_AMOUNT_LIMIT_EXCEEDED" },
+        );
+      }
+
+      const reservation = await this.inventory.releaseLinesWithinTransaction(
+        transaction,
+        {
+          commandId: randomUUID(),
+          reservationId: row.reservationId,
+          lines: [{ variantId: line.variantId, quantity: line.quantity }],
+        },
+      );
+      if (reservation.status !== "held") {
+        throw new ConflictException(
+          "The Order stock reservation is no longer active.",
+          { errorCode: "ORDER_RESERVATION_NOT_HELD" },
+        );
+      }
+
+      const [removedLine] = await transaction
+        .delete(customerOrderLine)
+        .where(
+          and(
+            eq(customerOrderLine.id, line.id),
+            eq(customerOrderLine.quantity, expectedQuantity),
+          ),
+        )
+        .returning({ id: customerOrderLine.id });
+      if (!removedLine) {
+        throw new ConflictException(
+          "The Order item changed before it could be removed.",
+          { errorCode: "ORDER_ITEM_QUANTITY_CHANGED" },
+        );
+      }
+
+      const [updated] = await transaction
+        .update(customerOrder)
+        .set({
+          merchandiseGrossBdt,
+          totalBdt,
+          codAmountDueBdt: totalBdt,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(customerOrder.id, row.id))
+        .returning({ updatedAt: customerOrder.updatedAt });
+      if (!updated?.updatedAt) {
+        throw new ConflictException(
+          "The Order changed before the item could be removed.",
+          { errorCode: "ORDER_ITEMS_UPDATE_CONFLICT" },
+        );
+      }
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_item_removed",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: updated.updatedAt,
+        reason: "Staff removed an item from the Order.",
+        metadata: {
+          removedItem: {
+            variantId: line.variantId,
+            productSnapshot: line.productSnapshot,
+            quantity: line.quantity,
+            unitPriceBdt: line.unitPriceBdt,
+            grossAmountBdt: line.grossAmountBdt,
+          },
           previousMerchandiseGrossBdt: row.merchandiseGrossBdt,
           merchandiseGrossBdt,
           previousCodAmountDueBdt: row.codAmountDueBdt,

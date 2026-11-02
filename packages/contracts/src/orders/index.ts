@@ -118,11 +118,7 @@ export type OrderStatusUpdateInput = z.infer<
 export const OrderItemAddInputSchema = z.strictObject({
   variantId: z.uuid(),
   quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
-  expectedCurrentQuantity: z
-    .number()
-    .int()
-    .min(0)
-    .max(MAX_CART_QUANTITY_PER_VARIANT),
+  expectedQuantity: z.number().int().min(0).max(MAX_CART_QUANTITY_PER_VARIANT),
   expectedUnitPriceBdt: z
     .number()
     .int()
@@ -130,6 +126,15 @@ export const OrderItemAddInputSchema = z.strictObject({
     .max(Number.MAX_SAFE_INTEGER),
 });
 export type OrderItemAddInput = z.infer<typeof OrderItemAddInputSchema>;
+
+export const OrderItemRemoveQuerySchema = z.strictObject({
+  expectedQuantity: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_CART_QUANTITY_PER_VARIANT),
+});
+export type OrderItemRemoveQuery = z.infer<typeof OrderItemRemoveQuerySchema>;
 
 export const OrderDispatchCommandIdSchema = z.uuid();
 export const OrderDispatchInputSchema = z.strictObject({
@@ -232,7 +237,7 @@ export type Order = z.infer<typeof OrderSchema>;
 
 export const OrderManagementDetailSchema = OrderSchema.extend({
   availableStatusActions: z.array(OrderStatusActionSchema),
-  canAddItems: z.boolean().default(false),
+  canEditItems: z.boolean().default(false),
 });
 export type OrderManagementDetail = z.infer<typeof OrderManagementDetailSchema>;
 

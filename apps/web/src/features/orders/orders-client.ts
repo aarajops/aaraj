@@ -10,6 +10,7 @@ import {
   OrderDispatchInputSchema,
   OrderFulfillmentOutcomeInputSchema,
   OrderItemAddInputSchema,
+  OrderItemRemoveQuerySchema,
   OrderManagementDetailSchema,
   OrderSchema,
   OrderStatusUpdateInputSchema,
@@ -130,6 +131,26 @@ export async function addOrderItem(
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(validatedInput),
+    },
+  );
+  return readResponse(response, OrderManagementDetailSchema);
+}
+
+export async function removeOrderItem(
+  orderId: string,
+  variantId: string,
+  expectedQuantity: number,
+): Promise<OrderManagementDetail> {
+  const query = OrderItemRemoveQuerySchema.parse({ expectedQuantity });
+  const search = new URLSearchParams({
+    expectedQuantity: String(query.expectedQuantity),
+  });
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/items/${encodeURIComponent(variantId)}?${search}`,
+    {
+      method: "DELETE",
+      cache: "no-store",
+      credentials: "same-origin",
     },
   );
   return readResponse(response, OrderManagementDetailSchema);

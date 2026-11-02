@@ -25,6 +25,9 @@ export interface InventoryReservationExtendCommand extends InventoryReservationT
   lines: readonly InventoryReservationLine[];
 }
 
+export type InventoryReservationReleaseLinesCommand =
+  InventoryReservationExtendCommand;
+
 export interface InventoryReservation {
   id: string;
   status: InventoryReservationStatus;
@@ -43,6 +46,10 @@ export interface InventoryReservationPort {
   extendWithinTransaction(
     transaction: AuditTransaction,
     command: InventoryReservationExtendCommand,
+  ): Promise<InventoryReservation>;
+  releaseLinesWithinTransaction(
+    transaction: AuditTransaction,
+    command: InventoryReservationReleaseLinesCommand,
   ): Promise<InventoryReservation>;
   release(
     command: InventoryReservationTransitionCommand,

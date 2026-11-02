@@ -1381,7 +1381,7 @@ describe("COD Orders and checkout", () => {
       .set("Cookie", staff.cookie)
       .expect(200);
 
-    expect(before.body.canAddItems).toBe(true);
+    expect(before.body.canEditItems).toBe(true);
     const response = await request(app.getHttpServer())
       .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items`)
       .set("Origin", origin)
@@ -1389,14 +1389,14 @@ describe("COD Orders and checkout", () => {
       .send({
         variantId: freeVariantId,
         quantity: 1,
-        expectedCurrentQuantity: 0,
+        expectedQuantity: 0,
         expectedUnitPriceBdt: 0,
       })
       .expect(200);
 
     expect(response.body).toMatchObject({
       status: "pending",
-      canAddItems: true,
+      canEditItems: true,
       merchandiseGrossBdt: before.body.merchandiseGrossBdt,
       totalBdt: before.body.totalBdt,
       codAmountDueBdt: before.body.codAmountDueBdt,
@@ -1412,6 +1412,121 @@ describe("COD Orders and checkout", () => {
       ]),
     );
     expect((await stockFor(freeVariantId)).quantityReserved).toBe(1);
+  });
+
+  it("removes an Order line, releases its stock, updates COD, and preserves an audit snapshot", async () => {
+    const fixture = await createGuestOrder(4);
+    const removedVariantId = await createVariant(2, 500);
+    const before = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(before.body.canEditItems).toBe(true);
+    const added = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        variantId: removedVariantId,
+        quantity: 1,
+        expectedQuantity: 0,
+        expectedUnitPriceBdt: 500,
+      })
+      .expect(200);
+    expect((await stockFor(removedVariantId)).quantityReserved).toBe(1);
+
+    const removedLine = added.body.lines.find(
+      (line: { variantId: string }) => line.variantId === removedVariantId,
+    ) as { quantity: number; grossAmountBdt: number };
+    const response = await request(app.getHttpServer())
+      .delete(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items/${removedVariantId}`,
+      )
+      .query({ expectedQuantity: removedLine.quantity })
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+
+    expect(response.body.lines).toHaveLength(1);
+    expect(response.body.lines[0].variantId).toBe(fixture.variantId);
+    expect(response.body.merchandiseGrossBdt).toBe(
+      added.body.merchandiseGrossBdt - removedLine.grossAmountBdt,
+    );
+    expect(response.body.totalBdt).toBe(
+      added.body.totalBdt - removedLine.grossAmountBdt,
+    );
+    expect(response.body.codAmountDueBdt).toBe(response.body.totalBdt);
+    expect((await stockFor(removedVariantId)).quantityReserved).toBe(0);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+
+    const [removalAudit] = await database.db
+      .select({ metadata: auditEvent.metadata })
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.subjectId, fixture.id),
+          eq(auditEvent.eventType, "commerce.cod_order_item_removed"),
+        ),
+      );
+    expect(removalAudit?.metadata).toMatchObject({
+      removedItem: {
+        variantId: removedVariantId,
+        quantity: removedLine.quantity,
+        grossAmountBdt: removedLine.grossAmountBdt,
+      },
+    });
+
+    await request(app.getHttpServer())
+      .delete(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items/${removedVariantId}`,
+      )
+      .query({ expectedQuantity: removedLine.quantity })
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .expect(409);
+    expect((await stockFor(removedVariantId)).quantityReserved).toBe(0);
+    expect(before.body.lines).toHaveLength(1);
+  });
+
+  it("prevents removing the final item or changing items after a Pathao booking claim", async () => {
+    const fixture = await createGuestOrder(4);
+    const current = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .delete(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items/${fixture.variantId}`,
+      )
+      .query({ expectedQuantity: current.body.lines[0].quantity })
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .expect(409);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+
+    await confirmOrder(fixture.id);
+    await database.db.insert(orderPathaoBookingClaim).values({
+      orderId: fixture.id,
+      commandId: randomUUID(),
+      requestFingerprint: "a".repeat(64),
+      status: "booked",
+    });
+    const booked = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(booked.body.canEditItems).toBe(false);
+
+    await request(app.getHttpServer())
+      .delete(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items/${fixture.variantId}`,
+      )
+      .query({ expectedQuantity: 1 })
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .expect(409);
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
   });
 
   it("increases an existing Order line at its saved price and rejects a stale quantity", async () => {
@@ -1436,7 +1551,7 @@ describe("COD Orders and checkout", () => {
       .send({
         variantId: fixture.variantId,
         quantity: 1,
-        expectedCurrentQuantity: savedLine.quantity,
+        expectedQuantity: savedLine.quantity,
         expectedUnitPriceBdt: savedLine.unitPriceBdt,
       })
       .expect(200);
@@ -1461,7 +1576,7 @@ describe("COD Orders and checkout", () => {
       .send({
         variantId: fixture.variantId,
         quantity: 1,
-        expectedCurrentQuantity: savedLine.quantity,
+        expectedQuantity: savedLine.quantity,
         expectedUnitPriceBdt: savedLine.unitPriceBdt,
       })
       .expect(409);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Trash2 } from "lucide-react";
 import {
   MAX_CART_QUANTITY_PER_VARIANT,
   MAX_ORDER_LINES,
@@ -34,6 +34,7 @@ import { OrderStatusMenu } from "./order-status-menu";
 import {
   addOrderItem,
   fetchManagedOrder,
+  removeOrderItem,
   updateOrderStatus,
 } from "./orders-client";
 import { humanize, humanizeOrderStatus } from "./orders-format";
@@ -81,6 +82,7 @@ function OrderDetailsSheetContent({
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
   const [itemEditorOpen, setItemEditorOpen] = useState(false);
+  const [removeVariantId, setRemoveVariantId] = useState<string | null>(null);
   const [itemPending, setItemPending] = useState(false);
   const [itemError, setItemError] = useState<string | null>(null);
   const [catalogSelection, setCatalogSelection] =
@@ -142,7 +144,7 @@ function OrderDetailsSheetContent({
       const updatedOrder = await addOrderItem(order.id, {
         variantId: catalogSelection.variantId,
         quantity,
-        expectedCurrentQuantity: catalogSelection.currentQuantity,
+        expectedQuantity: catalogSelection.currentQuantity,
         expectedUnitPriceBdt: catalogSelection.unitPriceBdt,
       });
       setDetails((current) =>
@@ -159,6 +161,31 @@ function OrderDetailsSheetContent({
         reason instanceof Error
           ? reason.message
           : "The item could not be added to this order.",
+      );
+    } finally {
+      setItemPending(false);
+    }
+  }
+
+  async function removeItem(variantId: string, quantity: number) {
+    if (!order || statusPending || itemPending || itemEditorOpen) return;
+
+    setItemPending(true);
+    setItemError(null);
+    try {
+      const updatedOrder = await removeOrderItem(order.id, variantId, quantity);
+      setDetails((current) =>
+        current?.status === "success" && current.orderId === updatedOrder.id
+          ? { ...current, order: updatedOrder }
+          : current,
+      );
+      setRemoveVariantId(null);
+      onFulfillmentUpdated();
+    } catch (reason) {
+      setItemError(
+        reason instanceof Error
+          ? reason.message
+          : "The item could not be removed from this order.",
       );
     } finally {
       setItemPending(false);
@@ -260,7 +287,12 @@ function OrderDetailsSheetContent({
                 </div>
                 <OrderStatusMenu
                   actions={availableStatusActions}
-                  disabled={statusPending || itemPending || itemEditorOpen}
+                  disabled={
+                    statusPending ||
+                    itemPending ||
+                    itemEditorOpen ||
+                    removeVariantId !== null
+                  }
                   onSelect={(action) => {
                     if (action === "cancelled") {
                       setStatusError(null);
@@ -385,43 +417,118 @@ function OrderDetailsSheetContent({
                 <h3 className="font-semibold" id="order-items-heading">
                   Items ({order.lines.length})
                 </h3>
-                {order.canAddItems && !itemEditorOpen && !cancelFormOpen && (
-                  <Button
-                    disabled={statusPending || itemPending}
-                    onClick={() => {
-                      setItemError(null);
-                      setItemEditorOpen(true);
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    <Plus aria-hidden="true" />
-                    Add item
-                  </Button>
-                )}
+                {order.canEditItems &&
+                  !itemEditorOpen &&
+                  removeVariantId === null &&
+                  !cancelFormOpen && (
+                    <Button
+                      disabled={statusPending || itemPending}
+                      onClick={() => {
+                        setItemError(null);
+                        setRemoveVariantId(null);
+                        setItemEditorOpen(true);
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <Plus aria-hidden="true" />
+                      Add item
+                    </Button>
+                  )}
               </div>
               <ul className="min-w-0 divide-y divide-border border-y border-border">
                 {order.lines.map((line) => (
-                  <li
-                    className="flex justify-between gap-4 py-3 text-sm"
-                    key={line.variantId}
-                  >
-                    <span className="min-w-0">
-                      <span className="block font-medium">
-                        {line.productName}
+                  <li className="grid gap-2 py-3 text-sm" key={line.variantId}>
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <span className="min-w-0">
+                        <span className="block font-medium">
+                          {line.productName}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {line.color} · {line.sizeLabel} · Qty {line.quantity}
+                        </span>
                       </span>
-                      <span className="text-muted-foreground">
-                        {line.color} · {line.sizeLabel} · Qty {line.quantity}
+                      <span className="flex shrink-0 items-center gap-1">
+                        <span className="tabular-nums">
+                          {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                        </span>
+                        {order.canEditItems &&
+                          order.lines.length > 1 &&
+                          !itemEditorOpen &&
+                          !cancelFormOpen && (
+                            <Button
+                              aria-label={`Remove ${line.productName}, ${line.color}, ${line.sizeLabel} from order`}
+                              disabled={
+                                statusPending ||
+                                itemPending ||
+                                (removeVariantId !== null &&
+                                  removeVariantId !== line.variantId)
+                              }
+                              onClick={() => {
+                                setItemError(null);
+                                setRemoveVariantId((current) =>
+                                  current === line.variantId
+                                    ? null
+                                    : line.variantId,
+                                );
+                              }}
+                              size="icon-sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Trash2 aria-hidden="true" />
+                            </Button>
+                          )}
                       </span>
-                    </span>
-                    <span className="shrink-0 tabular-nums">
-                      {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
-                    </span>
+                    </div>
+                    {removeVariantId === line.variantId && (
+                      <div className="grid gap-2 rounded-md bg-muted p-3">
+                        <p className="text-sm text-muted-foreground">
+                          Remove {line.productName} ({line.color} ·{" "}
+                          {line.sizeLabel}) × {line.quantity}? COD due will
+                          decrease by{" "}
+                          {formatBdtPrice({ amountBdt: line.grossAmountBdt })}.
+                        </p>
+                        {itemError && (
+                          <p className="text-sm text-destructive" role="alert">
+                            {itemError}
+                          </p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            disabled={itemPending}
+                            onClick={() => {
+                              setRemoveVariantId(null);
+                              setItemError(null);
+                            }}
+                            type="button"
+                            variant="outline"
+                          >
+                            Keep item
+                          </Button>
+                          <Button
+                            disabled={itemPending || statusPending}
+                            onClick={() =>
+                              void removeItem(line.variantId, line.quantity)
+                            }
+                            type="button"
+                            variant="destructive"
+                          >
+                            {itemPending ? "Removing…" : "Remove item"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
-              {itemEditorOpen && order.canAddItems && (
+              {order.canEditItems && order.lines.length === 1 && (
+                <p className="text-sm text-muted-foreground">
+                  An order must contain at least one item.
+                </p>
+              )}
+              {itemEditorOpen && order.canEditItems && (
                 <div className="grid min-w-0 gap-3 rounded-lg border border-border p-3">
                   <CatalogVariantSearch
                     disabled={itemPending}
@@ -517,7 +624,7 @@ function OrderDetailsSheetContent({
                   </div>
                 </div>
               )}
-              {!order.canAddItems &&
+              {!order.canEditItems &&
                 order.status === "confirmed" &&
                 order.fulfillmentStatus === "awaiting_dispatch" &&
                 order.collectionStatus === "uncollected" &&

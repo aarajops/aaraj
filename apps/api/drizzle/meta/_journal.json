@@ -393,6 +393,13 @@
       "when": 1793615798137,
       "tag": "0055_simplify_order_status",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793620740084,
+      "tag": "0056_order_item_removal",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Headers,
@@ -27,6 +28,7 @@ import {
 import {
   CreateOrderInputSchema,
   OrderItemAddInputSchema,
+  OrderItemRemoveQuerySchema,
   OrderCollectionInputSchema,
   OrderDispatchCommandIdSchema,
   OrderDispatchInputSchema,
@@ -37,6 +39,7 @@ import {
   OrderStatusUpdateInputSchema,
   type CreateOrderInput,
   type OrderItemAddInput,
+  type OrderItemRemoveQuery,
   type OrderCollectionInput,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
@@ -191,6 +194,26 @@ export class OrdersController {
     @Body({ schema: OrderItemAddInputSchema }) input: OrderItemAddInput,
   ) {
     return this.orders.addCatalogItem(orderId, session.user.id, input);
+  }
+
+  @Delete("manage/:orderId/items/:variantId")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  removeCatalogItem(
+    @Session() session: UserSession,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @Param("variantId", { schema: OrderIdSchema }) variantId: string,
+    @Query({ schema: OrderItemRemoveQuerySchema })
+    query: OrderItemRemoveQuery,
+  ) {
+    return this.orders.removeCatalogItem(
+      orderId,
+      variantId,
+      query.expectedQuantity,
+      session.user.id,
+    );
   }
 
   @Patch("manage/:orderId/status")
