@@ -331,7 +331,7 @@ function CourierStatus({
   if (deliveryProvider === "manual") {
     return <Badge variant="outline">Manual delivery</Badge>;
   }
-  return <span className="text-sm text-muted-foreground">Not assigned</span>;
+  return <Badge variant="secondary">Not booked</Badge>;
 }
 
 function orderStatusVariant(
