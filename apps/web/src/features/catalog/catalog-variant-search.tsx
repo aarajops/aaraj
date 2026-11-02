@@ -33,6 +33,11 @@ export type CatalogVariantSelection = {
 };
 
 type ProductResult = { id: string; name: string; price: number | null };
+type ProductSearchResult = {
+  query: string;
+  products: ProductResult[];
+  error: boolean;
+};
 type ExistingVariant = {
   variantId: string;
   quantity: number;
@@ -51,9 +56,9 @@ export function CatalogVariantSearch({
   onSelect: (variant: CatalogVariantSelection | null) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [products, setProducts] = useState<ProductResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState(false);
+  const [searchResult, setSearchResult] = useState<ProductSearchResult | null>(
+    null,
+  );
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
@@ -70,17 +75,9 @@ export function CatalogVariantSearch({
 
   useEffect(() => {
     const search = query.trim();
-    if (search.length < 2) {
-      setProducts([]);
-      setSearching(false);
-      setSearchError(false);
-      return;
-    }
+    if (search.length < 2) return;
 
     const controller = new AbortController();
-    setProducts([]);
-    setSearching(true);
-    setSearchError(false);
     const timeout = window.setTimeout(() => {
       void fetchManagedProducts(
         { limit: 10, offset: 0, search, status: "published" },
@@ -92,20 +89,22 @@ export function CatalogVariantSearch({
             await response.json(),
           );
           if (!result.success) throw new Error();
-          setProducts(
-            result.data.products.map(({ id, name, price }) => ({
+          if (controller.signal.aborted) return;
+          setSearchResult({
+            query: search,
+            products: result.data.products.map(({ id, name, price }) => ({
               id,
               name,
               price: price?.amountBdt ?? null,
             })),
-          );
+            error: false,
+          });
         })
         .catch((error: unknown) => {
           if (error instanceof Error && error.name === "AbortError") return;
-          setSearchError(true);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setSearching(false);
+          if (!controller.signal.aborted) {
+            setSearchResult({ query: search, products: [], error: true });
+          }
         });
     }, 250);
 
@@ -114,6 +113,18 @@ export function CatalogVariantSearch({
       controller.abort();
     };
   }, [query]);
+
+  const search = query.trim();
+  const currentSearchResult =
+    searchResult?.query === search ? searchResult : null;
+  const searching = search.length >= 2 && currentSearchResult === null;
+  const products = currentSearchResult?.products ?? [];
+  const searchError = currentSearchResult?.error ?? false;
+
+  function changeSearch(value: string) {
+    setQuery(value);
+    setSearchResult(null);
+  }
 
   async function chooseProduct(productId: string) {
     productRequest.current?.abort();
@@ -219,7 +230,7 @@ export function CatalogVariantSearch({
             autoComplete="off"
             disabled={disabled}
             id={searchId}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => changeSearch(event.target.value)}
             placeholder="Enter a product name"
             type="search"
             value={query}
