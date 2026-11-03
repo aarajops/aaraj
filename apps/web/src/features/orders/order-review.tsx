@@ -15,6 +15,16 @@ import {
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
 } from "@aaraj/contracts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +57,7 @@ export function OrderReview({
   const [order, setOrder] = useState<OrderReviewOrder>(initialOrder);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [outcomeReason, setOutcomeReason] = useState("");
   const [collectionReason, setCollectionReason] = useState("");
   const [collectionAmount, setCollectionAmount] = useState("");
@@ -129,7 +140,7 @@ export function OrderReview({
 
   async function cancelBeforeDispatch() {
     setPending(true);
-    setError(null);
+    setCancelError(null);
     try {
       applyOrderUpdate(
         await updateOrderStatus(order.id, {
@@ -140,7 +151,7 @@ export function OrderReview({
       setCancelReason("");
       setCancelFormOpen(false);
     } catch (reasonError) {
-      setError(
+      setCancelError(
         reasonError instanceof Error
           ? reasonError.message
           : "The Order could not be cancelled.",
@@ -248,6 +259,7 @@ export function OrderReview({
                 onSelect={(action) => {
                   if (action === "cancelled") {
                     setError(null);
+                    setCancelError(null);
                     setCancelReason("");
                     setCancelFormOpen(true);
                   } else {
@@ -328,59 +340,53 @@ export function OrderReview({
             </ul>
           </div>
         </section>
-        {cancelFormOpen && canCancelBeforeDispatch && (
-          <section
-            aria-label="Cancel order"
-            className="mt-4 rounded-2xl border border-border p-5 sm:p-7"
-          >
-            <h2 className="font-semibold">Cancel order</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Cancelling releases the reserved stock. This is available before
-              courier booking or physical handoff.
-            </p>
-            <form
-              className="mt-4 grid gap-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void cancelBeforeDispatch();
-              }}
-            >
-              <label className="grid gap-2 text-sm font-medium">
-                Cancellation reason
-                <Textarea
-                  autoFocus
-                  maxLength={500}
-                  minLength={3}
-                  required
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                />
-              </label>
-              {error && (
-                <p className="text-sm text-destructive" role="alert">
-                  {error}
-                </p>
-              )}
-              <div className="flex justify-end gap-2">
-                <Button
-                  disabled={pending}
-                  onClick={() => setCancelFormOpen(false)}
-                  type="button"
-                  variant="outline"
-                >
-                  Keep order
-                </Button>
-                <Button
-                  disabled={pending || cancelReason.trim().length < 3}
-                  type="submit"
-                  variant="destructive"
-                >
-                  {pending ? "Cancelling…" : "Cancel order"}
-                </Button>
-              </div>
-            </form>
-          </section>
-        )}
+        <AlertDialog
+          open={cancelFormOpen && canCancelBeforeDispatch}
+          onOpenChange={(open) => {
+            if (open || pending) return;
+            setCancelFormOpen(false);
+            setCancelReason("");
+            setCancelError(null);
+          }}
+        >
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancel this order?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Cancelling releases the reserved stock and closes the order.
+                Orders can only be cancelled before courier booking or handoff.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <label className="grid gap-2 text-sm font-medium">
+              Cancellation reason
+              <Textarea
+                autoFocus
+                maxLength={500}
+                minLength={3}
+                required
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+              />
+            </label>
+            {cancelError && (
+              <p className="text-sm text-destructive" role="alert">
+                {cancelError}
+              </p>
+            )}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={pending}>
+                Keep order
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={pending || cancelReason.trim().length < 3}
+                onClick={() => void cancelBeforeDispatch()}
+                variant="destructive"
+              >
+                {pending ? "Cancelling…" : "Cancel order"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         {order.status === "cancelled" && (
           <p className="mt-6 rounded-xl border border-border p-5 text-sm">
             Cancelled by authorized staff before dispatch. The stock reservation

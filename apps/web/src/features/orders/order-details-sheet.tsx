@@ -316,17 +316,25 @@ function OrderDetailsSheetContent({
                   }}
                 />
               </div>
-              {cancelFormOpen && canCancelOrder && (
-                <form
-                  className="grid gap-3 rounded-lg border border-border p-3"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void updateStatus({
-                      status: "cancelled",
-                      reason: cancelReason.trim(),
-                    });
-                  }}
-                >
+              <AlertDialog
+                open={cancelFormOpen && canCancelOrder}
+                onOpenChange={(open) => {
+                  if (open) return;
+                  if (statusPending) return;
+                  setCancelFormOpen(false);
+                  setCancelReason("");
+                  setStatusError(null);
+                }}
+              >
+                <AlertDialogContent size="sm">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Cancel this order?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Cancelling releases the reserved stock and closes the
+                      order. Orders can only be cancelled before courier booking
+                      or handoff.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
                   <label className="grid gap-2 text-sm font-medium">
                     Cancellation reason
                     <Textarea
@@ -338,26 +346,31 @@ function OrderDetailsSheetContent({
                       onChange={(event) => setCancelReason(event.target.value)}
                     />
                   </label>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      disabled={statusPending}
-                      onClick={() => setCancelFormOpen(false)}
-                      type="button"
-                      variant="outline"
-                    >
+                  {statusError?.orderId === order.id && (
+                    <p className="text-sm text-destructive" role="alert">
+                      {statusError.message}
+                    </p>
+                  )}
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={statusPending}>
                       Keep order
-                    </Button>
-                    <Button
+                    </AlertDialogCancel>
+                    <AlertDialogAction
                       disabled={statusPending || cancelReason.trim().length < 3}
-                      type="submit"
+                      onClick={() =>
+                        void updateStatus({
+                          status: "cancelled",
+                          reason: cancelReason.trim(),
+                        })
+                      }
                       variant="destructive"
                     >
                       {statusPending ? "Cancelling…" : "Cancel order"}
-                    </Button>
-                  </div>
-                </form>
-              )}
-              {statusError?.orderId === order.id && (
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              {statusError?.orderId === order.id && !cancelFormOpen && (
                 <p className="text-sm text-destructive" role="alert">
                   {statusError.message}
                 </p>
