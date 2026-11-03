@@ -54,7 +54,7 @@ const runtimeTableGrants = [
   ["storefront", "configuration", ["SELECT", "UPDATE"]],
   ["quote", "snapshot", ["SELECT", "INSERT"]],
   ["orders", "order_header", ["SELECT", "INSERT", "UPDATE"]],
-  ["orders", "order_line", ["SELECT", "INSERT"]],
+  ["orders", "order_line", ["SELECT", "INSERT", "DELETE"]],
   ["orders", "idempotency", ["SELECT", "INSERT"]],
   ["orders", "order_reference_counter", ["SELECT", "INSERT", "UPDATE"]],
   ["orders", "pathao_booking_claim", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
