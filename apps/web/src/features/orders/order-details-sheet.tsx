@@ -10,6 +10,16 @@ import {
   type OrderManagementDetail,
   type OrderStatusUpdateInput,
 } from "@aaraj/contracts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,6 +104,8 @@ function OrderDetailsSheetContent({
       : null;
   const order =
     currentDetails?.status === "success" ? currentDetails.order : null;
+  const removeLine =
+    order?.lines.find((line) => line.variantId === removeVariantId) ?? null;
   const loading = open && orderId !== null && currentDetails === null;
   const error = currentDetails?.status === "error";
   const availableStatusActions = order?.availableStatusActions ?? [];
@@ -467,11 +479,7 @@ function OrderDetailsSheetContent({
                               }
                               onClick={() => {
                                 setItemError(null);
-                                setRemoveVariantId((current) =>
-                                  current === line.variantId
-                                    ? null
-                                    : line.variantId,
-                                );
+                                setRemoveVariantId(line.variantId);
                               }}
                               size="icon-sm"
                               type="button"
@@ -482,52 +490,9 @@ function OrderDetailsSheetContent({
                           )}
                       </span>
                     </div>
-                    {removeVariantId === line.variantId && (
-                      <div className="grid gap-2 rounded-md bg-muted p-3">
-                        <p className="text-sm text-muted-foreground">
-                          Remove {line.productName} ({line.color} ·{" "}
-                          {line.sizeLabel}) × {line.quantity}? COD due will
-                          decrease by{" "}
-                          {formatBdtPrice({ amountBdt: line.grossAmountBdt })}.
-                        </p>
-                        {itemError && (
-                          <p className="text-sm text-destructive" role="alert">
-                            {itemError}
-                          </p>
-                        )}
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            disabled={itemPending}
-                            onClick={() => {
-                              setRemoveVariantId(null);
-                              setItemError(null);
-                            }}
-                            type="button"
-                            variant="outline"
-                          >
-                            Keep item
-                          </Button>
-                          <Button
-                            disabled={itemPending || statusPending}
-                            onClick={() =>
-                              void removeItem(line.variantId, line.quantity)
-                            }
-                            type="button"
-                            variant="destructive"
-                          >
-                            {itemPending ? "Removing…" : "Remove item"}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </li>
                 ))}
               </ul>
-              {order.canEditItems && order.lines.length === 1 && (
-                <p className="text-sm text-muted-foreground">
-                  An order must contain at least one item.
-                </p>
-              )}
               {itemEditorOpen && order.canEditItems && (
                 <div className="grid min-w-0 gap-3 rounded-lg border border-border p-3">
                   <CatalogVariantSearch
@@ -634,6 +599,56 @@ function OrderDetailsSheetContent({
                     amount are locked after booking.
                   </p>
                 )}
+              <AlertDialog
+                open={removeLine !== null}
+                onOpenChange={(open) => {
+                  if (!open && !itemPending) {
+                    setRemoveVariantId(null);
+                    setItemError(null);
+                  }
+                }}
+              >
+                <AlertDialogContent size="sm">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Remove item from order?</AlertDialogTitle>
+                    {removeLine && (
+                      <AlertDialogDescription>
+                        Remove {removeLine.productName} ({removeLine.color} ·{" "}
+                        {removeLine.sizeLabel}) × {removeLine.quantity}. COD due
+                        will decrease by{" "}
+                        {formatBdtPrice({
+                          amountBdt: removeLine.grossAmountBdt,
+                        })}
+                        .
+                      </AlertDialogDescription>
+                    )}
+                  </AlertDialogHeader>
+                  {itemError && (
+                    <p className="text-sm text-destructive" role="alert">
+                      {itemError}
+                    </p>
+                  )}
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={itemPending}>
+                      Keep item
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={itemPending || statusPending || !removeLine}
+                      onClick={() => {
+                        if (removeLine) {
+                          void removeItem(
+                            removeLine.variantId,
+                            removeLine.quantity,
+                          );
+                        }
+                      }}
+                      variant="destructive"
+                    >
+                      {itemPending ? "Removing…" : "Remove item"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </section>
 
             <dl className="grid gap-2 border-t border-border pt-4 text-sm">
