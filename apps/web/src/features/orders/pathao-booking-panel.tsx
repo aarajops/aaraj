@@ -299,28 +299,18 @@ export function PathaoBookingPanel({
           {eligible && booking.status === "booked" && (
             <div className="mt-3 grid gap-2">
               <p className="text-sm text-muted-foreground">
-                Cancel the consignment in Pathao before pickup, then verify the
-                cancellation here. Order changes unlock after Pathao confirms
-                it.
+                Cancel the consignment before pickup. Order changes unlock
+                after Pathao confirms the cancellation.
               </p>
-              <div className="flex flex-wrap items-center gap-3">
-                <a
-                  className="text-sm underline underline-offset-4"
-                  href="https://merchant.pathao.com/courier"
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Open Pathao Merchant Panel
-                </a>
-                <Button
-                  disabled={pending || loading}
-                  onClick={() => void verifyCancellation()}
-                  size="sm"
-                  variant="outline"
-                >
-                  {pending ? "Checking…" : "Verify cancellation"}
-                </Button>
-              </div>
+              <Button
+                className="w-fit"
+                disabled={pending || loading}
+                onClick={() => void verifyCancellation()}
+                size="sm"
+                variant="outline"
+              >
+                {pending ? "Checking…" : "Verify cancellation"}
+              </Button>
             </div>
           )}
           {eligible &&
