@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowRight, ShoppingCart } from "lucide-react";
 import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { useCartSheet, useCartStore } from "./cart-provider";
@@ -85,6 +86,7 @@ export function AddToCart({ variantId }: { variantId: string | null }) {
           size="lg"
           type="button"
         >
+          <ShoppingCart aria-hidden="true" />
           {isMutating
             ? "Updating cart…"
             : !isReady
@@ -93,11 +95,9 @@ export function AddToCart({ variantId }: { variantId: string | null }) {
                 : error
                   ? "Retry cart"
                   : "Loading cart…"
-              : !variantId
-                ? "Choose options"
-                : quantityLimitReached
-                  ? "Limit reached"
-                  : "Add to Cart"}
+              : quantityLimitReached
+                ? "Limit reached"
+                : "Add to Cart"}
         </Button>
         <Button
           className="w-full"
@@ -107,6 +107,7 @@ export function AddToCart({ variantId }: { variantId: string | null }) {
           type="button"
           variant="outline"
         >
+          <ArrowRight aria-hidden="true" />
           {isBuyingNow ? "Continuing…" : "Buy Now"}
         </Button>
       </div>

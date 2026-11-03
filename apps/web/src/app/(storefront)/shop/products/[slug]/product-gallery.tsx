@@ -107,9 +107,47 @@ export function ProductGallery({
   if (!selectedImage) return null;
 
   return (
-    <section className="min-w-0">
+    <section className="flex min-w-0 flex-col-reverse gap-2 lg:flex-row lg:gap-3">
+      {visibleImages.length > 1 && (
+        <ul
+          aria-label="Choose a product image"
+          className="flex gap-3 overflow-x-auto pb-1 lg:max-h-96 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto"
+        >
+          {visibleImages.map((image, index) => (
+            <li className="shrink-0" key={image.id}>
+              <button
+                aria-label={`Show image ${index + 1}: ${image.altText}`}
+                aria-pressed={selectedImage.id === image.id}
+                className={`block w-20 overflow-hidden rounded-md border bg-muted/30 outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
+                  selectedImage.id === image.id
+                    ? "border-primary"
+                    : "border-border hover:border-foreground/40"
+                }`}
+                onClick={() =>
+                  setManualSelection({ selectionKey, imageId: image.id })
+                }
+                style={{
+                  aspectRatio: `${image.card.width} / ${image.card.height}`,
+                }}
+                type="button"
+              >
+                <Image
+                  alt=""
+                  className="h-full w-full object-contain"
+                  height={image.card.height}
+                  loading="lazy"
+                  src={image.card.src}
+                  unoptimized
+                  width={image.card.width}
+                />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <Carousel
         aria-label={`${productName} product images`}
+        className="min-w-0 flex-1"
         opts={{ align: "start" }}
         setApi={setApi}
       >
@@ -151,43 +189,6 @@ export function ProductGallery({
           Image {selectedImageIndex + 1} of {visibleImages.length}
         </span>
       </Carousel>
-      {visibleImages.length > 1 && (
-        <ul
-          aria-label="Choose a product image"
-          className="mt-3 flex gap-3 overflow-x-auto pb-1"
-        >
-          {visibleImages.map((image, index) => (
-            <li className="shrink-0" key={image.id}>
-              <button
-                aria-label={`Show image ${index + 1}: ${image.altText}`}
-                aria-pressed={selectedImage.id === image.id}
-                className={`block w-16 overflow-hidden rounded-md border bg-muted/30 outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
-                  selectedImage.id === image.id
-                    ? "border-primary"
-                    : "border-border hover:border-foreground/40"
-                }`}
-                onClick={() =>
-                  setManualSelection({ selectionKey, imageId: image.id })
-                }
-                style={{
-                  aspectRatio: `${image.card.width} / ${image.card.height}`,
-                }}
-                type="button"
-              >
-                <Image
-                  alt=""
-                  className="h-full w-full object-contain"
-                  height={image.card.height}
-                  loading="lazy"
-                  src={image.card.src}
-                  unoptimized
-                  width={image.card.width}
-                />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Minus, Plus, ShoppingBag } from "lucide-react";
 import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
 import { useEffect } from "react";
@@ -119,106 +120,116 @@ export function CartSheet() {
             >
               {cart.lines.map((line) => (
                 <li
-                  className="flex items-start justify-between gap-4 py-5"
+                  className="flex items-start gap-3 py-4"
                   key={line.variantId}
                 >
-                  <div className="min-w-0">
-                    <Link
-                      className="text-base font-semibold hover:underline"
-                      href={`/shop/products/${line.product.slug}`}
-                      onNavigate={() => setOpen(false)}
-                    >
-                      {line.product.name}
-                    </Link>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {line.product.color} · {line.product.sizeLabel}
-                    </p>
-                    <div className="mt-3 flex items-center gap-2">
-                      <div
-                        aria-label={`Quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
-                        className="inline-flex h-10 items-center gap-1 rounded-lg border border-input px-1"
-                        role="group"
+                  {line.image && (
+                    <div className="size-16 shrink-0 overflow-hidden rounded-md bg-muted">
+                      <Image
+                        alt=""
+                        aria-hidden="true"
+                        className="size-full object-cover"
+                        height={line.image.height}
+                        src={line.image.src}
+                        unoptimized
+                        width={line.image.width}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        className="text-sm font-medium leading-5 hover:underline"
+                        href={`/shop/products/${line.product.slug}`}
+                        onNavigate={() => setOpen(false)}
                       >
+                        {line.product.name}
+                      </Link>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {line.product.color} · {line.product.sizeLabel}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div
+                          aria-label={`Quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                          className="inline-flex h-10 items-center gap-1 rounded-lg border border-input px-1"
+                          role="group"
+                        >
+                          <Button
+                            aria-label={`Decrease quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                            className="rounded-md"
+                            disabled={
+                              isMutating ||
+                              line.availability === "unavailable" ||
+                              line.quantity <= 1
+                            }
+                            onClick={() =>
+                              void setLine(line.variantId, line.quantity - 1)
+                            }
+                            size="icon-lg"
+                            variant="ghost"
+                          >
+                            <Minus aria-hidden="true" />
+                          </Button>
+                          <span
+                            aria-live="polite"
+                            className="min-w-5 text-center text-sm tabular-nums"
+                          >
+                            {line.quantity}
+                          </span>
+                          <Button
+                            aria-label={`Increase quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                            className="rounded-md"
+                            disabled={
+                              isMutating ||
+                              line.availability === "unavailable" ||
+                              line.quantity >= MAX_CART_QUANTITY_PER_VARIANT
+                            }
+                            onClick={() =>
+                              void setLine(line.variantId, line.quantity + 1)
+                            }
+                            size="icon-lg"
+                            variant="ghost"
+                          >
+                            <Plus aria-hidden="true" />
+                          </Button>
+                        </div>
                         <Button
-                          aria-label={`Decrease quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
-                          className="rounded-md"
-                          disabled={
-                            isMutating ||
-                            line.availability === "unavailable" ||
-                            line.quantity <= 1
-                          }
-                          onClick={() =>
-                            void setLine(line.variantId, line.quantity - 1)
-                          }
-                          size="icon-lg"
+                          aria-label={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                          className="text-muted-foreground hover:text-destructive"
+                          disabled={isMutating}
+                          onClick={() => void removeLine(line.variantId)}
+                          size="sm"
                           variant="ghost"
                         >
-                          <Minus aria-hidden="true" />
-                        </Button>
-                        <span
-                          aria-live="polite"
-                          className="min-w-5 text-center text-sm tabular-nums"
-                        >
-                          {line.quantity}
-                        </span>
-                        <Button
-                          aria-label={`Increase quantity for ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
-                          className="rounded-md"
-                          disabled={
-                            isMutating ||
-                            line.availability === "unavailable" ||
-                            line.quantity >= MAX_CART_QUANTITY_PER_VARIANT
-                          }
-                          onClick={() =>
-                            void setLine(line.variantId, line.quantity + 1)
-                          }
-                          size="icon-lg"
-                          variant="ghost"
-                        >
-                          <Plus aria-hidden="true" />
+                          Remove
                         </Button>
                       </div>
-                      <Button
-                        aria-label={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
-                        className="text-muted-foreground hover:text-destructive"
-                        disabled={isMutating}
-                        onClick={() => void removeLine(line.variantId)}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        Remove
-                      </Button>
+                      {line.availability === "unavailable" && (
+                        <p
+                          className="mt-2 text-sm text-destructive"
+                          role="status"
+                        >
+                          Unavailable. Review this item in your cart.
+                        </p>
+                      )}
                     </div>
-                    {line.availability === "unavailable" && (
-                      <p
-                        className="mt-2 text-sm text-destructive"
-                        role="status"
-                      >
-                        Unavailable. Review this item in your cart.
-                      </p>
-                    )}
-                  </div>
 
-                  <div className="shrink-0 text-right">
-                    {line.quantity > 1 && (
-                      <p className="text-sm text-muted-foreground">
+                    <div className="shrink-0 text-right">
+                      <p className="whitespace-nowrap text-sm font-semibold tabular-nums">
                         {formatBdtPrice({
-                          amountBdt: line.product.unitPriceBdt,
-                        })}{" "}
-                        each
+                          amountBdt: line.product.unitPriceBdt * line.quantity,
+                        })}
                       </p>
-                    )}
-                    <p
-                      className={
-                        line.quantity > 1
-                          ? "mt-1 font-semibold"
-                          : "font-semibold"
-                      }
-                    >
-                      {formatBdtPrice({
-                        amountBdt: line.product.unitPriceBdt * line.quantity,
-                      })}
-                    </p>
+                      {line.quantity > 1 && (
+                        <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+                          {formatBdtPrice({
+                            amountBdt: line.product.unitPriceBdt,
+                          })}{" "}
+                          each
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </li>
               ))}
@@ -227,19 +238,12 @@ export function CartSheet() {
         </div>
 
         {isReady && cart.lines.length > 0 && (
-          <SheetFooter className="mt-auto w-full gap-0 border-t border-border p-0">
-            <div className="flex items-center justify-between gap-4 px-6 py-5 text-base font-medium">
+          <SheetFooter className="w-full border-t border-border sm:p-6">
+            <div className="flex items-center justify-between gap-4 py-2 text-base font-semibold">
               <span>Subtotal</span>
               <span>{formatBdtPrice({ amountBdt: subtotal })}</span>
             </div>
-            <div className="grid w-full grid-cols-2 gap-0">
-              <SheetClose
-                render={
-                  <Button className="w-full" size="lg" variant="outline" />
-                }
-              >
-                Cancel
-              </SheetClose>
+            <div className="grid w-full gap-1">
               <Link
                 className={buttonVariants({
                   className: "w-full",
@@ -250,6 +254,11 @@ export function CartSheet() {
               >
                 Checkout
               </Link>
+              <SheetClose
+                render={<Button className="w-full" variant="ghost" />}
+              >
+                Continue shopping
+              </SheetClose>
             </div>
           </SheetFooter>
         )}

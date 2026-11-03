@@ -6,6 +6,7 @@ import {
   getStorefrontMetadataDefaults,
   getStorefrontShareImage,
 } from "@/features/storefront/storefront-metadata";
+import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 import { ProductGallery } from "./product-gallery";
 import { ProductPurchase } from "./product-purchase";
 
@@ -84,7 +85,10 @@ export default async function ProductPage({
   searchParams: Promise<ProductPageSearchParams>;
 }) {
   const [{ slug }, query] = await Promise.all([params, searchParams]);
-  const result = await getPublishedProduct(slug);
+  const [result, storefrontSettings] = await Promise.all([
+    getPublishedProduct(slug),
+    getPublicStorefrontSettings(),
+  ]);
 
   if ("kind" in result && result.kind === "not-found") notFound();
   if ("kind" in result) {
@@ -114,9 +118,12 @@ export default async function ProductPage({
   const initialSize = singleQueryValue(query.size);
 
   return (
-    <main className="container mx-auto flex-1 px-5 py-10 text-foreground sm:py-14">
-      <article className="space-y-8 sm:space-y-10">
-        <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
+    <main className="container mx-auto flex-1 px-5 py-6 text-foreground sm:py-14">
+      <article className="space-y-3 sm:space-y-8 lg:space-y-10">
+        <nav
+          aria-label="Breadcrumb"
+          className="text-xs text-muted-foreground sm:text-sm"
+        >
           <ol className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <li>
               <Link className="hover:text-foreground" href="/shop">
@@ -144,16 +151,25 @@ export default async function ProductPage({
         </nav>
 
         <div
-          className={`grid items-start gap-8 lg:gap-10 ${
-            product.images.length > 0 ? "lg:grid-cols-2" : ""
+          className={`grid items-start gap-5 sm:gap-8 lg:gap-10 ${
+            product.images.length > 0 ? "lg:grid-cols-6" : ""
           }`}
         >
-          <ProductGallery
-            images={product.images}
-            productName={product.name}
-            variants={product.variants}
-          />
-          <section aria-labelledby="product-title" className="min-w-0">
+          {product.images.length > 0 && (
+            <div className="min-w-0 lg:col-span-4">
+              <ProductGallery
+                images={product.images}
+                productName={product.name}
+                variants={product.variants}
+              />
+            </div>
+          )}
+          <section
+            aria-labelledby="product-title"
+            className={`min-w-0 ${
+              product.images.length > 0 ? "lg:col-span-2" : ""
+            }`}
+          >
             <h1
               className="text-2xl font-semibold tracking-tight sm:text-3xl"
               id="product-title"
@@ -170,6 +186,7 @@ export default async function ProductPage({
               initialSize={initialSize}
               productId={product.id}
               productName={product.name}
+              supportPhone={storefrontSettings.supportPhone}
               sizeGuide={product.sizeGuide}
               variants={product.variants}
             />

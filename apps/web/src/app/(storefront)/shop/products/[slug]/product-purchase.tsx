@@ -1,6 +1,8 @@
 "use client";
 
+import { CatalogMeasurementKeySchema } from "@aaraj/contracts";
 import type { CatalogProductDetail, CatalogSizeGuide } from "@aaraj/contracts";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -31,6 +33,7 @@ type ProductVariant = CatalogProductDetail["variants"][number];
 export function ProductPurchase({
   productId,
   productName,
+  supportPhone,
   variants,
   sizeGuide,
   initialColor,
@@ -38,6 +41,7 @@ export function ProductPurchase({
 }: {
   productId: string;
   productName: string;
+  supportPhone: string | null;
   variants: ProductVariant[];
   sizeGuide: CatalogSizeGuide | null;
   initialColor?: string;
@@ -70,6 +74,17 @@ export function ProductPurchase({
         )
       : undefined;
   const sizeOptions = getSizeOptions(variants, color, sizeOrder);
+  const needsColor = colors.length > 1 && !color;
+  const needsSize = sizeOptions.length > 1 && !size;
+  const selectionPrompt = selectedVariant
+    ? null
+    : needsColor && needsSize
+      ? "Select a color and size to continue."
+      : needsColor
+        ? "Select a color to continue."
+        : needsSize
+          ? "Select a size to continue."
+          : null;
   const prices = [
     ...new Set(matchingVariants.map(({ price }) => price.amountBdt)),
   ].sort((left, right) => left - right);
@@ -87,6 +102,17 @@ export function ProductPurchase({
     ? `${selectedVariant.color} / ${selectedVariant.sizeLabel}`
     : undefined;
   const viewItemId = selectedVariant?.id ?? productId;
+  const whatsappHref = supportPhone
+    ? `https://wa.me/${supportPhone.replace(/\D/g, "")}?text=${encodeURIComponent(
+        [
+          `Hi, I'm interested in ${productName}.`,
+          color ? `Color: ${color}.` : null,
+          size ? `Size: ${size}.` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      )}`
+    : null;
 
   useEffect(() => {
     if (viewedProductId.current === productId) return;
@@ -131,7 +157,7 @@ export function ProductPurchase({
   if (variants.length === 0) return null;
 
   return (
-    <div className="mt-5 space-y-5">
+    <div className="mt-3 space-y-4">
       {priceLabel && (
         <p
           aria-atomic="true"
@@ -142,74 +168,98 @@ export function ProductPurchase({
         </p>
       )}
 
-      <div className="space-y-5">
-        <fieldset className="space-y-2">
-          {colors.length === 1 ? (
-            <legend className="text-sm font-medium">
-              Color: <span className="font-normal">{colors[0]}</span>
-            </legend>
-          ) : (
-            <>
-              <legend className="text-sm font-medium">Color</legend>
-              <div className="flex flex-wrap gap-2">
-                {colors.map((option) => (
-                  <Button
-                    aria-pressed={sameOption(color, option)}
-                    key={option}
-                    onClick={() => selectColor(option)}
-                    type="button"
-                    variant={sameOption(color, option) ? "default" : "outline"}
-                  >
-                    {option}
-                  </Button>
-                ))}
-              </div>
-            </>
-          )}
-        </fieldset>
+      <div className="space-y-3">
+        {colors.length === 1 ? (
+          <p className="text-sm">
+            <span className="font-medium">Color:</span> {colors[0]}
+          </p>
+        ) : (
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Color</legend>
+            <div className="flex flex-wrap gap-2">
+              {colors.map((option) => (
+                <Button
+                  aria-pressed={sameOption(color, option)}
+                  key={option}
+                  onClick={() => selectColor(option)}
+                  type="button"
+                  variant={sameOption(color, option) ? "default" : "outline"}
+                >
+                  {option}
+                </Button>
+              ))}
+            </div>
+          </fieldset>
+        )}
 
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">
-            Size{size ? <span className="font-normal">: {size}</span> : ""}
-          </legend>
-          <div className="flex flex-wrap gap-2">
-            {sizeOptions.map((option) => (
-              <Button
-                aria-pressed={sameOption(size, option)}
-                key={option}
-                onClick={() => selectSize(option)}
-                type="button"
-                variant={sameOption(size, option) ? "default" : "outline"}
-              >
-                {option}
-              </Button>
-            ))}
+        {sizeOptions.length === 1 ? (
+          <p className="text-sm">
+            <span className="font-medium">Size:</span> {sizeOptions[0]}
+          </p>
+        ) : sizeOptions.length > 1 ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium" id="size-options-label">
+              Size
+            </p>
+            <div
+              aria-labelledby="size-options-label"
+              className="flex flex-wrap gap-2"
+              role="group"
+            >
+              {sizeOptions.map((option) => (
+                <Button
+                  aria-pressed={sameOption(size, option)}
+                  key={option}
+                  onClick={() => selectSize(option)}
+                  type="button"
+                  variant={sameOption(size, option) ? "default" : "outline"}
+                >
+                  {option}
+                </Button>
+              ))}
+            </div>
           </div>
-        </fieldset>
+        ) : null}
       </div>
 
-      {!selectedVariant && (
-        <p className="text-sm text-muted-foreground">
-          Choose an available color and size to continue.
-        </p>
+      {selectionPrompt && (
+        <p className="text-sm text-muted-foreground">{selectionPrompt}</p>
       )}
       <AddToCart variantId={selectedVariant?.id ?? null} />
-      {sizeGuide && <SizeGuide sizeGuide={sizeGuide} />}
+      {whatsappHref && (
+        <Button
+          className="w-full bg-whatsapp text-white hover:bg-whatsapp hover:brightness-90"
+          render={
+            <a href={whatsappHref} rel="noopener noreferrer" target="_blank" />
+          }
+          variant="default"
+        >
+          <Image
+            alt=""
+            aria-hidden="true"
+            height={16}
+            src="/whatsapp-glyph-white.svg"
+            width={16}
+          />
+          Order On WhatsApp
+        </Button>
+      )}
+      {sizeGuide && <SizeGuideTable sizeGuide={sizeGuide} />}
     </div>
   );
 }
 
-function SizeGuide({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
-  const measurementKeys =
-    sizeGuide.rows[0]?.measurements.map(({ key }) => key) ?? [];
+function SizeGuideTable({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
+  const configuredMeasurementKeys = new Set(
+    sizeGuide.rows[0]?.measurements.map(({ key }) => key) ?? [],
+  );
+  const measurementKeys = CatalogMeasurementKeySchema.options.filter((key) =>
+    configuredMeasurementKeys.has(key),
+  );
 
   return (
-    <section aria-labelledby="size-guide-heading" className="space-y-2">
-      <div className="flex items-center justify-between gap-4">
-        <h3 className="text-sm font-medium" id="size-guide-heading">
-          Size guide
-        </h3>
-      </div>
+    <div className="space-y-2">
+      <h3 className="text-sm font-medium">Size guide</h3>
       <div className="overflow-hidden rounded-lg border border-border">
         <Table
           aria-describedby="size-guide-measurement-basis"
@@ -236,7 +286,10 @@ function SizeGuide({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
             {measurementKeys.map((key) => (
               <TableRow className="hover:bg-transparent" key={key}>
                 <TableHead className="h-auto px-3 py-2 font-medium" scope="row">
-                  {catalogMeasurementLabels[key]} (in)
+                  {catalogMeasurementLabels[key].replace(
+                    / (width|length)$/,
+                    "",
+                  )}
                 </TableHead>
                 {sizeGuide.rows.map((row) => {
                   const measurement = row.measurements.find(
@@ -285,7 +338,7 @@ function SizeGuide({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
           </Tooltip>
         </TooltipProvider>
       </div>
-    </section>
+    </div>
   );
 }
 
