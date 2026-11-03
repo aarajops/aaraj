@@ -34,7 +34,7 @@ const runtimeTableGrants = [
   ["inventory", "stock_balance", ["SELECT", "INSERT", "UPDATE"]],
   ["inventory", "stock_movement", ["SELECT", "INSERT"]],
   ["inventory", "stock_reservation", ["SELECT", "INSERT", "UPDATE"]],
-  ["inventory", "stock_reservation_line", ["SELECT", "INSERT"]],
+  ["inventory", "stock_reservation_line", ["SELECT", "INSERT", "DELETE"]],
   ["inventory", "reservation_command", ["SELECT", "INSERT"]],
   ["cart", "customer_cart", ["SELECT", "INSERT", "UPDATE"]],
   ["cart", "customer_cart_line", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
