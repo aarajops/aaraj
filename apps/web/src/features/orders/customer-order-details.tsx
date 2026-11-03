@@ -46,7 +46,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   useEffect(() => {
     if (
       !order ||
-      !["pending", "no_answer", "confirmed"].includes(order.status) ||
+      !isConfirmedOrder(order) ||
       purchaseTracked.current === order.id
     ) {
       return;
@@ -333,6 +333,10 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
       </article>
     </main>
   );
+}
+
+function isConfirmedOrder(order: Order) {
+  return order.status === "confirmed";
 }
 
 function getOrderPresentation(order: Order) {
