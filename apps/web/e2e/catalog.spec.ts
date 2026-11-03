@@ -453,7 +453,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("switch", { name: "Use centimeters" }),
   ).toHaveCount(0);
-  await expect(page.getByText("Chest width (in)")).toBeVisible();
+  await expect(page.getByText("Chest", { exact: true })).toBeVisible();
   await expect(page.getByText("20", { exact: true })).toBeVisible();
   await expect(page.getByText("28", { exact: true })).toBeVisible();
 
