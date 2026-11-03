@@ -1585,17 +1585,15 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBeVisible();
   await updateStatusButton.click();
   await page.getByRole("menuitem", { name: "Cancel" }).click();
-  const cancellationReason = orderStatusSection.getByLabel(
-    "Cancellation reason",
-  );
+  const cancellationReason = page.getByLabel("Cancellation reason");
   await expect(cancellationReason).toBeVisible();
-  const cancelOrderButton = orderStatusSection.getByRole("button", {
+  const cancelOrderButton = page.getByRole("button", {
     name: "Cancel order",
   });
   await expect(cancelOrderButton).toBeDisabled();
   await cancellationReason.fill("Customer changed their mind");
   await expect(cancelOrderButton).toBeEnabled();
-  await orderStatusSection.getByRole("button", { name: "Keep order" }).click();
+  await page.getByRole("button", { name: "Keep order" }).click();
   await orderDetailsSheet
     .getByRole("link", { name: "Open full order review" })
     .click();
