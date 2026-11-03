@@ -1191,7 +1191,7 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("button", { name: "M", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Black", exact: true }).click();
-  await page.getByRole("button", { name: "S", exact: true }).click();
+  await expect(page.getByText("Size: S", { exact: true })).toBeVisible();
   await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/color=Black/);
   await expect(page).toHaveURL(/size=S/);
@@ -1205,7 +1205,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("switch", { name: "Use centimeters" }),
   ).toHaveCount(0);
-  await expect(page.getByText("Chest width (in)")).toBeVisible();
+  await expect(page.getByText("Chest", { exact: true })).toBeVisible();
   await expect(page.getByText("20", { exact: true })).toBeVisible();
   await expect(page.getByText("28", { exact: true })).toBeVisible();
   await expect(page.getByText(skuSmall)).toHaveCount(0);

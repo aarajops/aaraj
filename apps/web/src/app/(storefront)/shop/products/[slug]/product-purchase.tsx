@@ -229,6 +229,7 @@ export function ProductPurchase({
       {whatsappHref && (
         <Button
           className="w-full bg-whatsapp text-white hover:bg-whatsapp hover:brightness-90"
+          nativeButton={false}
           render={
             <a href={whatsappHref} rel="noopener noreferrer" target="_blank" />
           }
