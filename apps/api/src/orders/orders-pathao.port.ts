@@ -1,4 +1,5 @@
 import type { Order } from "@aaraj/contracts";
+import type { AuditTransaction } from "../platform/audit/audit.types.js";
 
 export const ORDERS_PATHAO_PORT = Symbol("ORDERS_PATHAO_PORT");
 
@@ -55,6 +56,10 @@ export interface OrdersPathaoPort {
     requestFingerprint: string,
   ): Promise<void>;
   setPathaoBookingClaim(update: PathaoBookingClaimUpdate): Promise<void>;
+  releasePathaoBookingClaimWithinTransaction(
+    transaction: AuditTransaction,
+    orderId: string,
+  ): Promise<boolean>;
   recoverPathaoBookingClaims(activeOrderIds: readonly string[]): Promise<void>;
   getOrderReferences(
     orderIds: readonly string[],

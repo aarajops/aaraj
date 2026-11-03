@@ -16,6 +16,7 @@ import {
   getPathaoBooking,
   PathaoClientError,
   reconcilePathaoBooking,
+  verifyPathaoBookingCancellation,
   submitPathaoBooking,
 } from "./pathao-client";
 
@@ -194,6 +195,30 @@ export function PathaoBookingPanel({
     }
   }
 
+  async function verifyCancellation() {
+    setPending(true);
+    setError(null);
+    try {
+      const result = await verifyPathaoBookingCancellation(order.id);
+      command.current = null;
+      setDetails((current) => ({
+        booking: result,
+        claimStatus: null,
+        observations: current?.observations ?? [],
+      }));
+      onAssignmentStateChange?.("none");
+      onFulfillmentUpdated?.();
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Pathao cancellation could not be verified.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   if (!showPanel) return null;
 
   return (
@@ -236,9 +261,11 @@ export function PathaoBookingPanel({
       {booking ? (
         <div className="grid gap-1 text-sm">
           <p className="font-medium">{humanize(booking.status)}</p>
-          <p className="text-muted-foreground">
-            Tracking progress: {humanize(booking.trackingProgress)}
-          </p>
+          {booking.status !== "cancelled" && (
+            <p className="text-muted-foreground">
+              Tracking progress: {humanize(booking.trackingProgress)}
+            </p>
+          )}
           {booking.consignmentId && (
             <DataRow label="Pathao consignment" value={booking.consignmentId} />
           )}
@@ -262,6 +289,39 @@ export function PathaoBookingPanel({
             <p className="text-muted-foreground">
               Staff reconciliation: {booking.reconciliationReason}
             </p>
+          )}
+          {booking.status === "cancelled" && (
+            <p className="mt-2 text-muted-foreground">
+              Pathao confirmed this consignment was cancelled. You can now edit
+              or cancel the AARAJ Order, or book it again.
+            </p>
+          )}
+          {eligible && booking.status === "booked" && (
+            <div className="mt-3 grid gap-2">
+              <p className="text-sm text-muted-foreground">
+                Cancel the consignment in Pathao before pickup, then verify the
+                cancellation here. Order changes unlock after Pathao confirms
+                it.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <a
+                  className="text-sm underline underline-offset-4"
+                  href="https://merchant.pathao.com/courier"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open Pathao Merchant Panel
+                </a>
+                <Button
+                  disabled={pending || loading}
+                  onClick={() => void verifyCancellation()}
+                  size="sm"
+                  variant="outline"
+                >
+                  {pending ? "Checking…" : "Verify cancellation"}
+                </Button>
+              </div>
+            </div>
           )}
           {eligible &&
             booking.status === "booked" &&
@@ -291,18 +351,21 @@ export function PathaoBookingPanel({
         </p>
       )}
 
-      {eligible && details && !booking && !details.claimStatus && (
-        <div className="grid gap-2">
-          <p className="text-sm text-muted-foreground">
-            {itemQuantity} {itemQuantity === 1 ? "item" : "items"} ·{" "}
-            {PATHAO_MINIMUM_ITEM_WEIGHT_KG} kg minimum
-          </p>
-          <Button disabled={pending} onClick={() => void book()}>
-            <Truck aria-hidden="true" className="size-4" />
-            {pending ? "Booking with Pathao…" : "Book order in Pathao"}
-          </Button>
-        </div>
-      )}
+      {eligible &&
+        details &&
+        (!booking || booking.status === "cancelled") &&
+        !details.claimStatus && (
+          <div className="grid gap-2">
+            <p className="text-sm text-muted-foreground">
+              {itemQuantity} {itemQuantity === 1 ? "item" : "items"} ·{" "}
+              {PATHAO_MINIMUM_ITEM_WEIGHT_KG} kg minimum
+            </p>
+            <Button disabled={pending} onClick={() => void book()}>
+              <Truck aria-hidden="true" className="size-4" />
+              {pending ? "Booking with Pathao…" : "Book order in Pathao"}
+            </Button>
+          </div>
+        )}
 
       {eligible && canReconcile && (
         <details className="rounded-xl border border-border p-4">

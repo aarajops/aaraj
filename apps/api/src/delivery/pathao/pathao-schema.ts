@@ -84,15 +84,16 @@ export const pathaoBooking = deliverySchema.table(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("pathao_booking_order_uidx").on(table.orderId),
+    uniqueIndex("pathao_booking_order_uidx")
+      .on(table.orderId)
+      .where(sql`${table.status} <> 'cancelled'`),
     uniqueIndex("pathao_booking_command_uidx").on(table.commandId),
     uniqueIndex("pathao_booking_reconciliation_command_uidx").on(
       table.reconciliationCommandId,
     ),
-    uniqueIndex("pathao_booking_merchant_reference_uidx").on(
-      table.environment,
-      table.merchantOrderId,
-    ),
+    uniqueIndex("pathao_booking_merchant_reference_uidx")
+      .on(table.environment, table.merchantOrderId)
+      .where(sql`${table.status} <> 'cancelled'`),
     uniqueIndex("pathao_booking_consignment_uidx").on(
       table.environment,
       table.consignmentId,
@@ -140,11 +141,11 @@ export const pathaoBooking = deliverySchema.table(
     ),
     check(
       "pathao_booking_status_check",
-      sql`${table.status} in ('submitting', 'booked', 'outcome_unknown', 'reconciliation_required')`,
+      sql`${table.status} in ('submitting', 'booked', 'cancelled', 'outcome_unknown', 'reconciliation_required')`,
     ),
     check(
       "pathao_booking_result_check",
-      sql`(${table.status} = 'booked' and ${table.consignmentId} is not null) or (${table.status} <> 'booked' and ${table.consignmentId} is null)`,
+      sql`(${table.status} in ('booked', 'cancelled') and ${table.consignmentId} is not null) or (${table.status} not in ('booked', 'cancelled') and ${table.consignmentId} is null)`,
     ),
     check(
       "pathao_booking_delivery_fee_check",
@@ -152,7 +153,7 @@ export const pathaoBooking = deliverySchema.table(
     ),
     check(
       "pathao_booking_tracking_progress_check",
-      sql`${table.trackingProgress} in ('booked', 'pickup', 'in_transit', 'out_for_delivery', 'delivered', 'partial_delivery', 'delivery_failed', 'returning', 'returned', 'on_hold', 'reconciliation_required')`,
+      sql`${table.trackingProgress} in ('booked', 'pickup', 'in_transit', 'out_for_delivery', 'delivered', 'partial_delivery', 'delivery_failed', 'returning', 'returned', 'cancelled', 'on_hold', 'reconciliation_required')`,
     ),
   ],
 );

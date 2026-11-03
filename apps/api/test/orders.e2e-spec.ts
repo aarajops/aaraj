@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { afterEach, beforeEach, vi } from "vitest";
 import {
   API_V1_BASE_PATH,
@@ -389,8 +389,18 @@ describe("COD Orders and checkout", () => {
       infoUnavailable: false,
       tokenGrants: [] as string[],
     };
+    const consignmentPrefix =
+      options.consignmentId ??
+      `PATHAO-TEST-${randomUUID().slice(0, 8).toUpperCase()}`;
     let tokenNumber = 0;
     let createdOrderNumber = 0;
+    const nextConsignmentId = () => {
+      createdOrderNumber += 1;
+      if (options.consignmentId && createdOrderNumber === 1) {
+        return options.consignmentId;
+      }
+      return `${consignmentPrefix}-${String(createdOrderNumber).padStart(4, "0")}`;
+    };
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const requestUrl =
@@ -462,9 +472,7 @@ describe("COD Orders and checkout", () => {
           return new Response(
             JSON.stringify({
               data: {
-                consignment_id:
-                  options.consignmentId ??
-                  `PATHAO-TEST-${String(++createdOrderNumber).padStart(4, "0")}`,
+                consignment_id: nextConsignmentId(),
                 merchant_order_id: body?.merchant_order_id,
                 order_status: "Pending",
                 delivery_fee: 83.46,
@@ -2394,6 +2402,214 @@ describe("COD Orders and checkout", () => {
     });
   });
 
+  it("unlocks Order edits and rebooking only after Pathao confirms pre-pickup cancellation", async () => {
+    const fixture = await createGuestOrder(4);
+    await confirmOrder(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order)
+      throw new Error("Pathao cancellation Order fixture is missing.");
+    const addedVariantId = await createVariant(2, 500);
+    await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        variantId: addedVariantId,
+        quantity: 1,
+        expectedQuantity: 0,
+        expectedUnitPriceBdt: 500,
+      })
+      .expect(200);
+
+    const provider = mockPathaoApi({ orderReference: order.reference });
+    const managementPath = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`;
+    const firstBooking = await request(app.getHttpServer())
+      .post(`${managementPath}/book`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send()
+      .expect(201);
+    const firstConsignmentId = firstBooking.body.consignmentId as string;
+
+    await request(app.getHttpServer())
+      .delete(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items/${addedVariantId}`,
+      )
+      .query({ expectedQuantity: 1 })
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .expect(409);
+
+    provider.state.infoStatus = "pickup-cancelled";
+    const cancelled = await request(app.getHttpServer())
+      .post(`${managementPath}/verify-cancellation`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send()
+      .expect(200);
+    expect(cancelled.body).toMatchObject({
+      status: "cancelled",
+      trackingProgress: "cancelled",
+      consignmentId: firstConsignmentId,
+    });
+
+    const removal = await request(app.getHttpServer())
+      .delete(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/items/${addedVariantId}`,
+      )
+      .query({ expectedQuantity: 1 })
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(removal.body.lines).toHaveLength(1);
+    expect((await stockFor(addedVariantId)).quantityReserved).toBe(0);
+
+    const rebooked = await request(app.getHttpServer())
+      .post(`${managementPath}/book`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send()
+      .expect(201);
+    expect(rebooked.body).toMatchObject({
+      status: "booked",
+    });
+    const secondConsignmentId = rebooked.body.consignmentId as string;
+
+    const bookings = await database.db
+      .select({
+        status: pathaoBooking.status,
+        consignmentId: pathaoBooking.consignmentId,
+      })
+      .from(pathaoBooking)
+      .where(eq(pathaoBooking.orderId, fixture.id))
+      .orderBy(asc(pathaoBooking.createdAt), asc(pathaoBooking.id));
+    expect(bookings).toEqual([
+      { status: "cancelled", consignmentId: firstConsignmentId },
+      { status: "booked", consignmentId: secondConsignmentId },
+    ]);
+    expect(
+      provider.requests.filter(
+        ({ url, method }) =>
+          url.endsWith("/aladdin/api/v1/orders") && method === "POST",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("releases a Pathao booking claim from the verified pickup-cancelled webhook", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmOrder(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order)
+      throw new Error("Pathao webhook cancellation Order fixture is missing.");
+    const provider = mockPathaoApi({ orderReference: order.reference });
+    const managementPath = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`;
+
+    const booking = await request(app.getHttpServer())
+      .post(`${managementPath}/book`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send()
+      .expect(201);
+    const consignmentId = booking.body.consignmentId as string;
+    provider.state.infoStatus = "pickup-cancelled";
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.pickup-cancelled",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T01:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+
+    const management = await request(app.getHttpServer())
+      .get(managementPath)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(management.body).toMatchObject({
+      booking: {
+        status: "cancelled",
+        trackingProgress: "cancelled",
+        consignmentId,
+      },
+      claimStatus: null,
+    });
+
+    const cancelledOrder = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "cancelled", reason: "Customer cancelled before pickup" })
+      .expect(200);
+    expect(cancelledOrder.body.status).toBe("cancelled");
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
+  });
+
+  it("keeps Order changes blocked when Pathao reports the parcel in transit", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmOrder(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao in-transit Order fixture is missing.");
+    const provider = mockPathaoApi({ orderReference: order.reference });
+    const managementPath = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`;
+    const booking = await request(app.getHttpServer())
+      .post(`${managementPath}/book`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send()
+      .expect(201);
+    const consignmentId = booking.body.consignmentId as string;
+    provider.state.infoStatus = "in-transit";
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.in-transit",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T01:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+
+    provider.state.infoStatus = "pickup-cancelled";
+    await request(app.getHttpServer())
+      .post(`${managementPath}/verify-cancellation`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send()
+      .expect(409);
+    await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "cancelled", reason: "Customer requested cancellation" })
+      .expect(409);
+
+    const management = await request(app.getHttpServer())
+      .get(managementPath)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(management.body).toMatchObject({
+      booking: { status: "booked", trackingProgress: "in_transit" },
+      claimStatus: "booked",
+    });
+    expect((await orderById(fixture.id))?.status).toBe("confirmed");
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+  });
+
   it("books with the active default store and derives package data from the Order", async () => {
     const fixture = await createGuestOrder(2, {
       instructions: "Call from the gate\nUse the east entrance",
@@ -2401,7 +2617,10 @@ describe("COD Orders and checkout", () => {
     await confirmOrder(fixture.id);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Pathao booking Order fixture is missing.");
-    const provider = mockPathaoApi({ orderReference: order.reference });
+    const provider = mockPathaoApi({
+      orderReference: order.reference,
+      consignmentId: "PATHAO-TEST-0001",
+    });
 
     const bookingUrl = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`;
     const [firstBooking, competingBooking] = await Promise.all([

@@ -29,5 +29,6 @@
   "0053_order_flow_consistency.sql": "maintenance",
   "0054_order_item_reservation_extension.sql": "compatible",
   "0055_simplify_order_status.sql": "maintenance",
-  "0056_order_item_removal.sql": "compatible"
+  "0056_order_item_removal.sql": "compatible",
+  "0057_pathao_cancelled_booking_history.sql": "compatible"
 }

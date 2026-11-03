@@ -1278,6 +1278,50 @@ export class OrdersService implements OrdersPathaoPort {
       });
   }
 
+  async releasePathaoBookingClaimWithinTransaction(
+    transaction: AuditTransaction,
+    orderId: string,
+  ): Promise<boolean> {
+    const [order] = await transaction
+      .select({
+        status: customerOrder.status,
+        fulfillmentStatus: customerOrder.fulfillmentStatus,
+        dispatchedAt: customerOrder.dispatchedAt,
+      })
+      .from(customerOrder)
+      .where(eq(customerOrder.id, orderId))
+      .for("update")
+      .limit(1);
+    if (
+      !order ||
+      order.status !== "confirmed" ||
+      order.fulfillmentStatus !== "awaiting_dispatch" ||
+      order.dispatchedAt !== null
+    ) {
+      return false;
+    }
+
+    const [claim] = await transaction
+      .select({ status: orderPathaoBookingClaim.status })
+      .from(orderPathaoBookingClaim)
+      .where(eq(orderPathaoBookingClaim.orderId, orderId))
+      .for("update")
+      .limit(1);
+    if (!claim) return true;
+    if (claim.status !== "booked") return false;
+
+    const [released] = await transaction
+      .delete(orderPathaoBookingClaim)
+      .where(
+        and(
+          eq(orderPathaoBookingClaim.orderId, orderId),
+          eq(orderPathaoBookingClaim.status, "booked"),
+        ),
+      )
+      .returning({ orderId: orderPathaoBookingClaim.orderId });
+    return Boolean(released);
+  }
+
   async assertPathaoBookingClaim(
     orderId: string,
     commandId: string,

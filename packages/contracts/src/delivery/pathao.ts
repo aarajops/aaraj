@@ -14,6 +14,7 @@ export const PATHAO_MINIMUM_ITEM_WEIGHT_KG = 0.5;
 export const PathaoBookingStatusSchema = z.enum([
   "submitting",
   "booked",
+  "cancelled",
   "outcome_unknown",
   "reconciliation_required",
 ]);
@@ -28,6 +29,7 @@ export const PathaoTrackingProgressSchema = z.enum([
   "delivery_failed",
   "returning",
   "returned",
+  "cancelled",
   "on_hold",
   "reconciliation_required",
 ]);

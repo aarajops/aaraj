@@ -63,6 +63,15 @@ export class PathaoManagementController {
     return this.pathao.getManagementDetails(orderId);
   }
 
+  @Post("orders/:orderId/verify-cancellation")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(CookieMutationGuard)
+  verifyBookingCancellation(
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+  ) {
+    return this.pathao.verifyManagementBookingCancellation(orderId);
+  }
+
   @Get("issues")
   @Header("Cache-Control", "no-store")
   getIssues(

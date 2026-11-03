@@ -1,0 +1,10 @@
+ALTER TABLE "delivery"."pathao_booking" DROP CONSTRAINT "pathao_booking_status_check";--> statement-breakpoint
+ALTER TABLE "delivery"."pathao_booking" DROP CONSTRAINT "pathao_booking_result_check";--> statement-breakpoint
+ALTER TABLE "delivery"."pathao_booking" DROP CONSTRAINT "pathao_booking_tracking_progress_check";--> statement-breakpoint
+DROP INDEX "delivery"."pathao_booking_order_uidx";--> statement-breakpoint
+DROP INDEX "delivery"."pathao_booking_merchant_reference_uidx";--> statement-breakpoint
+CREATE UNIQUE INDEX "pathao_booking_order_uidx" ON "delivery"."pathao_booking" USING btree ("order_id") WHERE "delivery"."pathao_booking"."status" <> 'cancelled';--> statement-breakpoint
+CREATE UNIQUE INDEX "pathao_booking_merchant_reference_uidx" ON "delivery"."pathao_booking" USING btree ("environment","merchant_order_id") WHERE "delivery"."pathao_booking"."status" <> 'cancelled';--> statement-breakpoint
+ALTER TABLE "delivery"."pathao_booking" ADD CONSTRAINT "pathao_booking_status_check" CHECK ("delivery"."pathao_booking"."status" in ('submitting', 'booked', 'cancelled', 'outcome_unknown', 'reconciliation_required'));--> statement-breakpoint
+ALTER TABLE "delivery"."pathao_booking" ADD CONSTRAINT "pathao_booking_result_check" CHECK (("delivery"."pathao_booking"."status" in ('booked', 'cancelled') and "delivery"."pathao_booking"."consignment_id" is not null) or ("delivery"."pathao_booking"."status" not in ('booked', 'cancelled') and "delivery"."pathao_booking"."consignment_id" is null));--> statement-breakpoint
+ALTER TABLE "delivery"."pathao_booking" ADD CONSTRAINT "pathao_booking_tracking_progress_check" CHECK ("delivery"."pathao_booking"."tracking_progress" in ('booked', 'pickup', 'in_transit', 'out_for_delivery', 'delivered', 'partial_delivery', 'delivery_failed', 'returning', 'returned', 'cancelled', 'on_hold', 'reconciliation_required'));

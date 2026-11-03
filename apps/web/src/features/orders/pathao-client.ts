@@ -32,6 +32,18 @@ export async function getPathaoBooking(orderId: string) {
   return read(response, PathaoBookingManagementSchema);
 }
 
+export async function verifyPathaoBookingCancellation(orderId: string) {
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${encodeURIComponent(orderId)}/verify-cancellation`,
+    {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+    },
+  );
+  return read(response, PathaoBookingSchema);
+}
+
 export async function resolvePathaoWebhookIssue(
   eventId: string,
   input: PathaoWebhookResolutionInput,

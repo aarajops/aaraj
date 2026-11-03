@@ -310,6 +310,18 @@ function CourierStatus({
   if (summary?.status === "submitting") {
     return <Badge variant="outline">Booking</Badge>;
   }
+  if (summary?.status === "cancelled") {
+    return (
+      <div className="grid gap-1">
+        <Badge variant="secondary">Cancelled</Badge>
+        {summary.consignmentId && (
+          <span className="text-xs text-muted-foreground">
+            {summary.consignmentId}
+          </span>
+        )}
+      </div>
+    );
+  }
   if (summary?.status === "booked") {
     return (
       <div className="grid gap-1">
