@@ -69,4 +69,8 @@ export interface OrdersPathaoPort {
     customerId: string | undefined,
     signedCookies: Record<string, string>,
   ): Promise<void>;
+  getOrderIdForCustomerTracking(
+    reference: string,
+    phone: string,
+  ): Promise<string>;
 }

@@ -1532,6 +1532,38 @@ export class OrdersService implements OrdersPathaoPort {
     await this.getForOwner(orderId, customerId, signedCookies);
   }
 
+  async getOrderIdForCustomerTracking(
+    reference: string,
+    phone: string,
+  ): Promise<string> {
+    let normalizedPhone: string;
+    try {
+      normalizedPhone = normalizeBangladeshMobile(phone);
+    } catch {
+      throw customerTrackingOrderNotFound();
+    }
+
+    const [row] = await this.database.db
+      .select({
+        id: customerOrder.id,
+        addressCiphertext: customerOrder.addressCiphertext,
+      })
+      .from(customerOrder)
+      .where(eq(customerOrder.reference, reference))
+      .limit(1);
+    if (!row) throw customerTrackingOrderNotFound();
+
+    const address = decryptAddress(
+      row.addressCiphertext,
+      row.id,
+      readOrderPiiKeyring(),
+    );
+    if (address.phone !== normalizedPhone) {
+      throw customerTrackingOrderNotFound();
+    }
+    return row.id;
+  }
+
   async updateManualStatus(
     orderId: string,
     staffId: string,
@@ -2649,6 +2681,13 @@ function orderNotFound(): NotFoundException {
   return new NotFoundException("Order not found.", {
     errorCode: "ORDER_NOT_FOUND",
   });
+}
+
+function customerTrackingOrderNotFound(): NotFoundException {
+  return new NotFoundException(
+    "We couldn't find an order matching those details.",
+    { errorCode: "ORDER_TRACKING_NOT_FOUND" },
+  );
 }
 
 function orderAccessUnavailable(): ConflictException {

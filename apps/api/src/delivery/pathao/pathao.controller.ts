@@ -16,6 +16,7 @@ import {
   UsePipes,
 } from "@nestjs/common";
 import { Can } from "@nestjs/authorization";
+import { minutes, Throttle } from "@nestjs/throttler";
 import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   OptionalAuth,
@@ -25,11 +26,13 @@ import {
 import { StandardSchemaValidationPipe } from "@nestjs/common";
 import {
   OrderIdSchema,
+  PathaoCustomerTrackingLookupInputSchema,
   PathaoManagementBookingSummariesQuerySchema,
   PathaoManagementIssuesQuerySchema,
   PathaoManualReconciliationInputSchema,
   PathaoWebhookResolutionInputSchema,
   type PathaoManagementBookingSummariesQuery,
+  type PathaoCustomerTrackingLookupInput,
   type PathaoManagementIssuesQuery,
   type PathaoManualReconciliationInput,
   type PathaoWebhookResolutionInput,
@@ -146,6 +149,17 @@ export class PathaoManagementController {
 @UsePipes(StandardSchemaValidationPipe)
 export class PathaoCustomerTrackingController {
   constructor(private readonly pathao: PathaoService) {}
+
+  @Post("tracking/lookup")
+  @HttpCode(HttpStatus.OK)
+  @Header("Cache-Control", "no-store")
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
+  lookup(
+    @Body({ schema: PathaoCustomerTrackingLookupInputSchema })
+    input: PathaoCustomerTrackingLookupInput,
+  ) {
+    return this.pathao.lookupCustomerTracking(input.reference, input.phone);
+  }
 
   @Get(":orderId/tracking")
   @Header("Cache-Control", "no-store")

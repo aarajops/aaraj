@@ -38,6 +38,9 @@ export async function SiteHeader() {
             aria-label="Store utility navigation"
             className="hidden h-10 items-center justify-end gap-5 text-xs text-muted-foreground xl:flex"
           >
+            <Link className="hover:text-foreground" href="/track-order">
+              Track Your Order
+            </Link>
             <Link className="hover:text-foreground" href="/account">
               Log In
             </Link>

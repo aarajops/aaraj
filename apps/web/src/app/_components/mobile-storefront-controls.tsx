@@ -61,6 +61,15 @@ export function MobileStorefrontControls({
 
           <nav aria-label="Mobile main navigation" className="p-4">
             <ul className="grid gap-1">
+              <li>
+                <SheetClose
+                  className="block rounded-md px-3 py-3 text-sm font-medium text-foreground hover:bg-muted"
+                  nativeButton={false}
+                  render={<Link href="/track-order" />}
+                >
+                  Track Your Order
+                </SheetClose>
+              </li>
               {headerNavigation.map(({ href, label }, index) => (
                 <li key={`${index}:${label}:${href}`}>
                   <SheetClose

@@ -140,6 +140,30 @@ export type PathaoCustomerTracking = z.infer<
   typeof PathaoCustomerTrackingSchema
 >;
 
+export const PathaoCustomerTrackingLookupInputSchema = z.strictObject({
+  reference: z.string().trim().toUpperCase().pipe(OrderReferenceSchema),
+  phone: z.string().trim().min(1).max(40),
+});
+export type PathaoCustomerTrackingLookupInput = z.infer<
+  typeof PathaoCustomerTrackingLookupInputSchema
+>;
+
+export const PathaoCustomerTrackingLookupSchema = z.strictObject({
+  trackingProgress: PathaoTrackingProgressSchema.nullable(),
+  consignmentId: z.string().min(1).max(120).nullable(),
+  timeline: z
+    .array(
+      z.strictObject({
+        trackingProgress: PathaoTrackingProgressSchema,
+        updatedAt: z.iso.datetime(),
+      }),
+    )
+    .max(100),
+});
+export type PathaoCustomerTrackingLookup = z.infer<
+  typeof PathaoCustomerTrackingLookupSchema
+>;
+
 export const PathaoManualReconciliationInputSchema = z.strictObject({
   consignmentId: z
     .string()

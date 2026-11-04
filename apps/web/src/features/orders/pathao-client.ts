@@ -7,10 +7,13 @@ import {
   PathaoBookingManagementSchema,
   PathaoBookingSchema,
   PathaoCustomerTrackingSchema,
+  PathaoCustomerTrackingLookupInputSchema,
+  PathaoCustomerTrackingLookupSchema,
   PathaoManualReconciliationInputSchema,
   PathaoWebhookResolutionInputSchema,
   PathaoWebhookResolutionResultSchema,
   type PathaoManualReconciliationInput,
+  type PathaoCustomerTrackingLookupInput,
   type PathaoWebhookResolutionInput,
 } from "@aaraj/contracts";
 
@@ -109,6 +112,20 @@ export async function getPathaoCustomerTracking(orderId: string) {
     { cache: "no-store", credentials: "same-origin" },
   );
   return read(response, PathaoCustomerTrackingSchema);
+}
+
+export async function lookupPathaoCustomerTracking(
+  input: PathaoCustomerTrackingLookupInput,
+) {
+  const validated = PathaoCustomerTrackingLookupInputSchema.parse(input);
+  const response = await fetch(`${API_V1_BASE_PATH}/orders/tracking/lookup`, {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(validated),
+  });
+  return read(response, PathaoCustomerTrackingLookupSchema);
 }
 
 async function read<T>(

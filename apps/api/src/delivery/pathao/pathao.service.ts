@@ -9,6 +9,7 @@ import {
   PathaoBookingManagementSchema,
   PathaoBookingSchema,
   PathaoCustomerTrackingSchema,
+  PathaoCustomerTrackingLookupSchema,
   PathaoManagementBookingSummariesSchema,
   PathaoManagementIssuesSchema,
   MAX_LIST_OFFSET,
@@ -19,6 +20,7 @@ import {
   type PathaoBooking,
   type PathaoBookingManagement,
   type PathaoCustomerTracking,
+  type PathaoCustomerTrackingLookup,
   type PathaoDeliveryType,
   type PathaoManagementIssues,
   type PathaoManagementIssuesQuery,
@@ -992,6 +994,71 @@ export class PathaoService {
       customerId,
       signedCookies,
     );
+    return this.loadCustomerTracking(orderId);
+  }
+
+  async lookupCustomerTracking(
+    reference: string,
+    phone: string,
+  ): Promise<PathaoCustomerTrackingLookup> {
+    const orderId = await this.orders.getOrderIdForCustomerTracking(
+      reference,
+      phone,
+    );
+    const booking = await this.findBooking(orderId);
+    if (!booking || booking.status !== "booked" || !booking.consignmentId) {
+      return PathaoCustomerTrackingLookupSchema.parse({
+        trackingProgress: null,
+        consignmentId: null,
+        timeline: [],
+      });
+    }
+
+    const observations = await this.database.db
+      .select({
+        eventName: pathaoWebhookInbox.eventName,
+        receivedAt: pathaoWebhookInbox.receivedAt,
+      })
+      .from(pathaoWebhookInbox)
+      .where(
+        and(
+          eq(pathaoWebhookInbox.bookingId, booking.id),
+          eq(pathaoWebhookInbox.processingState, "verified"),
+        ),
+      )
+      .orderBy(desc(pathaoWebhookInbox.receivedAt), desc(pathaoWebhookInbox.id))
+      .limit(99);
+
+    const timeline: PathaoCustomerTrackingLookup["timeline"] = [
+      {
+        trackingProgress: "booked",
+        updatedAt: booking.createdAt.toISOString(),
+      },
+    ];
+    for (const observation of observations.reverse()) {
+      const progress = progressFromEvent(observation.eventName);
+      if (!progress) continue;
+      const event = {
+        trackingProgress: progress,
+        updatedAt: observation.receivedAt.toISOString(),
+      };
+      if (timeline.at(-1)?.trackingProgress === progress) {
+        timeline[timeline.length - 1] = event;
+      } else {
+        timeline.push(event);
+      }
+    }
+
+    return PathaoCustomerTrackingLookupSchema.parse({
+      trackingProgress: booking.trackingProgress,
+      consignmentId: booking.consignmentId,
+      timeline,
+    });
+  }
+
+  private async loadCustomerTracking(
+    orderId: string,
+  ): Promise<PathaoCustomerTracking> {
     const booking = await this.findBooking(orderId);
     if (!booking || booking.status !== "booked" || !booking.consignmentId) {
       return PathaoCustomerTrackingSchema.parse({
