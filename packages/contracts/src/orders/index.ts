@@ -70,20 +70,14 @@ export const OrderFulfillmentStatusSchema = z.enum([
   "returned",
   "cancelled",
 ]);
-const OptionalOrderReferenceSearchSchema = z.preprocess(
+const OptionalOrderSearchSchema = z.preprocess(
   (value) =>
     typeof value === "string" && value.trim() === "" ? undefined : value,
-  z
-    .string()
-    .trim()
-    .min(1)
-    .max(15)
-    .regex(/^[A-Za-z0-9-]+$/)
-    .optional(),
+  z.string().trim().min(2).max(120).optional(),
 );
 
 export const OrderListQuerySchema = OffsetPaginationQuerySchema.extend({
-  search: OptionalOrderReferenceSearchSchema,
+  search: OptionalOrderSearchSchema,
   status: OrderStatusSchema.optional(),
   fulfillmentStatus: OrderFulfillmentStatusSchema.optional(),
 });

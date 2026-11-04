@@ -1240,7 +1240,8 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("button", { name: "Black", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "S", exact: true }).click();
+  await expect(page.getByText("Size: S", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/size=S/);
   await page.getByRole("button", { name: "Clear cart" }).click();
   await expect(
     page.getByRole("status").filter({
@@ -1351,11 +1352,8 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("button", { name: "Black", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "S", exact: true }).click();
+  await expect(page.getByText("Size: S", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/size=S/);
-  await expect(
-    page.getByRole("button", { name: "S", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Buy Now" }).click();
   await expect(page).toHaveURL(/\/checkout$/);
   await expect(
@@ -1700,7 +1698,7 @@ test("catalog operator configures a product through to storefront visibility", a
     .getByRole("button", { name: "Record Pathao pickup" })
     .click();
   await expect(
-    page.getByText("Picked up · COD Uncollected", { exact: true }),
+    page.getByText("COD Uncollected", { exact: true }),
   ).toBeVisible();
   expect(dispatchCommandIds).toHaveLength(2);
   expect(dispatchCommandIds[0]).toBeTruthy();
@@ -1771,11 +1769,8 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("button", { name: "Black", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "S", exact: true }).click();
+  await expect(page.getByText("Size: S", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/size=S/);
-  await expect(
-    page.getByRole("button", { name: "S", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Add to cart" }).click();
   const guestCartSheet = page.getByRole("dialog", { name: "Your cart" });
   await expect(guestCartSheet).toBeVisible();

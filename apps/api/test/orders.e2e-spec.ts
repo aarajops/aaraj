@@ -1965,7 +1965,7 @@ describe("COD Orders and checkout", () => {
     for (const query of [
       { limit: 0 },
       { offset: 100_001 },
-      { search: "not a reference" },
+      { search: "x".repeat(121) },
       { fulfillmentStatus: "unknown" },
     ]) {
       await request(app.getHttpServer())

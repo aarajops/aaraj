@@ -13,6 +13,8 @@ import {
   OrderManagementDetailSchema,
   OrderManagementListSchema,
   OrderSchema,
+  OrderIdSchema,
+  OrderReferenceSchema,
   CURRENCY,
   MAX_ORDER_LINES,
   MAX_LIST_OFFSET,
@@ -40,7 +42,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, lt, or, sql } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import {
   CATALOG_CART_PORT,
@@ -81,6 +83,32 @@ const ORDER_ATTEMPT_COOKIE_PREFIX = "aaraj_order_attempt_";
 type OrderRow = typeof customerOrder.$inferSelect;
 type IdempotencyRow = typeof orderIdempotency.$inferSelect;
 type NormalizedAddress = OrderAddress;
+type ManagedOrderListRecord = Pick<
+  OrderRow,
+  | "id"
+  | "reference"
+  | "addressCiphertext"
+  | "deliverySnapshot"
+  | "status"
+  | "fulfillmentStatus"
+  | "collectionStatus"
+  | "deliveryProvider"
+  | "codAmountDueBdt"
+  | "createdAt"
+>;
+
+const MANAGED_ORDER_LIST_SELECTION = {
+  id: customerOrder.id,
+  reference: customerOrder.reference,
+  addressCiphertext: customerOrder.addressCiphertext,
+  deliverySnapshot: customerOrder.deliverySnapshot,
+  status: customerOrder.status,
+  fulfillmentStatus: customerOrder.fulfillmentStatus,
+  collectionStatus: customerOrder.collectionStatus,
+  deliveryProvider: customerOrder.deliveryProvider,
+  codAmountDueBdt: customerOrder.codAmountDueBdt,
+  createdAt: customerOrder.createdAt,
+};
 
 function availableOrderStatusActions(
   row: Pick<OrderRow, "status" | "fulfillmentStatus" | "cancellationReason">,
@@ -624,37 +652,46 @@ export class OrdersService implements OrdersPathaoPort {
   async listForManagement(
     query: OrderListQuery,
   ): Promise<ReturnType<typeof OrderManagementListSchema.parse>> {
-    const searchPattern = query.search
-      ? `%${escapeLikeWildcards(query.search)}%`
-      : undefined;
-    const rows = await this.database.db
-      .select({
-        id: customerOrder.id,
-        reference: customerOrder.reference,
-        addressCiphertext: customerOrder.addressCiphertext,
-        deliverySnapshot: customerOrder.deliverySnapshot,
-        status: customerOrder.status,
-        fulfillmentStatus: customerOrder.fulfillmentStatus,
-        collectionStatus: customerOrder.collectionStatus,
-        deliveryProvider: customerOrder.deliveryProvider,
-        codAmountDueBdt: customerOrder.codAmountDueBdt,
-        createdAt: customerOrder.createdAt,
-      })
-      .from(customerOrder)
-      .where(
-        and(
-          searchPattern
-            ? ilike(customerOrder.reference, searchPattern)
-            : undefined,
-          query.status ? eq(customerOrder.status, query.status) : undefined,
-          query.fulfillmentStatus
-            ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
-            : undefined,
-        ),
-      )
-      .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
-      .limit(query.limit + 1)
-      .offset(query.offset);
+    const exactOrderSearch = query.search
+      ? parseExactOrderSearch(query.search)
+      : null;
+    const referencePrefixSearch = query.search
+      ? query.search.toUpperCase().startsWith("ORD-") ||
+        query.search.toUpperCase().startsWith("AA-")
+      : false;
+    const listFilters = [
+      query.status ? eq(customerOrder.status, query.status) : undefined,
+      query.fulfillmentStatus
+        ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
+        : undefined,
+    ];
+    let rows: ManagedOrderListRecord[];
+    if (query.search && !exactOrderSearch && !referencePrefixSearch) {
+      rows = await this.searchManagedOrdersByCustomer(query, query.search);
+    } else {
+      const referenceSearch = query.search?.toUpperCase();
+      rows = await this.database.db
+        .select(MANAGED_ORDER_LIST_SELECTION)
+        .from(customerOrder)
+        .where(
+          and(
+            ...listFilters,
+            exactOrderSearch
+              ? exactOrderSearch.kind === "reference"
+                ? eq(customerOrder.reference, exactOrderSearch.value)
+                : eq(customerOrder.id, exactOrderSearch.value)
+              : referencePrefixSearch && referenceSearch
+                ? like(
+                    customerOrder.reference,
+                    `${escapeLikeWildcards(referenceSearch)}%`,
+                  )
+                : undefined,
+          ),
+        )
+        .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
+        .limit(query.limit + 1)
+        .offset(query.offset);
+    }
     const pageRows = rows.slice(0, query.limit);
     const hasMore = rows.length > query.limit;
     const candidateNextOffset = query.offset + query.limit;
@@ -715,6 +752,72 @@ export class OrdersService implements OrdersPathaoPort {
           ? candidateNextOffset
           : null,
     });
+  }
+
+  private async searchManagedOrdersByCustomer(
+    query: OrderListQuery,
+    search: string,
+  ): Promise<ManagedOrderListRecord[]> {
+    const nameSearch = normalizeOrderSearchText(search);
+    const phoneSearch = normalizeOrderPhoneDigits(search);
+    const localPhoneSearch = toLocalBangladeshPhoneDigits(phoneSearch);
+    const filters = [
+      query.status ? eq(customerOrder.status, query.status) : undefined,
+      query.fulfillmentStatus
+        ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
+        : undefined,
+    ];
+    const keyring = readOrderPiiKeyring();
+    const matchingRows: ManagedOrderListRecord[] = [];
+    let matchingRowsSkipped = 0;
+    let cursor: Pick<ManagedOrderListRecord, "createdAt" | "id"> | undefined;
+
+    while (matchingRows.length <= query.limit) {
+      const cursorFilter = cursor
+        ? or(
+            lt(customerOrder.createdAt, cursor.createdAt),
+            and(
+              eq(customerOrder.createdAt, cursor.createdAt),
+              lt(customerOrder.id, cursor.id),
+            ),
+          )
+        : undefined;
+      const batch = await this.database.db
+        .select(MANAGED_ORDER_LIST_SELECTION)
+        .from(customerOrder)
+        .where(and(...filters, cursorFilter))
+        .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
+        .limit(100);
+      if (batch.length === 0) break;
+
+      for (const row of batch) {
+        const address = decryptAddress(row.addressCiphertext, row.id, keyring);
+        if (
+          !matchesOrderSearch(
+            row,
+            address,
+            nameSearch,
+            phoneSearch,
+            localPhoneSearch,
+          )
+        ) {
+          continue;
+        }
+        if (matchingRowsSkipped < query.offset) {
+          matchingRowsSkipped += 1;
+          continue;
+        }
+        matchingRows.push(row);
+        if (matchingRows.length > query.limit) break;
+      }
+
+      if (matchingRows.length > query.limit) break;
+      const lastRow = batch[batch.length - 1];
+      if (!lastRow) break;
+      cursor = { createdAt: lastRow.createdAt, id: lastRow.id };
+    }
+
+    return matchingRows;
   }
 
   async getForManagement(orderId: string): Promise<Order> {
@@ -2575,6 +2678,58 @@ function isGuestCartAlreadyCheckedOut(error: unknown): boolean {
 
 function escapeLikeWildcards(value: string): string {
   return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function parseExactOrderSearch(
+  value: string,
+): { kind: "reference" | "id"; value: string } | null {
+  const reference = OrderReferenceSchema.safeParse(value.toUpperCase());
+  if (reference.success) {
+    return { kind: "reference", value: reference.data };
+  }
+  const id = OrderIdSchema.safeParse(value);
+  return id.success ? { kind: "id", value: id.data } : null;
+}
+
+function matchesOrderSearch(
+  row: Pick<ManagedOrderListRecord, "reference">,
+  address: OrderAddress,
+  nameSearch: string,
+  phoneSearch: string,
+  localPhoneSearch: string,
+): boolean {
+  if (
+    normalizeOrderSearchText(row.reference).includes(nameSearch) ||
+    normalizeOrderSearchText(address.recipientName).includes(nameSearch)
+  ) {
+    return true;
+  }
+  if (phoneSearch.length < 4) return false;
+
+  const phoneDigits = normalizeOrderPhoneDigits(address.phone);
+  const localPhoneDigits = toLocalBangladeshPhoneDigits(phoneDigits);
+  return (
+    phoneDigits.includes(phoneSearch) ||
+    phoneDigits.includes(localPhoneSearch) ||
+    localPhoneDigits.includes(phoneSearch) ||
+    localPhoneDigits.includes(localPhoneSearch)
+  );
+}
+
+function normalizeOrderSearchText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeOrderPhoneDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function toLocalBangladeshPhoneDigits(value: string): string {
+  return /^8801[3-9]\d{8}$/.test(value) ? `0${value.slice(3)}` : value;
 }
 
 function isUniqueViolation(error: unknown): boolean {

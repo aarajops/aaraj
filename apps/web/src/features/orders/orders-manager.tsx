@@ -248,7 +248,7 @@ export function OrdersManager({
             },
           ]}
           itemName="orders"
-          searchPlaceholder="Search order ID"
+          searchPlaceholder="Search order ID, name, or phone"
           onRefresh={() => router.refresh()}
           page={initialPage}
         />
