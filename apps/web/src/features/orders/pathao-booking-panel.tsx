@@ -299,8 +299,8 @@ export function PathaoBookingPanel({
           {eligible && booking.status === "booked" && (
             <div className="mt-3 grid gap-2">
               <p className="text-sm text-muted-foreground">
-                Cancel the consignment before pickup. Order changes unlock
-                after Pathao confirms the cancellation.
+                Cancel the consignment before pickup. Order changes unlock after
+                Pathao confirms the cancellation.
               </p>
               <Button
                 className="w-fit"
