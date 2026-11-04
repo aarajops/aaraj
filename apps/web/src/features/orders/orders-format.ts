@@ -33,18 +33,20 @@ export function humanizePathaoBookingStatus(
   trackingProgress: string,
   providerOrderStatus: string | null,
 ): string {
-  const providerStatus = providerOrderStatus
-    ?.toLowerCase()
+  const rawProviderStatus = providerOrderStatus?.trim();
+  if (!rawProviderStatus) return humanizePathaoStatus(trackingProgress);
+
+  const providerStatus = rawProviderStatus
+    .toLowerCase()
     .replace(/^order[._-]?/, "")
     .replace(/[^a-z0-9]/g, "");
 
   if (
-    providerStatus &&
     ["updated", "paid", "paidreturn", "exchange", "exchanged"].includes(
       providerStatus,
     )
   ) {
-    return humanizePathaoStatus(providerOrderStatus);
+    return humanizePathaoStatus(rawProviderStatus);
   }
 
   return humanizePathaoStatus(trackingProgress);
