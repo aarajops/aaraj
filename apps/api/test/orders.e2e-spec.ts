@@ -2443,7 +2443,7 @@ describe("COD Orders and checkout", () => {
 
     provider.state.infoStatus = "pickup-cancelled";
     const cancelled = await request(app.getHttpServer())
-      .post(`${managementPath}/verify-cancellation`)
+      .post(`${managementPath}/sync-status`)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .send()
@@ -2586,7 +2586,7 @@ describe("COD Orders and checkout", () => {
 
     provider.state.infoStatus = "pickup-cancelled";
     await request(app.getHttpServer())
-      .post(`${managementPath}/verify-cancellation`)
+      .post(`${managementPath}/sync-status`)
       .set("Origin", origin)
       .set("Cookie", staff.cookie)
       .send()

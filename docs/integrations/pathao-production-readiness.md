@@ -20,8 +20,8 @@ The production API endpoint is fixed to `https://api-hermes.pathao.com`. The fiv
 - No successful live Pathao authentication, store listing, order creation, or webhook has been verified. A prior non-production token request returned HTTP `522`; no provider request or deployment was made during the 2026-11-02 configuration review.
 - The supplied Pathao token contract uses the password grant. [RFC 9700 §2.4](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.4) says clients must not use that grant. Pathao's account owner must confirm whether a safer supported grant exists; otherwise the appropriate security owner must accept this provider-required exception before live use.
 - Pathao's supplied capture does not document Create Order idempotency. AARAJ therefore preserves an uncertain booking outcome and requires reconciliation before any repeat booking.
-- The app receives tracking through Pathao webhooks; it does not poll for missed events. Staff must check Pathao's panel when a callback is missing.
-- Post-booking cancellation, return inspection/restock automation, and courier COD-remittance reconciliation are not implemented. A booking claim keeps stock reserved until a supported fulfillment action is recorded.
+- The app receives tracking through Pathao webhooks and provides on-demand status sync using the documented Order Info endpoint; it does not poll in the background.
+- The supplied Pathao contract has no cancellation request, so AARAJ cannot initiate a remote cancellation. It can sync a provider-confirmed cancellation and unlock the order only before pickup. Return inspection/restock automation and courier COD-remittance reconciliation are not implemented.
 
 ## Local verification
 

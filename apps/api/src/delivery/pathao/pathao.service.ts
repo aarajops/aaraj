@@ -322,15 +322,13 @@ export class PathaoService {
     return row ? toBooking(row) : null;
   }
 
-  async verifyManagementBookingCancellation(
-    orderId: string,
-  ): Promise<PathaoBooking> {
+  async syncManagementBookingStatus(orderId: string): Promise<PathaoBooking> {
     const booking = await this.findBooking(orderId);
     if (!booking || booking.status !== "booked" || !booking.consignmentId) {
       if (booking?.status === "cancelled") return toBooking(booking);
       throw new ConflictException(
-        "There is no active Pathao consignment to verify.",
-        { errorCode: "PATHAO_BOOKING_NOT_VERIFYABLE" },
+        "There is no active Pathao consignment to sync.",
+        { errorCode: "PATHAO_BOOKING_NOT_SYNCABLE" },
       );
     }
     const config = requiredPathaoConfiguration();
@@ -351,7 +349,7 @@ export class PathaoService {
     } catch (error) {
       if (error instanceof PathaoRequestError) {
         throw new ServiceUnavailableException(
-          "Pathao could not verify the consignment. Its Order remains locked until the status can be checked.",
+          "Pathao status could not be synced. The Order remains locked.",
           { errorCode: error.code },
         );
       }
@@ -370,17 +368,10 @@ export class PathaoService {
     const providerProgress = progressFromStatus(info.orderStatus);
     if (!providerProgress) {
       throw new ConflictException(
-        "Pathao returned a status AARAJ cannot safely apply. Review the consignment in Pathao.",
+        "Pathao returned a status AARAJ cannot safely apply.",
         { errorCode: "PATHAO_STATUS_REQUIRES_REVIEW" },
       );
     }
-    if (providerProgress !== "cancelled") {
-      throw new ConflictException(
-        "Pathao has not confirmed cancellation. Order changes remain locked.",
-        { errorCode: "PATHAO_CANCELLATION_NOT_CONFIRMED" },
-      );
-    }
-
     return this.database.db.transaction(async (transaction) => {
       const [current] = await transaction
         .select()
@@ -394,31 +385,51 @@ export class PathaoService {
         (current.status !== "booked" && current.status !== "cancelled")
       ) {
         throw new ConflictException(
-          "The Pathao consignment changed while cancellation was being verified.",
+          "The Pathao consignment changed while its status was syncing.",
           { errorCode: "PATHAO_BOOKING_CHANGED" },
         );
       }
-      if (current.status === "cancelled") return toBooking(current);
-
-      const result = await this.cancelBookingWithinTransaction(
-        transaction,
-        current,
-        info.orderStatus,
-        "cancellation_verification",
-      );
-      if (result.blockedReason) {
-        if (result.blockedReason === "after_pickup") {
+      if (current.status === "cancelled") {
+        if (providerProgress !== "cancelled") {
           throw new ConflictException(
-            "This consignment had already reached pickup. AARAJ will not unlock cancellation after handoff.",
-            { errorCode: "PATHAO_CANCELLATION_AFTER_PICKUP_BLOCKED" },
+            "Pathao status conflicts with the saved cancellation.",
+            { errorCode: "PATHAO_STATUS_CHANGED_AFTER_CANCELLATION" },
           );
         }
-        throw new ConflictException(
-          "The Order has already been picked up and cannot be unlocked for cancellation.",
-          { errorCode: "PATHAO_CANCELLATION_AFTER_DISPATCH_BLOCKED" },
-        );
+        return toBooking(current);
       }
-      return toBooking(result.booking);
+      if (providerProgress === "cancelled") {
+        const result = await this.cancelBookingWithinTransaction(
+          transaction,
+          current,
+          info.orderStatus,
+          "status_sync",
+        );
+        if (result.blockedReason) {
+          throw new ConflictException(
+            "Pathao reports cancellation after pickup. The Order remains locked for review.",
+            {
+              errorCode:
+                result.blockedReason === "after_pickup"
+                  ? "PATHAO_CANCELLATION_AFTER_PICKUP_BLOCKED"
+                  : "PATHAO_CANCELLATION_AFTER_DISPATCH_BLOCKED",
+            },
+          );
+        }
+        return toBooking(result.booking);
+      }
+
+      const [updated] = await transaction
+        .update(pathaoBooking)
+        .set({
+          trackingProgress: providerProgress,
+          providerOrderStatus: info.orderStatus,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(pathaoBooking.id, current.id))
+        .returning();
+      if (!updated) throw new Error("Pathao booking disappeared during sync.");
+      return toBooking(updated);
     });
   }
 
@@ -1580,7 +1591,7 @@ export class PathaoService {
     transaction: AuditTransaction,
     booking: typeof pathaoBooking.$inferSelect,
     providerOrderStatus: string | null,
-    source: "cancellation_verification" | "webhook",
+    source: "status_sync" | "webhook",
   ): Promise<PathaoCancellationResult> {
     if (booking.trackingProgress !== "booked") {
       return { booking: null, blockedReason: "after_pickup" };

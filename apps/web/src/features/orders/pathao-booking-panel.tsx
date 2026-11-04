@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Truck } from "lucide-react";
+import { RefreshCw, Truck } from "lucide-react";
 import {
   PATHAO_MINIMUM_ITEM_WEIGHT_KG,
   type Order,
@@ -16,7 +16,7 @@ import {
   getPathaoBooking,
   PathaoClientError,
   reconcilePathaoBooking,
-  verifyPathaoBookingCancellation,
+  syncPathaoBookingStatus,
   submitPathaoBooking,
 } from "./pathao-client";
 
@@ -182,15 +182,15 @@ export function PathaoBookingPanel({
     }
   }
 
-  async function verifyCancellation() {
+  async function syncStatus() {
     setPending(true);
     setError(null);
     try {
-      const result = await verifyPathaoBookingCancellation(order.id);
+      const result = await syncPathaoBookingStatus(order.id);
       command.current = null;
       setDetails((current) => ({
         booking: result,
-        claimStatus: null,
+        claimStatus: result.status === "cancelled" ? null : result.status,
         observations: current?.observations ?? [],
       }));
       onFulfillmentUpdated?.();
@@ -198,7 +198,7 @@ export function PathaoBookingPanel({
       setError(
         reason instanceof Error
           ? reason.message
-          : "Pathao cancellation could not be verified.",
+          : "Pathao status could not be synced.",
       );
     } finally {
       setPending(false);
@@ -216,18 +216,8 @@ export function PathaoBookingPanel({
       <h2 className="font-semibold">Pathao booking</h2>
 
       {error && (
-        <div className="flex flex-wrap items-center gap-3" role="alert">
+        <div role="alert">
           <p className="text-sm text-destructive">{error}</p>
-          {(!details || details.claimStatus) && (
-            <Button
-              disabled={loading || pending}
-              onClick={() => void refresh()}
-              size="sm"
-              variant="outline"
-            >
-              Refresh
-            </Button>
-          )}
         </div>
       )}
       {handoffError && (
@@ -246,13 +236,11 @@ export function PathaoBookingPanel({
 
       {booking ? (
         <div className="grid gap-1 text-sm">
-          <p className="font-medium">{humanize(booking.status)}</p>
-          {booking.status !== "cancelled" && (
-            <p className="text-muted-foreground">
-              Tracking progress:{" "}
-              {humanizePathaoStatus(booking.trackingProgress)}
-            </p>
-          )}
+          <p className="font-medium">
+            {booking.status === "booked"
+              ? humanizePathaoStatus(booking.trackingProgress)
+              : humanize(booking.status)}
+          </p>
           {booking.consignmentId && (
             <DataRow label="Pathao consignment" value={booking.consignmentId} />
           )}
@@ -277,28 +265,17 @@ export function PathaoBookingPanel({
               Staff reconciliation: {booking.reconciliationReason}
             </p>
           )}
-          {booking.status === "cancelled" && (
-            <p className="mt-2 text-muted-foreground">
-              Pathao confirmed this consignment was cancelled. You can now edit
-              or cancel the AARAJ Order, or book it again.
-            </p>
-          )}
-          {eligible && booking.status === "booked" && (
-            <div className="mt-3 grid gap-2">
-              <p className="text-sm text-muted-foreground">
-                The documented Pathao API does not provide a cancellation action
-                here. Cancel the consignment with Pathao before pickup, then
-                check its status here. Order changes unlock after Pathao
-                confirms the cancellation.
-              </p>
+          {booking.status === "booked" && booking.consignmentId && (
+            <div className="mt-3">
               <Button
                 className="w-fit"
                 disabled={pending || loading}
-                onClick={() => void verifyCancellation()}
+                onClick={() => void syncStatus()}
                 size="sm"
                 variant="outline"
               >
-                {pending ? "Checking…" : "Check Pathao status"}
+                <RefreshCw aria-hidden="true" className="size-4" />
+                {pending ? "Syncing…" : "Sync status"}
               </Button>
             </div>
           )}

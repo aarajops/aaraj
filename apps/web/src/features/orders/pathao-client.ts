@@ -32,9 +32,9 @@ export async function getPathaoBooking(orderId: string) {
   return read(response, PathaoBookingManagementSchema);
 }
 
-export async function verifyPathaoBookingCancellation(orderId: string) {
+export async function syncPathaoBookingStatus(orderId: string) {
   const response = await fetch(
-    `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${encodeURIComponent(orderId)}/verify-cancellation`,
+    `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${encodeURIComponent(orderId)}/sync-status`,
     {
       method: "POST",
       cache: "no-store",
