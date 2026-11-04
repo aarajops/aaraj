@@ -107,6 +107,7 @@ const PATHAO_STATUS_EVENTS: Readonly<Record<string, string>> = {
   pending: "order.created",
   created: "order.created",
   ordercreated: "order.created",
+  updated: "order.updated",
   pickuprequested: "order.pickup-requested",
   assignedforpickup: "order.assigned-for-pickup",
   picked: "order.picked",
@@ -128,6 +129,7 @@ const PATHAO_STATUS_EVENTS: Readonly<Record<string, string>> = {
   paidreturn: "order.paid-return",
   exchange: "order.exchanged",
   exchanged: "order.exchanged",
+  paid: "order.paid",
 };
 
 type Progress = PathaoBooking["trackingProgress"];
@@ -367,13 +369,14 @@ export class PathaoService {
         { errorCode: "PATHAO_ORDER_IDENTITY_MISMATCH" },
       );
     }
-    const providerProgress = progressFromStatus(info.orderStatus);
-    if (!providerProgress) {
+    const providerEvent = pathaoEventFromStatus(info.orderStatus);
+    if (!providerEvent) {
       throw new ConflictException(
         "Pathao returned a status AARAJ cannot safely apply.",
         { errorCode: "PATHAO_STATUS_REQUIRES_REVIEW" },
       );
     }
+    const providerProgress = progressFromEvent(providerEvent);
     return this.database.db.transaction(async (transaction) => {
       const [current] = await transaction
         .select()
@@ -424,7 +427,7 @@ export class PathaoService {
       const [updated] = await transaction
         .update(pathaoBooking)
         .set({
-          trackingProgress: providerProgress,
+          trackingProgress: providerProgress ?? current.trackingProgress,
           providerOrderStatus: info.orderStatus,
           updatedAt: sql`clock_timestamp()`,
         })
@@ -1397,8 +1400,14 @@ export class PathaoService {
     }
 
     const eventProgress = progressFromEvent(payload.event);
-    const providerProgress = progressFromStatus(info.orderStatus);
-    if (eventProgress !== null && providerProgress === null) {
+    const providerEvent = pathaoEventFromStatus(info.orderStatus);
+    const providerProgress = providerEvent
+      ? progressFromEvent(providerEvent)
+      : null;
+    if (
+      !providerEvent ||
+      (eventProgress !== null && providerProgress === null)
+    ) {
       await this.finishWebhook(
         event.id,
         leaseOwner,
@@ -2008,11 +2017,15 @@ export function progressFromEvent(event: string): Progress | null {
 }
 
 export function progressFromStatus(status: string | null): Progress | null {
+  const event = pathaoEventFromStatus(status);
+  return event ? progressFromEvent(event) : null;
+}
+
+export function pathaoEventFromStatus(status: string | null): string | null {
   if (!status) return null;
   const normalizedStatus = normalizeStatus(status);
   const statusName = normalizedStatus.startsWith("order")
     ? normalizedStatus.slice("order".length)
     : normalizedStatus;
-  const event = PATHAO_STATUS_EVENTS[statusName];
-  return event ? progressFromEvent(event) : null;
+  return PATHAO_STATUS_EVENTS[statusName] ?? null;
 }

@@ -238,7 +238,10 @@ export function PathaoBookingPanel({
         <div className="grid gap-1 text-sm">
           <p className="font-medium">
             {booking.status === "booked"
-              ? humanizePathaoStatus(booking.trackingProgress)
+              ? humanizePathaoStatus(
+                  booking.providerOrderStatus?.trim() ||
+                    booking.trackingProgress,
+                )
               : humanize(booking.status)}
           </p>
           {booking.consignmentId && (

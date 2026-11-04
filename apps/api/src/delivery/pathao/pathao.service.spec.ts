@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { PathaoOrderBookingSnapshot } from "../../orders/orders-pathao.port.js";
-import { progressFromEvent, toProviderRequest } from "./pathao.service.js";
+import {
+  pathaoEventFromStatus,
+  progressFromEvent,
+  progressFromStatus,
+  toProviderRequest,
+} from "./pathao.service.js";
 
 const order: PathaoOrderBookingSnapshot = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -56,5 +61,12 @@ describe("Pathao booking request mapping", () => {
 describe("Pathao tracking status mapping", () => {
   it("preserves delivery failure as its own tracking state", () => {
     expect(progressFromEvent("order.delivery-failed")).toBe("delivery_failed");
+  });
+
+  it("recognizes documented non-progress statuses without inventing milestones", () => {
+    expect(pathaoEventFromStatus("Paid Return")).toBe("order.paid-return");
+    expect(pathaoEventFromStatus("Paid")).toBe("order.paid");
+    expect(progressFromStatus("Paid Return")).toBeNull();
+    expect(pathaoEventFromStatus("Unexpected status")).toBeNull();
   });
 });
