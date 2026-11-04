@@ -245,7 +245,7 @@ export class OrdersController {
       OrderDispatchCommandIdSchema.safeParse(rawCommandId);
     if (!parsedCommandId.success) {
       throw new BadRequestException(
-        "A UUID Idempotency-Key header is required for dispatch.",
+        "A UUID Idempotency-Key header is required to record courier pickup.",
         { errorCode: "IDEMPOTENCY_KEY_REQUIRED" },
       );
     }

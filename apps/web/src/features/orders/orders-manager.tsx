@@ -3,9 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Eye, Printer } from "lucide-react";
-import type { OrderListQuery, OrderManagementList } from "@aaraj/contracts";
+import type { OrderListQuery } from "@aaraj/contracts";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenuItem,
@@ -20,7 +19,8 @@ import {
 import { formatBdtPrice } from "@/lib/currency";
 import type { ManagedOrderRow, ManagedOrdersPage } from "./orders-view-model";
 import { OrderDetailsSheet } from "./order-details-sheet";
-import { humanize, humanizeOrderStatus } from "./orders-format";
+import { humanize, humanizePathaoStatus } from "./orders-format";
+import { OrderStatusBadge, ShipmentStatusBadge } from "./order-status-badges";
 
 const columnHelper = createDataTableColumnHelper<ManagedOrderRow>();
 
@@ -151,18 +151,13 @@ export function OrdersManager({
       columnHelper.display({
         id: "status",
         header: "Order status",
-        cell: ({ row }) => (
-          <Badge variant={orderStatusVariant(row.original.status)}>
-            {humanizeOrderStatus(row.original.status)}
-          </Badge>
-        ),
+        cell: ({ row }) => <OrderStatusBadge status={row.original.status} />,
       }),
       columnHelper.display({
         id: "delivery",
         header: "Shipment",
         cell: ({ row }) => (
           <CourierStatus
-            deliveryProvider={row.original.deliveryProvider}
             summary={row.original.pathaoSummary}
             available={initialPage.pathaoSummaryAvailable}
           />
@@ -186,7 +181,7 @@ export function OrdersManager({
       <div>
         <AdminPageHeader
           title="Orders"
-          description="Review orders and manage dispatch."
+          description="Review orders and manage courier handoffs."
         />
         <AdminDataTable
           className="mt-6"
@@ -240,10 +235,10 @@ export function OrdersManager({
               options: [
                 { label: "Not started", value: "not_started" },
                 {
-                  label: "Awaiting dispatch (stock held)",
+                  label: "Awaiting pickup (stock held)",
                   value: "awaiting_dispatch",
                 },
-                { label: "Dispatched", value: "dispatched" },
+                { label: "Picked up", value: "dispatched" },
                 { label: "Partially delivered", value: "partially_delivered" },
                 { label: "Delivered", value: "delivered" },
                 { label: "Delivery failed", value: "delivery_failed" },
@@ -288,16 +283,16 @@ async function copyOrderValue(value: string, label: string) {
 }
 
 function CourierStatus({
-  deliveryProvider,
   summary,
   available,
 }: {
-  deliveryProvider: "manual" | "pathao" | null;
   summary: ManagedOrderRow["pathaoSummary"];
   available: boolean;
 }) {
-  if (deliveryProvider === "pathao" && !available) {
-    return <span className="text-sm text-muted-foreground">Unavailable</span>;
+  if (!available) {
+    return (
+      <ShipmentStatusBadge label="Status unavailable" status="unavailable" />
+    );
   }
   if (
     summary?.hasUnresolvedWebhookIssue ||
@@ -305,15 +300,27 @@ function CourierStatus({
     summary?.status === "reconciliation_required" ||
     summary?.trackingProgress === "reconciliation_required"
   ) {
-    return <Badge variant="destructive">Needs review</Badge>;
+    return (
+      <ShipmentStatusBadge
+        label="Needs review"
+        status="needs_review"
+        variant="destructive"
+      />
+    );
   }
   if (summary?.status === "submitting") {
-    return <Badge variant="outline">Booking</Badge>;
+    return (
+      <ShipmentStatusBadge
+        label="Booking"
+        status="submitting"
+        variant="outline"
+      />
+    );
   }
   if (summary?.status === "cancelled") {
     return (
       <div className="grid gap-1">
-        <Badge variant="secondary">Cancelled</Badge>
+        <ShipmentStatusBadge label="Cancelled" status="cancelled" />
         {summary.consignmentId && (
           <span className="text-xs text-muted-foreground">
             {summary.consignmentId}
@@ -323,11 +330,13 @@ function CourierStatus({
     );
   }
   if (summary?.status === "booked") {
+    const trackingProgress = summary.trackingProgress ?? "booked";
     return (
       <div className="grid gap-1">
-        <Badge variant="secondary">
-          {humanize(summary.trackingProgress ?? "booked")}
-        </Badge>
+        <ShipmentStatusBadge
+          label={humanizePathaoStatus(trackingProgress)}
+          status={trackingProgress}
+        />
         {summary.consignmentId && (
           <span className="text-xs text-muted-foreground">
             {summary.consignmentId}
@@ -336,19 +345,5 @@ function CourierStatus({
       </div>
     );
   }
-  if (deliveryProvider === "pathao") {
-    return <Badge variant="secondary">Not booked</Badge>;
-  }
-  if (deliveryProvider === "manual") {
-    return <Badge variant="outline">Manual delivery</Badge>;
-  }
-  return <Badge variant="secondary">Not booked</Badge>;
-}
-
-function orderStatusVariant(
-  status: OrderManagementList["rows"][number]["status"],
-): "default" | "secondary" | "destructive" {
-  if (status === "cancelled") return "destructive";
-  if (status === "confirmed") return "default";
-  return "secondary";
+  return <ShipmentStatusBadge label="Not booked" status="not_booked" />;
 }

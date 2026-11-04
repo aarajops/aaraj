@@ -707,7 +707,7 @@ test("customer Order page explains cancellation", async ({ page }) => {
         collectionStatus: "uncollected",
         collectedAmountBdt: null,
         fulfillmentStatus: "cancelled",
-        dispatch: null,
+        courierHandoff: null,
         lines: [
           {
             variantId: "0d8c92cf-d31c-4ca7-9c99-4aad8e103565",
@@ -753,7 +753,9 @@ test("customer Order page explains cancellation", async ({ page }) => {
 
   await page.goto(`/orders/${orderId}`);
   await expect(
-    page.getByRole("status").filter({ hasText: "cancelled before dispatch" }),
+    page
+      .getByRole("status")
+      .filter({ hasText: "cancelled before courier pickup" }),
   ).toBeVisible();
   await expect(page.getByText("Nothing is payable")).toBeVisible();
 });

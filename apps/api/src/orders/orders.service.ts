@@ -1123,7 +1123,7 @@ export class OrdersService implements OrdersPathaoPort {
       row.fulfillmentStatus !== "awaiting_dispatch"
     ) {
       throw new ConflictException(
-        "Only confirmed Orders awaiting dispatch can be booked with Pathao.",
+        "Only confirmed Orders awaiting courier pickup can be booked with Pathao.",
         { errorCode: "PATHAO_ORDER_NOT_ELIGIBLE" },
       );
     }
@@ -1206,7 +1206,7 @@ export class OrdersService implements OrdersPathaoPort {
         row.fulfillmentStatus !== "awaiting_dispatch"
       ) {
         throw new ConflictException(
-          "Only confirmed Orders awaiting dispatch can be booked with Pathao.",
+          "Only confirmed Orders awaiting courier pickup can be booked with Pathao.",
           { errorCode: "PATHAO_ORDER_NOT_ELIGIBLE" },
         );
       }
@@ -1507,7 +1507,7 @@ export class OrdersService implements OrdersPathaoPort {
       if (row.status === "on_hold") return;
       if (!availableOrderStatusActions(row, false).includes("on_hold")) {
         throw new ConflictException(
-          "Only a pending or dispatch-ready order can be put on hold.",
+          "Only a pending order or confirmed order awaiting courier pickup can be put on hold.",
           { errorCode: "ORDER_STATUS_TRANSITION_INVALID" },
         );
       }
@@ -1734,7 +1734,7 @@ export class OrdersService implements OrdersPathaoPort {
             row.dispatchRequestFingerprint !== fingerprint
           ) {
             throw new ConflictException(
-              "This Order has already been dispatched with a different command or payload.",
+              "This courier handoff was already recorded with a different command or payload.",
               { errorCode: "ORDER_ALREADY_DISPATCHED" },
             );
           }
@@ -1746,7 +1746,7 @@ export class OrdersService implements OrdersPathaoPort {
           row.fulfillmentStatus !== "awaiting_dispatch"
         ) {
           throw new ConflictException(
-            "Only a confirmed Order awaiting dispatch can be dispatched.",
+            "Only a confirmed Order awaiting courier pickup can have its pickup recorded.",
             { errorCode: "ORDER_NOT_DISPATCHABLE" },
           );
         }
@@ -1764,8 +1764,8 @@ export class OrdersService implements OrdersPathaoPort {
         ) {
           throw new ConflictException(
             pathaoClaim && pathaoClaim.status !== "booked"
-              ? "Resolve the Pathao booking outcome before dispatching this Order."
-              : "Dispatch provider must match the Order's confirmed Pathao booking.",
+              ? "Resolve the Pathao booking outcome before recording pickup."
+              : "The delivery provider must match the Order's confirmed Pathao booking.",
             { errorCode: "ORDER_DELIVERY_PROVIDER_MISMATCH" },
           );
         }
@@ -1815,7 +1815,7 @@ export class OrdersService implements OrdersPathaoPort {
           .returning({ dispatchedAt: customerOrder.dispatchedAt });
         if (!dispatched?.dispatchedAt) {
           throw new ConflictException(
-            "The Order changed before dispatch could be recorded.",
+            "The Order changed before courier pickup could be recorded.",
             { errorCode: "ORDER_NOT_DISPATCHABLE" },
           );
         }
@@ -1876,7 +1876,7 @@ export class OrdersService implements OrdersPathaoPort {
       if (row.status === "cancelled") return;
       if (!availableOrderStatusActions(row, false).includes("cancelled")) {
         throw new ConflictException(
-          "Only a pending, on-hold, or dispatch-ready order can be cancelled.",
+          "Only a pending order, an order on hold, or a confirmed order awaiting courier pickup can be cancelled.",
           { errorCode: "ORDER_NOT_CANCELLABLE" },
         );
       }
@@ -2183,7 +2183,7 @@ export class OrdersService implements OrdersPathaoPort {
       collectionStatus: row.collectionStatus,
       collectedAmountBdt: row.collectedAmountBdt,
       fulfillmentStatus: row.fulfillmentStatus,
-      dispatch:
+      courierHandoff:
         row.dispatchedAt !== null &&
         row.deliveryOperator !== null &&
         row.dispatchCommandId !== null
@@ -2191,7 +2191,7 @@ export class OrdersService implements OrdersPathaoPort {
               deliveryProvider: row.deliveryProvider,
               deliveryOperator: row.deliveryOperator,
               handoffReference: row.handoffReference,
-              dispatchedAt: row.dispatchedAt.toISOString(),
+              pickedUpAt: row.dispatchedAt.toISOString(),
             }
           : null,
       lines: lines.map((line) => ({
@@ -2378,7 +2378,7 @@ function sameReservationLines(
 
 function dispatchCommandConflict(): ConflictException {
   return new ConflictException(
-    "This dispatch command ID was already used for a different Order or payload.",
+    "This handoff command ID was already used for a different Order or payload.",
     { errorCode: "IDEMPOTENCY_KEY_REUSED" },
   );
 }

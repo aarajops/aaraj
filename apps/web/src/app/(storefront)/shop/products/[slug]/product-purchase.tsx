@@ -3,7 +3,7 @@
 import { CatalogMeasurementKeySchema } from "@aaraj/contracts";
 import type { CatalogProductDetail, CatalogSizeGuide } from "@aaraj/contracts";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -227,13 +227,14 @@ export function ProductPurchase({
       )}
       <AddToCart variantId={selectedVariant?.id ?? null} />
       {whatsappHref && (
-        <Button
-          className="w-full bg-whatsapp text-white hover:bg-whatsapp hover:brightness-90"
-          nativeButton={false}
-          render={
-            <a href={whatsappHref} rel="noopener noreferrer" target="_blank" />
-          }
-          variant="default"
+        <a
+          className={buttonVariants({
+            className:
+              "w-full bg-whatsapp text-white hover:bg-whatsapp hover:brightness-90",
+          })}
+          href={whatsappHref}
+          rel="noopener noreferrer"
+          target="_blank"
         >
           <Image
             alt=""
@@ -243,7 +244,7 @@ export function ProductPurchase({
             width={16}
           />
           Order On WhatsApp
-        </Button>
+        </a>
       )}
       {sizeGuide && <SizeGuideTable sizeGuide={sizeGuide} />}
     </div>

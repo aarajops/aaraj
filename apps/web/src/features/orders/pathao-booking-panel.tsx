@@ -5,13 +5,13 @@ import { Truck } from "lucide-react";
 import {
   PATHAO_MINIMUM_ITEM_WEIGHT_KG,
   type Order,
-  type PathaoBooking,
   type PathaoBookingManagement,
   type PathaoManualReconciliationInput,
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { humanize, humanizePathaoStatus } from "./orders-format";
 import {
   getPathaoBooking,
   PathaoClientError,
@@ -20,20 +20,15 @@ import {
   submitPathaoBooking,
 } from "./pathao-client";
 
-export type PathaoAssignmentState =
-  PathaoBooking["status"] | "none" | "loading" | "unavailable";
-
 export function PathaoBookingPanel({
   order,
   onFulfillmentUpdated,
-  onAssignmentStateChange,
   onRecordPickup,
   handoffPending,
   handoffError,
 }: {
   order: Order;
   onFulfillmentUpdated?: () => void;
-  onAssignmentStateChange?: (state: PathaoAssignmentState) => void;
   onRecordPickup?: (consignmentId: string) => Promise<void>;
   handoffPending?: boolean;
   handoffError?: string | null;
@@ -60,7 +55,7 @@ export function PathaoBookingPanel({
   const booking = details?.booking ?? null;
   const showPanel = Boolean(
     eligible ||
-    order.dispatch?.deliveryProvider === "pathao" ||
+    order.courierHandoff?.deliveryProvider === "pathao" ||
     booking ||
     details?.claimStatus,
   );
@@ -74,9 +69,6 @@ export function PathaoBookingPanel({
 
   function applyDetails(booking: PathaoBookingManagement) {
     setDetails(booking);
-    onAssignmentStateChange?.(
-      booking.claimStatus ?? booking.booking?.status ?? "none",
-    );
   }
 
   async function refresh(): Promise<boolean> {
@@ -87,7 +79,6 @@ export function PathaoBookingPanel({
       onFulfillmentUpdated?.();
       return true;
     } catch (reason) {
-      onAssignmentStateChange?.("unavailable");
       setError(
         reason instanceof Error
           ? reason.message
@@ -108,7 +99,6 @@ export function PathaoBookingPanel({
       })
       .catch((reason: unknown) => {
         if (!active) return;
-        onAssignmentStateChange?.("unavailable");
         setError(
           reason instanceof Error
             ? reason.message
@@ -122,7 +112,6 @@ export function PathaoBookingPanel({
       active = false;
     };
     // Load saved booking state before enabling a new booking for this Order.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.id]);
 
   async function book() {
@@ -140,7 +129,6 @@ export function PathaoBookingPanel({
         claimStatus: result.status,
         observations: [],
       });
-      onAssignmentStateChange?.(result.status);
       onFulfillmentUpdated?.();
     } catch (reason) {
       const message =
@@ -179,7 +167,6 @@ export function PathaoBookingPanel({
         claimStatus: result.status,
         observations: [],
       });
-      onAssignmentStateChange?.(result.status);
       onFulfillmentUpdated?.();
       setConsignmentId("");
       setReconciliationReason("");
@@ -206,7 +193,6 @@ export function PathaoBookingPanel({
         claimStatus: null,
         observations: current?.observations ?? [],
       }));
-      onAssignmentStateChange?.("none");
       onFulfillmentUpdated?.();
     } catch (reason) {
       setError(
@@ -263,7 +249,8 @@ export function PathaoBookingPanel({
           <p className="font-medium">{humanize(booking.status)}</p>
           {booking.status !== "cancelled" && (
             <p className="text-muted-foreground">
-              Tracking progress: {humanize(booking.trackingProgress)}
+              Tracking progress:{" "}
+              {humanizePathaoStatus(booking.trackingProgress)}
             </p>
           )}
           {booking.consignmentId && (
@@ -299,8 +286,10 @@ export function PathaoBookingPanel({
           {eligible && booking.status === "booked" && (
             <div className="mt-3 grid gap-2">
               <p className="text-sm text-muted-foreground">
-                Cancel the consignment before pickup. Order changes unlock after
-                Pathao confirms the cancellation.
+                The documented Pathao API does not provide a cancellation action
+                here. Cancel the consignment with Pathao before pickup, then
+                check its status here. Order changes unlock after Pathao
+                confirms the cancellation.
               </p>
               <Button
                 className="w-fit"
@@ -309,7 +298,7 @@ export function PathaoBookingPanel({
                 size="sm"
                 variant="outline"
               >
-                {pending ? "Checking…" : "Verify cancellation"}
+                {pending ? "Checking…" : "Check Pathao status"}
               </Button>
             </div>
           )}
@@ -425,11 +414,4 @@ function DataRow({ label, value }: { label: string; value: string }) {
       <span>{value}</span>
     </p>
   );
-}
-
-function humanize(value: string): string {
-  return value
-    .split(/[_.-]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

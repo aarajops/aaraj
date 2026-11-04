@@ -1236,6 +1236,10 @@ test("catalog operator configures a product through to storefront visibility", a
   });
   await page.goto(`/shop/products/${slug}`);
   await page.getByRole("button", { name: "Black", exact: true }).click();
+  await expect(page).toHaveURL(/color=Black/);
+  await expect(
+    page.getByRole("button", { name: "Black", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "S", exact: true }).click();
   await page.getByRole("button", { name: "Clear cart" }).click();
   await expect(
@@ -1343,7 +1347,15 @@ test("catalog operator configures a product through to storefront visibility", a
 
   await page.goto(`/shop/products/${slug}`);
   await page.getByRole("button", { name: "Black", exact: true }).click();
+  await expect(page).toHaveURL(/color=Black/);
+  await expect(
+    page.getByRole("button", { name: "Black", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "S", exact: true }).click();
+  await expect(page).toHaveURL(/size=S/);
+  await expect(
+    page.getByRole("button", { name: "S", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Buy Now" }).click();
   await expect(page).toHaveURL(/\/checkout$/);
   await expect(
@@ -1499,7 +1511,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByTestId("order-reference")).toBeVisible();
   const customerOrderStatus = page.getByRole("status").filter({
     hasText:
-      "We’ll contact you to verify your order and delivery details before dispatch.",
+      "We’ll contact you to verify your order and delivery details before courier pickup.",
   });
   await expect(customerOrderStatus).toBeVisible();
   await expect(
@@ -1681,14 +1693,14 @@ test("catalog operator configures a product through to storefront visibility", a
   await pathaoPanel
     .getByRole("button", { name: "Record Pathao pickup" })
     .click();
-  await expect(pathaoPanel.getByRole("alert")).toContainText("dispatch", {
+  await expect(pathaoPanel.getByRole("alert")).toContainText("pickup", {
     ignoreCase: true,
   });
   await pathaoPanel
     .getByRole("button", { name: "Record Pathao pickup" })
     .click();
   await expect(
-    page.getByText("Dispatched · COD Uncollected", { exact: true }),
+    page.getByText("Picked up · COD Uncollected", { exact: true }),
   ).toBeVisible();
   expect(dispatchCommandIds).toHaveLength(2);
   expect(dispatchCommandIds[0]).toBeTruthy();
@@ -1697,11 +1709,8 @@ test("catalog operator configures a product through to storefront visibility", a
 
   await page.goto(`/orders/${customerOrderId}`);
   await expect(
-    page.getByRole("region", { name: "Dispatch details" }),
-  ).toContainText("Pathao Courier");
-  await expect(
-    page.getByRole("region", { name: "Dispatch details" }),
-  ).toContainText("PATHAO-BROWSER-E2E-01");
+    page.getByRole("region", { name: "Courier handoff details" }),
+  ).toHaveCount(0);
   await expect(
     page.getByText("Uncollected; no payment was taken at checkout", {
       exact: true,
@@ -1715,7 +1724,7 @@ test("catalog operator configures a product through to storefront visibility", a
   });
   await expect(pathaoTracking).toContainText("PATHAO-BROWSER-E2E-01");
   await expect(page.getByRole("status")).toContainText(
-    "Handed to Pathao Courier on",
+    "Your order has been handed to the courier.",
   );
 
   await page.goto(`/admin/orders/${customerOrderId}`);
@@ -1758,7 +1767,15 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/\/account$/);
   await page.goto(`/shop/products/${slug}`);
   await page.getByRole("button", { name: "Black", exact: true }).click();
+  await expect(page).toHaveURL(/color=Black/);
+  await expect(
+    page.getByRole("button", { name: "Black", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "S", exact: true }).click();
+  await expect(page).toHaveURL(/size=S/);
+  await expect(
+    page.getByRole("button", { name: "S", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Add to cart" }).click();
   const guestCartSheet = page.getByRole("dialog", { name: "Your cart" });
   await expect(guestCartSheet).toBeVisible();

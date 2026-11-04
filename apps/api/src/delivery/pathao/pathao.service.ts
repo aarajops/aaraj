@@ -414,7 +414,7 @@ export class PathaoService {
           );
         }
         throw new ConflictException(
-          "The Order has already been dispatched and cannot be unlocked for cancellation.",
+          "The Order has already been picked up and cannot be unlocked for cancellation.",
           { errorCode: "PATHAO_CANCELLATION_AFTER_DISPATCH_BLOCKED" },
         );
       }

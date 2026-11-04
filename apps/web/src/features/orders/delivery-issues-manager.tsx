@@ -32,15 +32,9 @@ import {
 } from "@/components/admin/admin-data-table";
 import { formatDateTime } from "@/lib/date-time";
 import { PathaoClientError, resolvePathaoWebhookIssue } from "./pathao-client";
+import { humanize } from "./orders-format";
 
 const columnHelper = createDataTableColumnHelper<PathaoManagementIssue>();
-
-function humanizeEvent(value: string): string {
-  return value
-    .split("_")
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 export function DeliveryIssuesManager({
   initialPage,
@@ -64,7 +58,7 @@ export function DeliveryIssuesManager({
           cell: ({ row }) => (
             <div className="grid gap-1">
               <span className="font-medium">
-                {humanizeEvent(row.original.event)}
+                {humanize(row.original.event)}
               </span>
               <Badge
                 className="w-fit"
@@ -207,7 +201,7 @@ export function DeliveryIssuesManager({
                 Review delivery event
               </SheetTitle>
               <SheetDescription>
-                {humanizeEvent(selectedIssue.event)}
+                {humanize(selectedIssue.event)}
               </SheetDescription>
             </SheetHeader>
             <div className="space-y-4 overflow-y-auto px-6 py-5">

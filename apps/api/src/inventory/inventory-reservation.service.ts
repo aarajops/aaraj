@@ -471,7 +471,7 @@ export class InventoryReservationService implements InventoryReservationPort {
     if (existing) {
       if (requireHeld) {
         throw new ConflictException(
-          "A new dispatch requires a held reservation and a new consume command.",
+          "A new courier handoff requires a held reservation and a new consume command.",
           { errorCode: "ORDER_RESERVATION_NOT_HELD" },
         );
       }
@@ -493,7 +493,7 @@ export class InventoryReservationService implements InventoryReservationPort {
 
     if (requireHeld && reservation.status !== "held") {
       throw new ConflictException(
-        "The Order reservation must still be held before dispatch.",
+        "The Order reservation must still be held before courier pickup.",
         { errorCode: "ORDER_RESERVATION_NOT_HELD" },
       );
     }

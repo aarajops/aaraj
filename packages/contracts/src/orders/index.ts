@@ -163,11 +163,11 @@ export const OrderCollectionInputSchema = z.strictObject({
 });
 export type OrderCollectionInput = z.infer<typeof OrderCollectionInputSchema>;
 
-const OrderDispatchDetailsSchema = z.strictObject({
+const OrderCourierHandoffSchema = z.strictObject({
   deliveryProvider: z.enum(["manual", "pathao"]).nullable(),
   deliveryOperator: z.string().min(2).max(120),
   handoffReference: z.string().min(1).max(160).nullable(),
-  dispatchedAt: z.iso.datetime(),
+  pickedUpAt: z.iso.datetime(),
 });
 
 const OrderLineSchema = z.strictObject({
@@ -212,7 +212,7 @@ export const OrderSchema = z.strictObject({
     .max(Number.MAX_SAFE_INTEGER)
     .nullable(),
   fulfillmentStatus: OrderFulfillmentStatusSchema,
-  dispatch: OrderDispatchDetailsSchema.nullable(),
+  courierHandoff: OrderCourierHandoffSchema.nullable(),
   lines: z.array(OrderLineSchema).min(1).max(MAX_ORDER_LINES),
   merchandiseGrossBdt: z
     .number()

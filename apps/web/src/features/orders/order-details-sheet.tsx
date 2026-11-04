@@ -6,7 +6,6 @@ import { FileText, Plus, Trash2 } from "lucide-react";
 import {
   MAX_CART_QUANTITY_PER_VARIANT,
   MAX_ORDER_LINES,
-  type Order,
   type OrderManagementDetail,
   type OrderStatusUpdateInput,
 } from "@aaraj/contracts";
@@ -20,7 +19,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -47,7 +45,10 @@ import {
   removeOrderItem,
   updateOrderStatus,
 } from "./orders-client";
-import { humanize, humanizeOrderStatus } from "./orders-format";
+import {
+  FulfillmentStatusBadge,
+  OrderStatusBadge,
+} from "./order-status-badges";
 import { PathaoBookingPanel } from "./pathao-booking-panel";
 
 type OrderDetailsSheetProps = {
@@ -290,12 +291,13 @@ function OrderDetailsSheetContent({
             <section aria-label="Order status" className="grid gap-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant={orderStatusVariant(order.status)}>
-                    {humanizeOrderStatus(order.status)}
-                  </Badge>
-                  <Badge variant="secondary">
-                    {humanize(order.fulfillmentStatus)}
-                  </Badge>
+                  <OrderStatusBadge status={order.status} />
+                  {!(
+                    order.fulfillmentStatus === "dispatched" &&
+                    order.courierHandoff?.deliveryProvider === "pathao"
+                  ) && (
+                    <FulfillmentStatusBadge status={order.fulfillmentStatus} />
+                  )}
                 </div>
                 <OrderStatusMenu
                   actions={availableStatusActions}
@@ -375,29 +377,16 @@ function OrderDetailsSheetContent({
                   {statusError.message}
                 </p>
               )}
-              <dl className="divide-y divide-border text-sm">
-                {order.collectedAmountBdt !== null && (
+              {order.collectedAmountBdt !== null && (
+                <dl className="divide-y divide-border text-sm">
                   <DetailRow
                     label="Collected"
                     value={formatBdtPrice({
                       amountBdt: order.collectedAmountBdt,
                     })}
                   />
-                )}
-                {order.dispatch && (
-                  <DetailRow
-                    className="capitalize"
-                    label="Delivery operator"
-                    value={order.dispatch.deliveryOperator}
-                  />
-                )}
-                {order.dispatch?.handoffReference && (
-                  <DetailRow
-                    label="Handoff reference"
-                    value={order.dispatch.handoffReference}
-                  />
-                )}
-              </dl>
+                </dl>
+              )}
             </section>
 
             <section
@@ -785,12 +774,4 @@ function DetailRow({
       <dd className="text-right">{value}</dd>
     </div>
   );
-}
-
-function orderStatusVariant(
-  status: Order["status"],
-): "default" | "secondary" | "destructive" {
-  if (status === "cancelled") return "destructive";
-  if (status === "confirmed") return "default";
-  return "secondary";
 }

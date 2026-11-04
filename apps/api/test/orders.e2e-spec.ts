@@ -2004,14 +2004,14 @@ describe("COD Orders and checkout", () => {
       paymentMethod: "cod",
       collectionStatus: "uncollected",
       codAmountDueBdt: original?.codAmountDueBdt,
-      dispatch: {
+      courierHandoff: {
         deliveryOperator: input.deliveryOperator,
         handoffReference: input.handoffReference,
-        dispatchedAt: expect.any(String),
+        pickedUpAt: expect.any(String),
       },
     });
     expect(
-      Date.parse(dispatched.body.dispatch.dispatchedAt),
+      Date.parse(dispatched.body.courierHandoff.pickedUpAt),
     ).toBeLessThanOrEqual(Date.now());
 
     const after = await stockFor(fixture.variantId);
@@ -2043,7 +2043,7 @@ describe("COD Orders and checkout", () => {
       fulfillmentStatus: "dispatched",
       collectionStatus: "uncollected",
       codAmountDueBdt: original?.codAmountDueBdt,
-      dispatch: {
+      courierHandoff: {
         deliveryOperator: input.deliveryOperator,
         handoffReference: input.handoffReference,
       },
@@ -2052,7 +2052,7 @@ describe("COD Orders and checkout", () => {
     await dispatchOrder(fixture.id, secondStaff.cookie, commandId, input)
       .expect(201)
       .expect(({ body }) =>
-        expect(body.dispatch).toEqual(dispatched.body.dispatch),
+        expect(body.courierHandoff).toEqual(dispatched.body.courierHandoff),
       );
     await dispatchOrder(fixture.id, staff.cookie, commandId, {
       ...input,
@@ -2363,7 +2363,7 @@ describe("COD Orders and checkout", () => {
         handoffReference: "PATHAO-HANDOFF-01",
       },
     ).expect(201);
-    expect(dispatched.body.dispatch.deliveryProvider).toBe("pathao");
+    expect(dispatched.body.courierHandoff.deliveryProvider).toBe("pathao");
     expect(await stockFor(fixture.variantId)).toMatchObject({
       quantityOnHand: 1,
       quantityReserved: 0,
@@ -3293,7 +3293,7 @@ describe("COD Orders and checkout", () => {
         deliveryOperator: "AARAJ Dispatch Desk",
       },
     ).expect(201);
-    expect(dispatched.body.dispatch.deliveryProvider).toBe("pathao");
+    expect(dispatched.body.courierHandoff.deliveryProvider).toBe("pathao");
     expect(await stockFor(fixture.variantId)).toMatchObject({
       quantityOnHand: 1,
       quantityReserved: 0,
@@ -3676,7 +3676,7 @@ describe("COD Orders and checkout", () => {
     expect(JSON.parse(stdout.trim())).toMatchObject({
       id: fixture.id,
       fulfillmentStatus: "dispatched",
-      dispatch: committed.body.dispatch,
+      courierHandoff: committed.body.courierHandoff,
     });
     expect(await stockFor(fixture.variantId)).toMatchObject({
       quantityOnHand: 1,

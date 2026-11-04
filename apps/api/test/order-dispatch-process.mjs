@@ -19,7 +19,7 @@ try {
     JSON.stringify({
       id: order.id,
       fulfillmentStatus: order.fulfillmentStatus,
-      dispatch: order.dispatch,
+      courierHandoff: order.courierHandoff,
     }),
   );
 } finally {

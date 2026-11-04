@@ -14,7 +14,7 @@ import { composeManagedOrdersPage } from "@/features/orders/orders-view-model";
 export const metadata: Metadata = {
   title: "Order management",
   description:
-    "Confirm customer COD Orders, put them on hold, and manage dispatch.",
+    "Confirm customer COD Orders, put them on hold, and manage courier handoffs.",
 };
 
 export default async function AdminOrdersPage({
@@ -36,7 +36,7 @@ export default async function AdminOrdersPage({
         <div>
           <AdminPageHeader
             title="Orders"
-            description="Review orders and manage dispatch."
+            description="Review orders and manage courier handoffs."
           />
           <section
             className="mt-6 rounded-2xl border border-border p-7"

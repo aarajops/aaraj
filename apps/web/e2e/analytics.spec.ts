@@ -74,7 +74,7 @@ test("only confirmed COD orders push Purchase to GTM", async ({ page }) => {
     collectionStatus: "uncollected",
     collectedAmountBdt: null,
     fulfillmentStatus: "not_started",
-    dispatch: null,
+    courierHandoff: null,
     lines: [
       {
         variantId: "0d8c92cf-d31c-4ca7-9c99-4aad8e103565",

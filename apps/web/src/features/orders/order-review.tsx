@@ -25,12 +25,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatBdtPrice } from "@/lib/currency";
-import { formatDateTime } from "@/lib/date-time";
 import {
   dispatchCodOrder,
   OrderRequestError,
@@ -38,11 +36,9 @@ import {
   recordOrderFulfillmentOutcome,
   updateOrderStatus,
 } from "./orders-client";
-import { humanize, humanizeOrderStatus } from "./orders-format";
-import {
-  PathaoBookingPanel,
-  type PathaoAssignmentState,
-} from "./pathao-booking-panel";
+import { humanize, humanizeFulfillmentStatus } from "./orders-format";
+import { OrderStatusBadge } from "./order-status-badges";
+import { PathaoBookingPanel } from "./pathao-booking-panel";
 import { OrderStatusMenu } from "./order-status-menu";
 
 type OrderReviewOrder = Order & {
@@ -61,11 +57,6 @@ export function OrderReview({
   const [outcomeReason, setOutcomeReason] = useState("");
   const [collectionReason, setCollectionReason] = useState("");
   const [collectionAmount, setCollectionAmount] = useState("");
-  const [deliveryOperator, setDeliveryOperator] = useState("");
-  const [handoffReference, setHandoffReference] = useState("");
-  const [dispatchAttempted, setDispatchAttempted] = useState(false);
-  const [pathaoAssignment, setPathaoAssignment] =
-    useState<PathaoAssignmentState>("loading");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dispatchCommand = useRef<{ fingerprint: string; id: string } | null>(
@@ -101,7 +92,6 @@ export function OrderReview({
         id: crypto.randomUUID(),
       };
       dispatchCommand.current = command;
-      setDispatchAttempted(true);
     }
 
     setPending(true);
@@ -112,21 +102,11 @@ export function OrderReview({
       setError(
         reasonError instanceof OrderRequestError
           ? reasonError.message
-          : "The dispatch could not be confirmed. Retry with the same details.",
+          : "The courier pickup could not be recorded. Retry with the same details.",
       );
     } finally {
       setPending(false);
     }
-  }
-
-  async function dispatchManual() {
-    const reference = handoffReference.trim();
-    const input = OrderDispatchInputSchema.parse({
-      deliveryProvider: "manual",
-      deliveryOperator,
-      ...(reference ? { handoffReference: reference } : {}),
-    });
-    await saveDispatch(input);
   }
 
   async function recordPathaoPickup(consignmentId: string) {
@@ -225,6 +205,10 @@ export function OrderReview({
     canMarkNoAnswer ||
     canCancelBeforeDispatch ||
     canReopenAsPending;
+  const showFulfillmentStatus = !(
+    order.fulfillmentStatus === "dispatched" &&
+    order.courierHandoff?.deliveryProvider === "pathao"
+  );
 
   return (
     <>
@@ -242,17 +226,7 @@ export function OrderReview({
           <div>
             <h2 className="font-semibold">Order status</h2>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-              <Badge
-                variant={
-                  order.status === "cancelled"
-                    ? "destructive"
-                    : order.status === "confirmed"
-                      ? "default"
-                      : "secondary"
-                }
-              >
-                {humanizeOrderStatus(order.status)}
-              </Badge>
+              <OrderStatusBadge status={order.status} />
               <OrderStatusMenu
                 actions={order.availableStatusActions ?? []}
                 disabled={pending}
@@ -269,8 +243,10 @@ export function OrderReview({
               />
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {humanize(order.fulfillmentStatus)} · COD{" "}
-              {humanize(order.collectionStatus)}
+              {showFulfillmentStatus
+                ? `${humanizeFulfillmentStatus(order.fulfillmentStatus)} · `
+                : ""}
+              COD {humanize(order.collectionStatus)}
               {order.collectedAmountBdt !== null
                 ? ` (${order.collectedAmountBdt} / ${order.codAmountDueBdt} BDT)`
                 : ""}
@@ -389,14 +365,13 @@ export function OrderReview({
         </AlertDialog>
         {order.status === "cancelled" && (
           <p className="mt-6 rounded-xl border border-border p-5 text-sm">
-            Cancelled by authorized staff before dispatch. The stock reservation
-            was released.
+            Cancelled by authorized staff before courier pickup. The stock
+            reservation was released.
           </p>
         )}
         <PathaoBookingPanel
           handoffError={error}
           handoffPending={pending}
-          onAssignmentStateChange={setPathaoAssignment}
           onRecordPickup={recordPathaoPickup}
           order={order}
         />
@@ -415,9 +390,9 @@ export function OrderReview({
               {order.status === "on_hold"
                 ? "The customer asked to pause this order. Confirm they still want it and recheck the delivery details before resuming. The reserved stock remains held."
                 : order.status === "confirmed"
-                  ? "The customer can still request a pause before dispatch. Putting the order on hold keeps the stock reserved."
+                  ? "The customer can still request a pause before courier pickup. Putting the order on hold keeps the stock reserved."
                   : order.status === "no_answer"
-                    ? "The customer did not answer the call. The order remains pending and its stock stays reserved. Try again before dispatch."
+                    ? "The customer did not answer the call. The order remains pending and its stock stays reserved. Try again before courier pickup."
                     : "Call the customer using the number above. Confirm the items and delivery details. Put the order on hold if they ask to wait, or cancel it if they no longer want it."}
             </p>
             {error && (
@@ -425,88 +400,6 @@ export function OrderReview({
                 {error}
               </p>
             )}
-          </section>
-        )}
-        {order.status === "confirmed" &&
-          order.fulfillmentStatus === "awaiting_dispatch" &&
-          pathaoAssignment === "none" && (
-            <details className="mt-6 rounded-2xl border border-border">
-              <summary className="cursor-pointer p-5 font-semibold sm:px-7">
-                Use another courier or self-delivery
-              </summary>
-              <div className="grid gap-4 px-5 pb-5 sm:px-7">
-                <p className="text-sm text-muted-foreground">
-                  Record this only when the parcel is handed to a non-Pathao
-                  courier or your own delivery operator.
-                </p>
-                {error && (
-                  <p className="mt-4 text-sm text-destructive" role="alert">
-                    {error}
-                  </p>
-                )}
-                <label className="mt-4 grid gap-2 text-sm font-medium">
-                  Delivery operator
-                  <Input
-                    autoComplete="organization"
-                    maxLength={120}
-                    minLength={2}
-                    required
-                    value={deliveryOperator}
-                    onChange={(event) =>
-                      setDeliveryOperator(event.target.value)
-                    }
-                  />
-                </label>
-                <label className="mt-4 grid gap-2 text-sm font-medium">
-                  Handoff reference (optional)
-                  <Input
-                    maxLength={160}
-                    value={handoffReference}
-                    onChange={(event) =>
-                      setHandoffReference(event.target.value)
-                    }
-                  />
-                </label>
-                <Button
-                  className="mt-5"
-                  disabled={pending || deliveryOperator.trim().length < 2}
-                  onClick={() => void dispatchManual()}
-                >
-                  {pending
-                    ? "Recording dispatch…"
-                    : dispatchAttempted
-                      ? "Retry dispatch"
-                      : "Record dispatch"}
-                </Button>
-              </div>
-            </details>
-          )}
-        {order.dispatch && (
-          <section
-            aria-label="Dispatch record"
-            className="mt-6 rounded-2xl border border-border p-5 sm:p-7"
-          >
-            <h2 className="text-xl font-semibold">Delivery record</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Inventory was consumed once at handoff. Record a delivery outcome
-              after checking the courier or manual delivery evidence.
-            </p>
-            <dl className="mt-4 grid gap-2 text-sm">
-              <DataRow
-                label="Delivery operator"
-                value={order.dispatch.deliveryOperator}
-              />
-              {order.dispatch.handoffReference && (
-                <DataRow
-                  label="Handoff reference"
-                  value={order.dispatch.handoffReference}
-                />
-              )}
-              <DataRow
-                label="Dispatched at"
-                value={formatDateTime(order.dispatch.dispatchedAt)}
-              />
-            </dl>
           </section>
         )}
         {availableOutcomes.length > 0 && (
@@ -608,14 +501,5 @@ export function OrderReview({
         )}
       </article>
     </>
-  );
-}
-
-function DataRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-wrap justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd>{value}</dd>
-    </div>
   );
 }

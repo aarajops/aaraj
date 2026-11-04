@@ -13,6 +13,7 @@ import {
   sendEcommerceEvent,
   variantEcommerceItem,
 } from "@/features/analytics/gtm-ecommerce";
+import { humanizePathaoStatus } from "./orders-format";
 
 export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<Order | null>(null);
@@ -75,7 +76,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   }, [order]);
 
   useEffect(() => {
-    if (order?.dispatch?.deliveryProvider !== "pathao") return;
+    if (order?.courierHandoff?.deliveryProvider !== "pathao") return;
 
     let active = true;
     void getPathaoCustomerTracking(orderId)
@@ -90,8 +91,8 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
     };
   }, [
     orderId,
-    order?.dispatch?.deliveryProvider,
-    order?.dispatch?.dispatchedAt,
+    order?.courierHandoff?.deliveryProvider,
+    order?.courierHandoff?.pickedUpAt,
   ]);
 
   const presentation = order ? getOrderPresentation(order) : null;
@@ -241,35 +242,6 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
               </address>
             </section>
 
-            {order.dispatch && (
-              <section
-                aria-label="Dispatch details"
-                className="border-t border-border py-6"
-              >
-                <h2 className="text-sm font-semibold">Delivery</h2>
-                <dl className="mt-3 grid gap-2 text-sm">
-                  <DataRow
-                    label="Courier"
-                    value={order.dispatch.deliveryOperator}
-                  />
-                  <DataRow
-                    label="Dispatched"
-                    value={formatDateTime(order.dispatch.dispatchedAt)}
-                  />
-                  {order.dispatch.handoffReference && (
-                    <DataRow
-                      label="Handoff reference"
-                      value={order.dispatch.handoffReference}
-                    />
-                  )}
-                  <DataRow
-                    label="Delivery status"
-                    value={humanizeTracking(order.fulfillmentStatus)}
-                  />
-                </dl>
-              </section>
-            )}
-
             {tracking?.booking && (
               <section
                 aria-label="Courier tracking"
@@ -283,7 +255,9 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                   />
                   <DataRow
                     label="Latest progress"
-                    value={humanizeTracking(tracking.booking.trackingProgress)}
+                    value={humanizePathaoStatus(
+                      tracking.booking.trackingProgress,
+                    )}
                   />
                 </dl>
                 {tracking.observations.length > 0 && (
@@ -293,7 +267,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                         className="py-2 text-muted-foreground"
                         key={`${observation.event}-${observation.receivedAt}`}
                       >
-                        {humanizeTracking(observation.event)} ·{" "}
+                        {humanizePathaoStatus(observation.event)} ·{" "}
                         {formatDateTime(observation.receivedAt)}
                       </li>
                     ))}
@@ -303,7 +277,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
             )}
 
             {trackingUnavailable &&
-              order.dispatch?.deliveryProvider === "pathao" && (
+              order.courierHandoff?.deliveryProvider === "pathao" && (
                 <p
                   className="border-t border-border py-4 text-xs text-muted-foreground"
                   role="status"
@@ -348,7 +322,7 @@ function getOrderPresentation(order: Order) {
       title: "Order cancelled",
       statusLabel: "Cancelled",
       statusClass: "bg-muted text-muted-foreground",
-      message: `This order was cancelled before dispatch${cancelledDate}. No payment is due.`,
+      message: `This order was cancelled before courier pickup${cancelledDate}. No payment is due.`,
     };
   }
 
@@ -369,7 +343,7 @@ function getOrderPresentation(order: Order) {
       statusClass:
         "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
       message:
-        "Your order is paused as requested. We’ll contact you before preparing it for dispatch.",
+        "Your order is paused as requested. We’ll contact you before preparing it for courier pickup.",
     };
   }
 
@@ -411,12 +385,12 @@ function getOrderPresentation(order: Order) {
     };
   }
 
-  if (order.dispatch) {
+  if (order.courierHandoff) {
     return {
-      title: "Order dispatched",
+      title: "With courier",
       statusLabel: "With courier",
       statusClass: "bg-muted text-foreground",
-      message: `Handed to ${order.dispatch.deliveryOperator} on ${formatDateTime(order.dispatch.dispatchedAt)}.`,
+      message: "Your order has been handed to the courier.",
     };
   }
 
@@ -427,16 +401,16 @@ function getOrderPresentation(order: Order) {
       statusClass:
         "bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
       message:
-        "We’ll contact you to verify your order and delivery details before dispatch.",
+        "We’ll contact you to verify your order and delivery details before courier pickup.",
     };
   }
 
   if (order.status === "confirmed") {
     return {
       title: "Order confirmed",
-      statusLabel: "Preparing for dispatch",
+      statusLabel: "Preparing your order",
       statusClass: "bg-muted text-foreground",
-      message: "We’re preparing your order for dispatch.",
+      message: "We’re preparing your order for courier pickup.",
     };
   }
 
@@ -491,12 +465,4 @@ function DataRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right">{value}</dd>
     </div>
   );
-}
-
-function humanizeTracking(value: string): string {
-  return value
-    .replace(/^order\./, "")
-    .split(/[_.-]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }
