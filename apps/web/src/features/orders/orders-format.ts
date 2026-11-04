@@ -28,3 +28,24 @@ export function humanizePathaoStatus(value: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
+
+export function humanizePathaoBookingStatus(
+  trackingProgress: string,
+  providerOrderStatus: string | null,
+): string {
+  const providerStatus = providerOrderStatus
+    ?.toLowerCase()
+    .replace(/^order[._-]?/, "")
+    .replace(/[^a-z0-9]/g, "");
+
+  if (
+    providerStatus &&
+    ["updated", "paid", "paidreturn", "exchange", "exchanged"].includes(
+      providerStatus,
+    )
+  ) {
+    return humanizePathaoStatus(providerOrderStatus);
+  }
+
+  return humanizePathaoStatus(trackingProgress);
+}
