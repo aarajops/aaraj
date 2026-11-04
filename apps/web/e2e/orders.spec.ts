@@ -64,6 +64,24 @@ test("Orders uses shared pagination, order previews, and stable URL history", as
   );
 });
 
+test("Orders displays the latest Pathao shipment progress", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signInAsStaff(context, baseURL);
+  await page.goto("/admin/orders");
+
+  const row = page
+    .getByRole("table", { name: "Orders" })
+    .getByRole("row", { name: /ORD-026-00003/ });
+  await expect(row.getByText("Delivered", { exact: true })).toBeVisible();
+  await expect(row.getByText("Needs review", { exact: true })).toHaveCount(0);
+  await expect(
+    row.getByText("E2E-PATHAO-DELIVERED", { exact: true }),
+  ).toBeVisible();
+});
+
 test("Orders follows API pagination, search, empty, and error states", async ({
   page,
   context,

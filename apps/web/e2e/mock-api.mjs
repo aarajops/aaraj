@@ -615,10 +615,11 @@ const server = createServer(async (request, response) => {
       200,
       parsed.data.orderIds.map((orderId) => ({
         orderId,
-        status: null,
-        trackingProgress: null,
-        consignmentId: null,
-        hasUnresolvedWebhookIssue: false,
+        status: orderId.endsWith("000000000003") ? "booked" : null,
+        trackingProgress: orderId.endsWith("000000000003") ? "delivered" : null,
+        consignmentId: orderId.endsWith("000000000003")
+          ? "E2E-PATHAO-DELIVERED"
+          : null,
       })),
     );
     return;

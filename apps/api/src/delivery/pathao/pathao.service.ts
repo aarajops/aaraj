@@ -435,7 +435,7 @@ export class PathaoService {
 
   async getManagementBookingSummaries(orderIds: readonly string[]) {
     if (orderIds.length === 0) return [];
-    const [bookings, claims, unresolvedWebhookRows] = await Promise.all([
+    const [bookings, claims] = await Promise.all([
       this.database.db
         .select({
           orderId: pathaoBooking.orderId,
@@ -447,19 +447,6 @@ export class PathaoService {
         .where(inArray(pathaoBooking.orderId, [...orderIds]))
         .orderBy(desc(pathaoBooking.createdAt), desc(pathaoBooking.id)),
       this.orders.getPathaoBookingClaimStatuses(orderIds),
-      this.database.db
-        .selectDistinct({ orderId: pathaoBooking.orderId })
-        .from(pathaoWebhookInbox)
-        .innerJoin(
-          pathaoBooking,
-          eq(pathaoWebhookInbox.bookingId, pathaoBooking.id),
-        )
-        .where(
-          and(
-            inArray(pathaoBooking.orderId, [...orderIds]),
-            eq(pathaoWebhookInbox.processingState, "reconciliation_required"),
-          ),
-        ),
     ]);
     const bookingByOrderId = new Map<string, (typeof bookings)[number]>();
     for (const booking of bookings) {
@@ -470,9 +457,6 @@ export class PathaoService {
     const claimStatusByOrderId = new Map(
       claims.map((claim) => [claim.orderId, claim.status]),
     );
-    const ordersWithUnresolvedWebhookIssue = new Set(
-      unresolvedWebhookRows.map(({ orderId }) => orderId),
-    );
     return PathaoManagementBookingSummariesSchema.parse(
       orderIds.map((orderId) => {
         const booking = bookingByOrderId.get(orderId);
@@ -481,8 +465,6 @@ export class PathaoService {
           status: claimStatusByOrderId.get(orderId) ?? booking?.status ?? null,
           trackingProgress: booking?.trackingProgress ?? null,
           consignmentId: booking?.consignmentId ?? null,
-          hasUnresolvedWebhookIssue:
-            ordersWithUnresolvedWebhookIssue.has(orderId),
         };
       }),
     );

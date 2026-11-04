@@ -295,7 +295,6 @@ function CourierStatus({
     );
   }
   if (
-    summary?.hasUnresolvedWebhookIssue ||
     summary?.status === "outcome_unknown" ||
     summary?.status === "reconciliation_required" ||
     summary?.trackingProgress === "reconciliation_required"

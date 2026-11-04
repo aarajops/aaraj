@@ -65,7 +65,6 @@ export const PathaoManagementBookingSummarySchema = z.strictObject({
   status: PathaoBookingStatusSchema.nullable(),
   trackingProgress: PathaoTrackingProgressSchema.nullable(),
   consignmentId: z.string().min(1).max(120).nullable(),
-  hasUnresolvedWebhookIssue: z.boolean(),
 });
 export type PathaoManagementBookingSummary = z.infer<
   typeof PathaoManagementBookingSummarySchema

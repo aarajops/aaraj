@@ -3109,6 +3109,15 @@ describe("COD Orders and checkout", () => {
         }),
       ]),
     );
+    const managementPath = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`;
+    provider.state.infoStatus = "delivered";
+    await request(app.getHttpServer())
+      .post(`${managementPath}/sync-status`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send()
+      .expect(200);
+
     const summaries = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/orders`)
       .set("Cookie", staff.cookie)
@@ -3117,8 +3126,26 @@ describe("COD Orders and checkout", () => {
     expect(summaries.body).toContainEqual(
       expect.objectContaining({
         orderId: fixture.id,
-        hasUnresolvedWebhookIssue: true,
+        status: "booked",
+        trackingProgress: "delivered",
+        consignmentId,
       }),
+    );
+    expect(summaries.body[0]).not.toHaveProperty("hasUnresolvedWebhookIssue");
+
+    const remainingIssues = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/issues`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(remainingIssues.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          orderId: fixture.id,
+          consignmentId,
+          errorCode: "PATHAO_ORDER_IDENTITY_MISMATCH",
+          status: "reconciliation_required",
+        }),
+      ]),
     );
 
     const [issue] = await database.db
