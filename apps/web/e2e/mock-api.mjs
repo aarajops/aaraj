@@ -617,6 +617,9 @@ const server = createServer(async (request, response) => {
         orderId,
         status: orderId.endsWith("000000000003") ? "booked" : null,
         trackingProgress: orderId.endsWith("000000000003") ? "delivered" : null,
+        providerOrderStatus: orderId.endsWith("000000000003")
+          ? "Delivered"
+          : null,
         consignmentId: orderId.endsWith("000000000003")
           ? "E2E-PATHAO-DELIVERED"
           : null,

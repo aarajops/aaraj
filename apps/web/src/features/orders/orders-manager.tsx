@@ -19,7 +19,7 @@ import {
 import { formatBdtPrice } from "@/lib/currency";
 import type { ManagedOrderRow, ManagedOrdersPage } from "./orders-view-model";
 import { OrderDetailsSheet } from "./order-details-sheet";
-import { humanize, humanizePathaoStatus } from "./orders-format";
+import { humanize, humanizePathaoBookingStatus } from "./orders-format";
 import { OrderStatusBadge, ShipmentStatusBadge } from "./order-status-badges";
 
 const columnHelper = createDataTableColumnHelper<ManagedOrderRow>();
@@ -333,7 +333,10 @@ function CourierStatus({
     return (
       <div className="grid gap-1">
         <ShipmentStatusBadge
-          label={humanizePathaoStatus(trackingProgress)}
+          label={humanizePathaoBookingStatus(
+            trackingProgress,
+            summary.providerOrderStatus,
+          )}
           status={trackingProgress}
         />
         {summary.consignmentId && (

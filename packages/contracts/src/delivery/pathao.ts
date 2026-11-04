@@ -64,6 +64,7 @@ export const PathaoManagementBookingSummarySchema = z.strictObject({
   orderId: z.uuid(),
   status: PathaoBookingStatusSchema.nullable(),
   trackingProgress: PathaoTrackingProgressSchema.nullable(),
+  providerOrderStatus: z.string().max(100).nullable(),
   consignmentId: z.string().min(1).max(120).nullable(),
 });
 export type PathaoManagementBookingSummary = z.infer<
