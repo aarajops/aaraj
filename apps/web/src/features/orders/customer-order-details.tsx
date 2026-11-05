@@ -268,7 +268,10 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                         key={`${observation.event}-${observation.receivedAt}`}
                       >
                         {humanizePathaoStatus(observation.event)} ·{" "}
-                        {formatDateTime(observation.receivedAt)}
+                        {formatDateTime(
+                          observation.providerTimestamp ??
+                            observation.receivedAt,
+                        )}
                       </li>
                     ))}
                   </ol>

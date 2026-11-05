@@ -100,7 +100,7 @@ const PATHAO_EVENT_PROGRESS: Readonly<Record<string, Progress | null>> = {
   "order.return-id-created": "returning",
   "order.return-in-transit": "returning",
   "order.returned-to-merchant": "returned",
-  "order.paid-return": null,
+  "order.paid-return": "returned",
   "order.exchanged": null,
   "order.paid": null,
 };
@@ -403,6 +403,17 @@ export class PathaoService {
           );
         }
         return toBooking(current);
+      }
+      if (
+        current.updatedAt.getTime() !== booking.updatedAt.getTime() ||
+        current.status !== booking.status ||
+        current.trackingProgress !== booking.trackingProgress ||
+        current.providerOrderStatus !== booking.providerOrderStatus
+      ) {
+        throw new ConflictException(
+          "The saved Pathao status changed while syncing. Refresh and try again.",
+          { errorCode: "PATHAO_BOOKING_CHANGED" },
+        );
       }
       if (providerProgress === "cancelled") {
         const result = await this.cancelBookingWithinTransaction(
@@ -1010,7 +1021,11 @@ export class PathaoService {
       phone,
     );
     const booking = await this.findBooking(orderId);
-    if (!booking || booking.status !== "booked" || !booking.consignmentId) {
+    if (
+      !booking ||
+      (booking.status !== "booked" && booking.status !== "cancelled") ||
+      !booking.consignmentId
+    ) {
       return PathaoCustomerTrackingLookupSchema.parse({
         trackingProgress: null,
         consignmentId: null,
@@ -1020,7 +1035,9 @@ export class PathaoService {
 
     const observations = await this.database.db
       .select({
+        id: pathaoWebhookInbox.id,
         eventName: pathaoWebhookInbox.eventName,
+        providerTimestamp: pathaoWebhookInbox.providerTimestamp,
         receivedAt: pathaoWebhookInbox.receivedAt,
       })
       .from(pathaoWebhookInbox)
@@ -1031,7 +1048,7 @@ export class PathaoService {
         ),
       )
       .orderBy(desc(pathaoWebhookInbox.receivedAt), desc(pathaoWebhookInbox.id))
-      .limit(99);
+      .limit(98);
 
     const timeline: PathaoCustomerTrackingLookup["timeline"] = [
       {
@@ -1039,12 +1056,19 @@ export class PathaoService {
         updatedAt: booking.createdAt.toISOString(),
       },
     ];
-    for (const observation of observations.reverse()) {
+    const orderedObservations = [...observations].sort((a, b) => {
+      const aTime = (a.providerTimestamp ?? a.receivedAt).getTime();
+      const bTime = (b.providerTimestamp ?? b.receivedAt).getTime();
+      return aTime - bTime || a.id.localeCompare(b.id);
+    });
+    for (const observation of orderedObservations) {
       const progress = progressFromEvent(observation.eventName);
       if (!progress) continue;
       const event = {
         trackingProgress: progress,
-        updatedAt: observation.receivedAt.toISOString(),
+        updatedAt: (
+          observation.providerTimestamp ?? observation.receivedAt
+        ).toISOString(),
       };
       if (timeline.at(-1)?.trackingProgress === progress) {
         timeline[timeline.length - 1] = event;
@@ -1053,8 +1077,22 @@ export class PathaoService {
       }
     }
 
+    const currentProgress: Progress =
+      booking.status === "cancelled"
+        ? "cancelled"
+        : (booking.trackingProgress as Progress);
+    if (
+      currentProgress !== "reconciliation_required" &&
+      timeline.at(-1)?.trackingProgress !== currentProgress
+    ) {
+      timeline.push({
+        trackingProgress: currentProgress,
+        updatedAt: booking.updatedAt.toISOString(),
+      });
+    }
+
     return PathaoCustomerTrackingLookupSchema.parse({
-      trackingProgress: booking.trackingProgress,
+      trackingProgress: currentProgress,
       consignmentId: booking.consignmentId,
       timeline,
     });
@@ -1064,7 +1102,11 @@ export class PathaoService {
     orderId: string,
   ): Promise<PathaoCustomerTracking> {
     const booking = await this.findBooking(orderId);
-    if (!booking || booking.status !== "booked" || !booking.consignmentId) {
+    if (
+      !booking ||
+      (booking.status !== "booked" && booking.status !== "cancelled") ||
+      !booking.consignmentId
+    ) {
       return PathaoCustomerTrackingSchema.parse({
         booking: null,
         observations: [],
@@ -1081,13 +1123,21 @@ export class PathaoService {
       )
       .orderBy(desc(pathaoWebhookInbox.receivedAt), desc(pathaoWebhookInbox.id))
       .limit(100);
+    const orderedObservations = [...observations].sort((a, b) => {
+      const aTime = (a.providerTimestamp ?? a.receivedAt).getTime();
+      const bTime = (b.providerTimestamp ?? b.receivedAt).getTime();
+      return aTime - bTime || a.id.localeCompare(b.id);
+    });
     return PathaoCustomerTrackingSchema.parse({
       booking: {
         consignmentId: booking.consignmentId,
-        trackingProgress: booking.trackingProgress,
+        trackingProgress:
+          booking.status === "cancelled"
+            ? "cancelled"
+            : booking.trackingProgress,
         createdAt: booking.createdAt.toISOString(),
       },
-      observations: observations.map((observation) => ({
+      observations: orderedObservations.map((observation) => ({
         event: observation.eventName,
         providerTimestamp: observation.providerTimestamp?.toISOString() ?? null,
         receivedAt: observation.receivedAt.toISOString(),
@@ -1204,9 +1254,9 @@ export class PathaoService {
       return { handshake: false, duplicate: false };
     }
     const config = requiredPathaoConfiguration();
-    const providerTimestamp = parseProviderTimestamp(
-      event.timestamp ?? event.updated_at,
-    );
+    const providerTimestamp =
+      parseProviderTimestamp(event.timestamp) ??
+      parseProviderTimestamp(event.updated_at);
     const normalizedPayload = {
       event: event.event,
       ...(event.consignment_id ? { consignmentId: event.consignment_id } : {}),
@@ -1311,7 +1361,11 @@ export class PathaoService {
         try {
           await this.verifyWebhookObservation(config, event, leaseOwner);
         } catch (error) {
-          await this.retryWebhook(event, leaseOwner, error);
+          const code =
+            error instanceof PathaoRequestError
+              ? error.code
+              : "PATHAO_VERIFICATION_UNAVAILABLE";
+          await this.retryWebhook(event, leaseOwner, code);
         }
       }),
     );
@@ -1429,123 +1483,137 @@ export class PathaoService {
       return;
     }
 
-    await this.database.db.transaction(async (transaction) => {
-      const [lockedEvent] = await transaction
-        .select()
-        .from(pathaoWebhookInbox)
-        .where(eq(pathaoWebhookInbox.id, event.id))
-        .for("update")
-        .limit(1);
-      if (
-        !lockedEvent ||
-        lockedEvent.processingState !== "processing" ||
-        lockedEvent.processingLeaseOwner !== leaseOwner
-      ) {
-        return;
-      }
-      const [lockedBooking] = await transaction
-        .select()
-        .from(pathaoBooking)
-        .where(eq(pathaoBooking.id, booking.id))
-        .for("update")
-        .limit(1);
-      if (!lockedBooking) return;
-      if (
-        lockedBooking.status === "cancelled" &&
-        providerProgress !== "cancelled"
-      ) {
-        await transaction
-          .update(pathaoWebhookInbox)
-          .set({
-            processingState: "reconciliation_required",
-            providerOrderStatus: info.orderStatus,
-            lastErrorCode: "PATHAO_STATUS_CHANGED_AFTER_CANCELLATION",
-            processedAt: sql`clock_timestamp()`,
-            processingLeaseExpiresAt: null,
-            processingLeaseOwner: null,
-          })
-          .where(eq(pathaoWebhookInbox.id, event.id));
-        return;
-      }
-      if (
-        providerProgress === "cancelled" &&
-        lockedBooking.status !== "cancelled"
-      ) {
-        const result = await this.cancelBookingWithinTransaction(
-          transaction,
-          lockedBooking,
-          info.orderStatus,
-          "webhook",
-        );
-        if (result.blockedReason) {
+    const committed = await this.database.db.transaction(
+      async (transaction) => {
+        const [lockedEvent] = await transaction
+          .select()
+          .from(pathaoWebhookInbox)
+          .where(eq(pathaoWebhookInbox.id, event.id))
+          .for("update")
+          .limit(1);
+        if (
+          !lockedEvent ||
+          lockedEvent.processingState !== "processing" ||
+          lockedEvent.processingLeaseOwner !== leaseOwner
+        ) {
+          return false;
+        }
+        const [lockedBooking] = await transaction
+          .select()
+          .from(pathaoBooking)
+          .where(eq(pathaoBooking.id, booking.id))
+          .for("update")
+          .limit(1);
+        if (!lockedBooking) return false;
+        if (
+          lockedBooking.updatedAt.getTime() !== booking.updatedAt.getTime() ||
+          lockedBooking.status !== booking.status ||
+          lockedBooking.trackingProgress !== booking.trackingProgress ||
+          lockedBooking.providerOrderStatus !== booking.providerOrderStatus
+        ) {
+          return false;
+        }
+        if (
+          lockedBooking.status === "cancelled" &&
+          providerProgress !== "cancelled"
+        ) {
           await transaction
             .update(pathaoWebhookInbox)
             .set({
               processingState: "reconciliation_required",
               providerOrderStatus: info.orderStatus,
-              lastErrorCode:
-                result.blockedReason === "after_pickup"
-                  ? "PATHAO_CANCELLATION_AFTER_PICKUP_BLOCKED"
-                  : "PATHAO_CANCELLATION_AFTER_DISPATCH_BLOCKED",
+              lastErrorCode: "PATHAO_STATUS_CHANGED_AFTER_CANCELLATION",
               processedAt: sql`clock_timestamp()`,
               processingLeaseExpiresAt: null,
               processingLeaseOwner: null,
             })
             .where(eq(pathaoWebhookInbox.id, event.id));
-          return;
+          return true;
         }
-      }
-      if (
-        providerProgress !== "cancelled" ||
-        lockedBooking.status === "cancelled"
-      ) {
+        if (
+          providerProgress === "cancelled" &&
+          lockedBooking.status !== "cancelled"
+        ) {
+          const result = await this.cancelBookingWithinTransaction(
+            transaction,
+            lockedBooking,
+            info.orderStatus,
+            "webhook",
+          );
+          if (result.blockedReason) {
+            await transaction
+              .update(pathaoWebhookInbox)
+              .set({
+                processingState: "reconciliation_required",
+                providerOrderStatus: info.orderStatus,
+                lastErrorCode:
+                  result.blockedReason === "after_pickup"
+                    ? "PATHAO_CANCELLATION_AFTER_PICKUP_BLOCKED"
+                    : "PATHAO_CANCELLATION_AFTER_DISPATCH_BLOCKED",
+                processedAt: sql`clock_timestamp()`,
+                processingLeaseExpiresAt: null,
+                processingLeaseOwner: null,
+              })
+              .where(eq(pathaoWebhookInbox.id, event.id));
+            return true;
+          }
+        }
+        if (
+          providerProgress !== "cancelled" ||
+          lockedBooking.status === "cancelled"
+        ) {
+          await transaction
+            .update(pathaoBooking)
+            .set({
+              status:
+                lockedBooking.status === "cancelled" ? "cancelled" : "booked",
+              trackingProgress:
+                lockedBooking.status === "cancelled"
+                  ? "cancelled"
+                  : (providerProgress ??
+                    (lockedBooking.trackingProgress as Progress)),
+              providerOrderStatus: info.orderStatus,
+              updatedAt: sql`clock_timestamp()`,
+            })
+            .where(eq(pathaoBooking.id, booking.id));
+        }
         await transaction
-          .update(pathaoBooking)
+          .update(pathaoWebhookInbox)
           .set({
-            status:
-              lockedBooking.status === "cancelled" ? "cancelled" : "booked",
-            trackingProgress:
-              lockedBooking.status === "cancelled"
-                ? "cancelled"
-                : (providerProgress ??
-                  (lockedBooking.trackingProgress as Progress)),
+            processingState: "verified",
             providerOrderStatus: info.orderStatus,
-            updatedAt: sql`clock_timestamp()`,
+            providerCollectedAmountBdt:
+              typeof payload.collectedAmount === "number"
+                ? payload.collectedAmount
+                : null,
+            lastErrorCode: null,
+            processedAt: sql`clock_timestamp()`,
+            processingLeaseExpiresAt: null,
+            processingLeaseOwner: null,
           })
-          .where(eq(pathaoBooking.id, booking.id));
-      }
-      await transaction
-        .update(pathaoWebhookInbox)
-        .set({
-          processingState: "verified",
-          providerOrderStatus: info.orderStatus,
-          providerCollectedAmountBdt:
-            typeof payload.collectedAmount === "number"
-              ? payload.collectedAmount
-              : null,
-          lastErrorCode: null,
-          processedAt: sql`clock_timestamp()`,
-          processingLeaseExpiresAt: null,
-          processingLeaseOwner: null,
-        })
-        .where(
-          and(
-            eq(pathaoWebhookInbox.id, event.id),
-            eq(pathaoWebhookInbox.processingLeaseOwner, leaseOwner),
-          ),
-        );
-    });
+          .where(
+            and(
+              eq(pathaoWebhookInbox.id, event.id),
+              eq(pathaoWebhookInbox.processingLeaseOwner, leaseOwner),
+            ),
+          );
+        return true;
+      },
+    );
+    if (!committed) {
+      await this.retryWebhook(
+        event,
+        leaseOwner,
+        "PATHAO_BOOKING_CHANGED_DURING_VERIFICATION",
+      );
+    }
   }
 
   private async retryWebhook(
     event: InboxRow,
     leaseOwner: string,
-    error: unknown,
+    code: string,
   ): Promise<void> {
-    const code =
-      error instanceof PathaoRequestError
-        ? error.code
-        : "PATHAO_VERIFICATION_UNAVAILABLE";
     await this.database.db
       .update(pathaoWebhookInbox)
       .set({

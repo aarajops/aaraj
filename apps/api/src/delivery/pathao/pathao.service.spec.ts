@@ -63,10 +63,10 @@ describe("Pathao tracking status mapping", () => {
     expect(progressFromEvent("order.delivery-failed")).toBe("delivery_failed");
   });
 
-  it("recognizes documented non-progress statuses without inventing milestones", () => {
+  it("maps the documented Paid Return status to the returned shipment state", () => {
     expect(pathaoEventFromStatus("Paid Return")).toBe("order.paid-return");
     expect(pathaoEventFromStatus("Paid")).toBe("order.paid");
-    expect(progressFromStatus("Paid Return")).toBeNull();
+    expect(progressFromStatus("Paid Return")).toBe("returned");
     expect(pathaoEventFromStatus("Unexpected status")).toBeNull();
   });
 });

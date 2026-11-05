@@ -1,7 +1,7 @@
 # Pathao fulfillment readiness
 
 **Reviewed:** 2026-11-05
-**Status:** The production release for commit `7737643` completed and provisioned the five Pathao runtime secrets from GitHub Environment `aaraj-production`. This confirms deployment configuration, not Pathao connectivity: no successful production API response or real webhook delivery has been verified.
+**Status:** The production release for commit `5b785a2` completed on 2026-11-05 ([GitHub Actions run](https://github.com/aarajops/aaraj/actions/runs/41963860085)) and provisioned the five Pathao runtime secrets from GitHub Environment `aaraj-production`. This confirms deployment configuration, not Pathao connectivity: no successful production API response or real webhook delivery has been verified.
 
 ## Fulfillment flow
 
@@ -17,7 +17,7 @@ The production API endpoint is fixed to `https://api-hermes.pathao.com`. The fiv
 
 ## Remaining limits
 
-- No successful live Pathao authentication, store listing, order creation, or real webhook has been verified. A prior non-production token request returned HTTP `522`. The 2026-11-05 deployment provisioned runtime configuration but did not call Pathao.
+- No successful live Pathao authentication, store listing, order creation, or real webhook has been verified. A prior non-production token request returned HTTP `522`. The 2026-11-05 production deployment provisioned runtime configuration but did not call Pathao.
 - A production client secret appeared in conversation material. Treat it as compromised until rotated in Pathao and replaced in GitHub Environment; do not qualify live use with the exposed value.
 - The supplied Pathao token contract uses the password grant. [RFC 9700 §2.4](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.4) says clients must not use that grant. Pathao's account owner must confirm whether a safer supported grant exists; otherwise the appropriate security owner must accept this provider-required exception before live use.
 - Pathao's supplied capture does not document Create Order idempotency. AARAJ therefore preserves an uncertain booking outcome and requires reconciliation before any repeat booking.
@@ -26,4 +26,4 @@ The production API endpoint is fixed to `https://api-hermes.pathao.com`. The fiv
 
 ## Local verification
 
-On 2026-11-05, CI and the production deployment for commit `7737643` completed successfully. CI uses deterministic Pathao mocks; the release itself did not call Pathao. The environment secret values remain hidden by GitHub.
+On 2026-11-05, CI and the production deployment for commit `5b785a2` completed successfully. CI uses deterministic Pathao mocks; the release itself did not call Pathao. The environment secret values remain hidden by GitHub.
