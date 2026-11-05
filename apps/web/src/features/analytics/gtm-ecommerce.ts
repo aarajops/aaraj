@@ -30,6 +30,27 @@ export type EcommercePayload = {
   items: EcommerceItem[];
 };
 
+type MetaPixel = (
+  command: "track",
+  eventName: "Purchase",
+  parameters: {
+    value: number;
+    currency: typeof CURRENCY;
+    content_ids: string[];
+    content_type: "product";
+    contents: Array<{ id?: string; quantity: number; item_price?: number }>;
+    order_id?: string;
+    shipping?: number;
+  },
+  options: { eventID: string },
+) => void;
+
+declare global {
+  interface Window {
+    fbq?: MetaPixel;
+  }
+}
+
 export function cartItem(
   line: {
     variantId: string;
@@ -87,6 +108,29 @@ export function sendEcommerceEvent(
   if (typeof window === "undefined") return;
 
   const stableEventId = eventId ?? window.crypto.randomUUID();
+  if (event === "purchase") {
+    window.fbq?.(
+      "track",
+      "Purchase",
+      {
+        value: ecommerce.value ?? 0,
+        currency: ecommerce.currency,
+        content_ids: ecommerce.items.flatMap((item) =>
+          item.item_id ? [item.item_id] : [],
+        ),
+        content_type: "product",
+        contents: ecommerce.items.map((item) => ({
+          id: item.item_id,
+          quantity: item.quantity,
+          item_price: item.price,
+        })),
+        order_id: ecommerce.transaction_id,
+        shipping: ecommerce.shipping,
+      },
+      { eventID: stableEventId },
+    );
+  }
+
   sendGTMEvent({ ecommerce: null });
   sendGTMEvent({
     event,

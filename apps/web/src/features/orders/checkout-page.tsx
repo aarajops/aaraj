@@ -11,6 +11,7 @@ import {
   type Cart,
   CheckoutAddressInputSchema,
   type CreateOrderInput,
+  type Order,
   type OrderCreated,
 } from "@aaraj/contracts";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,6 +37,7 @@ import {
 } from "@/features/analytics/gtm-ecommerce";
 import {
   createCodOrder,
+  fetchOrder,
   OrderRequestError,
   resumeCodOrder,
 } from "./orders-client";
@@ -117,6 +119,13 @@ function SinglePageCheckout({
       void resumeCodOrder(key)
         .then(async (order) => {
           if (!active) return;
+          const details = await fetchOrder(order.id);
+          if (!active) return;
+          try {
+            trackCreatedOrderPurchase(order, details);
+          } catch {
+            // Analytics must not block order recovery.
+          }
           await refreshCart();
           if (active) router.replace(`/orders/${order.id}`);
         })
@@ -174,7 +183,11 @@ function SinglePageCheckout({
     };
     try {
       const order = await createCodOrder(input, key);
-      trackCreatedOrderPurchase(order, quote);
+      try {
+        trackCreatedOrderPurchase(order, quote);
+      } catch {
+        // Analytics must not block successful checkout.
+      }
       await refreshCart();
       router.push(`/orders/${order.id}`);
     } catch (reason) {
@@ -196,7 +209,11 @@ function SinglePageCheckout({
       ) {
         try {
           const existing = await resumeCodOrder(key);
-          trackCreatedOrderPurchase(existing, quote);
+          try {
+            trackCreatedOrderPurchase(existing, quote);
+          } catch {
+            // Analytics must not block order recovery.
+          }
           await refreshCart();
           router.push(`/orders/${existing.id}`);
           return;
@@ -604,17 +621,22 @@ function CheckoutOrderSummary({
 }
 
 function trackCreatedOrderPurchase(
-  createdOrder: Pick<OrderCreated, "id" | "reference">,
-  quote: AuthoritativeQuote,
+  order: Pick<OrderCreated, "id" | "reference">,
+  details:
+    | Pick<
+        AuthoritativeQuote,
+        "currency" | "merchandiseGrossBdt" | "delivery" | "lines"
+      >
+    | Pick<Order, "currency" | "merchandiseGrossBdt" | "delivery" | "lines">,
 ) {
   sendEcommerceEvent(
     "purchase",
     {
-      transaction_id: createdOrder.reference,
-      currency: quote.currency,
-      value: quote.merchandiseGrossBdt,
-      shipping: quote.delivery.grossAmountBdt,
-      items: quote.lines.map((line) =>
+      transaction_id: order.reference,
+      currency: details.currency,
+      value: details.merchandiseGrossBdt,
+      shipping: details.delivery.grossAmountBdt,
+      items: details.lines.map((line) =>
         variantEcommerceItem({
           variantId: line.variantId,
           itemName: line.productName,
@@ -625,7 +647,7 @@ function trackCreatedOrderPurchase(
         }),
       ),
     },
-    createdOrder.id,
+    order.id,
   );
 }
 

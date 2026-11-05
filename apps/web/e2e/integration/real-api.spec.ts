@@ -913,7 +913,14 @@ test("catalog operator configures a product through to storefront visibility", a
 }) => {
   test.setTimeout(180_000);
   await page.addInitScript(() => {
-    (window as Window & { dataLayer?: unknown[] }).dataLayer = [];
+    const testWindow = window as Window & {
+      dataLayer?: unknown[];
+      fbq?: (...args: unknown[]) => void;
+      pixelEvents?: unknown[][];
+    };
+    testWindow.dataLayer = [];
+    testWindow.pixelEvents = [];
+    testWindow.fbq = (...args) => testWindow.pixelEvents?.push(args);
   });
 
   const suffix = randomUUID().slice(0, 8);
@@ -1586,6 +1593,17 @@ test("catalog operator configures a product through to storefront visibility", a
         : 0;
     }),
   ).toBe(0);
+  expect(
+    await page.evaluate(() => {
+      const pixelEvents = (window as Window & { pixelEvents?: unknown[][] })
+        .pixelEvents;
+      return (
+        pixelEvents?.filter(
+          (event) => event[0] === "track" && event[1] === "Purchase",
+        ).length ?? 0
+      );
+    }),
+  ).toBe(0);
   await page.unroute("**/api/v1/orders");
 
   await page.reload();
@@ -1653,6 +1671,24 @@ test("catalog operator configures a product through to storefront visibility", a
       items: [{ item_id: expect.any(String), quantity: 1 }],
     },
   });
+  const pixelPurchase = await page.evaluate(() => {
+    const pixelEvents = (window as Window & { pixelEvents?: unknown[][] })
+      .pixelEvents;
+    return pixelEvents?.find(
+      (event) => event[0] === "track" && event[1] === "Purchase",
+    );
+  });
+  expect(pixelPurchase).toMatchObject([
+    "track",
+    "Purchase",
+    {
+      currency: "BDT",
+      content_type: "product",
+      contents: [{ id: expect.any(String), quantity: 1 }],
+      order_id: expect.any(String),
+    },
+    { eventID: customerOrderId },
+  ]);
   const storageAfterCheckout = await page.evaluate(() =>
     JSON.stringify({
       local: Object.fromEntries(
