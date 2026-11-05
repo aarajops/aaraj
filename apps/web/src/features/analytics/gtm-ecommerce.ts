@@ -1,5 +1,5 @@
 import { sendGTMEvent } from "@next/third-parties/google";
-import type { CURRENCY } from "@aaraj/contracts";
+import type { CURRENCY, Order } from "@aaraj/contracts";
 
 export type EcommerceEvent =
   "view_item" | "add_to_cart" | "begin_checkout" | "purchase";
@@ -29,6 +29,11 @@ export type EcommercePayload = {
   transaction_id?: string;
   items: EcommerceItem[];
 };
+
+const pendingPurchaseKey = (orderId: string) =>
+  `aaraj.analytics.purchase.pending:${orderId}`;
+const sentPurchaseKey = (orderId: string) =>
+  `aaraj.analytics.purchase:${orderId}`;
 
 export function cartItem(
   line: {
@@ -77,6 +82,52 @@ export function cartValue(
     (total, line) => total + line.product.unitPriceBdt * line.quantity,
     0,
   );
+}
+
+export function markPurchasePending(orderId: string) {
+  try {
+    if (window.sessionStorage.getItem(sentPurchaseKey(orderId)) === "1") return;
+    window.sessionStorage.setItem(pendingPurchaseKey(orderId), "1");
+  } catch {
+    // Analytics must not block checkout completion.
+  }
+}
+
+export function sendPendingOrderPurchase(order: Order) {
+  const pendingKey = pendingPurchaseKey(order.id);
+  const sentKey = sentPurchaseKey(order.id);
+  try {
+    if (window.sessionStorage.getItem(pendingKey) !== "1") return;
+    if (window.sessionStorage.getItem(sentKey) === "1") {
+      window.sessionStorage.removeItem(pendingKey);
+      return;
+    }
+
+    sendEcommerceEvent(
+      "purchase",
+      {
+        transaction_id: order.reference,
+        currency: order.currency,
+        value: order.merchandiseGrossBdt,
+        shipping: order.delivery.grossAmountBdt,
+        items: order.lines.map((line) =>
+          variantEcommerceItem({
+            variantId: line.variantId,
+            itemName: line.productName,
+            color: line.color,
+            sizeLabel: line.sizeLabel,
+            price: line.unitPriceBdt,
+            quantity: line.quantity,
+          }),
+        ),
+      },
+      order.id,
+    );
+    window.sessionStorage.setItem(sentKey, "1");
+    window.sessionStorage.removeItem(pendingKey);
+  } catch {
+    // Analytics must not block order confirmation.
+  }
 }
 
 export function sendEcommerceEvent(
