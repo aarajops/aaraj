@@ -697,7 +697,7 @@ export function CatalogManager({
                   )}
                   {variantFields.length > 0 && (
                     <div className="rounded-md border">
-                      <Table className="min-w-max">
+                      <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead scope="col">SKU</TableHead>
@@ -721,7 +721,7 @@ export function CatalogManager({
                               aria-label={`Variant ${index + 1}`}
                               key={variant.id}
                             >
-                              <TableCell className="min-w-40 align-top">
+                              <TableCell className="align-top">
                                 <label
                                   className="sr-only"
                                   htmlFor={`variant-${index}-sku`}
@@ -750,7 +750,7 @@ export function CatalogManager({
                                   </FieldError>
                                 )}
                               </TableCell>
-                              <TableCell className="min-w-36 align-top">
+                              <TableCell className="align-top">
                                 <label
                                   className="sr-only"
                                   htmlFor={`variant-${index}-color`}
@@ -781,7 +781,7 @@ export function CatalogManager({
                                   </FieldError>
                                 )}
                               </TableCell>
-                              <TableCell className="min-w-28 align-top">
+                              <TableCell className="align-top">
                                 <label
                                   className="sr-only"
                                   htmlFor={`variant-${index}-size`}
@@ -812,7 +812,7 @@ export function CatalogManager({
                                   </FieldError>
                                 )}
                               </TableCell>
-                              <TableCell className="min-w-36 align-top">
+                              <TableCell className="align-top">
                                 <label
                                   className="sr-only"
                                   htmlFor={`variant-${index}-price`}
@@ -844,7 +844,7 @@ export function CatalogManager({
                                   </FieldError>
                                 )}
                               </TableCell>
-                              <TableCell className="min-w-36 align-top">
+                              <TableCell className="align-top">
                                 <label
                                   className="sr-only"
                                   htmlFor={`variant-${index}-compare-at-price`}
@@ -880,7 +880,7 @@ export function CatalogManager({
                                   </FieldError>
                                 )}
                               </TableCell>
-                              <TableCell className="min-w-36 align-top">
+                              <TableCell className="align-top">
                                 <label
                                   className="sr-only"
                                   htmlFor={`variant-${index}-gtin`}
