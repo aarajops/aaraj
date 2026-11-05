@@ -30,10 +30,7 @@ export type EcommercePayload = {
   items: EcommerceItem[];
 };
 
-const pendingPurchaseKey = (orderId: string) =>
-  `aaraj.analytics.purchase.pending:${orderId}`;
-const sentPurchaseKey = (orderId: string) =>
-  `aaraj.analytics.purchase:${orderId}`;
+const purchaseKey = (orderId: string) => `aaraj.analytics.purchase:${orderId}`;
 
 export function cartItem(
   line: {
@@ -86,22 +83,17 @@ export function cartValue(
 
 export function markPurchasePending(orderId: string) {
   try {
-    if (window.sessionStorage.getItem(sentPurchaseKey(orderId)) === "1") return;
-    window.sessionStorage.setItem(pendingPurchaseKey(orderId), "1");
+    window.sessionStorage.setItem(purchaseKey(orderId), "1");
   } catch {
     // Analytics must not block checkout completion.
   }
 }
 
-export function sendPendingOrderPurchase(order: Order) {
-  const pendingKey = pendingPurchaseKey(order.id);
-  const sentKey = sentPurchaseKey(order.id);
+export function sendCheckoutPurchase(order: Order) {
+  const key = purchaseKey(order.id);
   try {
-    if (window.sessionStorage.getItem(pendingKey) !== "1") return;
-    if (window.sessionStorage.getItem(sentKey) === "1") {
-      window.sessionStorage.removeItem(pendingKey);
-      return;
-    }
+    if (window.sessionStorage.getItem(key) !== "1") return;
+    window.sessionStorage.removeItem(key);
 
     sendEcommerceEvent(
       "purchase",
@@ -123,8 +115,6 @@ export function sendPendingOrderPurchase(order: Order) {
       },
       order.id,
     );
-    window.sessionStorage.setItem(sentKey, "1");
-    window.sessionStorage.removeItem(pendingKey);
   } catch {
     // Analytics must not block order confirmation.
   }
