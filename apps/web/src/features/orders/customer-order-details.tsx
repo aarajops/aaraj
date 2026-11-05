@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Order } from "@aaraj/contracts";
 import { formatBdtPrice } from "@/lib/currency";
@@ -9,10 +9,6 @@ import { fetchOrder, OrderRequestError } from "./orders-client";
 import { getPathaoCustomerTracking } from "./pathao-client";
 import type { PathaoCustomerTracking } from "@aaraj/contracts";
 import { CustomerOrderDetailsSkeleton } from "./order-page-skeleton";
-import {
-  sendEcommerceEvent,
-  variantEcommerceItem,
-} from "@/features/analytics/gtm-ecommerce";
 import { humanizePathaoStatus } from "./orders-format";
 
 export function CustomerOrderDetails({ orderId }: { orderId: string }) {
@@ -20,7 +16,6 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [tracking, setTracking] = useState<PathaoCustomerTracking | null>(null);
   const [trackingUnavailable, setTrackingUnavailable] = useState(false);
-  const purchaseTracked = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -43,37 +38,6 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
       active = false;
     };
   }, [orderId]);
-
-  useEffect(() => {
-    if (
-      !order ||
-      !isConfirmedOrder(order) ||
-      purchaseTracked.current === order.id
-    ) {
-      return;
-    }
-    purchaseTracked.current = order.id;
-    sendEcommerceEvent(
-      "purchase",
-      {
-        transaction_id: order.reference,
-        currency: order.currency,
-        value: order.merchandiseGrossBdt,
-        shipping: order.delivery.grossAmountBdt,
-        items: order.lines.map((line) =>
-          variantEcommerceItem({
-            variantId: line.variantId,
-            itemName: line.productName,
-            color: line.color,
-            sizeLabel: line.sizeLabel,
-            price: line.unitPriceBdt,
-            quantity: line.quantity,
-          }),
-        ),
-      },
-      order.id,
-    );
-  }, [order]);
 
   useEffect(() => {
     if (order?.courierHandoff?.deliveryProvider !== "pathao") return;
@@ -318,10 +282,6 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
       </article>
     </main>
   );
-}
-
-function isConfirmedOrder(order: Order) {
-  return order.status === "confirmed";
 }
 
 function getOrderPresentation(order: Order) {

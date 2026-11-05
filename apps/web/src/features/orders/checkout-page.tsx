@@ -11,6 +11,8 @@ import {
   type Cart,
   CheckoutAddressInputSchema,
   type CreateOrderInput,
+  type Order,
+  type OrderCreated,
 } from "@aaraj/contracts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -31,9 +33,11 @@ import {
   cartItem,
   cartValue,
   sendEcommerceEvent,
+  variantEcommerceItem,
 } from "@/features/analytics/gtm-ecommerce";
 import {
   createCodOrder,
+  fetchOrder,
   OrderRequestError,
   resumeCodOrder,
 } from "./orders-client";
@@ -115,6 +119,7 @@ function SinglePageCheckout({
       void resumeCodOrder(key)
         .then(async (order) => {
           if (!active) return;
+          trackCreatedOrderPurchase(order, null);
           await refreshCart();
           if (active) router.replace(`/orders/${order.id}`);
         })
@@ -172,6 +177,7 @@ function SinglePageCheckout({
     };
     try {
       const order = await createCodOrder(input, key);
+      trackCreatedOrderPurchase(order, quote);
       await refreshCart();
       router.push(`/orders/${order.id}`);
     } catch (reason) {
@@ -193,6 +199,7 @@ function SinglePageCheckout({
       ) {
         try {
           const existing = await resumeCodOrder(key);
+          trackCreatedOrderPurchase(existing, quote);
           await refreshCart();
           router.push(`/orders/${existing.id}`);
           return;
@@ -597,6 +604,65 @@ function CheckoutOrderSummary({
       </Button>
     </aside>
   );
+}
+
+function trackCreatedOrderPurchase(
+  createdOrder: Pick<OrderCreated, "id" | "reference">,
+  details: PurchaseDetails | null,
+) {
+  if (details) {
+    sendPurchaseOnce(createdOrder, details);
+    return;
+  }
+
+  void fetchOrder(createdOrder.id)
+    .then((order) => sendPurchaseOnce(createdOrder, order))
+    .catch(() => {
+      // Order navigation should not depend on an analytics detail refresh.
+    });
+}
+
+type PurchaseDetails = Pick<
+  Order,
+  "currency" | "merchandiseGrossBdt" | "delivery" | "lines"
+>;
+
+function sendPurchaseOnce(
+  order: Pick<OrderCreated, "id" | "reference">,
+  details: PurchaseDetails,
+) {
+  const storageKey = `aaraj.analytics.purchase:${order.id}`;
+  try {
+    if (window.sessionStorage.getItem(storageKey) === "1") return;
+  } catch {
+    // Keep analytics best-effort if browser storage is unavailable.
+  }
+
+  try {
+    sendEcommerceEvent(
+      "purchase",
+      {
+        transaction_id: order.reference,
+        currency: details.currency,
+        value: details.merchandiseGrossBdt,
+        shipping: details.delivery.grossAmountBdt,
+        items: details.lines.map((line) =>
+          variantEcommerceItem({
+            variantId: line.variantId,
+            itemName: line.productName,
+            color: line.color,
+            sizeLabel: line.sizeLabel,
+            price: line.unitPriceBdt,
+            quantity: line.quantity,
+          }),
+        ),
+      },
+      order.id,
+    );
+    window.sessionStorage.setItem(storageKey, "1");
+  } catch {
+    // Analytics must not block checkout completion or order navigation.
+  }
 }
 
 function getOrCreateIdempotencyKey(

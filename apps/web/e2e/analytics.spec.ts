@@ -63,7 +63,9 @@ test("product views push the Meta mapping and event ID to GTM", async ({
   });
 });
 
-test("only confirmed COD orders push Purchase to GTM", async ({ page }) => {
+test("customer order details do not emit Purchase", async ({
+  page,
+}) => {
   const orderId = "b7e38a23-2ef7-49f0-a30f-8c25877e631e";
   let order: Order = {
     id: orderId,
@@ -161,29 +163,6 @@ test("only confirmed COD orders push Purchase to GTM", async ({ page }) => {
     fulfillmentStatus: "awaiting_dispatch",
   };
   await page.reload();
-
-  await expect.poll(purchaseEventCount).toBe(1);
-  const purchaseEvent = await page.evaluate(() => {
-    const dataLayer = (window as Window & { dataLayer?: unknown[] }).dataLayer;
-    return Array.isArray(dataLayer)
-      ? dataLayer.find(
-          (entry) =>
-            typeof entry === "object" &&
-            entry !== null &&
-            "event" in entry &&
-            entry.event === "purchase",
-        )
-      : null;
-  });
-  expect(purchaseEvent).toMatchObject({
-    event: "purchase",
-    meta_event_name: "Purchase",
-    event_id: orderId,
-    ecommerce: {
-      transaction_id: "ORD-026-00001",
-      currency: "BDT",
-      value: 250,
-      shipping: 80,
-    },
-  });
+  await expect(page.getByTestId("order-reference")).toHaveText("ORD-026-00001");
+  expect(await purchaseEventCount()).toBe(0);
 });
