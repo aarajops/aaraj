@@ -85,7 +85,6 @@ export function sendEcommerceEvent(
   eventId?: string,
 ) {
   if (typeof window === "undefined") return;
-  if (event === "purchase" && !hasMetaAdClickCookie(document.cookie)) return;
 
   const stableEventId = eventId ?? window.crypto.randomUUID();
   sendGTMEvent({ ecommerce: null });
@@ -94,16 +93,5 @@ export function sendEcommerceEvent(
     meta_event_name: metaEventNameByEcommerceEvent[event],
     event_id: stableEventId,
     ecommerce,
-  });
-}
-
-export function hasMetaAdClickCookie(cookieHeader: string): boolean {
-  return cookieHeader.split(";").some((cookie) => {
-    const separator = cookie.indexOf("=");
-    return (
-      separator > 0 &&
-      cookie.slice(0, separator).trim() === "_fbc" &&
-      cookie.slice(separator + 1).trim().length > 0
-    );
   });
 }

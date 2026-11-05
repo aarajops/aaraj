@@ -15,6 +15,41 @@ async function openRowActions(page: Page, row: Locator) {
   }).toPass({ timeout: 10_000 });
 }
 
+function ecommerceEventCount(page: Page, eventName: string, itemName?: string) {
+  return page.evaluate(
+    ({ eventName, itemName }) => {
+      const dataLayer = (window as Window & { dataLayer?: unknown[] }).dataLayer;
+      if (!Array.isArray(dataLayer)) return 0;
+
+      return dataLayer.filter((entry) => {
+        if (
+          typeof entry !== "object" ||
+          entry === null ||
+          !("event" in entry) ||
+          entry.event !== eventName
+        ) {
+          return false;
+        }
+        if (!itemName) return true;
+
+        const ecommerce = (
+          entry as { ecommerce?: { items?: unknown[] } }
+        ).ecommerce;
+        return (
+          ecommerce?.items?.some(
+            (item) =>
+              typeof item === "object" &&
+              item !== null &&
+              "item_name" in item &&
+              item.item_name === itemName,
+          ) ?? false
+        );
+      }).length;
+    },
+    { eventName, itemName },
+  );
+}
+
 function variantField(page: Page, index: number, label: string) {
   return page
     .getByRole("row", { name: `Variant ${index}` })
@@ -1191,6 +1226,9 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBeVisible();
   await expect(page.getByText("100% cotton")).toBeVisible();
   await expect(page.getByText("Machine wash cold")).toBeVisible();
+  await expect
+    .poll(() => ecommerceEventCount(page, "view_item", productName))
+    .toBe(1);
   await expect(
     page.getByRole("button", { name: "S", exact: true }),
   ).toBeVisible();
@@ -1198,6 +1236,35 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("button", { name: "M", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Black", exact: true }).click();
+  await expect
+    .poll(() => ecommerceEventCount(page, "view_item", productName))
+    .toBe(2);
+  const lastViewItem = await page.evaluate((name) => {
+    const dataLayer = (window as Window & { dataLayer?: unknown[] }).dataLayer;
+    const events = Array.isArray(dataLayer) ? dataLayer : [];
+    const viewItem = events
+      .filter(
+        (entry) =>
+          typeof entry === "object" &&
+          entry !== null &&
+          "event" in entry &&
+          entry.event === "view_item",
+      )
+      .at(-1) as
+      | {
+          ecommerce?: {
+            items?: Array<{ item_name?: string; item_variant?: string }>;
+          };
+        }
+      | undefined;
+    return viewItem?.ecommerce?.items?.find(
+      (item) => item.item_name === name,
+    );
+  }, productName);
+  expect(lastViewItem).toMatchObject({
+    item_name: productName,
+    item_variant: "Black / S",
+  });
   await expect(page.getByText("Size: S", { exact: true })).toBeVisible();
   await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
   await expect(
@@ -1261,6 +1328,9 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(cartReadIsCorrupt).toBe(false);
   await page.unroute("**/api/v1/cart");
   await page.getByRole("button", { name: "Add to cart" }).click();
+  await expect
+    .poll(() => ecommerceEventCount(page, "add_to_cart"))
+    .toBe(1);
   const cartSheet = page.getByRole("dialog", { name: "Your cart" });
   await expect(cartSheet).toBeVisible();
   await expect(
@@ -1273,6 +1343,9 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("main").getByRole("heading", { name: "Checkout" }),
   ).toBeVisible();
+  await expect
+    .poll(() => ecommerceEventCount(page, "begin_checkout"))
+    .toBe(1);
   const checkoutSummary = page.getByRole("complementary", {
     name: "Order summary",
   });
@@ -1489,14 +1562,6 @@ test("catalog operator configures a product through to storefront visibility", a
   await page
     .getByLabel("Delivery address")
     .fill("House 12, Road 5, beside the park");
-
-  await page.context().addCookies([
-    {
-      name: "_fbc",
-      value: "fb.1.1793880000000.integration-click-id",
-      url: "http://127.0.0.1:3180",
-    },
-  ]);
 
   const checkoutUrl = page.url();
   let checkoutRequestAborted = false;

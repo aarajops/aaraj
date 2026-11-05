@@ -631,6 +631,7 @@ function sendPurchaseOnce(
   order: Pick<OrderCreated, "id" | "reference">,
   details: PurchaseDetails,
 ) {
+  // COD purchase is recorded when the order is accepted, not on later confirmation or collection.
   const storageKey = `aaraj.analytics.purchase:${order.id}`;
   try {
     if (window.sessionStorage.getItem(storageKey) === "1") return;

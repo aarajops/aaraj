@@ -1,15 +1,5 @@
 import { expect, test } from "@playwright/test";
 import type { Order } from "@aaraj/contracts";
-import { hasMetaAdClickCookie } from "../src/features/analytics/gtm-ecommerce";
-
-test("Meta Purchase eligibility requires a non-empty _fbc cookie", () => {
-  expect(hasMetaAdClickCookie("_fbp=fb.1.123; _fbc=fb.1.456.click-id")).toBe(
-    true,
-  );
-  expect(hasMetaAdClickCookie("_fbp=fb.1.123")).toBe(false);
-  expect(hasMetaAdClickCookie("_fbc=")).toBe(false);
-  expect(hasMetaAdClickCookie("not_fbc=fb.1.456.click-id")).toBe(false);
-});
 
 test("product views push the Meta mapping and event ID to GTM", async ({
   page,

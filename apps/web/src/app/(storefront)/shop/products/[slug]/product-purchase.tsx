@@ -47,7 +47,7 @@ export function ProductPurchase({
   initialColor?: string;
   initialSize?: string;
 }) {
-  const viewedProductId = useRef<string | null>(null);
+  const viewedItemKey = useRef<string | null>(null);
   const searchParams = useSearchParams();
   const colors = uniqueOptions(variants.map(({ color }) => color));
   const color =
@@ -102,6 +102,7 @@ export function ProductPurchase({
     ? `${selectedVariant.color} / ${selectedVariant.sizeLabel}`
     : undefined;
   const viewItemId = selectedVariant?.id ?? productId;
+  const viewItemKey = `${productId}:${viewItemId}`;
   const whatsappHref = supportPhone
     ? `https://wa.me/${supportPhone.replace(/\D/g, "")}?text=${encodeURIComponent(
         [
@@ -115,8 +116,8 @@ export function ProductPurchase({
     : null;
 
   useEffect(() => {
-    if (viewedProductId.current === productId) return;
-    viewedProductId.current = productId;
+    if (viewedItemKey.current === viewItemKey) return;
+    viewedItemKey.current = viewItemKey;
     sendEcommerceEvent("view_item", {
       currency: CURRENCY,
       ...(viewItemPriceBdt !== null ? { value: viewItemPriceBdt } : {}),
@@ -130,7 +131,14 @@ export function ProductPurchase({
         },
       ],
     });
-  }, [productId, productName, viewItemId, viewItemPriceBdt, viewItemVariant]);
+  }, [
+    productId,
+    productName,
+    viewItemId,
+    viewItemKey,
+    viewItemPriceBdt,
+    viewItemVariant,
+  ]);
 
   function selectColor(nextColor: string) {
     const nextSizes = getSizeOptions(variants, nextColor, sizeOrder);
