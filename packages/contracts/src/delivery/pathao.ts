@@ -45,7 +45,6 @@ export const PathaoBookingSchema = z.strictObject({
   merchantOrderId: z.string().min(1).max(100),
   status: PathaoBookingStatusSchema,
   consignmentId: z.string().min(1).max(120).nullable(),
-  providerOrderStatus: z.string().max(100).nullable(),
   deliveryFeeBdt: z.number().nonnegative().nullable(),
   lastErrorCode: z
     .string()
@@ -64,7 +63,6 @@ export const PathaoManagementBookingSummarySchema = z.strictObject({
   orderId: z.uuid(),
   status: PathaoBookingStatusSchema.nullable(),
   trackingProgress: PathaoTrackingProgressSchema.nullable(),
-  providerOrderStatus: z.string().max(100).nullable(),
   consignmentId: z.string().min(1).max(120).nullable(),
 });
 export type PathaoManagementBookingSummary = z.infer<

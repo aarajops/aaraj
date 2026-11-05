@@ -447,7 +447,6 @@ export class PathaoService {
           orderId: pathaoBooking.orderId,
           status: pathaoBooking.status,
           trackingProgress: pathaoBooking.trackingProgress,
-          providerOrderStatus: pathaoBooking.providerOrderStatus,
           consignmentId: pathaoBooking.consignmentId,
         })
         .from(pathaoBooking)
@@ -471,7 +470,6 @@ export class PathaoService {
           orderId,
           status: claimStatusByOrderId.get(orderId) ?? booking?.status ?? null,
           trackingProgress: booking?.trackingProgress ?? null,
-          providerOrderStatus: booking?.providerOrderStatus ?? null,
           consignmentId: booking?.consignmentId ?? null,
         };
       }),
@@ -1922,7 +1920,6 @@ function toBooking(row: typeof pathaoBooking.$inferSelect): PathaoBooking {
     merchantOrderId: row.merchantOrderId,
     status: row.status,
     consignmentId: row.consignmentId,
-    providerOrderStatus: row.providerOrderStatus,
     deliveryFeeBdt: row.deliveryFeeBdt,
     lastErrorCode: row.lastErrorCode,
     reconciliationReason: row.reconciliationReason,

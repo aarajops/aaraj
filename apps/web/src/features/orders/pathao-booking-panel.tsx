@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { humanize, humanizePathaoBookingStatus } from "./orders-format";
+import { humanize, humanizePathaoStatus } from "./orders-format";
 import {
   getPathaoBooking,
   PathaoClientError,
@@ -238,10 +238,7 @@ export function PathaoBookingPanel({
         <div className="grid gap-1 text-sm">
           <p className="font-medium">
             {booking.status === "booked"
-              ? humanizePathaoBookingStatus(
-                  booking.trackingProgress,
-                  booking.providerOrderStatus?.trim() || null,
-                )
+              ? humanizePathaoStatus(booking.trackingProgress)
               : humanize(booking.status)}
           </p>
           {booking.consignmentId && (
