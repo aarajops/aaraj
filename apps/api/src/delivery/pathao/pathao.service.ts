@@ -78,30 +78,32 @@ type PathaoCancellationResult =
   | { booking: typeof pathaoBooking.$inferSelect; blockedReason: null }
   | { booking: null; blockedReason: "after_pickup" | "after_dispatch" };
 
-const PATHAO_ORDER_EVENTS = new Set([
-  "order.created",
-  "order.updated",
-  "order.pickup-requested",
-  "order.assigned-for-pickup",
-  "order.picked",
-  "order.pickup-failed",
-  "order.pickup-cancelled",
-  "order.at-the-sorting-hub",
-  "order.in-transit",
-  "order.received-at-last-mile-hub",
-  "order.assigned-for-delivery",
-  "order.on-hold",
-  "order.delivered",
-  "order.partial-delivery",
-  "order.delivery-failed",
-  "order.returned",
-  "order.return-id-created",
-  "order.return-in-transit",
-  "order.returned-to-merchant",
-  "order.paid-return",
-  "order.exchanged",
-  "order.paid",
-]);
+type Progress = PathaoBooking["trackingProgress"];
+
+const PATHAO_EVENT_PROGRESS: Readonly<Record<string, Progress | null>> = {
+  "order.created": "booked",
+  "order.updated": null,
+  "order.pickup-requested": "booked",
+  "order.assigned-for-pickup": "booked",
+  "order.picked": "pickup",
+  "order.pickup-failed": "on_hold",
+  "order.pickup-cancelled": "cancelled",
+  "order.at-the-sorting-hub": "in_transit",
+  "order.in-transit": "in_transit",
+  "order.received-at-last-mile-hub": "in_transit",
+  "order.assigned-for-delivery": "out_for_delivery",
+  "order.on-hold": "on_hold",
+  "order.delivered": "delivered",
+  "order.partial-delivery": "partial_delivery",
+  "order.delivery-failed": "delivery_failed",
+  "order.returned": "returning",
+  "order.return-id-created": "returning",
+  "order.return-in-transit": "returning",
+  "order.returned-to-merchant": "returned",
+  "order.paid-return": null,
+  "order.exchanged": null,
+  "order.paid": null,
+};
 
 const PATHAO_STATUS_EVENTS: Readonly<Record<string, string>> = {
   pending: "order.created",
@@ -132,7 +134,6 @@ const PATHAO_STATUS_EVENTS: Readonly<Record<string, string>> = {
   paid: "order.paid",
 };
 
-type Progress = PathaoBooking["trackingProgress"];
 type InboxRow = typeof pathaoWebhookInbox.$inferSelect;
 
 @Injectable()
@@ -1238,7 +1239,7 @@ export class PathaoService {
           )
           .limit(1)
       : [];
-    const recognized = PATHAO_ORDER_EVENTS.has(event.event);
+    const recognized = Object.hasOwn(PATHAO_EVENT_PROGRESS, event.event);
     const processingState = !booking
       ? "unmatched"
       : recognized
@@ -1760,7 +1761,10 @@ export class PathaoService {
           eq(pathaoWebhookInbox.consignmentId, consignmentId),
           isNull(pathaoWebhookInbox.bookingId),
           eq(pathaoWebhookInbox.processingState, "unmatched"),
-          inArray(pathaoWebhookInbox.eventName, [...PATHAO_ORDER_EVENTS]),
+          inArray(
+            pathaoWebhookInbox.eventName,
+            Object.keys(PATHAO_EVENT_PROGRESS),
+          ),
         ),
       );
   }
@@ -1806,10 +1810,6 @@ export class PathaoService {
       status: existing.resultingState,
     });
   }
-}
-
-export function isPathaoWebhookPayload(value: unknown): boolean {
-  return PathaoWebhookBodySchema.safeParse(value).success;
 }
 
 function requiredPathaoConfiguration(): PathaoConfiguration {
@@ -1978,44 +1978,9 @@ function normalizeStatus(value: string): string {
 }
 
 export function progressFromEvent(event: string): Progress | null {
-  switch (event) {
-    case "order.created":
-    case "order.pickup-requested":
-    case "order.assigned-for-pickup":
-      return "booked";
-    case "order.picked":
-      return "pickup";
-    case "order.at-the-sorting-hub":
-    case "order.in-transit":
-    case "order.received-at-last-mile-hub":
-      return "in_transit";
-    case "order.assigned-for-delivery":
-      return "out_for_delivery";
-    case "order.delivered":
-      return "delivered";
-    case "order.partial-delivery":
-      return "partial_delivery";
-    case "order.delivery-failed":
-      return "delivery_failed";
-    case "order.pickup-failed":
-    case "order.on-hold":
-      return "on_hold";
-    case "order.pickup-cancelled":
-      return "cancelled";
-    case "order.returned":
-    case "order.return-id-created":
-    case "order.return-in-transit":
-      return "returning";
-    case "order.returned-to-merchant":
-      return "returned";
-    case "order.updated":
-    case "order.paid-return":
-    case "order.exchanged":
-    case "order.paid":
-      return null;
-    default:
-      return null;
-  }
+  return Object.hasOwn(PATHAO_EVENT_PROGRESS, event)
+    ? (PATHAO_EVENT_PROGRESS[event] ?? null)
+    : null;
 }
 
 export function progressFromStatus(status: string | null): Progress | null {
