@@ -31,8 +31,8 @@ import { formatBdtPrice } from "@/lib/currency";
 import {
   cartItem,
   cartValue,
-  markPurchasePending,
   sendEcommerceEvent,
+  variantEcommerceItem,
 } from "@/features/analytics/gtm-ecommerce";
 import {
   createCodOrder,
@@ -117,7 +117,6 @@ function SinglePageCheckout({
       void resumeCodOrder(key)
         .then(async (order) => {
           if (!active) return;
-          trackCreatedOrderPurchase(order);
           await refreshCart();
           if (active) router.replace(`/orders/${order.id}`);
         })
@@ -175,7 +174,7 @@ function SinglePageCheckout({
     };
     try {
       const order = await createCodOrder(input, key);
-      trackCreatedOrderPurchase(order);
+      trackCreatedOrderPurchase(order, quote);
       await refreshCart();
       router.push(`/orders/${order.id}`);
     } catch (reason) {
@@ -197,7 +196,7 @@ function SinglePageCheckout({
       ) {
         try {
           const existing = await resumeCodOrder(key);
-          trackCreatedOrderPurchase(existing);
+          trackCreatedOrderPurchase(existing, quote);
           await refreshCart();
           router.push(`/orders/${existing.id}`);
           return;
@@ -606,8 +605,28 @@ function CheckoutOrderSummary({
 
 function trackCreatedOrderPurchase(
   createdOrder: Pick<OrderCreated, "id" | "reference">,
+  quote: AuthoritativeQuote,
 ) {
-  markPurchasePending(createdOrder.id);
+  sendEcommerceEvent(
+    "purchase",
+    {
+      transaction_id: createdOrder.reference,
+      currency: quote.currency,
+      value: quote.merchandiseGrossBdt,
+      shipping: quote.delivery.grossAmountBdt,
+      items: quote.lines.map((line) =>
+        variantEcommerceItem({
+          variantId: line.variantId,
+          itemName: line.productName,
+          color: line.color,
+          sizeLabel: line.sizeLabel,
+          price: line.unitPriceBdt,
+          quantity: line.quantity,
+        }),
+      ),
+    },
+    createdOrder.id,
+  );
 }
 
 function getOrCreateIdempotencyKey(

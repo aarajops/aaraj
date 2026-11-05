@@ -10,7 +10,6 @@ import { getPathaoCustomerTracking } from "./pathao-client";
 import type { PathaoCustomerTracking } from "@aaraj/contracts";
 import { CustomerOrderDetailsSkeleton } from "./order-page-skeleton";
 import { humanizePathaoStatus } from "./orders-format";
-import { sendCheckoutPurchase } from "@/features/analytics/gtm-ecommerce";
 
 export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<Order | null>(null);
@@ -22,10 +21,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
     let active = true;
     void fetchOrder(orderId)
       .then((result) => {
-        if (active) {
-          sendCheckoutPurchase(result);
-          setOrder(result);
-        }
+        if (active) setOrder(result);
       })
       .catch((reason: unknown) => {
         if (active) {

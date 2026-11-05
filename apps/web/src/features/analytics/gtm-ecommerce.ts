@@ -1,5 +1,5 @@
 import { sendGTMEvent } from "@next/third-parties/google";
-import type { CURRENCY, Order } from "@aaraj/contracts";
+import type { CURRENCY } from "@aaraj/contracts";
 
 export type EcommerceEvent =
   "view_item" | "add_to_cart" | "begin_checkout" | "purchase";
@@ -29,8 +29,6 @@ export type EcommercePayload = {
   transaction_id?: string;
   items: EcommerceItem[];
 };
-
-const purchaseKey = (orderId: string) => `aaraj.analytics.purchase:${orderId}`;
 
 export function cartItem(
   line: {
@@ -79,45 +77,6 @@ export function cartValue(
     (total, line) => total + line.product.unitPriceBdt * line.quantity,
     0,
   );
-}
-
-export function markPurchasePending(orderId: string) {
-  try {
-    window.sessionStorage.setItem(purchaseKey(orderId), "1");
-  } catch {
-    // Analytics must not block checkout completion.
-  }
-}
-
-export function sendCheckoutPurchase(order: Order) {
-  const key = purchaseKey(order.id);
-  try {
-    if (window.sessionStorage.getItem(key) !== "1") return;
-    window.sessionStorage.removeItem(key);
-
-    sendEcommerceEvent(
-      "purchase",
-      {
-        transaction_id: order.reference,
-        currency: order.currency,
-        value: order.merchandiseGrossBdt,
-        shipping: order.delivery.grossAmountBdt,
-        items: order.lines.map((line) =>
-          variantEcommerceItem({
-            variantId: line.variantId,
-            itemName: line.productName,
-            color: line.color,
-            sizeLabel: line.sizeLabel,
-            price: line.unitPriceBdt,
-            quantity: line.quantity,
-          }),
-        ),
-      },
-      order.id,
-    );
-  } catch {
-    // Analytics must not block order confirmation.
-  }
 }
 
 export function sendEcommerceEvent(
