@@ -171,6 +171,13 @@ const OrderLineSchema = z.strictObject({
   sizeLabel: z.string().min(1).max(40),
   quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
   unitPriceBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  compareAtPriceBdt: z
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .nullable()
+    .default(null),
   grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 });
 

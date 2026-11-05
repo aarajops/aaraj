@@ -98,6 +98,7 @@ export class QuoteService {
         sizeLabel: variant.sizeLabel,
         quantity: line.quantity,
         unitPriceBdt: variant.unitPriceBdt,
+        compareAtPriceBdt: variant.compareAtPriceBdt,
         grossAmountBdt,
       };
     });

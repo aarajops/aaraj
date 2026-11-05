@@ -159,13 +159,22 @@ export function ProductPurchase({
   return (
     <div className="mt-3 space-y-4">
       {priceLabel && (
-        <p
+        <div
           aria-atomic="true"
           aria-live="polite"
-          className="text-xl font-semibold tracking-tight"
+          className="flex flex-wrap items-baseline gap-x-3"
         >
-          {priceLabel}
-        </p>
+          <span className="text-xl font-semibold tracking-tight">
+            {priceLabel}
+          </span>
+          {selectedVariant?.compareAtPrice &&
+            selectedVariant.compareAtPrice.amountBdt >
+              selectedVariant.price.amountBdt && (
+              <del className="text-sm text-muted-foreground">
+                {formatBdtPrice(selectedVariant.compareAtPrice)}
+              </del>
+            )}
+        </div>
       )}
 
       <div className="space-y-3">

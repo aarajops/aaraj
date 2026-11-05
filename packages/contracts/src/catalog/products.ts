@@ -60,6 +60,7 @@ export const CatalogProductVariantInputSchema = z.strictObject({
   color: z.string().trim().min(1).max(80),
   sizeLabel: z.string().trim().min(1).max(40),
   price: CatalogPriceSchema.nullable(),
+  compareAtPrice: CatalogPriceSchema.nullable().optional(),
   gtin: z
     .string()
     .trim()
@@ -77,6 +78,7 @@ export const CatalogProductVariantSchema = z.strictObject({
   color: z.string(),
   sizeLabel: z.string(),
   price: CatalogPriceSchema,
+  compareAtPrice: CatalogPriceSchema.nullable().default(null),
 });
 
 export const CatalogManagedProductVariantSchema = z.strictObject({
@@ -84,6 +86,7 @@ export const CatalogManagedProductVariantSchema = z.strictObject({
   color: z.string(),
   sizeLabel: z.string(),
   price: CatalogPriceSchema.nullable(),
+  compareAtPrice: CatalogPriceSchema.nullable().default(null),
   sku: z.string(),
   gtin: z.string().nullable(),
   isActive: z.boolean(),
@@ -102,6 +105,8 @@ export const CatalogProductSchema = z.strictObject({
   sizeGuideId: z.uuid().nullable(),
   /** Lowest active variant price, shown as the product's starting price. */
   price: CatalogPriceSchema.nullable(),
+  /** Reference price paired with the lowest active variant, when unambiguous. */
+  compareAtPrice: CatalogPriceSchema.nullable().default(null),
   isPublished: z.boolean(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -348,6 +353,17 @@ function validateVariantInputs(input: {
     }
     skus.add(sku);
     combinations.add(combination);
+    if (
+      variant.compareAtPrice &&
+      (variant.price === null ||
+        variant.compareAtPrice.amountBdt <= variant.price.amountBdt)
+    ) {
+      issues.push({
+        path: ["variants", index, "compareAtPrice"],
+        message:
+          "Regular price must be greater than the current selling price.",
+      });
+    }
   }
   return issues;
 }

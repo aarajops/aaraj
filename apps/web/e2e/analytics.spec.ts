@@ -83,6 +83,7 @@ test("only confirmed COD orders push Purchase to GTM", async ({ page }) => {
         sizeLabel: "M",
         quantity: 1,
         unitPriceBdt: 250,
+        compareAtPriceBdt: null,
         grossAmountBdt: 250,
       },
     ],

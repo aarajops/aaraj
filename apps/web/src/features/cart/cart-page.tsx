@@ -249,11 +249,23 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                       <p className="mt-1 text-sm text-muted-foreground">
                         {line.product.color} · {line.product.sizeLabel}
                       </p>
-                      <p className="mt-1 text-sm">
-                        {formatBdtPrice({
-                          amountBdt: line.product.unitPriceBdt,
-                        })}{" "}
-                        each
+                      <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-sm">
+                        <span>
+                          {formatBdtPrice({
+                            amountBdt: line.product.unitPriceBdt,
+                          })}{" "}
+                          each
+                        </span>
+                        {line.product.compareAtPriceBdt !== null &&
+                          line.product.compareAtPriceBdt >
+                            line.product.unitPriceBdt && (
+                            <del className="text-xs text-muted-foreground">
+                              {formatBdtPrice({
+                                amountBdt: line.product.compareAtPriceBdt,
+                              })}{" "}
+                              each
+                            </del>
+                          )}
                       </p>
                       {line.availability === "unavailable" && (
                         <p

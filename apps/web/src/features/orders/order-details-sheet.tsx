@@ -464,8 +464,19 @@ function OrderDetailsSheetContent({
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-1">
-                        <span className="tabular-nums">
-                          {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                        <span className="grid justify-items-end tabular-nums">
+                          <span>
+                            {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                          </span>
+                          {line.compareAtPriceBdt !== null &&
+                            line.compareAtPriceBdt > line.unitPriceBdt && (
+                              <del className="text-xs text-muted-foreground">
+                                {formatBdtPrice({
+                                  amountBdt:
+                                    line.compareAtPriceBdt * line.quantity,
+                                })}
+                              </del>
+                            )}
                         </span>
                         {order.canEditItems &&
                           order.lines.length > 1 &&

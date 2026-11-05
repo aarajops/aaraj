@@ -308,8 +308,16 @@ export function OrderReview({
                     {line.productName} · {line.color} · {line.sizeLabel} ×{" "}
                     {line.quantity}
                   </span>
-                  <span>
+                  <span className="grid justify-items-end text-right">
                     {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                    {line.compareAtPriceBdt !== null &&
+                      line.compareAtPriceBdt > line.unitPriceBdt && (
+                        <del className="text-xs text-muted-foreground">
+                          {formatBdtPrice({
+                            amountBdt: line.compareAtPriceBdt * line.quantity,
+                          })}
+                        </del>
+                      )}
                   </span>
                 </li>
               ))}

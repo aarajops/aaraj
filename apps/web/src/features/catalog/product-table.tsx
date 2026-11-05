@@ -65,9 +65,20 @@ export function ProductTable({
             numeric: true,
           },
           cell: ({ row }) =>
-            row.original.price
-              ? formatBdtPrice(row.original.price)
-              : "Price not set",
+            row.original.price ? (
+              <div className="grid justify-items-end gap-0.5">
+                <span>{formatBdtPrice(row.original.price)}</span>
+                {row.original.compareAtPrice &&
+                  row.original.compareAtPrice.amountBdt >
+                    row.original.price.amountBdt && (
+                    <del className="text-xs text-muted-foreground">
+                      {formatBdtPrice(row.original.compareAtPrice)}
+                    </del>
+                  )}
+              </div>
+            ) : (
+              "Price not set"
+            ),
         }),
         columnHelper.display({
           id: "status",

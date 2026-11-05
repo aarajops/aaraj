@@ -390,6 +390,7 @@ export class OrdersService implements OrdersPathaoPort {
               productName: line.productName,
               color: line.color,
               sizeLabel: line.sizeLabel,
+              compareAtPriceBdt: line.compareAtPriceBdt,
             },
           })),
         );
@@ -732,10 +733,15 @@ export class OrdersService implements OrdersPathaoPort {
           customerName: address.recipientName,
           customerPhone: address.phone,
           deliveryZone: parseDeliveryZone(row.deliverySnapshot),
-          items: (linesByOrderId.get(row.id) ?? []).map((line) => ({
-            ...parseOrderLineProduct(line.productSnapshot),
-            quantity: line.quantity,
-          })),
+          items: (linesByOrderId.get(row.id) ?? []).map((line) => {
+            const product = parseOrderLineProduct(line.productSnapshot);
+            return {
+              productName: product.productName,
+              color: product.color,
+              sizeLabel: product.sizeLabel,
+              quantity: line.quantity,
+            };
+          }),
           status: row.status,
           fulfillmentStatus: row.fulfillmentStatus,
           collectionStatus: row.collectionStatus,
@@ -1003,6 +1009,7 @@ export class OrdersService implements OrdersPathaoPort {
             productName: variant.name,
             color: variant.color,
             sizeLabel: variant.sizeLabel,
+            compareAtPriceBdt: variant.compareAtPriceBdt,
           },
         });
       }
@@ -2674,6 +2681,11 @@ function parseOrderLineProduct(snapshot: unknown) {
     productName,
     color: typeof product.color === "string" ? product.color : null,
     sizeLabel: typeof product.sizeLabel === "string" ? product.sizeLabel : null,
+    compareAtPriceBdt:
+      Number.isSafeInteger(product.compareAtPriceBdt) &&
+      (product.compareAtPriceBdt as number) >= 0
+        ? (product.compareAtPriceBdt as number)
+        : null,
   };
 }
 

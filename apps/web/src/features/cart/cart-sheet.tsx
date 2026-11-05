@@ -221,6 +221,16 @@ export function CartSheet() {
                           amountBdt: line.product.unitPriceBdt * line.quantity,
                         })}
                       </p>
+                      {line.product.compareAtPriceBdt !== null &&
+                        line.product.compareAtPriceBdt >
+                          line.product.unitPriceBdt && (
+                          <del className="mt-1 block whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                            {formatBdtPrice({
+                              amountBdt:
+                                line.product.compareAtPriceBdt * line.quantity,
+                            })}
+                          </del>
+                        )}
                       {line.quantity > 1 && (
                         <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
                           {formatBdtPrice({

@@ -682,6 +682,7 @@ export function CatalogManager({
                           color: "",
                           sizeLabel: "",
                           priceBdt: "",
+                          compareAtPriceBdt: "",
                           gtin: "",
                         })
                       }
@@ -702,7 +703,12 @@ export function CatalogManager({
                             <TableHead scope="col">SKU</TableHead>
                             <TableHead scope="col">Color</TableHead>
                             <TableHead scope="col">Size</TableHead>
-                            <TableHead scope="col">Price (BDT)</TableHead>
+                            <TableHead scope="col">
+                              Selling price (BDT)
+                            </TableHead>
+                            <TableHead scope="col">
+                              Regular price (BDT)
+                            </TableHead>
                             <TableHead scope="col">GTIN (optional)</TableHead>
                             <TableHead className="text-right" scope="col">
                               Actions
@@ -811,7 +817,7 @@ export function CatalogManager({
                                   className="sr-only"
                                   htmlFor={`variant-${index}-price`}
                                 >
-                                  Price (BDT)
+                                  Selling price (BDT)
                                 </label>
                                 <Input
                                   id={`variant-${index}-price`}
@@ -835,6 +841,42 @@ export function CatalogManager({
                                     id={`variant-${index}-price-error`}
                                   >
                                     {errors.variants[index].priceBdt.message}
+                                  </FieldError>
+                                )}
+                              </TableCell>
+                              <TableCell className="min-w-36 align-top">
+                                <label
+                                  className="sr-only"
+                                  htmlFor={`variant-${index}-compare-at-price`}
+                                >
+                                  Regular price (BDT, optional)
+                                </label>
+                                <Input
+                                  id={`variant-${index}-compare-at-price`}
+                                  aria-describedby={
+                                    errors.variants?.[index]?.compareAtPriceBdt
+                                      ? `variant-${index}-compare-at-price-error product-variant-price-help`
+                                      : "product-variant-price-help"
+                                  }
+                                  aria-invalid={Boolean(
+                                    errors.variants?.[index]?.compareAtPriceBdt,
+                                  )}
+                                  inputMode="numeric"
+                                  maxLength={10}
+                                  placeholder="Optional"
+                                  {...register(
+                                    `variants.${index}.compareAtPriceBdt` as const,
+                                  )}
+                                />
+                                {errors.variants?.[index]
+                                  ?.compareAtPriceBdt && (
+                                  <FieldError
+                                    id={`variant-${index}-compare-at-price-error`}
+                                  >
+                                    {
+                                      errors.variants[index].compareAtPriceBdt
+                                        .message
+                                    }
                                   </FieldError>
                                 )}
                               </TableCell>
@@ -888,8 +930,9 @@ export function CatalogManager({
                   )}
                   {variantFields.length > 0 && (
                     <FieldDescription id="product-variant-price-help">
-                      Use whole BDT amounts; required to publish. Use 0 for a
-                      free item.
+                      Selling price is charged. Regular price is optional and
+                      must be higher to display a discount. Use whole BDT
+                      amounts.
                     </FieldDescription>
                   )}
                   {errors.variants?.root?.message && (

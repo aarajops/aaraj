@@ -137,6 +137,7 @@ describe("storefront cart", () => {
           color: `Color ${index}`,
           sizeLabel: "M",
           priceBdt: 250,
+          compareAtPriceBdt: 350,
         })),
       )
       .returning({ id: catalogProductVariant.id });
@@ -194,7 +195,11 @@ describe("storefront cart", () => {
     expect(created.cart.body.lines[0]).toMatchObject({
       variantId: variants[0]!.id,
       quantity: 1,
-      product: { unitPriceBdt: 250, name: "Cart E2E product" },
+      product: {
+        unitPriceBdt: 250,
+        compareAtPriceBdt: 350,
+        name: "Cart E2E product",
+      },
     });
     expect(created.cart.body.lines[0].product).not.toHaveProperty("sku");
     const setCookie = created.cart.headers["set-cookie"]?.[0] as string;
@@ -414,9 +419,11 @@ describe("storefront cart", () => {
         expect(body.lines[0].product).toMatchObject({
           name: "Cart E2E product",
           unitPriceBdt: 250,
+          compareAtPriceBdt: 350,
         });
         expect(Object.keys(body.lines[0].product).sort()).toEqual([
           "color",
+          "compareAtPriceBdt",
           "currency",
           "name",
           "sizeLabel",

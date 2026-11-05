@@ -17,6 +17,13 @@ export const CartProductSnapshotSchema = z.strictObject({
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),
   unitPriceBdt: z.number().int().nonnegative().max(2_147_483_647),
+  compareAtPriceBdt: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(2_147_483_647)
+    .nullable()
+    .default(null),
   currency: z.literal(CART_CURRENCY),
 });
 export type CartProductSnapshot = z.infer<typeof CartProductSnapshotSchema>;

@@ -1002,12 +1002,13 @@ test("catalog operator configures a product through to storefront visibility", a
   await variantField(page, 1, "SKU").fill(skuSmall);
   await variantField(page, 1, "Color").fill("Black");
   await variantField(page, 1, "Size").fill("S");
-  await variantField(page, 1, "Price (BDT)").fill("2450");
+  await variantField(page, 1, "Selling price (BDT)").fill("2450");
+  await variantField(page, 1, "Regular price (BDT, optional)").fill("2990");
   await page.getByRole("button", { name: "Add variant" }).click();
   await variantField(page, 2, "SKU").fill(skuMedium);
   await variantField(page, 2, "Color").fill("Red");
   await variantField(page, 2, "Size").fill("M");
-  await variantField(page, 2, "Price (BDT)").fill("2490");
+  await variantField(page, 2, "Selling price (BDT)").fill("2490");
   await page.getByRole("button", { name: "Create draft" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
@@ -1067,6 +1068,9 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(new URL(page.url()).searchParams.get("search")).toBe("100% cotton");
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
   await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("del").getByText("৳2,990", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("img", { name: `${productName}: image unavailable` }),
   ).toBeVisible();
@@ -1193,6 +1197,9 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Black", exact: true }).click();
   await expect(page.getByText("Size: S", { exact: true })).toBeVisible();
   await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("del").getByText("৳2,990", { exact: true }),
+  ).toBeVisible();
   await expect(page).toHaveURL(/color=Black/);
   await expect(page).toHaveURL(/size=S/);
   await expect(
@@ -1256,6 +1263,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     cartSheet.getByRole("link", { name: productName }),
   ).toBeVisible();
+  await expect(cartSheet.locator("del")).toContainText("৳2,990");
   await cartSheet.getByRole("link", { name: "Checkout" }).click();
   await expect(page).toHaveURL(/\/checkout$/);
   await expect(cartSheet).not.toBeVisible();
@@ -1519,6 +1527,7 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByText("Uncollected; no payment was taken at checkout"),
   ).toBeVisible();
   await expect(page.getByText("Integration Customer")).toBeVisible();
+  await expect(page.locator("del")).toContainText("৳2,990");
   const customerOrderId = new URL(page.url()).pathname.split("/").at(-1)!;
   const storageAfterCheckout = await page.evaluate(() =>
     JSON.stringify({

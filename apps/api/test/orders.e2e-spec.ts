@@ -172,6 +172,7 @@ describe("COD Orders and checkout", () => {
         color: "Blue",
         sizeLabel: "M",
         priceBdt: price,
+        compareAtPriceBdt: price + 1000,
       })
       .returning({ id: catalogProductVariant.id });
     if (!variant) throw new Error("Could not create an Order test variant.");
@@ -1269,6 +1270,7 @@ describe("COD Orders and checkout", () => {
       .set("Cookie", cookieValue)
       .expect(200);
     expect(privateOrder.body.lines[0].unitPriceBdt).toBe(333);
+    expect(privateOrder.body.lines[0].compareAtPriceBdt).toBe(1333);
     expect(privateOrder.body.totalBdt).toBe(quote.totalBdt);
     expect((await stockFor(variantId)).quantityOnHand).toBe(2);
     expect((await stockFor(variantId)).quantityReserved).toBe(1);

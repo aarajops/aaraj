@@ -87,9 +87,17 @@ export function ProductCard({
             {product.name}
           </Heading>
           {product.price && (
-            <p className="mt-1 text-xs text-primary">
-              {product.priceVaries && "From "}
-              {formatBdtPrice(product.price)}
+            <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs">
+              <span className="font-medium text-primary">
+                {product.priceVaries && "From "}
+                {formatBdtPrice(product.price)}
+              </span>
+              {product.compareAtPrice &&
+                product.compareAtPrice.amountBdt > product.price.amountBdt && (
+                  <del className="text-muted-foreground">
+                    {formatBdtPrice(product.compareAtPrice)}
+                  </del>
+                )}
             </p>
           )}
           <ProductLinkStatus />

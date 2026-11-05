@@ -31,5 +31,6 @@
   "0055_simplify_order_status.sql": "maintenance",
   "0056_order_item_removal.sql": "compatible",
   "0057_pathao_cancelled_booking_history.sql": "compatible",
-  "0058_pathao_pickup_failed.sql": "compatible"
+  "0058_pathao_pickup_failed.sql": "compatible",
+  "0059_variant_compare_at_price.sql": "compatible"
 }

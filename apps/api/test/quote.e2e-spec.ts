@@ -159,6 +159,7 @@ describe("authoritative Bangladesh quotes", () => {
         color: "Blue",
         sizeLabel: "M",
         priceBdt: variantPrice,
+        compareAtPriceBdt: 350,
       })
       .returning({ id: catalogProductVariant.id });
     if (!variant) throw new Error("Could not create the quote E2E variant.");
@@ -273,6 +274,13 @@ describe("authoritative Bangladesh quotes", () => {
     const response = await createQuote(guest.cookie);
     expect(response.body).toMatchObject({
       currency: "BDT",
+      lines: [
+        expect.objectContaining({
+          unitPriceBdt: 250,
+          compareAtPriceBdt: 350,
+          grossAmountBdt: 250,
+        }),
+      ],
       merchandiseGrossBdt: 250,
       delivery: { grossAmountBdt: 80 },
       totalBdt: 330,

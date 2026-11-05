@@ -115,7 +115,19 @@ export function OrderInvoice({
                     {line.quantity}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums">
-                    {formatBdtPrice({ amountBdt: line.unitPriceBdt })}
+                    <span className="grid justify-items-end">
+                      <span>
+                        {formatBdtPrice({ amountBdt: line.unitPriceBdt })}
+                      </span>
+                      {line.compareAtPriceBdt !== null &&
+                        line.compareAtPriceBdt > line.unitPriceBdt && (
+                          <del className="text-xs text-muted-foreground print:text-gray-700">
+                            {formatBdtPrice({
+                              amountBdt: line.compareAtPriceBdt,
+                            })}
+                          </del>
+                        )}
+                    </span>
                   </td>
                   <td className="py-3 pl-3 text-right tabular-nums">
                     {formatBdtPrice({ amountBdt: line.grossAmountBdt })}

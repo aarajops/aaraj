@@ -451,6 +451,30 @@ describe("catalog and security audit", () => {
       })
       .expect(400);
 
+    await request(app.getHttpServer())
+      .post("/api/v1/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "invalid-compare-at-tee",
+        name: "Invalid compare at tee",
+        audience: "unisex",
+        categoryId,
+        fit: "Regular",
+        sizeGuideId: guideId,
+        reason: "Reject reference price below selling price",
+        variants: [
+          {
+            sku: "TEE-COMPARE-INVALID-M",
+            color: "Black",
+            sizeLabel: "M",
+            price: { amountBdt: 1999 },
+            compareAtPrice: { amountBdt: 1999 },
+          },
+        ],
+      })
+      .expect(400);
+
     const created = await request(app.getHttpServer())
       .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
@@ -581,6 +605,7 @@ describe("catalog and security audit", () => {
             color: "Black",
             sizeLabel: "M",
             price: { amountBdt: 1999 },
+            compareAtPrice: { amountBdt: 2499 },
           },
         ],
         isPublished: true,
@@ -606,6 +631,10 @@ describe("catalog and security audit", () => {
     expect(publicProduct.body.variants).toHaveLength(1);
     expect(publicProduct.body.price).toEqual({ amountBdt: 1999 });
     expect(publicProduct.body.variants[0].price).toEqual({ amountBdt: 1999 });
+    expect(publicProduct.body.variants[0].compareAtPrice).toEqual({
+      amountBdt: 2499,
+    });
+    expect(publicProduct.body.compareAtPrice).toEqual({ amountBdt: 2499 });
     expect(publicProduct.body.variants[0]).not.toHaveProperty("sku");
     expect(publicProduct.body.sizeGuide.rows).toHaveLength(2);
     expect(publicProduct.body.fabricComposition).toBe("100% cotton");

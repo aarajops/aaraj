@@ -522,15 +522,27 @@ function CheckoutOrderSummary({
                   <Plus aria-hidden="true" />
                 </Button>
               </div>
-              <p className="col-start-3 row-start-1 shrink-0 text-right font-medium tabular-nums sm:col-start-4">
-                {quotedLine ? (
-                  formatBdtPrice({ amountBdt: quotedLine.grossAmountBdt })
-                ) : (
-                  <span className="text-muted-foreground">
-                    {quotePending ? "Calculating…" : "—"}
-                  </span>
-                )}
-              </p>
+              <div className="col-start-3 row-start-1 grid shrink-0 justify-items-end gap-0.5 text-right tabular-nums sm:col-start-4">
+                <p className="font-medium">
+                  {quotedLine ? (
+                    formatBdtPrice({ amountBdt: quotedLine.grossAmountBdt })
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {quotePending ? "Calculating…" : "—"}
+                    </span>
+                  )}
+                </p>
+                {quotedLine?.compareAtPriceBdt !== null &&
+                  quotedLine &&
+                  quotedLine.compareAtPriceBdt > quotedLine.unitPriceBdt && (
+                    <del className="text-xs text-muted-foreground">
+                      {formatBdtPrice({
+                        amountBdt:
+                          quotedLine.compareAtPriceBdt * quotedLine.quantity,
+                      })}
+                    </del>
+                  )}
+              </div>
             </li>
           );
         })}

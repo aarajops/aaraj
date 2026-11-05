@@ -414,6 +414,13 @@
       "when": 1793861520505,
       "tag": "0058_pathao_pickup_failed",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793865123179,
+      "tag": "0059_variant_compare_at_price",
+      "breakpoints": true
     }
   ]
 }

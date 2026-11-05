@@ -170,8 +170,16 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                         {line.color} · {line.sizeLabel} · Qty {line.quantity}
                       </p>
                     </div>
-                    <span className="whitespace-nowrap">
+                    <span className="grid justify-items-end whitespace-nowrap">
                       {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                      {line.compareAtPriceBdt !== null &&
+                        line.compareAtPriceBdt > line.unitPriceBdt && (
+                          <del className="text-xs text-muted-foreground">
+                            {formatBdtPrice({
+                              amountBdt: line.compareAtPriceBdt * line.quantity,
+                            })}
+                          </del>
+                        )}
                     </span>
                   </li>
                 ))}

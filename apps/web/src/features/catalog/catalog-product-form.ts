@@ -17,6 +17,7 @@ type VariantDraft = {
   color: string;
   sizeLabel: string;
   priceBdt: string;
+  compareAtPriceBdt: string;
   gtin: string;
 };
 
@@ -77,16 +78,20 @@ function prepareProductSubmission(
         variant.color,
         variant.sizeLabel,
         variant.priceBdt,
+        variant.compareAtPriceBdt,
         variant.gtin,
       ].some((value) => value.trim().length > 0),
     );
   const variants = variantDrafts.map(({ variant }) => {
     const amountBdt = parseBdtPrice(variant.priceBdt);
+    const compareAtAmountBdt = parseBdtPrice(variant.compareAtPriceBdt);
     return {
       sku: variant.sku.trim(),
       color: variant.color.trim(),
       sizeLabel: variant.sizeLabel.trim(),
       price: amountBdt === null ? null : { amountBdt },
+      compareAtPrice:
+        compareAtAmountBdt === null ? null : { amountBdt: compareAtAmountBdt },
       gtin: variant.gtin.trim() || null,
     };
   });
@@ -150,6 +155,9 @@ function mapProductIssuePath(
   if (fieldPath[0] === "price") {
     return ["variants", draftIndex, "priceBdt"];
   }
+  if (fieldPath[0] === "compareAtPrice") {
+    return ["variants", draftIndex, "compareAtPriceBdt"];
+  }
   return ["variants", draftIndex, ...fieldPath];
 }
 
@@ -171,6 +179,7 @@ export const productFormSchema = z
         color: z.string(),
         sizeLabel: z.string(),
         priceBdt: z.string(),
+        compareAtPriceBdt: z.string(),
         gtin: z.string(),
       }),
     ),
@@ -199,6 +208,17 @@ export const productFormSchema = z
           code: "custom",
           path: ["variants", index, "priceBdt"],
           message: "Enter each price as a whole BDT amount, for example 1999.",
+        });
+      }
+      if (
+        variant.compareAtPriceBdt.trim() &&
+        parseBdtPrice(variant.compareAtPriceBdt) === null
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["variants", index, "compareAtPriceBdt"],
+          message:
+            "Enter the regular price as a whole BDT amount, for example 2499.",
         });
       }
     }
@@ -268,6 +288,9 @@ export function toProductFormState(
       color: variant.color,
       sizeLabel: variant.sizeLabel,
       priceBdt: formatBdtInput(variant.price?.amountBdt ?? null),
+      compareAtPriceBdt: formatBdtInput(
+        variant.compareAtPrice?.amountBdt ?? null,
+      ),
       gtin: variant.gtin ?? "",
     })),
     isPublished: product.isPublished,

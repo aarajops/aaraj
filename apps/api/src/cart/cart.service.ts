@@ -1026,6 +1026,7 @@ function toProductSnapshot(variant: CatalogCartVariant): CartProductSnapshot {
     color: variant.color,
     sizeLabel: variant.sizeLabel,
     unitPriceBdt: variant.unitPriceBdt,
+    compareAtPriceBdt: variant.compareAtPriceBdt,
     currency: variant.currency,
   });
 }
@@ -1047,6 +1048,7 @@ function sameSnapshot(
     left.color === right.color &&
     left.sizeLabel === right.sizeLabel &&
     left.unitPriceBdt === right.unitPriceBdt &&
+    left.compareAtPriceBdt === right.compareAtPriceBdt &&
     left.currency === right.currency
   );
 }

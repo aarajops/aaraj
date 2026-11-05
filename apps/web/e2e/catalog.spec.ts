@@ -223,20 +223,20 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await variantField(page, 1, "SKU").fill("AA-TEE-BLK-S");
   await variantField(page, 1, "Color").fill("Black");
   await variantField(page, 1, "Size").fill("S");
-  await variantField(page, 1, "Price (BDT)").fill("1999");
+  await variantField(page, 1, "Selling price (BDT)").fill("1999");
   await page.getByRole("button", { name: "Add variant" }).click();
   await variantField(page, 2, "SKU").fill("AA-TEE-BLK-M");
   await variantField(page, 2, "Color").fill("Black");
   await variantField(page, 2, "Size").fill("M");
-  await variantField(page, 2, "Price (BDT)").fill("2200");
+  await variantField(page, 2, "Selling price (BDT)").fill("2200");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
   await page.getByLabel("Published on the storefront").check();
-  await variantField(page, 2, "Price (BDT)").fill("2200.50");
+  await variantField(page, 2, "Selling price (BDT)").fill("2200.50");
   await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(
     page.getByText("Enter each price as a whole BDT amount, for example 1999."),
   ).toBeVisible();
-  await variantField(page, 2, "Price (BDT)").fill("2200");
+  await variantField(page, 2, "Selling price (BDT)").fill("2200");
   await page.getByRole("button", { name: "Create and publish" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
@@ -467,7 +467,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await variantField(page, 1, "SKU").fill("AA-TEE-WHT-M");
   await variantField(page, 1, "Color").fill("White");
   await variantField(page, 1, "Size").fill("M");
-  await variantField(page, 1, "Price (BDT)").fill("1999");
+  await variantField(page, 1, "Selling price (BDT)").fill("1999");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
   await page.getByLabel("Published on the storefront").check();
   await page.getByRole("button", { name: "Create and publish" }).click();

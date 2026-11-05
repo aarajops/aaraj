@@ -213,6 +213,7 @@ export const catalogProductVariant = catalogSchema.table(
     color: text("color").notNull(),
     sizeLabel: text("size_label").notNull(),
     priceBdt: integer("price_bdt"),
+    compareAtPriceBdt: integer("compare_at_price_bdt"),
     gtin: text("gtin"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -244,6 +245,10 @@ export const catalogProductVariant = catalogSchema.table(
     check(
       "product_variant_price_bdt_check",
       sql`${table.priceBdt} is null OR ${table.priceBdt} >= 0`,
+    ),
+    check(
+      "product_variant_compare_at_price_bdt_check",
+      sql`${table.compareAtPriceBdt} is null OR (${table.priceBdt} is not null AND ${table.compareAtPriceBdt} > ${table.priceBdt})`,
     ),
   ],
 );

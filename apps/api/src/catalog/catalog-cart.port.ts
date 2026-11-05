@@ -10,13 +10,19 @@ export type CatalogCartVariant = {
   color: string;
   sizeLabel: string;
   unitPriceBdt: number;
+  compareAtPriceBdt: number | null;
   currency: typeof CURRENCY;
   image: CartLineImage | null;
 };
 
 export type PurchasableCatalogVariant = Pick<
   CatalogCartVariant,
-  "variantId" | "name" | "color" | "sizeLabel" | "unitPriceBdt"
+  | "variantId"
+  | "name"
+  | "color"
+  | "sizeLabel"
+  | "unitPriceBdt"
+  | "compareAtPriceBdt"
 >;
 
 export interface CatalogCartPort {
