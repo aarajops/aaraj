@@ -40,7 +40,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
   getApiErrorMessage,
@@ -552,12 +552,14 @@ export function SizeGuideManager({
                                 <TableCell className="align-top text-right">
                                   <Button
                                     aria-label={`Remove size row ${index + 1}`}
-                                    className="text-destructive"
+                                    title={`Remove size row ${index + 1}`}
+                                    className="text-muted-foreground hover:text-destructive"
                                     type="button"
                                     variant="ghost"
+                                    size="icon-sm"
                                     onClick={() => removeRow(index)}
                                   >
-                                    Remove
+                                    <Trash2 aria-hidden="true" />
                                   </Button>
                                 </TableCell>
                               </SortableSizeGuideRow>

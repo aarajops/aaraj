@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { Minus, Plus, ShoppingBag } from "lucide-react";
+import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
 import { useEffect } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -196,13 +196,14 @@ export function CartSheet() {
                         </div>
                         <Button
                           aria-label={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                          title={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
                           className="text-muted-foreground hover:text-destructive"
                           disabled={isMutating}
                           onClick={() => void removeLine(line.variantId)}
-                          size="sm"
+                          size="icon-sm"
                           variant="ghost"
                         >
-                          Remove
+                          <Trash2 aria-hidden="true" />
                         </Button>
                       </div>
                       {line.availability === "unavailable" && (

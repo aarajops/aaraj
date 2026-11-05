@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { MAX_CART_QUANTITY_PER_VARIANT, type Cart } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
@@ -305,11 +306,16 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                         </SelectContent>
                       </Select>
                       <Button
+                        aria-label={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                        title={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                        className="text-muted-foreground hover:text-destructive"
                         disabled={mutating}
                         onClick={() => void removeLine(line.variantId)}
-                        variant="outline"
+                        size="icon-sm"
+                        type="button"
+                        variant="ghost"
                       >
-                        Remove
+                        <Trash2 aria-hidden="true" />
                       </Button>
                     </div>
                   </li>
@@ -422,6 +428,9 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                         </Select>
                       )}
                       <Button
+                        aria-label={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                        title={`Remove ${line.product.name}, ${line.product.color}, ${line.product.sizeLabel}`}
+                        className="text-muted-foreground hover:text-destructive"
                         disabled={isResolving}
                         onClick={() =>
                           void resolveGuestLine(() =>
@@ -431,9 +440,11 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                             ),
                           )
                         }
-                        variant="outline"
+                        size="icon-sm"
+                        type="button"
+                        variant="ghost"
                       >
-                        Remove
+                        <Trash2 aria-hidden="true" />
                       </Button>
                     </div>
                   </li>

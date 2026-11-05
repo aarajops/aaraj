@@ -484,6 +484,8 @@ function OrderDetailsSheetContent({
                           !cancelFormOpen && (
                             <Button
                               aria-label={`Remove ${line.productName}, ${line.color}, ${line.sizeLabel} from order`}
+                              title={`Remove ${line.productName}, ${line.color}, ${line.sizeLabel} from order`}
+                              className="text-muted-foreground hover:text-destructive"
                               disabled={
                                 statusPending ||
                                 itemPending ||

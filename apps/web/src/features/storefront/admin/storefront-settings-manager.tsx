@@ -11,7 +11,7 @@ import {
   type StorefrontSettings,
   type StorefrontSettingsUpdate,
 } from "@aaraj/contracts";
-import { ImagePlus, LoaderCircle, Trash2, X } from "lucide-react";
+import { ImagePlus, LoaderCircle, Trash2 } from "lucide-react";
 import { AdminFormContentSkeleton } from "@/components/admin/admin-page-skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -943,6 +943,7 @@ export function StorefrontSettingsManager({
                                 {handle}
                                 <Button
                                   aria-label={`Remove header item ${index + 1}`}
+                                  title={`Remove header item ${index + 1}`}
                                   type="button"
                                   variant="ghost"
                                   size="icon-sm"
@@ -951,7 +952,7 @@ export function StorefrontSettingsManager({
                                     removeHeaderNavigationItem(index)
                                   }
                                 >
-                                  <Trash2 />
+                                  <Trash2 aria-hidden="true" />
                                 </Button>
                               </div>
                             </>
@@ -1072,15 +1073,16 @@ export function StorefrontSettingsManager({
                                 </span>
                                 <Button
                                   aria-label={`Remove ${category?.path ?? "unavailable category"} from footer`}
+                                  title={`Remove ${category?.path ?? "unavailable category"} from footer`}
                                   type="button"
                                   variant="ghost"
                                   size="icon-sm"
-                                  className="rounded-full text-muted-foreground"
+                                  className="rounded-full text-muted-foreground hover:text-destructive"
                                   onClick={() =>
                                     removeFooterCategory(categoryId)
                                   }
                                 >
-                                  <X />
+                                  <Trash2 aria-hidden="true" />
                                 </Button>
                               </li>
                             );
@@ -1251,6 +1253,7 @@ function AssetUploadCard({
           {current && (
             <Button
               aria-label={`Remove ${title.toLowerCase()}`}
+              title={`Remove ${title.toLowerCase()}`}
               className="text-muted-foreground hover:text-destructive"
               disabled={disabled}
               size="icon"
@@ -1261,7 +1264,7 @@ function AssetUploadCard({
               {clearing ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
-                <Trash2 />
+                <Trash2 aria-hidden="true" />
               )}
             </Button>
           )}
@@ -1365,13 +1368,14 @@ function FooterLinkGroupFields({
               </Field>
               <Button
                 aria-label={`Remove ${title} link ${index + 1}`}
+                title={`Remove ${title} link ${index + 1}`}
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="text-muted-foreground hover:text-destructive md:justify-self-end"
                 onClick={() => remove(index)}
               >
-                <Trash2 />
+                <Trash2 aria-hidden="true" />
               </Button>
             </div>
           );

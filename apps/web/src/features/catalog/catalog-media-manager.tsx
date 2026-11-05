@@ -41,7 +41,7 @@ import {
   getApiErrorMessage,
   readApiErrorResponse,
 } from "@/lib/api-error-response";
-import { RefreshCw, Upload } from "lucide-react";
+import { RefreshCw, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 type VariantOption = Pick<
@@ -559,7 +559,8 @@ export function CatalogMediaManager({
                   </div>
                   <Button
                     aria-label={`Remove ${upload.file.name}`}
-                    className="sm:col-start-2 sm:justify-self-end"
+                    title={`Remove ${upload.file.name}`}
+                    className="text-muted-foreground hover:text-destructive sm:col-start-2 sm:justify-self-end"
                     disabled={operation !== null}
                     onClick={() =>
                       setSelectedUploads((current) =>
@@ -568,10 +569,11 @@ export function CatalogMediaManager({
                         ),
                       )
                     }
+                    size="icon-sm"
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                   >
-                    Remove
+                    <Trash2 aria-hidden="true" />
                   </Button>
                 </li>
               ))}

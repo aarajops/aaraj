@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Minus, Plus, X } from "lucide-react";
+import { Minus, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -443,14 +443,15 @@ function CheckoutOrderSummary({
             >
               <Button
                 aria-label={`Remove ${productName}, ${color}, ${sizeLabel}`}
-                className="row-span-2 text-muted-foreground sm:row-span-1"
+                title={`Remove ${productName}, ${color}, ${sizeLabel}`}
+                className="row-span-2 text-muted-foreground hover:text-destructive sm:row-span-1"
                 disabled={isCartMutating || isSubmitting}
                 onClick={() => void removeCartLine(line.variantId)}
                 size="icon-sm"
                 type="button"
                 variant="ghost"
               >
-                <X aria-hidden="true" />
+                <Trash2 aria-hidden="true" />
               </Button>
               <div className="col-start-2 row-span-2 flex min-w-0 items-center gap-3 sm:row-span-1">
                 {line.image && (

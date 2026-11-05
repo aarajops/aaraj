@@ -48,6 +48,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Trash2 } from "lucide-react";
 import {
   Field,
   FieldDescription,
@@ -914,12 +915,14 @@ export function CatalogManager({
                               <TableCell className="align-top text-right">
                                 <Button
                                   aria-label={`Remove variant ${index + 1}`}
-                                  className="text-destructive"
+                                  title={`Remove variant ${index + 1}`}
+                                  className="text-muted-foreground hover:text-destructive"
                                   type="button"
                                   variant="ghost"
+                                  size="icon-sm"
                                   onClick={() => removeVariant(index)}
                                 >
-                                  Remove
+                                  <Trash2 aria-hidden="true" />
                                 </Button>
                               </TableCell>
                             </TableRow>

@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "cn";
+import { Trash2 } from "lucide-react";
 
 const feeInputSchema = z
   .string()
@@ -472,13 +473,15 @@ export function DeliveryTariffManager() {
                     </span>
                     <Button
                       aria-label={`Remove ${formatAreaName(rule.locationId, locationById)} zone rule`}
+                      title={`Remove ${formatAreaName(rule.locationId, locationById)} zone rule`}
+                      className="text-muted-foreground hover:text-destructive"
                       disabled={saving}
                       onClick={() => remove(index)}
-                      size="sm"
+                      size="icon-sm"
                       type="button"
                       variant="ghost"
                     >
-                      Remove
+                      <Trash2 aria-hidden="true" />
                     </Button>
                   </li>
                 ))}

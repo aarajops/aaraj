@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { CatalogCategoryOption } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import { SortableList } from "@/components/dnd/sortable-list";
@@ -120,13 +120,14 @@ export function HomepageCategorySettings({
                 {handle}
                 <Button
                   aria-label={`Remove ${path} from homepage`}
-                  className="rounded-full text-muted-foreground"
+                  title={`Remove ${path} from homepage`}
+                  className="rounded-full text-muted-foreground hover:text-destructive"
                   onClick={() => onCategoryRemove(id)}
                   size="icon-sm"
                   type="button"
                   variant="ghost"
                 >
-                  <X />
+                  <Trash2 aria-hidden="true" />
                 </Button>
               </>
             )}
