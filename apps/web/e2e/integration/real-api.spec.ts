@@ -877,6 +877,9 @@ test("catalog operator configures a product through to storefront visibility", a
   page,
 }) => {
   test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    (window as Window & { dataLayer?: unknown[] }).dataLayer = [];
+  });
 
   const suffix = randomUUID().slice(0, 8);
   const guideName = `E2E guide ${suffix}`;
@@ -1487,6 +1490,14 @@ test("catalog operator configures a product through to storefront visibility", a
     .getByLabel("Delivery address")
     .fill("House 12, Road 5, beside the park");
 
+  await page.context().addCookies([
+    {
+      name: "_fbc",
+      value: "fb.1.1793880000000.integration-click-id",
+      url: "http://127.0.0.1:3180",
+    },
+  ]);
+
   const checkoutUrl = page.url();
   let checkoutRequestAborted = false;
   await page.route("**/api/v1/orders", async (route) => {
@@ -1501,6 +1512,21 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect.poll(() => checkoutRequestAborted).toBe(true);
   await expect(page.locator("form").getByRole("alert")).toBeVisible();
   expect(checkoutRequestAborted).toBe(true);
+  expect(
+    await page.evaluate(() => {
+      const dataLayer = (window as Window & { dataLayer?: unknown[] })
+        .dataLayer;
+      return Array.isArray(dataLayer)
+        ? dataLayer.filter(
+            (entry) =>
+              typeof entry === "object" &&
+              entry !== null &&
+              "event" in entry &&
+              entry.event === "purchase",
+          ).length
+        : 0;
+    }),
+  ).toBe(0);
   await page.unroute("**/api/v1/orders");
 
   await page.reload();
@@ -1515,6 +1541,23 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Place COD order" }).click();
   await expect(page).toHaveURL(/\/orders\/[0-9a-f-]{36}$/i);
   await expect(page.getByTestId("order-reference")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const dataLayer = (window as Window & { dataLayer?: unknown[] })
+          .dataLayer;
+        return Array.isArray(dataLayer)
+          ? dataLayer.filter(
+              (entry) =>
+                typeof entry === "object" &&
+                entry !== null &&
+                "event" in entry &&
+                entry.event === "purchase",
+            ).length
+          : 0;
+      }),
+    )
+    .toBe(1);
   const customerOrderStatus = page.getByRole("status").filter({
     hasText:
       "We’ll contact you to verify your order and delivery details before courier pickup.",
@@ -1529,6 +1572,28 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByText("Integration Customer")).toBeVisible();
   await expect(page.locator("del")).toContainText("৳2,990");
   const customerOrderId = new URL(page.url()).pathname.split("/").at(-1)!;
+  const purchaseEvent = await page.evaluate(() => {
+    const dataLayer = (window as Window & { dataLayer?: unknown[] }).dataLayer;
+    return Array.isArray(dataLayer)
+      ? dataLayer.find(
+          (entry) =>
+            typeof entry === "object" &&
+            entry !== null &&
+            "event" in entry &&
+            entry.event === "purchase",
+        )
+      : null;
+  });
+  expect(purchaseEvent).toMatchObject({
+    event: "purchase",
+    meta_event_name: "Purchase",
+    event_id: customerOrderId,
+    ecommerce: {
+      transaction_id: expect.any(String),
+      currency: "BDT",
+      items: [{ item_id: expect.any(String), quantity: 1 }],
+    },
+  });
   const storageAfterCheckout = await page.evaluate(() =>
     JSON.stringify({
       local: Object.fromEntries(
