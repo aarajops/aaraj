@@ -2610,6 +2610,57 @@ describe("COD Orders and checkout", () => {
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
   });
 
+  it("shows Pathao pickup failure without calling it an order hold", async () => {
+    const fixture = await createGuestOrder(1);
+    await confirmOrder(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao pickup failure fixture is missing.");
+    const provider = mockPathaoApi({ orderReference: order.reference });
+    const booking = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send()
+      .expect(201);
+    provider.state.infoStatus = "pickup-failed";
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.pickup-failed",
+        consignment_id: booking.body.consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T01:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+
+    const summaries = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/orders`)
+      .set("Cookie", staff.cookie)
+      .query({ orderIds: fixture.id })
+      .expect(200);
+    expect(summaries.body[0]).toMatchObject({
+      trackingProgress: "pickup_failed",
+    });
+    const tracking = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/tracking/lookup`)
+      .set("Origin", origin)
+      .send({ reference: order.reference, phone: "01712345678" })
+      .expect(200);
+    expect(tracking.body.trackingProgress).toBe("pickup_failed");
+    expect(tracking.body.timeline.at(-1)).toMatchObject({
+      trackingProgress: "pickup_failed",
+    });
+    expect((await orderById(fixture.id))?.status).toBe("confirmed");
+  });
+
   it("books with the active default store and derives package data from the Order", async () => {
     const fixture = await createGuestOrder(2, {
       instructions: "Call from the gate\nUse the east entrance",
@@ -2853,6 +2904,29 @@ describe("COD Orders and checkout", () => {
       .where(eq(pathaoBooking.orderId, fixture.id));
     expect(trackingAfterStaleEvent?.trackingProgress).toBe("in_transit");
 
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.returned",
+        consignment_id: "PATHAO-TEST-0001",
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T02:45:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+    const beforeProviderReturn = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/tracking/lookup`)
+      .set("Origin", origin)
+      .send({ reference: order.reference, phone: "01712345678" })
+      .expect(200);
+    expect(beforeProviderReturn.body.trackingProgress).toBe("in_transit");
+    expect(beforeProviderReturn.body.timeline).not.toContainEqual(
+      expect.objectContaining({ trackingProgress: "returning" }),
+    );
+
     provider.state.infoStatus = "returned-to-merchant";
     await request(app.getHttpServer())
       .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
@@ -2864,9 +2938,27 @@ describe("COD Orders and checkout", () => {
         merchant_order_id: order.reference,
         timestamp: "2026-10-10T03:00:00Z",
         store_id: 101,
+        return_consignment_id: "PATHAO-RETURN-0001",
+        return_type: "return",
+        reason: "Customer refused delivery",
       })
       .expect(202);
     await app.get(PathaoService).processPendingWebhooks();
+
+    const [returnEvent] = await database.db
+      .select({ normalizedPayload: pathaoWebhookInbox.normalizedPayload })
+      .from(pathaoWebhookInbox)
+      .where(
+        and(
+          eq(pathaoWebhookInbox.consignmentId, "PATHAO-TEST-0001"),
+          eq(pathaoWebhookInbox.eventName, "order.returned-to-merchant"),
+        ),
+      );
+    expect(returnEvent?.normalizedPayload).toMatchObject({
+      returnConsignmentId: "PATHAO-RETURN-0001",
+      returnType: "return",
+      reason: "Customer refused delivery",
+    });
 
     const customerTracking = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/orders/${fixture.id}/tracking`)

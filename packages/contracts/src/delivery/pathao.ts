@@ -22,6 +22,7 @@ export const PathaoBookingStatusSchema = z.enum([
 export const PathaoTrackingProgressSchema = z.enum([
   "booked",
   "pickup",
+  "pickup_failed",
   "in_transit",
   "out_for_delivery",
   "delivered",

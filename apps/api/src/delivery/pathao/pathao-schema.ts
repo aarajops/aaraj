@@ -153,7 +153,7 @@ export const pathaoBooking = deliverySchema.table(
     ),
     check(
       "pathao_booking_tracking_progress_check",
-      sql`${table.trackingProgress} in ('booked', 'pickup', 'in_transit', 'out_for_delivery', 'delivered', 'partial_delivery', 'delivery_failed', 'returning', 'returned', 'cancelled', 'on_hold', 'reconciliation_required')`,
+      sql`${table.trackingProgress} in ('booked', 'pickup', 'pickup_failed', 'in_transit', 'out_for_delivery', 'delivered', 'partial_delivery', 'delivery_failed', 'returning', 'returned', 'cancelled', 'on_hold', 'reconciliation_required')`,
     ),
   ],
 );

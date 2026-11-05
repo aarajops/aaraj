@@ -1,0 +1,2 @@
+ALTER TABLE "delivery"."pathao_booking" DROP CONSTRAINT "pathao_booking_tracking_progress_check";--> statement-breakpoint
+ALTER TABLE "delivery"."pathao_booking" ADD CONSTRAINT "pathao_booking_tracking_progress_check" CHECK ("delivery"."pathao_booking"."tracking_progress" in ('booked', 'pickup', 'pickup_failed', 'in_transit', 'out_for_delivery', 'delivered', 'partial_delivery', 'delivery_failed', 'returning', 'returned', 'cancelled', 'on_hold', 'reconciliation_required'));

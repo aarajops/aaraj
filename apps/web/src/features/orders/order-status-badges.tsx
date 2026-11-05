@@ -53,6 +53,7 @@ const statusIcons: Record<StatusIconKey, LucideIcon> = {
   outcome_unknown: CircleHelp,
   reconciliation_required: TriangleAlert,
   pickup: PackageCheck,
+  pickup_failed: TriangleAlert,
   in_transit: Truck,
   out_for_delivery: Truck,
   partial_delivery: PackageCheck,

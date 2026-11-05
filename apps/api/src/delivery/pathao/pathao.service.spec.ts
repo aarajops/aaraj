@@ -61,6 +61,8 @@ describe("Pathao booking request mapping", () => {
 describe("Pathao tracking status mapping", () => {
   it("preserves delivery failure as its own tracking state", () => {
     expect(progressFromEvent("order.delivery-failed")).toBe("delivery_failed");
+    expect(progressFromEvent("order.pickup-failed")).toBe("pickup_failed");
+    expect(progressFromStatus("Pickup Failed")).toBe("pickup_failed");
   });
 
   it("maps the documented Paid Return status to the returned shipment state", () => {

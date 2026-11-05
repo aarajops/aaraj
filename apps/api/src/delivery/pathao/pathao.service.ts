@@ -72,6 +72,9 @@ const PathaoWebhookBodySchema = z.object({
   store_id: z.number().int().positive().max(2_147_483_647).optional(),
   delivery_fee: z.number().nonnegative().optional(),
   collected_amount: z.number().nonnegative().optional(),
+  return_consignment_id: z.string().trim().min(1).max(120).optional(),
+  return_type: z.string().trim().min(1).max(64).optional(),
+  reason: z.string().optional(),
 });
 
 type PathaoCancellationResult =
@@ -86,7 +89,7 @@ const PATHAO_EVENT_PROGRESS: Readonly<Record<string, Progress | null>> = {
   "order.pickup-requested": "booked",
   "order.assigned-for-pickup": "booked",
   "order.picked": "pickup",
-  "order.pickup-failed": "on_hold",
+  "order.pickup-failed": "pickup_failed",
   "order.pickup-cancelled": "cancelled",
   "order.at-the-sorting-hub": "in_transit",
   "order.in-transit": "in_transit",
@@ -1037,7 +1040,9 @@ export class PathaoService {
       .select({
         id: pathaoWebhookInbox.id,
         eventName: pathaoWebhookInbox.eventName,
+        providerOrderStatus: pathaoWebhookInbox.providerOrderStatus,
         providerTimestamp: pathaoWebhookInbox.providerTimestamp,
+        processedAt: pathaoWebhookInbox.processedAt,
         receivedAt: pathaoWebhookInbox.receivedAt,
       })
       .from(pathaoWebhookInbox)
@@ -1056,21 +1061,28 @@ export class PathaoService {
         updatedAt: booking.createdAt.toISOString(),
       },
     ];
-    const orderedObservations = [...observations].sort((a, b) => {
-      const aTime = (a.providerTimestamp ?? a.receivedAt).getTime();
-      const bTime = (b.providerTimestamp ?? b.receivedAt).getTime();
-      return aTime - bTime || a.id.localeCompare(b.id);
-    });
-    for (const observation of orderedObservations) {
-      const progress = progressFromEvent(observation.eventName);
-      if (!progress) continue;
+    const confirmedObservations = observations
+      .map((observation) => {
+        const progress = progressFromStatus(observation.providerOrderStatus);
+        if (!progress) return null;
+        const eventTime =
+          progressFromEvent(observation.eventName) === progress
+            ? (observation.providerTimestamp ?? observation.receivedAt)
+            : (observation.processedAt ?? observation.receivedAt);
+        return { id: observation.id, trackingProgress: progress, eventTime };
+      })
+      .filter((observation) => observation !== null)
+      .sort(
+        (a, b) =>
+          a.eventTime.getTime() - b.eventTime.getTime() ||
+          a.id.localeCompare(b.id),
+      );
+    for (const observation of confirmedObservations) {
       const event = {
-        trackingProgress: progress,
-        updatedAt: (
-          observation.providerTimestamp ?? observation.receivedAt
-        ).toISOString(),
+        trackingProgress: observation.trackingProgress,
+        updatedAt: observation.eventTime.toISOString(),
       };
-      if (timeline.at(-1)?.trackingProgress === progress) {
+      if (timeline.at(-1)?.trackingProgress === observation.trackingProgress) {
         timeline[timeline.length - 1] = event;
       } else {
         timeline.push(event);
@@ -1273,6 +1285,11 @@ export class PathaoService {
       ...(event.collected_amount !== undefined
         ? { collectedAmount: event.collected_amount }
         : {}),
+      ...(event.return_consignment_id
+        ? { returnConsignmentId: event.return_consignment_id }
+        : {}),
+      ...(event.return_type ? { returnType: event.return_type } : {}),
+      ...(event.reason !== undefined ? { reason: event.reason } : {}),
     };
     const fingerprint = sha256(JSON.stringify(normalizedPayload));
     const [booking] = event.consignment_id
