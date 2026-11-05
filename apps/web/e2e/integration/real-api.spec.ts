@@ -18,7 +18,8 @@ async function openRowActions(page: Page, row: Locator) {
 function ecommerceEventCount(page: Page, eventName: string, itemName?: string) {
   return page.evaluate(
     ({ eventName, itemName }) => {
-      const dataLayer = (window as Window & { dataLayer?: unknown[] }).dataLayer;
+      const dataLayer = (window as Window & { dataLayer?: unknown[] })
+        .dataLayer;
       if (!Array.isArray(dataLayer)) return 0;
 
       return dataLayer.filter((entry) => {
@@ -32,9 +33,8 @@ function ecommerceEventCount(page: Page, eventName: string, itemName?: string) {
         }
         if (!itemName) return true;
 
-        const ecommerce = (
-          entry as { ecommerce?: { items?: unknown[] } }
-        ).ecommerce;
+        const ecommerce = (entry as { ecommerce?: { items?: unknown[] } })
+          .ecommerce;
         return (
           ecommerce?.items?.some(
             (item) =>
@@ -1257,9 +1257,7 @@ test("catalog operator configures a product through to storefront visibility", a
           };
         }
       | undefined;
-    return viewItem?.ecommerce?.items?.find(
-      (item) => item.item_name === name,
-    );
+    return viewItem?.ecommerce?.items?.find((item) => item.item_name === name);
   }, productName);
   expect(lastViewItem).toMatchObject({
     item_name: productName,
@@ -1328,9 +1326,7 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(cartReadIsCorrupt).toBe(false);
   await page.unroute("**/api/v1/cart");
   await page.getByRole("button", { name: "Add to cart" }).click();
-  await expect
-    .poll(() => ecommerceEventCount(page, "add_to_cart"))
-    .toBe(1);
+  await expect.poll(() => ecommerceEventCount(page, "add_to_cart")).toBe(1);
   const cartSheet = page.getByRole("dialog", { name: "Your cart" });
   await expect(cartSheet).toBeVisible();
   await expect(
@@ -1343,9 +1339,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("main").getByRole("heading", { name: "Checkout" }),
   ).toBeVisible();
-  await expect
-    .poll(() => ecommerceEventCount(page, "begin_checkout"))
-    .toBe(1);
+  await expect.poll(() => ecommerceEventCount(page, "begin_checkout")).toBe(1);
   const checkoutSummary = page.getByRole("complementary", {
     name: "Order summary",
   });
