@@ -63,9 +63,7 @@ test("product views push the Meta mapping and event ID to GTM", async ({
   });
 });
 
-test("customer order details do not emit Purchase", async ({
-  page,
-}) => {
+test("customer order details do not emit Purchase", async ({ page }) => {
   const orderId = "b7e38a23-2ef7-49f0-a30f-8c25877e631e";
   let order: Order = {
     id: orderId,
