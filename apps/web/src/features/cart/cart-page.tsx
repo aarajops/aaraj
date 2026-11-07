@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -24,6 +24,11 @@ import {
 } from "./cart-client";
 import { useCartStore } from "./cart-provider";
 import { CartQuote } from "./cart-quote";
+import {
+  cartItem,
+  cartValue,
+  sendEcommerceEvent,
+} from "@/features/analytics/gtm-ecommerce";
 
 type MergeMode = "none" | "required" | "retry" | "cleanup";
 const quantityOptions = Array.from(
@@ -36,6 +41,7 @@ const quantityOptions = Array.from(
 
 export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
   const router = useRouter();
+  const viewCartSent = useRef(false);
   const cart = useCartStore((state) => state.cart);
   const ready = useCartStore((state) => state.isReady);
   const loading = useCartStore((state) => state.isLoading);
@@ -52,6 +58,19 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
   const [guestErrorCode, setGuestErrorCode] = useState<string | null>(null);
   const [isResolving, setIsResolving] = useState(false);
   const [mergeMessage, setMergeMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ready || cart.lines.length === 0 || viewCartSent.current) {
+      return;
+    }
+
+    const sent = sendEcommerceEvent("view_cart", {
+      currency: cart.currency,
+      value: cartValue(cart.lines),
+      items: cart.lines.map((line) => cartItem(line)),
+    });
+    if (sent) viewCartSent.current = true;
+  }, [cart, ready]);
 
   useEffect(() => {
     if (mergeMode !== "required") return;

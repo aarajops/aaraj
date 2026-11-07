@@ -1,6 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getGtmIdForRequestHost } from "@/lib/gtm-config";
 
+const trackingHosts = {
+  googleTag: "https://googletagmanager.com https://*.googletagmanager.com",
+  google: "https://google.com https://*.google.com",
+  analytics: "https://google-analytics.com https://*.google-analytics.com",
+  googleStatic: "https://gstatic.com https://*.gstatic.com",
+  meta: "https://facebook.com https://*.facebook.com https://facebook.net https://*.facebook.net https://fbcdn.net https://*.fbcdn.net",
+  stape: "https://in.stape.io https://*.in.stape.io",
+  helperCdn:
+    "https://jsdelivr.net https://*.jsdelivr.net https://unpkg.com https://*.unpkg.com",
+};
+
+const sources = (...groups: string[]) => groups.join(" ");
+
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDevelopment = process.env.NODE_ENV === "development";
@@ -15,23 +28,54 @@ export function proxy(request: NextRequest) {
       isDevelopment ? " 'unsafe-eval'" : ""
     }`,
     `script-src-elem 'self' 'nonce-${nonce}'${storefrontOnly(
-      "https://www.googletagmanager.com https://tagmanager.google.com https://connect.facebook.net",
+      sources(
+        trackingHosts.googleTag,
+        trackingHosts.google,
+        trackingHosts.analytics,
+        trackingHosts.googleStatic,
+        trackingHosts.meta,
+        trackingHosts.stape,
+        trackingHosts.helperCdn,
+      ),
     )}`,
     `style-src 'self' ${
       isDevelopment ? "'unsafe-inline'" : `'nonce-${nonce}'`
     }${storefrontOnly(
-      "https://www.googletagmanager.com https://tagmanager.google.com https://fonts.googleapis.com",
+      sources(
+        trackingHosts.googleTag,
+        trackingHosts.google,
+        "https://fonts.googleapis.com",
+      ),
     )}`,
     ...(!isAdmin && !isDevelopment ? ["style-src-attr 'unsafe-inline'"] : []),
     `img-src 'self' blob: data:${storefrontOnly(
-      "https://www.googletagmanager.com https://*.google-analytics.com https://*.in.stape.io https://ssl.gstatic.com https://www.gstatic.com https://www.facebook.com",
+      sources(
+        trackingHosts.googleTag,
+        trackingHosts.analytics,
+        trackingHosts.google,
+        trackingHosts.googleStatic,
+        trackingHosts.stape,
+        trackingHosts.meta,
+      ),
     )}`,
     `connect-src 'self'${storefrontOnly(
-      "https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://*.in.stape.io https://www.facebook.com",
+      sources(
+        trackingHosts.googleTag,
+        trackingHosts.analytics,
+        trackingHosts.google,
+        trackingHosts.stape,
+        trackingHosts.meta,
+      ),
     )}`,
-    `font-src 'self'${storefrontOnly("https://fonts.gstatic.com data:")}`,
+    `font-src 'self'${storefrontOnly(
+      sources(trackingHosts.googleStatic, "data:"),
+    )}`,
     `frame-src 'self'${storefrontOnly(
-      "https://www.googletagmanager.com https://*.in.stape.io",
+      sources(
+        trackingHosts.googleTag,
+        trackingHosts.google,
+        trackingHosts.stape,
+      ),
     )}`,
     "object-src 'none'",
     "base-uri 'self'",

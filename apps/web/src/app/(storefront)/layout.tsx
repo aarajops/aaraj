@@ -3,6 +3,7 @@ import { GoogleTagManager } from "@next/third-parties/google";
 import { SiteHeader } from "@/app/_components/site-header";
 import { StoreFooter } from "@/app/_components/store-footer";
 import { CartProvider } from "@/features/cart/cart-provider";
+import { StorefrontPageViews } from "@/features/analytics/storefront-page-views";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 import { getGtmIdForRequestHost } from "@/lib/gtm-config";
 
@@ -26,6 +27,7 @@ export default async function StorefrontLayout({
       </style>
       <CartProvider>
         <div className="storefront-theme flex min-h-screen flex-col bg-background text-foreground">
+          <StorefrontPageViews />
           <SiteHeader />
           {children}
           <StoreFooter />

@@ -2,17 +2,18 @@ import { sendGTMEvent } from "@next/third-parties/google";
 import type { CURRENCY } from "@aaraj/contracts";
 
 export type EcommerceEvent =
-  "view_item" | "add_to_cart" | "begin_checkout" | "purchase";
+  "view_item" | "view_cart" | "add_to_cart" | "begin_checkout" | "purchase";
 
 type MetaStandardEventName =
   "ViewContent" | "AddToCart" | "InitiateCheckout" | "Purchase";
 
 const metaEventNameByEcommerceEvent = {
   view_item: "ViewContent",
+  view_cart: null,
   add_to_cart: "AddToCart",
   begin_checkout: "InitiateCheckout",
   purchase: "Purchase",
-} as const satisfies Record<EcommerceEvent, MetaStandardEventName>;
+} as const satisfies Record<EcommerceEvent, MetaStandardEventName | null>;
 
 export type EcommerceItem = {
   item_id?: string;
@@ -105,37 +106,74 @@ export function sendEcommerceEvent(
   ecommerce: EcommercePayload,
   eventId?: string,
 ) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return false;
 
   const stableEventId = eventId ?? window.crypto.randomUUID();
   if (event === "purchase") {
-    window.fbq?.(
-      "track",
-      "Purchase",
-      {
-        value: ecommerce.value ?? 0,
-        currency: ecommerce.currency,
-        content_ids: ecommerce.items.flatMap((item) =>
-          item.item_id ? [item.item_id] : [],
-        ),
-        content_type: "product",
-        contents: ecommerce.items.map((item) => ({
-          id: item.item_id,
-          quantity: item.quantity,
-          item_price: item.price,
-        })),
-        order_id: ecommerce.transaction_id,
-        shipping: ecommerce.shipping,
-      },
-      { eventID: stableEventId },
-    );
+    try {
+      window.fbq?.(
+        "track",
+        "Purchase",
+        {
+          value: ecommerce.value ?? 0,
+          currency: ecommerce.currency,
+          content_ids: ecommerce.items.flatMap((item) =>
+            item.item_id ? [item.item_id] : [],
+          ),
+          content_type: "product",
+          contents: ecommerce.items.map((item) => ({
+            id: item.item_id,
+            quantity: item.quantity,
+            item_price: item.price,
+          })),
+          order_id: ecommerce.transaction_id,
+          shipping: ecommerce.shipping,
+        },
+        { eventID: stableEventId },
+      );
+    } catch {
+      // A Pixel failure must not prevent the GTM event from being queued.
+    }
   }
 
   sendGTMEvent({ ecommerce: null });
   sendGTMEvent({
     event,
-    meta_event_name: metaEventNameByEcommerceEvent[event],
+    ...(metaEventNameByEcommerceEvent[event]
+      ? { meta_event_name: metaEventNameByEcommerceEvent[event] }
+      : {}),
     event_id: stableEventId,
     ecommerce,
   });
+  return true;
+}
+
+const pageViewQueryParameters = new Set([
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "utm_id",
+  "gclid",
+  "dclid",
+  "fbclid",
+]);
+
+export function sendPageView(pathname: string) {
+  if (typeof window === "undefined") return false;
+
+  const pageUrl = new URL(window.location.href);
+  for (const key of [...pageUrl.searchParams.keys()]) {
+    if (!pageViewQueryParameters.has(key.toLowerCase())) {
+      pageUrl.searchParams.delete(key);
+    }
+  }
+
+  sendGTMEvent({
+    event: "page_view",
+    page_location: `${pageUrl.origin}${pathname}${pageUrl.search}`,
+    page_title: document.title,
+  });
+  return true;
 }

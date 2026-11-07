@@ -91,13 +91,15 @@ function SinglePageCheckout({
   });
 
   useEffect(() => {
-    if (!ready || cart.lines.length === 0 || checkoutEventSent.current) return;
-    checkoutEventSent.current = true;
-    sendEcommerceEvent("begin_checkout", {
+    if (!ready || cart.lines.length === 0 || checkoutEventSent.current) {
+      return;
+    }
+    const sent = sendEcommerceEvent("begin_checkout", {
       currency: cart.currency,
       value: cartValue(cart.lines),
       items: cart.lines.map((line) => cartItem(line)),
     });
+    if (sent) checkoutEventSent.current = true;
   }, [cart, ready]);
 
   const receiveCurrentQuote = useCallback((next: AuthoritativeQuote | null) => {
@@ -629,26 +631,38 @@ function trackCreatedOrderPurchase(
       >
     | Pick<Order, "currency" | "merchandiseGrossBdt" | "delivery" | "lines">,
 ) {
-  sendEcommerceEvent(
-    "purchase",
-    {
-      transaction_id: order.reference,
-      currency: details.currency,
-      value: details.merchandiseGrossBdt,
-      shipping: details.delivery.grossAmountBdt,
-      items: details.lines.map((line) =>
-        variantEcommerceItem({
-          variantId: line.variantId,
-          itemName: line.productName,
-          color: line.color,
-          sizeLabel: line.sizeLabel,
-          price: line.unitPriceBdt,
-          quantity: line.quantity,
-        }),
-      ),
-    },
-    order.id,
-  );
+  const storageKey = `aaraj.analytics.purchase:${order.id}`;
+  try {
+    if (window.sessionStorage.getItem(storageKey) === "1") return;
+  } catch {
+    // Keep analytics best-effort if browser storage is unavailable.
+  }
+
+  try {
+    const sent = sendEcommerceEvent(
+      "purchase",
+      {
+        transaction_id: order.reference,
+        currency: details.currency,
+        value: details.merchandiseGrossBdt,
+        shipping: details.delivery.grossAmountBdt,
+        items: details.lines.map((line) =>
+          variantEcommerceItem({
+            variantId: line.variantId,
+            itemName: line.productName,
+            color: line.color,
+            sizeLabel: line.sizeLabel,
+            price: line.unitPriceBdt,
+            quantity: line.quantity,
+          }),
+        ),
+      },
+      order.id,
+    );
+    if (sent) window.sessionStorage.setItem(storageKey, "1");
+  } catch {
+    // Analytics must not block checkout completion or order navigation.
+  }
 }
 
 function getOrCreateIdempotencyKey(

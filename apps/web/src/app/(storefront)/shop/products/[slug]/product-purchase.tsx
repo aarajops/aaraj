@@ -117,8 +117,7 @@ export function ProductPurchase({
 
   useEffect(() => {
     if (viewedItemKey.current === viewItemKey) return;
-    viewedItemKey.current = viewItemKey;
-    sendEcommerceEvent("view_item", {
+    const sent = sendEcommerceEvent("view_item", {
       currency: CURRENCY,
       ...(viewItemPriceBdt !== null ? { value: viewItemPriceBdt } : {}),
       items: [
@@ -131,6 +130,7 @@ export function ProductPurchase({
         },
       ],
     });
+    if (sent) viewedItemKey.current = viewItemKey;
   }, [
     productId,
     productName,
