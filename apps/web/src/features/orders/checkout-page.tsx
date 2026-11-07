@@ -40,8 +40,9 @@ import {
   fetchOrder,
   OrderRequestError,
   resumeCodOrder,
+  saveCheckoutDraft,
 } from "./orders-client";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 const checkoutFormSchema = CheckoutAddressInputSchema.pick({
@@ -79,8 +80,19 @@ function SinglePageCheckout({
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const checkoutEventSent = useRef(false);
   const checkoutAttempt = useRef<{ quoteId: string; key: string } | null>(null);
+  const draftVersion = useRef<number | null>(null);
+  const draftSaveChain = useRef<Promise<void>>(Promise.resolve());
+  const lastDraftSaveAt = useRef(0);
+  const captureStopped = useRef(false);
+  const draftPayload = useRef<{
+    recipientName: string;
+    phone: string;
+    doorstepDetails: string;
+    quoteId: string | null;
+  } | null>(null);
   const {
     clearErrors,
+    control,
     register,
     setError,
     handleSubmit,
@@ -89,6 +101,84 @@ function SinglePageCheckout({
     resolver: zodResolver(checkoutFormSchema),
     defaultValues: initialForm,
   });
+  const draftFields = useWatch({ control });
+
+  useEffect(() => {
+    const phone = draftFields.phone?.trim() ?? "";
+    if (
+      captureStopped.current ||
+      !ready ||
+      cart.lines.length === 0 ||
+      !/^01[3-9]\d{8}$/.test(phone)
+    ) {
+      draftPayload.current = null;
+      return;
+    }
+    const payload = {
+      recipientName: draftFields.recipientName ?? "",
+      phone,
+      doorstepDetails: draftFields.doorstepDetails ?? "",
+      quoteId: quote?.id ?? null,
+    };
+    draftPayload.current = payload;
+    const delay = Math.max(
+      1_500,
+      10_000 - (Date.now() - lastDraftSaveAt.current),
+    );
+    const timer = window.setTimeout(() => {
+      draftSaveChain.current = draftSaveChain.current.then(async () => {
+        if (captureStopped.current) return;
+        lastDraftSaveAt.current = Date.now();
+        try {
+          const result = await saveCheckoutDraft({
+            ...payload,
+            expectedVersion: draftVersion.current,
+          });
+          if (result)
+            draftVersion.current = Math.max(
+              draftVersion.current ?? 0,
+              result.version,
+            );
+        } catch {
+          // Draft capture is best effort; it never blocks checkout.
+        }
+      });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [
+    draftFields.recipientName,
+    draftFields.phone,
+    draftFields.doorstepDetails,
+    quote?.id,
+    ready,
+    cart.revision,
+    cart.lines.length,
+  ]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (
+        document.visibilityState !== "hidden" ||
+        captureStopped.current ||
+        !draftPayload.current
+      )
+        return;
+      void saveCheckoutDraft(
+        { ...draftPayload.current, expectedVersion: draftVersion.current },
+        { keepalive: true },
+      )
+        .then((result) => {
+          if (result)
+            draftVersion.current = Math.max(
+              draftVersion.current ?? 0,
+              result.version,
+            );
+        })
+        .catch(() => undefined);
+    };
+    document.addEventListener("visibilitychange", flush);
+    return () => document.removeEventListener("visibilitychange", flush);
+  }, []);
 
   useEffect(() => {
     if (!ready || cart.lines.length === 0 || checkoutEventSent.current) {
@@ -123,6 +213,7 @@ function SinglePageCheckout({
           if (!active) return;
           const details = await fetchOrder(order.id);
           if (!active) return;
+          captureStopped.current = true;
           trackCreatedOrderPurchase(order, details);
           await refreshCart();
           if (active) router.replace(`/orders/${order.id}`);
@@ -181,6 +272,7 @@ function SinglePageCheckout({
     };
     try {
       const order = await createCodOrder(input, key);
+      captureStopped.current = true;
       trackCreatedOrderPurchase(order, quote);
       await refreshCart();
       router.push(`/orders/${order.id}`);
@@ -203,6 +295,7 @@ function SinglePageCheckout({
       ) {
         try {
           const existing = await resumeCodOrder(key);
+          captureStopped.current = true;
           trackCreatedOrderPurchase(existing, quote);
           await refreshCart();
           router.push(`/orders/${existing.id}`);

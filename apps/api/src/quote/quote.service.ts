@@ -66,48 +66,8 @@ export class QuoteService {
       );
     }
 
-    const destination = await this.geography.resolveDestination(input);
-    const tariff = await this.delivery.resolveDeliveryFee(
-      input.geographyVersion,
-      destination.district.id,
-      destination.upazila?.id,
-    );
-    const variants = await this.catalog.findPurchasableVariants(
-      context.cart.lines.map(({ variantId }) => variantId),
-    );
-    const byId = new Map(
-      variants.map((variant) => [variant.variantId, variant]),
-    );
-    const lines = context.cart.lines.map((line) => {
-      const variant = byId.get(line.variantId);
-      if (!variant) {
-        throw new UnprocessableEntityException(
-          "A cart item is no longer available. Refresh the cart and try again.",
-          {
-            errorCode: "QUOTE_CATALOG_CHANGED",
-          },
-        );
-      }
-      const grossAmountBdt = safeAmount(
-        BigInt(variant.unitPriceBdt) * BigInt(line.quantity),
-      );
-      return {
-        variantId: variant.variantId,
-        productName: variant.name,
-        color: variant.color,
-        sizeLabel: variant.sizeLabel,
-        quantity: line.quantity,
-        unitPriceBdt: variant.unitPriceBdt,
-        compareAtPriceBdt: variant.compareAtPriceBdt,
-        grossAmountBdt,
-      };
-    });
-    const merchandiseGrossBdt = safeAmount(
-      lines.reduce((sum, line) => sum + BigInt(line.grossAmountBdt), 0n),
-    );
-    const totalBdt = safeAmount(
-      BigInt(merchandiseGrossBdt) + BigInt(tariff.feeBdt),
-    );
+    const { destination, tariff, lines, merchandiseGrossBdt, totalBdt } =
+      await this.priceSelection(context.cart.lines, input);
     const [saved] = await this.database.db.transaction(async (transaction) => {
       await lockCartQuoteOwner(transaction, owner);
       const [latest] = await transaction
@@ -149,6 +109,127 @@ export class QuoteService {
     if (!saved)
       throw new ServiceUnavailableException("The quote could not be saved.");
     return this.toPublicQuote(saved);
+  }
+
+  async previewAssisted(
+    lines: readonly { variantId: string; quantity: number }[],
+    destination: QuoteDestinationInput,
+  ) {
+    return this.priceSelection(lines, destination);
+  }
+
+  async createAssistedWithinTransaction(
+    transaction: AuditTransaction,
+    owner: CartQuoteOwner,
+    cartRevision: number,
+    selections: readonly { variantId: string; quantity: number }[],
+    input: QuoteDestinationInput,
+  ): Promise<AuthoritativeQuote> {
+    await lockCartQuoteOwner(transaction, owner);
+    const { destination, tariff, lines, merchandiseGrossBdt, totalBdt } =
+      await this.priceSelection(selections, input, transaction);
+    const [latest] = await transaction
+      .select({ createdAt: quoteSnapshot.createdAt })
+      .from(quoteSnapshot)
+      .where(quoteOwnerCondition(owner))
+      .orderBy(desc(quoteSnapshot.createdAt), desc(quoteSnapshot.id))
+      .limit(1);
+    const createdAt = latest
+      ? sql`greatest(statement_timestamp(), ${latest.createdAt}::timestamptz + interval '1 millisecond')`
+      : sql`statement_timestamp()`;
+    const [saved] = await transaction
+      .insert(quoteSnapshot)
+      .values({
+        schemaVersion: QUOTE_SCHEMA_VERSION,
+        customerId: owner.kind === "customer" ? owner.customerId : null,
+        guestCartHash: owner.kind === "guest" ? owner.guestCartHash : null,
+        cartRevision,
+        geographyVersion: input.geographyVersion,
+        divisionId: destination.division.id,
+        divisionName: destination.division.name,
+        districtId: destination.district.id,
+        districtName: destination.district.name,
+        upazilaId: destination.upazila?.id ?? null,
+        upazilaName: destination.upazila?.name ?? null,
+        deliveryTariffVersion: tariff.version,
+        deliveryTariffEffectiveFrom: tariff.effectiveFrom,
+        deliveryZone: tariff.zone,
+        deliveryAmountBdt: tariff.feeBdt,
+        lines,
+        merchandiseGrossBdt,
+        totalBdt,
+        validityPolicyVersion: QUOTE_VALIDITY_POLICY_VERSION,
+        createdAt,
+        expiresAt: sql`${createdAt} + interval '15 minutes'`,
+      })
+      .returning();
+    if (!saved)
+      throw new ServiceUnavailableException("The quote could not be saved.");
+    return this.toPublicQuote(saved);
+  }
+
+  private async priceSelection(
+    selections: readonly { variantId: string; quantity: number }[],
+    input: QuoteDestinationInput,
+    transaction?: AuditTransaction,
+  ) {
+    if (selections.length === 0) {
+      throw new UnprocessableEntityException(
+        "Add an item before requesting a quote.",
+      );
+    }
+    const destination = await this.geography.resolveDestination(input);
+    const tariff = transaction
+      ? await this.delivery.resolveDeliveryFeeWithinTransaction(
+          transaction,
+          input.geographyVersion,
+          destination.district.id,
+          destination.upazila?.id,
+        )
+      : await this.delivery.resolveDeliveryFee(
+          input.geographyVersion,
+          destination.district.id,
+          destination.upazila?.id,
+        );
+    const variants = transaction
+      ? await this.catalog.findPurchasableVariantsWithinTransaction(
+          transaction,
+          selections.map(({ variantId }) => variantId),
+        )
+      : await this.catalog.findPurchasableVariants(
+          selections.map(({ variantId }) => variantId),
+        );
+    const byId = new Map(
+      variants.map((variant) => [variant.variantId, variant]),
+    );
+    const lines = selections.map((selection) => {
+      const variant = byId.get(selection.variantId);
+      if (!variant)
+        throw new UnprocessableEntityException(
+          "A cart item is no longer available.",
+          { errorCode: "QUOTE_CATALOG_CHANGED" },
+        );
+      const grossAmountBdt = safeAmount(
+        BigInt(variant.unitPriceBdt) * BigInt(selection.quantity),
+      );
+      return {
+        variantId: variant.variantId,
+        productName: variant.name,
+        color: variant.color,
+        sizeLabel: variant.sizeLabel,
+        quantity: selection.quantity,
+        unitPriceBdt: variant.unitPriceBdt,
+        compareAtPriceBdt: variant.compareAtPriceBdt,
+        grossAmountBdt,
+      };
+    });
+    const merchandiseGrossBdt = safeAmount(
+      lines.reduce((sum, line) => sum + BigInt(line.grossAmountBdt), 0n),
+    );
+    const totalBdt = safeAmount(
+      BigInt(merchandiseGrossBdt) + BigInt(tariff.feeBdt),
+    );
+    return { destination, tariff, lines, merchandiseGrossBdt, totalBdt };
   }
 
   async get(

@@ -14,6 +14,8 @@ import {
   OrderManagementDetailSchema,
   OrderSchema,
   OrderStatusUpdateInputSchema,
+  CheckoutDraftSaveSchema,
+  CheckoutDraftSaveResultSchema,
   type CreateOrderInput,
   type OrderCollectionInput,
   type OrderCreated,
@@ -23,6 +25,7 @@ import {
   type Order,
   type OrderManagementDetail,
   type OrderStatusUpdateInput,
+  type CheckoutDraftSave,
 } from "@aaraj/contracts";
 
 export class OrderRequestError extends Error {
@@ -34,6 +37,26 @@ export class OrderRequestError extends Error {
     super(message);
     this.name = "OrderRequestError";
   }
+}
+
+export async function saveCheckoutDraft(
+  input: CheckoutDraftSave,
+  options: { keepalive?: boolean } = {},
+) {
+  const validated = CheckoutDraftSaveSchema.parse(input);
+  const response = await fetch(`${API_V1_BASE_PATH}/checkout-drafts`, {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    keepalive: options.keepalive,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(validated),
+  });
+  if (!response.ok) return null;
+  const body = await response.text();
+  return body
+    ? CheckoutDraftSaveResultSchema.parse(JSON.parse(body) as unknown)
+    : null;
 }
 
 export async function createCodOrder(

@@ -6,6 +6,7 @@ import type { Permission } from "@aaraj/contracts";
 import {
   Boxes,
   ClipboardList,
+  PhoneCall,
   CircleAlert,
   Truck,
   LayoutDashboard,
@@ -64,6 +65,12 @@ const operationsLinks = [
     label: "Orders",
     icon: ClipboardList,
     permission: "orders.manage",
+  },
+  {
+    href: "/admin/orders/abandoned",
+    label: "Abandoned checkouts",
+    icon: PhoneCall,
+    permission: "checkout_drafts.manage",
   },
   {
     href: "/admin/orders/reconciliation",

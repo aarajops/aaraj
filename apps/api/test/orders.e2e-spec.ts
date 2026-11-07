@@ -15,6 +15,8 @@ import {
 } from "@aaraj/contracts";
 import { auth } from "../src/auth/auth.js";
 import { AppModule } from "../src/app.module.js";
+import { CartService } from "../src/cart/cart.service.js";
+import { guestCartRevisionReceipt } from "../src/cart/cart-schema.js";
 import { configureApp } from "../src/configure-app.js";
 import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 import {
@@ -38,6 +40,7 @@ import { auditEvent } from "../src/platform/audit/audit-schema.js";
 import {
   customerOrder,
   customerOrderLine,
+  checkoutDraft,
   orderIdempotency,
   orderPathaoBookingClaim,
 } from "../src/orders/orders-schema.js";
@@ -633,6 +636,408 @@ describe("COD Orders and checkout", () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+  });
+
+  it("captures an abandoned guest checkout and converts it once into a confirmed Order", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const save = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", cart.cookie)
+      .send({
+        recipientName: "Draft Recipient",
+        phone: "01712345678",
+        doorstepDetails: "House 12",
+      })
+      .expect(201);
+    const draftId = save.body.id as string;
+    expect(save.body.version).toBe(1);
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}`)
+      .expect(401);
+    const hidden = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(
+      hidden.body.rows.some((row: { id: string }) => row.id === draftId),
+    ).toBe(false);
+    await database.db
+      .update(checkoutDraft)
+      .set({ lastCustomerActivityAt: new Date(Date.now() - 11 * 60_000) })
+      .where(eq(checkoutDraft.id, draftId));
+    const listed = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(
+      listed.body.rows.some((row: { id: string }) => row.id === draftId),
+    ).toBe(true);
+    const detail = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(detail.body.phone).toBe("+8801712345678");
+    const interest = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/call-outcome`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ outcome: "interested", expectedVersion: detail.body.version })
+      .expect(201);
+    const address = checkoutBody(randomUUID()).address;
+    const preview = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/preview`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ address, expectedVersion: interest.body.version })
+      .expect(201);
+    const orderInput = {
+      address,
+      expectedVersion: interest.body.version,
+      acceptedTotalBdt: preview.body.totalBdt,
+      previewFingerprint: preview.body.fingerprint,
+      customerAgreed: true,
+    };
+    const created = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/create-order`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send(orderInput)
+      .expect(201);
+    const stored = await orderById(created.body.id as string);
+    expect(stored?.status).toBe("confirmed");
+    expect(stored?.fulfillmentStatus).toBe("awaiting_dispatch");
+    expect(stored?.sourceDraftId).toBe(draftId);
+    expect((await stockFor(variantId)).quantityReserved).toBe(1);
+    const replay = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/create-order`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send(orderInput)
+      .expect(201);
+    expect(replay.body.id).toBe(created.body.id);
+    const [remaining] = await database.db
+      .select()
+      .from(checkoutDraft)
+      .where(eq(checkoutDraft.id, draftId));
+    expect(remaining).toBeUndefined();
+  });
+
+  it("removes an abandoned draft when the customer places the regular Order", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const saved = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", cart.cookie)
+      .send({
+        phone: "01712345678",
+        recipientName: "Regular buyer",
+        doorstepDetails: "House 12",
+      })
+      .expect(201);
+    const quote = await createQuote(cart.cookie);
+    const key = randomUUID();
+    const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
+    await placeOrder(checkoutCookie, checkoutBody(quote.id), key).expect(201);
+    const [remaining] = await database.db
+      .select()
+      .from(checkoutDraft)
+      .where(eq(checkoutDraft.id, saved.body.id as string));
+    expect(remaining).toBeUndefined();
+    const lateSave = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", cart.cookie)
+      .send({
+        phone: "01712345678",
+        recipientName: "Regular buyer",
+        doorstepDetails: "House 12",
+      })
+      .expect(201);
+    expect(lateSave.body).toEqual({});
+    const [resurrected] = await database.db
+      .select()
+      .from(checkoutDraft)
+      .where(eq(checkoutDraft.id, saved.body.id as string));
+    expect(resurrected).toBeUndefined();
+  });
+
+  it("suppresses abandoned checkouts for a number after a do-not-contact request", async () => {
+    const variantId = await createVariant(2);
+    const first = await newGuestCart([variantId]);
+    const saved = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", first.cookie)
+      .send({
+        phone: "01812345678",
+        recipientName: "Wrong number",
+        doorstepDetails: "",
+      })
+      .expect(201);
+    await database.db
+      .update(checkoutDraft)
+      .set({ lastCustomerActivityAt: new Date(Date.now() - 11 * 60_000) })
+      .where(eq(checkoutDraft.id, saved.body.id as string));
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${saved.body.id}/call-outcome`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ outcome: "do_not_contact", expectedVersion: saved.body.version })
+      .expect(201);
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/checkout-drafts/${saved.body.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(404);
+    const second = await newGuestCart([variantId]);
+    const blocked = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", second.cookie)
+      .send({
+        phone: "01812345678",
+        recipientName: "New attempt",
+        doorstepDetails: "",
+      })
+      .expect(201);
+    expect(blocked.body).toEqual({});
+  });
+
+  it("rejects staff conversion when the price changes after the customer agrees", async () => {
+    const variantId = await createVariant(2, 250);
+    const cart = await newGuestCart([variantId]);
+    const saved = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", cart.cookie)
+      .send({
+        phone: "01912345678",
+        recipientName: "Price check",
+        doorstepDetails: "House 12",
+      })
+      .expect(201);
+    const id = saved.body.id as string;
+    await database.db
+      .update(checkoutDraft)
+      .set({ lastCustomerActivityAt: new Date(Date.now() - 11 * 60_000) })
+      .where(eq(checkoutDraft.id, id));
+    const interest = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${id}/call-outcome`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ outcome: "interested", expectedVersion: saved.body.version })
+      .expect(201);
+    const address = checkoutBody(randomUUID()).address;
+    const preview = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${id}/preview`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ address, expectedVersion: interest.body.version })
+      .expect(201);
+    await database.db
+      .update(catalogProductVariant)
+      .set({ priceBdt: 300 })
+      .where(eq(catalogProductVariant.id, variantId));
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${id}/create-order`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        address,
+        expectedVersion: interest.body.version,
+        acceptedTotalBdt: preview.body.totalBdt,
+        previewFingerprint: preview.body.fingerprint,
+        customerAgreed: true,
+      })
+      .expect(409);
+    expect((await stockFor(variantId)).quantityReserved).toBe(0);
+    const [draft] = await database.db
+      .select()
+      .from(checkoutDraft)
+      .where(eq(checkoutDraft.id, id));
+    expect(draft).toBeDefined();
+  });
+
+  it("hides a guest draft after the guest cart is merged into an account", async () => {
+    const variantId = await createVariant(2);
+    const mergeCustomer = await account("checkout-draft-merge-customer");
+    const guest = await newGuestCart([variantId]);
+    const saved = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", guest.cookie)
+      .send({
+        phone: "01612345678",
+        recipientName: "Merged guest",
+        doorstepDetails: "",
+      })
+      .expect(201);
+    const [draft] = await database.db
+      .select()
+      .from(checkoutDraft)
+      .where(eq(checkoutDraft.id, saved.body.id as string));
+    expect(draft?.guestCartHash).toBeTruthy();
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/cart/merge`)
+      .set("Origin", origin)
+      .set("Cookie", `${mergeCustomer.cookie}; ${guest.cookie}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/checkout-drafts/${saved.body.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(404);
+  });
+
+  it("converts a draft once under concurrent staff requests when guest Redis cleanup fails", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const saved = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", cart.cookie)
+      .send({
+        phone: "01512345678",
+        recipientName: "Concurrent guest",
+        doorstepDetails: "",
+      })
+      .expect(201);
+    const draftId = saved.body.id as string;
+    const [draft] = await database.db
+      .select()
+      .from(checkoutDraft)
+      .where(eq(checkoutDraft.id, draftId));
+    await database.db
+      .update(checkoutDraft)
+      .set({ lastCustomerActivityAt: new Date(Date.now() - 11 * 60_000) })
+      .where(eq(checkoutDraft.id, draftId));
+    const interest = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/call-outcome`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ outcome: "interested", expectedVersion: saved.body.version })
+      .expect(201);
+    const address = checkoutBody(randomUUID()).address;
+    const preview = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/preview`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ address, expectedVersion: interest.body.version })
+      .expect(201);
+    const orderInput = {
+      address,
+      expectedVersion: interest.body.version,
+      acceptedTotalBdt: preview.body.totalBdt,
+      previewFingerprint: preview.body.fingerprint,
+      customerAgreed: true,
+    };
+    const cartService = app.get(CartService);
+    const cleanup = vi
+      .spyOn(cartService, "clearGuestCartAfterCheckout")
+      .mockResolvedValueOnce("unavailable");
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer())
+        .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/create-order`)
+        .set("Origin", origin)
+        .set("Cookie", staff.cookie)
+        .send(orderInput),
+      request(app.getHttpServer())
+        .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/create-order`)
+        .set("Origin", origin)
+        .set("Cookie", secondStaff.cookie)
+        .send(orderInput),
+    ]);
+    cleanup.mockRestore();
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(first.body.id).toBe(second.body.id);
+    expect((await stockFor(variantId)).quantityReserved).toBe(1);
+    const [draftAfterConversion] = await database.db
+      .select()
+      .from(checkoutDraft)
+      .where(eq(checkoutDraft.id, draftId));
+    expect(draftAfterConversion).toBeUndefined();
+    const [receipt] = await database.db
+      .select()
+      .from(guestCartRevisionReceipt)
+      .where(
+        and(
+          eq(guestCartRevisionReceipt.guestCartHash, draft!.guestCartHash!),
+          eq(guestCartRevisionReceipt.guestRevision, draft!.cartRevision),
+        ),
+      );
+    expect(receipt).toBeDefined();
+  });
+
+  it("allows either customer checkout or staff conversion to win, but creates only one Order", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const saved = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", cart.cookie)
+      .send({
+        phone: "01412345678",
+        recipientName: "Checkout race",
+        doorstepDetails: "House 12",
+      })
+      .expect(201);
+    const draftId = saved.body.id as string;
+    const [draft] = await database.db
+      .select()
+      .from(checkoutDraft)
+      .where(eq(checkoutDraft.id, draftId));
+    await database.db
+      .update(checkoutDraft)
+      .set({ lastCustomerActivityAt: new Date(Date.now() - 11 * 60_000) })
+      .where(eq(checkoutDraft.id, draftId));
+    const interest = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/call-outcome`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ outcome: "interested", expectedVersion: saved.body.version })
+      .expect(201);
+    const address = checkoutBody(randomUUID()).address;
+    const preview = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/preview`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ address, expectedVersion: interest.body.version })
+      .expect(201);
+    const quote = await createQuote(cart.cookie);
+    const key = randomUUID();
+    const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
+    const [staffResult, customerResult] = await Promise.all([
+      request(app.getHttpServer())
+        .post(`${API_V1_BASE_PATH}/checkout-drafts/${draftId}/create-order`)
+        .set("Origin", origin)
+        .set("Cookie", staff.cookie)
+        .send({
+          address,
+          expectedVersion: interest.body.version,
+          acceptedTotalBdt: preview.body.totalBdt,
+          previewFingerprint: preview.body.fingerprint,
+          customerAgreed: true,
+        }),
+      placeOrder(checkoutCookie, checkoutBody(quote.id), key),
+    ]);
+    expect(
+      [staffResult.status, customerResult.status].sort(
+        (left, right) => left - right,
+      ),
+    ).toEqual([201, 409]);
+    const [savedOrder] = await database.db
+      .select()
+      .from(customerOrder)
+      .where(
+        and(
+          eq(customerOrder.guestCartHash, draft!.guestCartHash!),
+          eq(customerOrder.cartRevision, draft!.cartRevision),
+        ),
+      );
+    expect(savedOrder).toBeDefined();
+    expect((await stockFor(variantId)).quantityReserved).toBe(1);
   });
 
   it("places guest COD orders with a private 30-day order-scoped cookie and atomic held stock", async () => {
