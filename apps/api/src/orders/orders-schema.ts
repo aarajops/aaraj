@@ -17,6 +17,65 @@ import { inventoryStockReservation } from "../inventory/inventory-schema.js";
 
 export const ordersSchema = pgSchema("orders");
 
+export const checkoutDraft = ordersSchema.table(
+  "checkout_draft",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerHash: text("owner_hash").notNull(),
+    customerId: text("customer_id").references(() => user.id, {
+      onDelete: "restrict",
+    }),
+    guestCartHash: text("guest_cart_hash"),
+    guestCartIdCiphertext: text("guest_cart_id_ciphertext"),
+    cartRevision: bigint("cart_revision", { mode: "number" }).notNull(),
+    version: integer("version").notNull().default(1),
+    formCiphertext: text("form_ciphertext").notNull(),
+    items: jsonb("items").notNull(),
+    estimatedTotalBdt: bigint("estimated_total_bdt", { mode: "number" }),
+    deliveryZone: text("delivery_zone"),
+    destination: jsonb("destination"),
+    outcome: text("outcome").notNull().default("new"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    callbackAt: timestamp("callback_at", { withTimezone: true }),
+    lastCustomerActivityAt: timestamp("last_customer_activity_at", {
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("checkout_draft_owner_uidx").on(table.ownerHash),
+    index("checkout_draft_activity_idx").on(
+      table.lastCustomerActivityAt,
+      table.id,
+    ),
+    check(
+      "checkout_draft_owner_check",
+      sql`(${table.customerId} is not null and ${table.guestCartHash} is null and ${table.guestCartIdCiphertext} is null) or (${table.customerId} is null and ${table.guestCartHash} ~ '^[0-9a-f]{64}$' and ${table.guestCartIdCiphertext} is not null)`,
+    ),
+    check(
+      "checkout_draft_version_check",
+      sql`${table.version} > 0 and ${table.cartRevision} between 0 and 9007199254740991`,
+    ),
+    check(
+      "checkout_draft_outcome_check",
+      sql`${table.outcome} in ('new','no_answer','interested','call_back','declined','do_not_contact')`,
+    ),
+    check(
+      "checkout_draft_items_check",
+      sql`jsonb_typeof(${table.items}) = 'array'`,
+    ),
+    check("checkout_draft_attempts_check", sql`${table.attemptCount} >= 0`),
+  ],
+);
+
+export const checkoutCallSuppression = ordersSchema.table(
+  "checkout_call_suppression",
+  {
+    phoneHash: text("phone_hash").primaryKey(),
+  },
+);
+
 export const customerOrder = ordersSchema.table(
   "order_header",
   {
@@ -29,6 +88,10 @@ export const customerOrder = ordersSchema.table(
     guestAccessTokenHash: text("guest_access_token_hash"),
     guestAccessExpiresAt: timestamp("guest_access_expires_at", {
       withTimezone: true,
+    }),
+    sourceDraftId: uuid("source_draft_id"),
+    createdByStaffId: text("created_by_staff_id").references(() => user.id, {
+      onDelete: "restrict",
     }),
     quoteId: uuid("quote_id")
       .notNull()
@@ -93,6 +156,7 @@ export const customerOrder = ordersSchema.table(
   (table) => [
     uniqueIndex("order_reference_uidx").on(table.reference),
     uniqueIndex("order_quote_uidx").on(table.quoteId),
+    uniqueIndex("order_source_draft_uidx").on(table.sourceDraftId),
     index("order_customer_created_idx").on(table.customerId, table.createdAt),
     index("order_status_created_idx").on(table.status, table.createdAt),
     index("order_guest_cart_revision_idx")
@@ -105,7 +169,11 @@ export const customerOrder = ordersSchema.table(
     ),
     check(
       "order_owner_check",
-      sql`(${table.customerId} is not null and ${table.guestCartHash} is null and ${table.guestAccessTokenHash} is null and ${table.guestAccessExpiresAt} is null) or (${table.customerId} is null and ${table.guestCartHash} is not null and ${table.guestCartHash} ~ '^[0-9a-f]{64}$' and ${table.guestAccessTokenHash} is not null and ${table.guestAccessTokenHash} ~ '^[0-9a-f]{64}$' and ${table.guestAccessExpiresAt} is not null and ${table.guestAccessExpiresAt} = ${table.createdAt} + interval '30 days')`,
+      sql`(${table.customerId} is not null and ${table.guestCartHash} is null and ${table.guestAccessTokenHash} is null and ${table.guestAccessExpiresAt} is null) or (${table.customerId} is null and ${table.guestCartHash} is not null and ${table.guestCartHash} ~ '^[0-9a-f]{64}$' and ((${table.sourceDraftId} is not null and ${table.guestAccessTokenHash} is null and ${table.guestAccessExpiresAt} is null) or (${table.sourceDraftId} is null and ${table.guestAccessTokenHash} is not null and ${table.guestAccessTokenHash} ~ '^[0-9a-f]{64}$' and ${table.guestAccessExpiresAt} is not null and ${table.guestAccessExpiresAt} = ${table.createdAt} + interval '30 days')))`,
+    ),
+    check(
+      "order_staff_source_check",
+      sql`(${table.sourceDraftId} is null and ${table.createdByStaffId} is null) or (${table.sourceDraftId} is not null and ${table.createdByStaffId} is not null)`,
     ),
     check(
       "order_guest_token_hash_check",

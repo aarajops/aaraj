@@ -15,11 +15,13 @@ import {
   OrderSchema,
   OrderIdSchema,
   OrderReferenceSchema,
+  CheckoutDraftPreviewSchema,
   CURRENCY,
   MAX_ORDER_LINES,
   MAX_LIST_OFFSET,
   MAX_CART_QUANTITY_PER_VARIANT,
   type CheckoutAddressInput,
+  type AuthoritativeQuote,
   type CreateOrderInput,
   type OrderItemAddInput,
   type Order,
@@ -32,6 +34,8 @@ import {
   type OrderListQuery,
   type OrderStatusUpdateInput,
   type OrderStatusAction,
+  type CheckoutDraftCreateOrderInput,
+  type CheckoutDraftPreviewInput,
 } from "@aaraj/contracts";
 import {
   createCipheriv,
@@ -44,6 +48,7 @@ import {
 } from "node:crypto";
 import { and, asc, desc, eq, inArray, like, lt, or, sql } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
+import { lockCartOwner } from "../cart/cart-owner-lock.js";
 import {
   CATALOG_CART_PORT,
   type CatalogCartPort,
@@ -72,7 +77,14 @@ import {
   orderIdempotency,
   orderReferenceCounter,
   orderPathaoBookingClaim,
+  checkoutDraft,
 } from "./orders-schema.js";
+import {
+  CheckoutDraftsService,
+  draftOwner,
+  readDraftGuestCartId,
+  readDraftItems,
+} from "./checkout-drafts.service.js";
 import type {
   PathaoBookingClaimUpdate,
   PathaoOrderReference,
@@ -109,6 +121,85 @@ const MANAGED_ORDER_LIST_SELECTION = {
   codAmountDueBdt: customerOrder.codAmountDueBdt,
   createdAt: customerOrder.createdAt,
 };
+
+type PersistOrderSnapshotInput = {
+  id: string;
+  reference: string;
+  owner: CartQuoteOwner;
+  guestCredential?: string | null;
+  quote: AuthoritativeQuote;
+  cartRevision: number;
+  reservationId: string;
+  addressCiphertext: string;
+  status: "pending" | "confirmed";
+  fulfillmentStatus: "not_started" | "awaiting_dispatch";
+  sourceDraftId?: string;
+  createdByStaffId?: string;
+};
+
+async function persistOrderSnapshot(
+  transaction: AuditTransaction,
+  input: PersistOrderSnapshotInput,
+): Promise<OrderRow> {
+  const [row] = await transaction
+    .insert(customerOrder)
+    .values({
+      id: input.id,
+      reference: input.reference,
+      customerId:
+        input.owner.kind === "customer" ? input.owner.customerId : null,
+      guestCartHash:
+        input.owner.kind === "guest" ? input.owner.guestCartHash : null,
+      guestAccessTokenHash: input.guestCredential
+        ? sha256(input.guestCredential)
+        : null,
+      guestAccessExpiresAt: input.guestCredential
+        ? sql`now() + interval '30 days'`
+        : null,
+      sourceDraftId: input.sourceDraftId ?? null,
+      createdByStaffId: input.createdByStaffId ?? null,
+      quoteId: input.quote.id,
+      cartRevision: input.cartRevision,
+      reservationId: input.reservationId,
+      addressCiphertext: input.addressCiphertext,
+      status: input.status,
+      paymentMethod: "cod",
+      collectionStatus: "uncollected",
+      fulfillmentStatus: input.fulfillmentStatus,
+      merchandiseGrossBdt: input.quote.merchandiseGrossBdt,
+      deliveryAmountBdt: input.quote.delivery.grossAmountBdt,
+      totalBdt: input.quote.totalBdt,
+      codAmountDueBdt: input.quote.totalBdt,
+      deliverySnapshot: {
+        tariffVersion: input.quote.delivery.tariffVersion,
+        effectiveFrom: input.quote.delivery.effectiveFrom,
+        zone: input.quote.delivery.zone,
+        geographyVersion: input.quote.destination.geographyVersion,
+        divisionId: input.quote.destination.divisionId,
+        districtId: input.quote.destination.districtId,
+        upazilaId: input.quote.destination.upazilaId,
+      },
+    })
+    .returning();
+  if (!row) throw new Error("Order insert returned no row.");
+
+  await transaction.insert(customerOrderLine).values(
+    input.quote.lines.map((line) => ({
+      orderId: input.id,
+      variantId: line.variantId,
+      quantity: line.quantity,
+      unitPriceBdt: line.unitPriceBdt,
+      grossAmountBdt: line.grossAmountBdt,
+      productSnapshot: {
+        productName: line.productName,
+        color: line.color,
+        sizeLabel: line.sizeLabel,
+        compareAtPriceBdt: line.compareAtPriceBdt,
+      },
+    })),
+  );
+  return row;
+}
 
 function availableOrderStatusActions(
   row: Pick<OrderRow, "status" | "fulfillmentStatus" | "cancellationReason">,
@@ -170,7 +261,242 @@ export class OrdersService implements OrdersPathaoPort {
     private readonly catalog: CatalogCartPort,
     @Inject(INVENTORY_RESERVATION_PORT)
     private readonly inventory: InventoryReservationPort,
+    private readonly drafts: CheckoutDraftsService,
   ) {}
+
+  async previewDraftOrder(id: string, input: CheckoutDraftPreviewInput) {
+    const draft = await this.drafts.getEligible(id);
+    if (
+      draft.version !== input.expectedVersion ||
+      draft.outcome !== "interested"
+    ) {
+      throw new ConflictException(
+        "The draft changed or has not been marked interested.",
+        { errorCode: "DRAFT_STALE" },
+      );
+    }
+    const address = normalizeCheckoutInput(input.address);
+    await this.resolveAddress(address);
+    const items = readDraftItems(draft);
+    const priced = await this.quotes.previewAssisted(items, address);
+    const fingerprint = fingerprintDraftPreview(
+      id,
+      draft.version,
+      address,
+      priced,
+    );
+    return CheckoutDraftPreviewSchema.parse({
+      draftVersion: draft.version,
+      lines: priced.lines.map((line) => ({
+        variantId: line.variantId,
+        productName: line.productName,
+        color: line.color,
+        sizeLabel: line.sizeLabel,
+        quantity: line.quantity,
+        unitPriceBdt: line.unitPriceBdt,
+        grossAmountBdt: line.grossAmountBdt,
+      })),
+      merchandiseGrossBdt: priced.merchandiseGrossBdt,
+      deliveryAmountBdt: priced.tariff.feeBdt,
+      totalBdt: priced.totalBdt,
+      fingerprint,
+    });
+  }
+
+  async createFromDraft(
+    id: string,
+    staffId: string,
+    input: CheckoutDraftCreateOrderInput,
+  ): Promise<OrderCreated> {
+    const [prior] = await this.database.db
+      .select()
+      .from(customerOrder)
+      .where(eq(customerOrder.sourceDraftId, id))
+      .limit(1);
+    if (prior) return toCreated(prior, true);
+    const draft = await this.drafts.getEligible(id);
+    const owner = draftOwner(draft);
+    const normalizedInput = normalizeCheckoutInput(input.address);
+    const address = await this.resolveAddress(normalizedInput);
+    const piiKeyring = readOrderPiiKeyring();
+    const orderId = randomUUID();
+    let saved: OrderRow;
+    try {
+      saved = await this.database.db.transaction(async (tx) => {
+        await lockCartOwner(
+          tx,
+          owner.kind,
+          owner.kind === "customer" ? owner.customerId : owner.guestCartHash,
+        );
+        const [current] = await tx
+          .select()
+          .from(checkoutDraft)
+          .where(eq(checkoutDraft.id, id))
+          .for("update")
+          .limit(1);
+        if (
+          !current ||
+          current.version !== input.expectedVersion ||
+          current.outcome !== "interested" ||
+          !this.drafts.isOldEnough(current)
+        ) {
+          throw new ConflictException("The draft changed. Preview it again.", {
+            errorCode: "DRAFT_STALE",
+          });
+        }
+        const selections = readDraftItems(current);
+        const guestCartId = readDraftGuestCartId(current);
+        const cartContext = await this.cart.getQuoteContext(
+          owner.kind === "customer" ? owner.customerId : undefined,
+          guestCartId,
+        );
+        if (
+          cartContext.cart.lines.length > 0 &&
+          (cartContext.cart.revision !== current.cartRevision ||
+            cartContext.cart.lines.length !== selections.length ||
+            selections.some(
+              (line, index) =>
+                line.variantId !== cartContext.cart.lines[index]?.variantId ||
+                line.quantity !== cartContext.cart.lines[index]?.quantity,
+            ))
+        ) {
+          throw new ConflictException(
+            "The cart changed. Review the checkout again.",
+            { errorCode: "DRAFT_CART_CHANGED" },
+          );
+        }
+        if (owner.kind === "customer" && cartContext.cart.lines.length === 0) {
+          throw new ConflictException(
+            "The customer cart is no longer available.",
+            { errorCode: "DRAFT_CART_CHANGED" },
+          );
+        }
+        if (owner.kind === "guest") {
+          await this.cart.claimGuestDraftRevisionForCheckout(
+            tx,
+            guestCartId,
+            owner.guestCartHash,
+            current.cartRevision,
+          );
+        }
+        const quote = await this.quotes.createAssistedWithinTransaction(
+          tx,
+          owner,
+          current.cartRevision,
+          selections,
+          normalizedInput,
+        );
+        const priced = {
+          lines: quote.lines,
+          merchandiseGrossBdt: quote.merchandiseGrossBdt,
+          tariff: {
+            feeBdt: quote.delivery.grossAmountBdt,
+            version: quote.delivery.tariffVersion,
+            effectiveFrom: quote.delivery.effectiveFrom,
+            zone: quote.delivery.zone,
+          },
+          totalBdt: quote.totalBdt,
+        };
+        if (
+          quote.totalBdt !== input.acceptedTotalBdt ||
+          fingerprintDraftPreview(
+            id,
+            current.version,
+            normalizedInput,
+            priced,
+          ) !== input.previewFingerprint
+        ) {
+          throw new ConflictException(
+            "The current price or delivery details changed. Confirm the new total with the customer.",
+            { errorCode: "DRAFT_PREVIEW_CHANGED" },
+          );
+        }
+        const [counter] = await tx
+          .insert(orderReferenceCounter)
+          .values({
+            year: sql<number>`extract(year from now() at time zone 'Asia/Dhaka')::integer`,
+            lastNumber: 1,
+          })
+          .onConflictDoUpdate({
+            target: orderReferenceCounter.year,
+            set: { lastNumber: sql`${orderReferenceCounter.lastNumber} + 1` },
+          })
+          .returning({
+            year: orderReferenceCounter.year,
+            number: orderReferenceCounter.lastNumber,
+          });
+        if (!counter) throw new Error("Order reference allocation failed.");
+        const reservation = await this.inventory.reserveWithinTransaction(tx, {
+          commandId: orderId,
+          lines: quote.lines.map(({ variantId, quantity }) => ({
+            variantId,
+            quantity,
+          })),
+        });
+        const row = await persistOrderSnapshot(tx, {
+          id: orderId,
+          reference: formatOrderReference(counter.year, counter.number),
+          owner,
+          quote,
+          cartRevision: current.cartRevision,
+          reservationId: reservation.id,
+          addressCiphertext: encryptAddress(address, orderId, piiKeyring),
+          status: "confirmed",
+          fulfillmentStatus: "awaiting_dispatch",
+          sourceDraftId: id,
+          createdByStaffId: staffId,
+        });
+        if (owner.kind === "customer") {
+          const cleared = await this.cart.clearCustomerCartForCheckout(
+            tx,
+            owner.customerId,
+            current.cartRevision,
+          );
+          if (!cleared)
+            throw new ConflictException("The customer cart changed.", {
+              errorCode: "DRAFT_CART_CHANGED",
+            });
+        }
+        await tx.delete(checkoutDraft).where(eq(checkoutDraft.id, id));
+        await this.audit.append(tx, {
+          actorType: "user",
+          actorId: staffId,
+          eventType: "commerce.cod_order_created",
+          subjectType: "order",
+          subjectId: orderId,
+          metadata: {
+            sourceDraftId: id,
+            totalBdt: quote.totalBdt,
+            reservationId: reservation.id,
+          },
+        });
+        await this.audit.append(tx, {
+          actorType: "user",
+          actorId: staffId,
+          eventType: "commerce.cod_order_confirmed",
+          subjectType: "order",
+          subjectId: orderId,
+          metadata: { sourceDraftId: id, status: "confirmed" },
+        });
+        return row;
+      });
+    } catch (error) {
+      const [existing] = await this.database.db
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.sourceDraftId, id))
+        .limit(1);
+      if (existing) return toCreated(existing, true);
+      throw error;
+    }
+    if (owner.kind === "guest") {
+      await this.cart.clearGuestCartAfterCheckout(
+        readDraftGuestCartId(draft),
+        draft.cartRevision,
+      );
+    }
+    return toCreated(saved, false);
+  }
 
   async create(
     customerId: string | undefined,
@@ -341,59 +667,18 @@ export class OrdersService implements OrdersPathaoPort {
             })),
           },
         );
-        const [row] = await transaction
-          .insert(customerOrder)
-          .values({
-            id: orderId,
-            reference,
-            customerId: owner.kind === "customer" ? owner.customerId : null,
-            guestCartHash: owner.kind === "guest" ? owner.guestCartHash : null,
-            guestAccessTokenHash: guestCredential
-              ? sha256(guestCredential)
-              : null,
-            guestAccessExpiresAt: guestCredential
-              ? sql`now() + interval '30 days'`
-              : null,
-            quoteId: quote.id,
-            cartRevision: quote.cartRevision,
-            reservationId: reservation.id,
-            addressCiphertext: encryptedAddress,
-            status: "pending",
-            paymentMethod: "cod",
-            collectionStatus: "uncollected",
-            fulfillmentStatus: "not_started",
-            merchandiseGrossBdt: quote.merchandiseGrossBdt,
-            deliveryAmountBdt: quote.delivery.grossAmountBdt,
-            totalBdt: quote.totalBdt,
-            codAmountDueBdt: quote.totalBdt,
-            deliverySnapshot: {
-              tariffVersion: quote.delivery.tariffVersion,
-              effectiveFrom: quote.delivery.effectiveFrom,
-              zone: quote.delivery.zone,
-              geographyVersion: quote.destination.geographyVersion,
-              divisionId: quote.destination.divisionId,
-              districtId: quote.destination.districtId,
-              upazilaId: quote.destination.upazilaId,
-            },
-          })
-          .returning();
-        if (!row) throw new Error("Order insert returned no row.");
-
-        await transaction.insert(customerOrderLine).values(
-          quote.lines.map((line) => ({
-            orderId,
-            variantId: line.variantId,
-            quantity: line.quantity,
-            unitPriceBdt: line.unitPriceBdt,
-            grossAmountBdt: line.grossAmountBdt,
-            productSnapshot: {
-              productName: line.productName,
-              color: line.color,
-              sizeLabel: line.sizeLabel,
-              compareAtPriceBdt: line.compareAtPriceBdt,
-            },
-          })),
-        );
+        const row = await persistOrderSnapshot(transaction, {
+          id: orderId,
+          reference,
+          owner,
+          guestCredential,
+          quote,
+          cartRevision: quote.cartRevision,
+          reservationId: reservation.id,
+          addressCiphertext: encryptedAddress,
+          status: "pending",
+          fulfillmentStatus: "not_started",
+        });
         await transaction.insert(orderIdempotency).values({
           ownerHash,
           keyHash,
@@ -427,6 +712,10 @@ export class OrdersService implements OrdersPathaoPort {
             );
           }
         }
+
+        await transaction
+          .delete(checkoutDraft)
+          .where(eq(checkoutDraft.ownerHash, ownerHash));
 
         return row;
       });
@@ -2473,6 +2762,50 @@ function hashOwner(owner: CartQuoteOwner): string {
       ? `customer:${owner.customerId}`
       : `guest:${owner.guestCartHash}`;
   return sha256(value);
+}
+
+function fingerprintDraftPreview(
+  draftId: string,
+  version: number,
+  address: CheckoutAddressInput,
+  priced: {
+    lines: readonly {
+      variantId: string;
+      quantity: number;
+      unitPriceBdt: number;
+      grossAmountBdt: number;
+    }[];
+    merchandiseGrossBdt: number;
+    tariff: {
+      feeBdt: number;
+      version: string;
+      effectiveFrom: string;
+      zone: string | null;
+    };
+    totalBdt: number;
+  },
+): string {
+  return sha256(
+    JSON.stringify({
+      draftId,
+      version,
+      address,
+      lines: priced.lines.map((line) => [
+        line.variantId,
+        line.quantity,
+        line.unitPriceBdt,
+        line.grossAmountBdt,
+      ]),
+      merchandiseGrossBdt: priced.merchandiseGrossBdt,
+      tariff: [
+        priced.tariff.version,
+        priced.tariff.effectiveFrom,
+        priced.tariff.zone,
+        priced.tariff.feeBdt,
+      ],
+      totalBdt: priced.totalBdt,
+    }),
+  );
 }
 
 function fingerprintCheckout(

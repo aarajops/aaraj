@@ -58,6 +58,8 @@ const runtimeTableGrants = [
   ["orders", "idempotency", ["SELECT", "INSERT"]],
   ["orders", "order_reference_counter", ["SELECT", "INSERT", "UPDATE"]],
   ["orders", "pathao_booking_claim", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+  ["orders", "checkout_draft", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
+  ["orders", "checkout_call_suppression", ["SELECT", "INSERT"]],
 ] as const;
 const runtimeColumnGrants = [
   ["storefront", "banner_asset", "publicly_released_at", ["UPDATE"]],

@@ -20,7 +20,7 @@ import {
   type CartRevisionQuery,
   type CartSetLineInput,
 } from "@aaraj/contracts";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, or } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
@@ -230,6 +230,51 @@ export class CartService {
   }
 
   /** Called inside the checkout transaction while the shared guest-owner lock is held. */
+  async hasGuestRevisionReceipt(
+    guestCartHash: string,
+    revision: number,
+    transaction?: AuditTransaction,
+  ): Promise<boolean> {
+    const database = transaction ?? this.database.db;
+    const [receipt] = await database
+      .select({ guestRevision: guestCartRevisionReceipt.guestRevision })
+      .from(guestCartRevisionReceipt)
+      .where(
+        and(
+          eq(guestCartRevisionReceipt.guestCartHash, guestCartHash),
+          eq(guestCartRevisionReceipt.guestRevision, revision),
+        ),
+      )
+      .limit(1);
+    return Boolean(receipt);
+  }
+
+  async findGuestRevisionReceiptKeys(
+    revisions: readonly { guestCartHash: string; revision: number }[],
+  ): Promise<Set<string>> {
+    if (revisions.length === 0) return new Set();
+    const rows = await this.database.db
+      .select({
+        guestCartHash: guestCartRevisionReceipt.guestCartHash,
+        revision: guestCartRevisionReceipt.guestRevision,
+      })
+      .from(guestCartRevisionReceipt)
+      .where(
+        or(
+          ...revisions.map(({ guestCartHash, revision }) =>
+            and(
+              eq(guestCartRevisionReceipt.guestCartHash, guestCartHash),
+              eq(guestCartRevisionReceipt.guestRevision, revision),
+            ),
+          ),
+        ),
+      );
+    return new Set(
+      rows.map(({ guestCartHash, revision }) => `${guestCartHash}:${revision}`),
+    );
+  }
+
+  /** Called inside the checkout transaction while the shared guest-owner lock is held. */
   async claimGuestCartRevisionForCheckout(
     transaction: AuditTransaction,
     guestCartId: string | undefined,
@@ -261,6 +306,44 @@ export class CartService {
         "This guest cart revision has already been used. Refresh the cart before checking out.",
         { errorCode: "CART_REVISION_ALREADY_CONSUMED" },
       );
+    }
+    await transaction.insert(guestCartRevisionReceipt).values({
+      guestCartHash,
+      guestRevision: expectedRevision,
+    });
+  }
+
+  /** Staff-assisted checkout may use a saved cart after its Redis TTL has elapsed. */
+  async claimGuestDraftRevisionForCheckout(
+    transaction: AuditTransaction,
+    guestCartId: string | undefined,
+    guestCartHash: string,
+    expectedRevision: number,
+  ): Promise<void> {
+    const id = parseGuestCartId(guestCartId);
+    if (
+      !id ||
+      createHash("sha256").update(id).digest("hex") !== guestCartHash
+    ) {
+      throw new ConflictException("The guest cart identity is invalid.");
+    }
+    const state = await this.readGuestState(id);
+    if (state && state.revision !== expectedRevision) {
+      throw new ConflictException(
+        "The cart changed after this draft was saved.",
+        { errorCode: "DRAFT_CART_CHANGED" },
+      );
+    }
+    if (
+      await this.hasGuestRevisionReceipt(
+        guestCartHash,
+        expectedRevision,
+        transaction,
+      )
+    ) {
+      throw new ConflictException("This cart was already used.", {
+        errorCode: "DRAFT_CART_CONSUMED",
+      });
     }
     await transaction.insert(guestCartRevisionReceipt).values({
       guestCartHash,
