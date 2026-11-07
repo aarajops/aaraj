@@ -123,11 +123,7 @@ function SinglePageCheckout({
           if (!active) return;
           const details = await fetchOrder(order.id);
           if (!active) return;
-          try {
-            trackCreatedOrderPurchase(order, details);
-          } catch {
-            // Analytics must not block order recovery.
-          }
+          trackCreatedOrderPurchase(order, details);
           await refreshCart();
           if (active) router.replace(`/orders/${order.id}`);
         })
@@ -185,11 +181,7 @@ function SinglePageCheckout({
     };
     try {
       const order = await createCodOrder(input, key);
-      try {
-        trackCreatedOrderPurchase(order, quote);
-      } catch {
-        // Analytics must not block successful checkout.
-      }
+      trackCreatedOrderPurchase(order, quote);
       await refreshCart();
       router.push(`/orders/${order.id}`);
     } catch (reason) {
@@ -211,11 +203,7 @@ function SinglePageCheckout({
       ) {
         try {
           const existing = await resumeCodOrder(key);
-          try {
-            trackCreatedOrderPurchase(existing, quote);
-          } catch {
-            // Analytics must not block order recovery.
-          }
+          trackCreatedOrderPurchase(existing, quote);
           await refreshCart();
           router.push(`/orders/${existing.id}`);
           return;
@@ -631,15 +619,8 @@ function trackCreatedOrderPurchase(
       >
     | Pick<Order, "currency" | "merchandiseGrossBdt" | "delivery" | "lines">,
 ) {
-  const storageKey = `aaraj.analytics.purchase:${order.id}`;
   try {
-    if (window.sessionStorage.getItem(storageKey) === "1") return;
-  } catch {
-    // Keep analytics best-effort if browser storage is unavailable.
-  }
-
-  try {
-    const sent = sendEcommerceEvent(
+    sendEcommerceEvent(
       "purchase",
       {
         transaction_id: order.reference,
@@ -659,7 +640,6 @@ function trackCreatedOrderPurchase(
       },
       order.id,
     );
-    if (sent) window.sessionStorage.setItem(storageKey, "1");
   } catch {
     // Analytics must not block checkout completion or order navigation.
   }

@@ -1678,6 +1678,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.goto(checkoutUrl);
   await expect(page).toHaveURL(`/orders/${customerOrderId}`);
   await expect(page.getByTestId("order-reference")).toHaveText(orderReference);
+  await expect.poll(() => ecommerceEventCount(page, "purchase")).toBe(1);
   const managementListResponse = await page.request.get(
     "/api/v1/orders/manage?limit=50&offset=0",
   );
