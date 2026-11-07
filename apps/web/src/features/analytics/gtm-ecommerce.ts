@@ -4,17 +4,6 @@ import type { CURRENCY } from "@aaraj/contracts";
 export type EcommerceEvent =
   "view_item" | "view_cart" | "add_to_cart" | "begin_checkout" | "purchase";
 
-type MetaStandardEventName =
-  "ViewContent" | "AddToCart" | "InitiateCheckout" | "Purchase";
-
-const metaEventNameByEcommerceEvent = {
-  view_item: "ViewContent",
-  view_cart: null,
-  add_to_cart: "AddToCart",
-  begin_checkout: "InitiateCheckout",
-  purchase: "Purchase",
-} as const satisfies Record<EcommerceEvent, MetaStandardEventName | null>;
-
 export type EcommerceItem = {
   item_id?: string;
   item_name: string;
@@ -91,9 +80,6 @@ export function sendEcommerceEvent(
   sendGTMEvent({ ecommerce: null });
   sendGTMEvent({
     event,
-    ...(metaEventNameByEcommerceEvent[event]
-      ? { meta_event_name: metaEventNameByEcommerceEvent[event] }
-      : {}),
     event_id: stableEventId,
     ecommerce,
   });

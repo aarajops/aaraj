@@ -1648,7 +1648,6 @@ test("catalog operator configures a product through to storefront visibility", a
   });
   expect(purchaseEvent).toMatchObject({
     event: "purchase",
-    meta_event_name: "Purchase",
     event_id: customerOrderId,
     ecommerce: {
       transaction_id: expect.any(String),

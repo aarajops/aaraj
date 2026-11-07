@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Order } from "@aaraj/contracts";
 
-test("product views push the Meta mapping and event ID to GTM", async ({
+test("product views push ecommerce data and an event ID to GTM", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -46,7 +46,6 @@ test("product views push the Meta mapping and event ID to GTM", async ({
 
   expect(viewItemEvent).toMatchObject({
     event: "view_item",
-    meta_event_name: "ViewContent",
     ecommerce: {
       currency: "BDT",
       items: [
