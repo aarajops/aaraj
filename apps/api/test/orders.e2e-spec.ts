@@ -134,6 +134,7 @@ describe("COD Orders and checkout", () => {
   const previousOrderPiiEnvironment = new Map(
     orderPiiEnvironmentKeys.map((key) => [key, process.env[key]]),
   );
+  const retainedOrderPiiKeys = new Map<string, string>();
 
   async function account(name: string): Promise<Account> {
     const response = await auth.api.signUpEmail({
@@ -638,6 +639,29 @@ describe("COD Orders and checkout", () => {
     }
   });
 
+  function useAvailableOrderPiiTestKeys(): void {
+    const originalKeyring = process.env.ORDER_PII_KEYRING?.trim();
+    const originalConfiguration = originalKeyring
+      ? (JSON.parse(originalKeyring) as {
+          activeKeyId: string;
+          keys: Record<string, string>;
+        })
+      : null;
+    const legacyKey =
+      originalConfiguration?.keys.legacy ??
+      process.env.ORDER_PII_ENCRYPTION_KEY;
+    if (!legacyKey) throw new Error("The legacy Order PII key is missing.");
+    process.env.ORDER_PII_KEYRING = JSON.stringify({
+      activeKeyId: originalConfiguration?.activeKeyId ?? "legacy",
+      keys: {
+        ...originalConfiguration?.keys,
+        legacy: legacyKey,
+        ...Object.fromEntries(retainedOrderPiiKeys),
+      },
+    });
+    delete process.env.ORDER_PII_ENCRYPTION_KEY;
+  }
+
   it("captures an abandoned guest checkout and converts it once into a confirmed Order", async () => {
     const variantId = await createVariant(2);
     const cart = await newGuestCart([variantId]);
@@ -1055,6 +1079,9 @@ describe("COD Orders and checkout", () => {
       rotation_a: randomBytes(32).toString("base64url"),
       rotation_b: randomBytes(32).toString("base64url"),
     };
+    for (const [keyId, key] of Object.entries(orderPiiKeys)) {
+      retainedOrderPiiKeys.set(keyId, key);
+    }
     process.env.ORDER_PII_KEYRING = JSON.stringify({
       activeKeyId: "rotation_a",
       keys: orderPiiKeys,
@@ -1195,6 +1222,129 @@ describe("COD Orders and checkout", () => {
       .get(`${API_V1_BASE_PATH}/orders/${response.body.id}`)
       .set("Cookie", customer.cookie)
       .expect(200);
+  });
+
+  it("builds the customer directory from placed orders without merging guest contacts", async () => {
+    useAvailableOrderPiiTestKeys();
+    const buyer = await account("directory-buyer");
+    for (const recipientName of [
+      "Directory Receiver One",
+      "Directory Receiver Two",
+    ]) {
+      const variantId = await createVariant(1);
+      const currentCart = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/cart`)
+        .set("Cookie", buyer.cookie)
+        .expect(200);
+      await request(app.getHttpServer())
+        .put(`${API_V1_BASE_PATH}/cart/lines/${variantId}`)
+        .set("Origin", origin)
+        .set("Cookie", buyer.cookie)
+        .send({ revision: currentCart.body.revision, quantity: 1 })
+        .expect(200);
+      const quote = await createQuote(buyer.cookie);
+      await placeOrder(
+        buyer.cookie,
+        checkoutBody(quote.id, {
+          recipientName,
+          phone: "01711112222",
+        }),
+      ).expect(201);
+    }
+
+    const guestOne = await createGuestOrder(1, {
+      recipientName: "Shared Phone Guest One",
+      phone: "01799887766",
+    });
+    const guestTwo = await createGuestOrder(1, {
+      recipientName: "Shared Phone Guest Two",
+      phone: "01799887766",
+    });
+
+    const unplacedCart = await newGuestCart([await createVariant(1)]);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Origin", origin)
+      .set("Cookie", unplacedCart.cookie)
+      .send({
+        recipientName: "Unplaced Directory Contact",
+        phone: "01733334444",
+        doorstepDetails: "House 12, Road 5",
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/customers/manage`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/customers/manage`)
+      .set("Cookie", customer.cookie)
+      .expect(403);
+
+    const directoryResults = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/customers/manage?limit=3`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    const accountRow = directoryResults.body.rows.find(
+      (row: { id: string }) => row.id === `account_${buyer.id}`,
+    );
+    expect(accountRow).toMatchObject({
+      identityType: "account",
+      orderCount: 2,
+      latestRecipientPhone: "+8801711112222",
+    });
+
+    const matchingGuests = directoryResults.body.rows.filter(
+      (row: { id: string }) =>
+        row.id === `guest_${guestOne.id}` || row.id === `guest_${guestTwo.id}`,
+    );
+    expect(matchingGuests).toHaveLength(2);
+    expect(
+      matchingGuests.map((row: { orderCount: number }) => row.orderCount),
+    ).toEqual([1, 1]);
+
+    const recipientSearch = await request(app.getHttpServer())
+      .get(
+        `${API_V1_BASE_PATH}/customers/manage?search=Directory%20Receiver%20Two`,
+      )
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(
+      recipientSearch.body.rows.map((row: { id: string }) => row.id),
+    ).toEqual([`account_${buyer.id}`]);
+
+    const phoneSearch = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/customers/manage?search=01799887766`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(
+      phoneSearch.body.rows.map((row: { id: string }) => row.id).sort(),
+    ).toEqual([`guest_${guestOne.id}`, `guest_${guestTwo.id}`].sort());
+
+    const accountOrders = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/customers/manage/account_${buyer.id}/orders`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(accountOrders.body.rows).toHaveLength(2);
+    await request(app.getHttpServer())
+      .get(
+        `${API_V1_BASE_PATH}/customers/manage/account_${buyer.id}/orders?limit=2&offset=2`,
+      )
+      .set("Cookie", staff.cookie)
+      .expect(200)
+      .expect(({ body }) => expect(body.rows).toEqual([]));
+    const guestOrders = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/customers/manage/guest_${guestOne.id}/orders`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(guestOrders.body.rows).toHaveLength(1);
+
+    expect(
+      directoryResults.body.rows.some(
+        (row: { latestRecipientName: string }) =>
+          row.latestRecipientName === "Unplaced Directory Contact",
+      ),
+    ).toBe(false);
   });
 
   it("serializes competing checkouts for the final unit so one wins", async () => {

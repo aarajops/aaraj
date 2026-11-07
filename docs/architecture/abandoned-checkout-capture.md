@@ -62,6 +62,10 @@ No CRM, message queue, full event stream, recovery link, stock reservation on dr
 - Guest-to-customer cart merge consumes the guest revision with its existing durable receipt. Staff eligibility and conversion check that receipt through a Cart service method, so the old guest draft is hidden and rejected immediately; bounded draft cleanup removes its row later. This avoids a Cart-to-Orders dependency cycle. A still-open checkout may create a new customer-owned draft after sign-in.
 - Staff call outcomes and detail views do not change `last_customer_activity_at`, so they cannot postpone or revive the abandonment timer. An explicit do-not-contact request suppresses later drafts for that number.
 
+## Order-based customer directory
+
+`/admin/customers` is a staff-only, read-only directory derived from committed Orders; it adds no customer table and does not include abandoned drafts. An authenticated account appears once its first Order is committed, with its Orders grouped by account ID. Each guest Order stays a separate entry because a recipient name or phone number is not proof that two checkouts belong to the same person. The page shows the account identity separately from the latest Order's delivery recipient, preserves cancelled and unanswered Orders in history, and uses the existing `orders.manage` permission. Customer and order-history responses are paginated and `no-store`; profile history links back to the standard Order workflow.
+
 ## Failure cases to handle without extra product machinery
 
 - A phone number may be mistyped or belong to someone else. A saved form is not proof of phone ownership or an Order request; staff must verify the recipient and get explicit agreement before creating an Order. Do not repeatedly call `no_answer` or `declined` leads; set a simple call-attempt cap and honor declines.

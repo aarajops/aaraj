@@ -36,6 +36,12 @@ const routes = [
     lastHeader: "COD due",
   },
   {
+    path: "/admin/customers",
+    label: "Customers",
+    rightAlignedHeader: "Orders",
+    viewports: [1440, 390],
+  },
+  {
     path: "/admin/users",
     label: "Users",
     viewports: [1440, 390],
@@ -85,6 +91,12 @@ const loadingTableRoutes = [
     apiPath: "/api/v1/orders/manage",
     loadingLabel: "orders",
     tableLabel: "Orders",
+  },
+  {
+    path: "/admin/customers",
+    apiPath: "/api/v1/customers/manage",
+    loadingLabel: "customers",
+    tableLabel: "Customers",
   },
   {
     path: "/admin/users",

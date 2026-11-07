@@ -16,6 +16,7 @@ import {
   Tags,
   Images,
   UsersRound,
+  ContactRound,
 } from "lucide-react";
 import {
   Sidebar,
@@ -64,6 +65,12 @@ const operationsLinks = [
     href: "/admin/orders",
     label: "Orders",
     icon: ClipboardList,
+    permission: "orders.manage",
+  },
+  {
+    href: "/admin/customers",
+    label: "Customers",
+    icon: ContactRound,
     permission: "orders.manage",
   },
   {

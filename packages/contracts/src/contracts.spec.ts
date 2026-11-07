@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   AccessUserIdSchema,
+  CustomerDirectoryIdSchema,
+  CustomerOrdersQuerySchema,
   AuditEventQuerySchema,
   CatalogProductSchema,
   CatalogProductCreateSchema,
@@ -12,6 +14,7 @@ import {
   DEFAULT_LIST_PAGE_SIZE,
   DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
   HealthCheckResponseSchema,
+  ManagedCustomerSchema,
   MAX_LIST_PAGE_SIZE,
   MAX_PUBLIC_CATALOG_PAGE_SIZE,
   RoleSchema,
@@ -21,6 +24,38 @@ import {
 } from "./index.js";
 
 describe("Contracts Schema Validation", () => {
+  it("validates customer directory identities without treating contact data as identity", () => {
+    const guestOrderId = "8e7dc350-bab6-4c36-8c77-42d2424b483f";
+    expect(
+      CustomerDirectoryIdSchema.safeParse(`guest_${guestOrderId}`).success,
+    ).toBe(true);
+    expect(
+      CustomerDirectoryIdSchema.safeParse("guest_01712345678").success,
+    ).toBe(false);
+    expect(
+      CustomerOrdersQuerySchema.safeParse({ limit: 20, offset: 0, search: "x" })
+        .success,
+    ).toBe(false);
+    expect(
+      ManagedCustomerSchema.safeParse({
+        id: `guest_${guestOrderId}`,
+        identityType: "guest_order",
+        name: "Guest recipient",
+        email: null,
+        latestRecipientName: "Guest recipient",
+        latestRecipientPhone: "+8801712345678",
+        orderCount: 1,
+        lastOrderAt: "2026-11-07T10:00:00.000Z",
+        latestOrder: {
+          id: guestOrderId,
+          reference: "ORD-026-00001",
+          status: "pending",
+          createdAt: "2026-11-07T10:00:00.000Z",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("keeps public storefront settings safe and validates managed updates", () => {
     const publicSettings = {
       siteName: "AARAJ",

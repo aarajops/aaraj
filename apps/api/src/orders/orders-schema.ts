@@ -157,6 +157,7 @@ export const customerOrder = ordersSchema.table(
     uniqueIndex("order_reference_uidx").on(table.reference),
     uniqueIndex("order_quote_uidx").on(table.quoteId),
     uniqueIndex("order_source_draft_uidx").on(table.sourceDraftId),
+    index("order_created_id_idx").on(table.createdAt.desc(), table.id.desc()),
     index("order_customer_created_idx").on(table.customerId, table.createdAt),
     index("order_status_created_idx").on(table.status, table.createdAt),
     index("order_guest_cart_revision_idx")

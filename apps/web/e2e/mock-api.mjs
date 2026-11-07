@@ -14,6 +14,8 @@ import {
   CATALOG_PRODUCT_SLUG_MAX_LENGTH,
   InventoryListQuerySchema,
   OrderListQuerySchema,
+  CustomerDirectoryQuerySchema,
+  CustomerOrdersQuerySchema,
   PathaoManagementBookingSummariesQuerySchema,
   PathaoManagementIssuesQuerySchema,
   AccessUserListQuerySchema,
@@ -125,6 +127,40 @@ const managedUsers = [
     emailVerified: true,
     createdAt: "2026-09-01T12:00:00.000Z",
     roles: ["staff"],
+  },
+];
+const managedCustomers = [
+  {
+    id: "account_e2e-customer",
+    identityType: "account",
+    name: "E2E Returning Customer",
+    email: "customer@example.test",
+    latestRecipientName: "E2E Recipient",
+    latestRecipientPhone: "+8801712345678",
+    orderCount: 2,
+    lastOrderAt: "2026-10-01T12:00:00.000Z",
+    latestOrder: {
+      id: managedOrders[0].id,
+      reference: managedOrders[0].reference,
+      status: managedOrders[0].status,
+      createdAt: managedOrders[0].createdAt,
+    },
+  },
+  {
+    id: "guest_00000000-0000-4000-8000-000000000073",
+    identityType: "guest_order",
+    name: "E2E Guest Customer",
+    email: null,
+    latestRecipientName: "E2E Guest Customer",
+    latestRecipientPhone: "+8801712345679",
+    orderCount: 1,
+    lastOrderAt: "2026-10-01T11:00:00.000Z",
+    latestOrder: {
+      id: managedOrders[1].id,
+      reference: managedOrders[1].reference,
+      status: managedOrders[1].status,
+      createdAt: managedOrders[1].createdAt,
+    },
   },
 ];
 const managedStorefrontBanners = [
@@ -447,6 +483,108 @@ const server = createServer(async (request, response) => {
   if (url.pathname === "/api/v1/access/roles" && method === "GET") {
     if (!requireCategoryAdmin(request, response)) return;
     send(response, 200, managedRoleCatalog);
+    return;
+  }
+
+  if (url.pathname === "/api/v1/customers/manage" && method === "GET") {
+    if (!requireStaff(request, response)) return;
+    const searches = url.searchParams.getAll("search");
+    const parsed = CustomerDirectoryQuerySchema.safeParse({
+      limit: url.searchParams.get("limit") ?? undefined,
+      offset: url.searchParams.get("offset") ?? undefined,
+      search: searches.length > 1 ? searches : searches[0],
+    });
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid customer directory query",
+      });
+      return;
+    }
+    const matching = parsed.data.search
+      ? managedCustomers.filter((customer) =>
+          [
+            customer.name,
+            customer.email,
+            customer.latestRecipientName,
+            customer.latestRecipientPhone,
+            customer.latestOrder.reference,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(parsed.data.search.toLowerCase()),
+        )
+      : managedCustomers;
+    const rows = matching.slice(
+      parsed.data.offset,
+      parsed.data.offset + parsed.data.limit + 1,
+    );
+    const hasMore = rows.length > parsed.data.limit;
+    const pageRows = rows.slice(0, parsed.data.limit);
+    send(response, 200, {
+      rows: pageRows,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      hasMore,
+      nextOffset:
+        hasMore && parsed.data.offset + parsed.data.limit <= MAX_LIST_OFFSET
+          ? parsed.data.offset + parsed.data.limit
+          : null,
+    });
+    return;
+  }
+
+  const customerOrdersMatch =
+    /^\/api\/v1\/customers\/manage\/([^/]+)\/orders$/.exec(url.pathname);
+  if (customerOrdersMatch && method === "GET") {
+    if (!requireStaff(request, response)) return;
+    const customerId = decodeURIComponent(customerOrdersMatch[1]);
+    const parsed = CustomerOrdersQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams),
+    );
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid customer order history query",
+      });
+      return;
+    }
+    const customer = managedCustomers.find((row) => row.id === customerId);
+    if (!customer) {
+      send(response, 404, { statusCode: 404, message: "Not found" });
+      return;
+    }
+    const matchingOrders = managedOrders
+      .filter((order) =>
+        customer.identityType === "account"
+          ? order.id === managedOrders[0].id || order.id === managedOrders[2].id
+          : order.id === customer.latestOrder.id,
+      )
+      .map((order) => ({
+        id: order.id,
+        reference: order.reference,
+        status: order.status,
+        fulfillmentStatus: order.fulfillmentStatus,
+        totalBdt: order.codAmountDueBdt,
+        createdAt: order.createdAt,
+      }));
+    const rows = matchingOrders.slice(
+      parsed.data.offset,
+      parsed.data.offset + parsed.data.limit + 1,
+    );
+    const hasMore = rows.length > parsed.data.limit;
+    const pageRows = rows.slice(0, parsed.data.limit);
+    send(response, 200, {
+      rows: pageRows,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      hasMore,
+      nextOffset:
+        hasMore && parsed.data.offset + parsed.data.limit <= MAX_LIST_OFFSET
+          ? parsed.data.offset + parsed.data.limit
+          : null,
+    });
     return;
   }
 

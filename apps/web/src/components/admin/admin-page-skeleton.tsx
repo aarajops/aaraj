@@ -57,6 +57,7 @@ type AdminListVariant =
   | "size-guides"
   | "inventory"
   | "orders"
+  | "customers"
   | "users"
   | "banners"
   | "delivery-issues";
@@ -99,6 +100,11 @@ const adminListSkeletons: Record<
     label: "orders",
     columnCount: 11,
     filterCount: 1,
+  },
+  customers: {
+    label: "customers",
+    columnCount: 7,
+    filterCount: 0,
   },
   users: {
     label: "users",

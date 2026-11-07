@@ -17,6 +17,9 @@ import {
   OrderReferenceSchema,
   CheckoutDraftPreviewSchema,
   CURRENCY,
+  CustomerDirectoryIdSchema,
+  ManagedCustomerDirectorySchema,
+  ManagedCustomerOrdersPageSchema,
   MAX_ORDER_LINES,
   MAX_LIST_OFFSET,
   MAX_CART_QUANTITY_PER_VARIANT,
@@ -32,6 +35,8 @@ import {
   type OrderCollectionInput,
   type OrderFulfillmentOutcomeInput,
   type OrderListQuery,
+  type CustomerDirectoryQuery,
+  type CustomerOrdersQuery,
   type OrderStatusUpdateInput,
   type OrderStatusAction,
   type CheckoutDraftCreateOrderInput,
@@ -46,7 +51,18 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { and, asc, desc, eq, inArray, like, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  like,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import { lockCartOwner } from "../cart/cart-owner-lock.js";
 import {
@@ -54,6 +70,7 @@ import {
   type CatalogCartPort,
 } from "../catalog/catalog-cart.port.js";
 import { DatabaseService } from "../platform/database/database.service.js";
+import { user } from "../auth/auth-schema.js";
 import {
   readOrderPiiKeyring,
   type OrderPiiKeyring,
@@ -108,6 +125,28 @@ type ManagedOrderListRecord = Pick<
   | "codAmountDueBdt"
   | "createdAt"
 >;
+type CustomerDirectoryRecord = {
+  customer_key: string;
+  identity_type: "account" | "guest_order";
+  account_name: string | null;
+  account_email: string | null;
+  order_count: string | number;
+  last_order_at: Date | string;
+  latest_order_id: string;
+  latest_order_reference: string;
+  latest_order_status: string;
+  address_ciphertext: string;
+};
+type CustomerDirectoryOrderRecord = {
+  id: string;
+  reference: string;
+  customerId: string | null;
+  accountName: string | null;
+  accountEmail: string | null;
+  createdAt: Date;
+  status: string;
+  addressCiphertext: string;
+};
 
 const MANAGED_ORDER_LIST_SELECTION = {
   id: customerOrder.id,
@@ -1047,6 +1086,299 @@ export class OrdersService implements OrdersPathaoPort {
           ? candidateNextOffset
           : null,
     });
+  }
+
+  async listCustomerDirectory(
+    query: CustomerDirectoryQuery,
+  ): Promise<ReturnType<typeof ManagedCustomerDirectorySchema.parse>> {
+    const records = query.search
+      ? await this.searchCustomerDirectory(query)
+      : await this.selectCustomerDirectoryPage(query.limit + 1, query.offset);
+    const pageRecords = records.slice(0, query.limit);
+    const hasMore = records.length > query.limit;
+    const countedPageRecords =
+      await this.attachCustomerOrderCounts(pageRecords);
+    const piiKeyring =
+      countedPageRecords.length > 0 ? readOrderPiiKeyring() : undefined;
+    return ManagedCustomerDirectorySchema.parse({
+      rows: countedPageRecords.map((row) => {
+        const address = decryptAddress(
+          row.address_ciphertext,
+          row.latest_order_id,
+          piiKeyring!,
+        );
+        const accountName = row.account_name?.trim();
+        return {
+          id: row.customer_key,
+          identityType: row.identity_type,
+          name:
+            row.identity_type === "account" &&
+            accountName &&
+            accountName.length >= 2
+              ? accountName
+              : address.recipientName,
+          email: row.account_email,
+          latestRecipientName: address.recipientName,
+          latestRecipientPhone: address.phone,
+          orderCount: Number(row.order_count),
+          lastOrderAt: new Date(row.last_order_at).toISOString(),
+          latestOrder: {
+            id: row.latest_order_id,
+            reference: row.latest_order_reference,
+            status: row.latest_order_status,
+            createdAt: new Date(row.last_order_at).toISOString(),
+          },
+        };
+      }),
+      limit: query.limit,
+      offset: query.offset,
+      hasMore,
+      nextOffset:
+        hasMore && query.offset + query.limit <= MAX_LIST_OFFSET
+          ? query.offset + query.limit
+          : null,
+    });
+  }
+
+  async listCustomerOrders(
+    customerKey: string,
+    query: CustomerOrdersQuery,
+  ): Promise<ReturnType<typeof ManagedCustomerOrdersPageSchema.parse>> {
+    const parsedKey = CustomerDirectoryIdSchema.safeParse(customerKey);
+    if (!parsedKey.success) throw orderNotFound();
+
+    const accountId = /^account_(.+)$/.exec(parsedKey.data)?.[1];
+    const guestOrderId = /^guest_(.+)$/.exec(parsedKey.data)?.[1];
+    const customerFilter = accountId
+      ? eq(customerOrder.customerId, accountId)
+      : and(
+          eq(customerOrder.id, guestOrderId!),
+          sql`${customerOrder.customerId} is null`,
+        );
+    const rows = await this.database.db
+      .select({
+        id: customerOrder.id,
+        reference: customerOrder.reference,
+        status: customerOrder.status,
+        fulfillmentStatus: customerOrder.fulfillmentStatus,
+        totalBdt: customerOrder.totalBdt,
+        createdAt: customerOrder.createdAt,
+      })
+      .from(customerOrder)
+      .where(customerFilter)
+      .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
+      .limit(query.limit + 1)
+      .offset(query.offset);
+    if (rows.length === 0 && query.offset === 0) throw orderNotFound();
+
+    const pageRows = rows.slice(0, query.limit);
+    const hasMore = rows.length > query.limit;
+    return ManagedCustomerOrdersPageSchema.parse({
+      rows: pageRows.map((row) => ({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      limit: query.limit,
+      offset: query.offset,
+      hasMore,
+      nextOffset:
+        hasMore && query.offset + query.limit <= MAX_LIST_OFFSET
+          ? query.offset + query.limit
+          : null,
+    });
+  }
+
+  private async searchCustomerDirectory(
+    query: CustomerDirectoryQuery,
+  ): Promise<CustomerDirectoryRecord[]> {
+    const search = query.search ?? "";
+    const nameSearch = normalizeOrderSearchText(search);
+    const phoneSearch = normalizeOrderPhoneDigits(search);
+    const localPhoneSearch = toLocalBangladeshPhoneDigits(phoneSearch);
+    const keyring = readOrderPiiKeyring();
+    const matched: CustomerDirectoryRecord[] = [];
+    const seenAccountIds = new Set<string>();
+    let skipped = 0;
+    let cursor:
+      Pick<CustomerDirectoryOrderRecord, "createdAt" | "id"> | undefined;
+
+    while (matched.length <= query.limit) {
+      const cursorFilter = cursor
+        ? or(
+            lt(customerOrder.createdAt, cursor.createdAt),
+            and(
+              eq(customerOrder.createdAt, cursor.createdAt),
+              lt(customerOrder.id, cursor.id),
+            ),
+          )
+        : undefined;
+      const batch = await this.database.db
+        .select({
+          id: customerOrder.id,
+          reference: customerOrder.reference,
+          customerId: customerOrder.customerId,
+          accountName: user.name,
+          accountEmail: user.email,
+          createdAt: customerOrder.createdAt,
+          status: customerOrder.status,
+          addressCiphertext: customerOrder.addressCiphertext,
+        })
+        .from(customerOrder)
+        .leftJoin(user, eq(customerOrder.customerId, user.id))
+        .where(cursorFilter)
+        .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
+        .limit(100);
+      if (batch.length === 0) break;
+
+      for (const order of batch) {
+        if (order.customerId && seenAccountIds.has(order.customerId)) continue;
+        if (order.customerId) seenAccountIds.add(order.customerId);
+
+        const address = decryptAddress(
+          order.addressCiphertext,
+          order.id,
+          keyring,
+        );
+        const searchableText = normalizeOrderSearchText(
+          [
+            order.accountName,
+            order.accountEmail,
+            order.reference,
+            address.recipientName,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        );
+        const matchesText = searchableText.includes(nameSearch);
+        const matchesPhone =
+          phoneSearch.length >= 4 &&
+          (() => {
+            const digits = normalizeOrderPhoneDigits(address.phone);
+            const localDigits = toLocalBangladeshPhoneDigits(digits);
+            return (
+              digits.includes(phoneSearch) ||
+              digits.includes(localPhoneSearch) ||
+              localDigits.includes(phoneSearch) ||
+              localDigits.includes(localPhoneSearch)
+            );
+          })();
+        if (!matchesText && !matchesPhone) continue;
+        if (skipped < query.offset) {
+          skipped += 1;
+          continue;
+        }
+
+        matched.push({
+          customer_key: order.customerId
+            ? `account_${order.customerId}`
+            : `guest_${order.id}`,
+          identity_type: order.customerId ? "account" : "guest_order",
+          account_name: order.customerId ? order.accountName : null,
+          account_email: order.customerId ? order.accountEmail : null,
+          order_count: 1,
+          last_order_at: order.createdAt,
+          latest_order_id: order.id,
+          latest_order_reference: order.reference,
+          latest_order_status: order.status,
+          address_ciphertext: order.addressCiphertext,
+        });
+        if (matched.length > query.limit) break;
+      }
+      if (matched.length > query.limit) break;
+      const lastOrder = batch[batch.length - 1];
+      if (!lastOrder) break;
+      cursor = { createdAt: lastOrder.createdAt, id: lastOrder.id };
+    }
+
+    return matched;
+  }
+
+  private async selectCustomerDirectoryPage(
+    limit: number,
+    offset: number,
+  ): Promise<CustomerDirectoryRecord[]> {
+    const result = await this.database.db.execute(sql`
+      with latest_account_orders as (
+        select distinct on (customer_id)
+          customer_id, id, reference, status, address_ciphertext, created_at
+        from orders.order_header
+        where customer_id is not null
+        order by customer_id, created_at desc, id desc
+      ), customer_rows as (
+        select
+          'account_' || account.id as customer_key,
+          'account'::text as identity_type,
+          account.name as account_name,
+          account.email as account_email,
+          1::bigint as order_count,
+          latest.created_at as last_order_at,
+          latest.id as latest_order_id,
+          latest.reference as latest_order_reference,
+          latest.status as latest_order_status,
+          latest.address_ciphertext as address_ciphertext
+        from latest_account_orders latest
+        join identity.user account on account.id = latest.customer_id
+        union all
+        select
+          'guest_' || guest.id as customer_key,
+          'guest_order'::text as identity_type,
+          null::text as account_name,
+          null::text as account_email,
+          1::bigint as order_count,
+          guest.created_at as last_order_at,
+          guest.id as latest_order_id,
+          guest.reference as latest_order_reference,
+          guest.status as latest_order_status,
+          guest.address_ciphertext as address_ciphertext
+        from orders.order_header guest
+        where guest.customer_id is null
+      )
+      select
+        customer_rows.customer_key,
+        customer_rows.identity_type,
+        customer_rows.account_name,
+        customer_rows.account_email,
+        customer_rows.order_count,
+        customer_rows.last_order_at,
+        customer_rows.latest_order_id,
+        customer_rows.latest_order_reference,
+        customer_rows.latest_order_status,
+        customer_rows.address_ciphertext
+      from customer_rows
+      order by customer_rows.last_order_at desc, customer_rows.latest_order_id desc
+      limit ${limit}
+      offset ${offset}
+    `);
+    return result.rows as CustomerDirectoryRecord[];
+  }
+
+  private async attachCustomerOrderCounts(
+    records: CustomerDirectoryRecord[],
+  ): Promise<CustomerDirectoryRecord[]> {
+    const accountIds = records
+      .filter((record) => record.identity_type === "account")
+      .map((record) => record.customer_key.slice("account_".length));
+    if (accountIds.length === 0) return records;
+
+    const counts = await this.database.db
+      .select({ customerId: customerOrder.customerId, orderCount: count() })
+      .from(customerOrder)
+      .where(inArray(customerOrder.customerId, accountIds))
+      .groupBy(customerOrder.customerId);
+    const countByAccountId = new Map(
+      counts.map((row) => [row.customerId, row.orderCount]),
+    );
+    return records.map((record) =>
+      record.identity_type === "account"
+        ? {
+            ...record,
+            order_count:
+              countByAccountId.get(
+                record.customer_key.slice("account_".length),
+              ) ?? 0,
+          }
+        : record,
+    );
   }
 
   private async searchManagedOrdersByCustomer(
