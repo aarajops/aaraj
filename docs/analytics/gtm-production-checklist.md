@@ -1,25 +1,21 @@
 # GTM production release checklist
 
-This checklist is for the published web container `GTM-N28C5K72`. The storefront code can be reviewed in this repository; the published container and Stape server container are managed outside it.
+This checklist describes the storefront events emitted by the app and the minimal GTM routing for them. GTM and Stape are managed outside this repository. Import drafts were generated from the supplied web v15 and server v6 exports; they are not published.
 
-## Required published-container edits
+## Event contract
 
-1. **Remove the legacy checkout tag.** Delete the click trigger that checks for `gtm.elementId = place_order` and the Custom HTML tag that reads `#billing_first_name`, `#billing_last_name`, and related Shopify fields into `localStorage`. The current checkout does not use those fields, and that tag has no tracking purpose.
-2. **Make app navigation the single page-view source.** The app pushes one `page_view` custom event per Next.js pathname, with a sanitized `page_location` and `page_title`; filter-only query changes do not create extra page views. Fire the GA4 page-view tag on this custom event. Remove its current `gtm.js` page-view trigger, keep `send_page_view=false`, and disable GA4 enhanced-measurement page views based on browser history. For Meta, set the Pixel base tag's `disablePushState=true` and fire one PageView event on the same `page_view` custom event. Do not add a second GTM History Change trigger.
-3. **Use one firing per event.** GA4 ecommerce tags and Meta event tags should use GTM's **Once per event** firing option. Base Google/Meta initialization remains **Once per page**. Use exact Custom Event triggers for `view_item`, `view_cart`, `add_to_cart`, `begin_checkout`, and `purchase`. No Meta Event Setup Tool button or URL rules are needed; the app emits events for GTM to handle.
-4. **Keep `view_cart` out of Meta standard events.** Fire the GA4 `view_cart` event on `view_cart`. The app does not provide a Meta `ViewCart` standard event. If the published container has a custom Meta `view_cart` tag, remove it unless the business specifically needs that custom event.
-5. **Map full ecommerce fields.** For GA4, map `currency`, `value`, `shipping`, `transaction_id`, and the complete `items` array from `ecommerce`. Preserve `item_id`, `item_name`, `item_variant`, `price`, and `quantity`. Remove `item_category` mapping unless the app begins sending it; any optional field macro must safely handle an absent value. For Meta event tags, map `event_id` to the Pixel `eventID` option and preserve contents, value, and currency.
-6. **Keep purchase semantics consistent.** `purchase` means the backend successfully created an order. For COD, that is a submitted but not yet collected order; `value` is merchandise value, `shipping` is separate, `transaction_id` is the order reference, and Meta `event_id` is the stable order ID. Treat these conversions as submitted orders, not collected revenue. GA4 and Meta browser Purchase are sent through GTM. Do not fire purchase on order-detail visits, retries, or status changes.
-7. **Review Meta CAPI before enabling more events.** The current browser container has Meta CAPI helper tags and the Stape server container is outside this repository. Confirm browser/server events share the same event name and stable `event_id` before enabling ecommerce CAPI. Until that is confirmed, keep browser purchase as the only purchase sender. The storefront CSP now permits vendor subdomains used by Google tags, Meta/Pixel/CAPI, Stape, and the helper CDNs.
-8. **Limit persistent identifiers and keep form data out of tracking.** The container currently creates an `external_id` cookie with a 365-day lifetime. Remove it if it has no clear purpose; otherwise set a documented, purpose-limited lifetime. Never send customer name, phone, address, email, or form values through the data layer.
+- The app emits `page_view`, `view_item`, `view_cart`, `add_to_cart`, `begin_checkout`, and `purchase` as semantic data-layer events.
+- `purchase` means the backend created a COD order. It is not collected revenue. `value` is merchandise value, `shipping` is separate, `transaction_id` is the order reference, and the app's stable `event_id` is the order ID.
+- Purchase tags use only the exact `purchase` Custom Event trigger and fire once per event. There is no reload condition, exception trigger, consent gate, click rule, URL rule, or manual Event Setup Tool rule on the purchase path. The app already prevents duplicate purchase emission for the same order in a session.
+- App navigation is the only source for page views. GA4 `page_location` and `page_title` come from the sanitized `page_view` data-layer event. Keep `send_page_view=false`, disable Pixel pushState page views, and disable GA4 enhanced-measurement page views based on browser history.
+- Meta CAPI receives only `page_view`, `view_item`, `add_to_cart`, `begin_checkout`, and `purchase`. Matching browser/server purchase events use the same `Purchase` name and stable order ID.
+- Tracking carries no customer contact/form fields and creates no synthetic year-long `external_id` cookie. Keep the server GA4 forwarding exclusions for `user_data.*` as a guard. If customer matching data is deliberately added later, send it only through the Meta CAPI path and hash it server-side.
 
-## Preview and publish checks
+## Before importing or publishing
 
-Use GTM Preview on the canonical production-equivalent host and verify:
-
-- A direct page load and each client-side pathname change produce exactly one GA4 and Meta `PageView` event. Filter-only query changes produce none.
-- Repeated add-to-cart actions produce one GA4 and one Meta event per successful cart mutation. `view_cart` is GA4-only. `begin_checkout` carries the expected item, currency, value, and shipping fields.
-- A COD order emits one GA4 purchase and one Meta browser Purchase through GTM after the API confirms creation; refreshing or revisiting the order emits none. Keep server-side Meta Purchase disabled until its event name and `event_id` are confirmed to deduplicate against the browser event.
-- CSP has no blocked GTM, GA4, Meta Pixel, Meta CAPI helper, or Stape requests. Check GA4 DebugView and Meta Test Events before publishing.
-
-Publish the reviewed container version only after these checks pass. The server-side Stape container must be reviewed separately because it is not part of this repository.
+1. Rotate the Meta CAPI access token from the supplied server export. The server draft deliberately uses `REPLACE_WITH_ROTATED_META_CAPI_TOKEN`; replace it in the GTM workspace with the new token. Do not publish while the placeholder remains.
+2. Import the web and server drafts into their matching containers and review the workspace diff. Keep the existing GA4 destination `G-AARAJBD` consistent in the web and server tags.
+3. In the GA4 web stream, disable enhanced-measurement page views based on browser history; this setting is outside the GTM export.
+4. Use GTM Preview on the canonical production host and set the Meta Test Events filter to show all event types. Verify one `page_view` per pathname and one GA4 and Meta event per app event. Place a fresh successful COD test order and verify the browser and server Meta Purchase use the same stable order ID. An order already completed before the trigger fix will not replay Purchase on its details page.
+5. If the server Purchase needs to appear in Meta Test Events, set that session's current test event code temporarily in the server workspace, verify the event, then remove the code before production publishing.
+6. Publish both containers only after the preview checks pass. Confirm GA4 events appear in the intended property and CSP allows the GTM, GA4, Pixel, and Stape requests.
