@@ -748,6 +748,44 @@ describe("COD Orders and checkout", () => {
     expect(remaining).toBeUndefined();
   });
 
+  it("lists abandoned checkouts by most recent customer activity first", async () => {
+    const variantId = await createVariant();
+    const draftIds: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const cart = await newGuestCart([variantId]);
+      const saved = await request(app.getHttpServer())
+        .post(`${API_V1_BASE_PATH}/checkout-drafts`)
+        .set("Origin", origin)
+        .set("Cookie", cart.cookie)
+        .send({
+          recipientName: `Draft Sort ${index}`,
+          phone: `0171234567${index}`,
+          doorstepDetails: "House 12",
+        })
+        .expect(201);
+      draftIds.push(saved.body.id as string);
+    }
+
+    const now = Date.now();
+    for (const [index, id] of draftIds.entries()) {
+      await database.db
+        .update(checkoutDraft)
+        .set({ lastCustomerActivityAt: new Date(now - (13 - index) * 60_000) })
+        .where(eq(checkoutDraft.id, id));
+    }
+
+    const listed = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/checkout-drafts`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+
+    expect(listed.body.rows.map((row: { id: string }) => row.id)).toEqual([
+      draftIds[2],
+      draftIds[1],
+      draftIds[0],
+    ]);
+  });
+
   it("removes an abandoned draft when the customer places the regular Order", async () => {
     const variantId = await createVariant(2);
     const cart = await newGuestCart([variantId]);

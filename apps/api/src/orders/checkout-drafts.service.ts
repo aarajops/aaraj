@@ -13,7 +13,7 @@ import {
   type CheckoutDraftOutcomeInput,
   type CheckoutDraftSave,
 } from "@aaraj/contracts";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import { lockCartOwner } from "../cart/cart-owner-lock.js";
@@ -306,8 +306,8 @@ export class CheckoutDraftsService {
         .from(checkoutDraft)
         .where(eligible)
         .orderBy(
-          asc(checkoutDraft.lastCustomerActivityAt),
-          asc(checkoutDraft.id),
+          desc(checkoutDraft.lastCustomerActivityAt),
+          desc(checkoutDraft.id),
         )
         .limit(query.limit + 1)
         .offset(scanned);
