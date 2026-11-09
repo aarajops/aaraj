@@ -56,7 +56,9 @@ export function OrdersCreatedRangeFilter({
   const end = draft.dates?.to
     ? dateAtTime(draft.dates.to, draft.endTime)
     : undefined;
-  const isValidRange = Boolean(start && end && start.getTime() <= end.getTime());
+  const isValidRange = Boolean(
+    start && end && start.getTime() <= end.getTime(),
+  );
   const rangeError =
     draft.dates?.from && draft.dates?.to && start && end && !isValidRange
       ? "End must be at or after start."
@@ -118,7 +120,9 @@ export function OrdersCreatedRangeFilter({
       <PopoverContent align="start" className="w-auto p-0">
         <PopoverHeader className="flex-row items-center justify-between gap-2 px-3 pt-3">
           <PopoverTitle>Date range</PopoverTitle>
-          <PopoverDescription className="text-xs">Dhaka time</PopoverDescription>
+          <PopoverDescription className="text-xs">
+            Dhaka time
+          </PopoverDescription>
         </PopoverHeader>
         <Calendar
           defaultMonth={draft.dates?.from ?? TZDate.tz(ORDER_TIME_ZONE)}
@@ -170,9 +174,7 @@ export function OrdersCreatedRangeFilter({
               step={MINUTE_IN_MS / 1000}
               type="time"
               value={draft.endTime}
-              onChange={(event) =>
-                updateDraft({ endTime: event.target.value })
-              }
+              onChange={(event) => updateDraft({ endTime: event.target.value })}
             />
           </label>
         </div>
@@ -195,11 +197,7 @@ export function OrdersCreatedRangeFilter({
                 Clear
               </Button>
             )}
-            <Button
-              type="button"
-              disabled={!isValidRange}
-              onClick={applyRange}
-            >
+            <Button type="button" disabled={!isValidRange} onClick={applyRange}>
               Apply
             </Button>
           </div>
@@ -209,10 +207,7 @@ export function OrdersCreatedRangeFilter({
   );
 }
 
-function createDraft(
-  createdFrom?: string,
-  createdBefore?: string,
-): RangeDraft {
+function createDraft(createdFrom?: string, createdBefore?: string): RangeDraft {
   if (!createdFrom || !createdBefore) {
     return { dates: undefined, startTime: "00:00", endTime: "23:59" };
   }
