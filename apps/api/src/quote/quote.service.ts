@@ -17,8 +17,13 @@ import {
   type QuoteDestinationRef,
   type QuoteLookup,
 } from "@aaraj/contracts";
-import { and, desc, eq, sql } from "drizzle-orm";
-import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
+import { and, desc, eq, exists, gt, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import {
+  CartService,
+  type CartQuoteContext,
+  type CartQuoteOwner,
+} from "../cart/cart.service.js";
 import { lockCartOwner } from "../cart/cart-owner-lock.js";
 import {
   CATALOG_CART_PORT,
@@ -31,6 +36,9 @@ import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DeliveryService } from "../delivery/delivery.service.js";
 import { GeographyService } from "../geography/geography.service.js";
 import { quoteSnapshot } from "./quote-schema.js";
+
+type QuoteRow = typeof quoteSnapshot.$inferSelect;
+const newerQuoteSnapshot = alias(quoteSnapshot, "newer_quote_snapshot");
 
 @Injectable()
 export class QuoteService {
@@ -67,7 +75,12 @@ export class QuoteService {
     }
 
     const { destination, tariff, lines, merchandiseGrossBdt, totalBdt } =
-      await this.priceSelection(context.cart.lines, input);
+      await this.priceSelection(
+        context.cart.lines,
+        input,
+        undefined,
+        context.catalogVariants,
+      );
     const [saved] = await this.database.db.transaction(async (transaction) => {
       await lockCartQuoteOwner(transaction, owner);
       const [latest] = await transaction
@@ -172,6 +185,7 @@ export class QuoteService {
     selections: readonly { variantId: string; quantity: number }[],
     input: QuoteDestinationInput,
     transaction?: AuditTransaction,
+    knownVariants?: readonly PurchasableCatalogVariant[],
   ) {
     if (selections.length === 0) {
       throw new UnprocessableEntityException(
@@ -191,14 +205,16 @@ export class QuoteService {
           destination.district.id,
           destination.upazila?.id,
         );
-    const variants = transaction
-      ? await this.catalog.findPurchasableVariantsWithinTransaction(
-          transaction,
-          selections.map(({ variantId }) => variantId),
-        )
-      : await this.catalog.findPurchasableVariants(
-          selections.map(({ variantId }) => variantId),
-        );
+    const variants =
+      knownVariants ??
+      (transaction
+        ? await this.catalog.findPurchasableVariantsWithinTransaction(
+            transaction,
+            selections.map(({ variantId }) => variantId),
+          )
+        : await this.catalog.findPurchasableVariants(
+            selections.map(({ variantId }) => variantId),
+          ));
     const byId = new Map(
       variants.map((variant) => [variant.variantId, variant]),
     );
@@ -241,22 +257,34 @@ export class QuoteService {
     const context = await this.cart.getQuoteContext(customerId, guestCartId);
     if (!context.owner) throw quoteNotFound();
     const ownerCondition = quoteOwnerCondition(context.owner);
-    const [row] = await this.database.db
-      .select()
+    const [result] = await this.database.db
+      .select({
+        row: quoteSnapshot,
+        isUnexpired: sql<boolean>`${quoteSnapshot.expiresAt} > clock_timestamp()`,
+      })
       .from(quoteSnapshot)
       .where(and(eq(quoteSnapshot.id, id), ownerCondition))
       .limit(1);
-    if (!row) throw quoteNotFound();
+    if (!result) throw quoteNotFound();
 
-    const [databaseClock] = await this.database.db
-      .select({ now: sql<string>`now()` })
-      .from(quoteSnapshot)
-      .where(eq(quoteSnapshot.id, row.id))
-      .limit(1);
-    if (
-      !databaseClock ||
-      row.expiresAt.getTime() <= new Date(databaseClock.now).getTime()
-    ) {
+    return this.lookupQuote(
+      context,
+      result.row,
+      destinationRef,
+      result.isUnexpired,
+    );
+  }
+
+  private async lookupQuote(
+    context: CartQuoteContext,
+    row: QuoteRow,
+    destinationRef: QuoteDestinationRef,
+    isUnexpired: boolean,
+    isLatest?: boolean,
+  ): Promise<QuoteLookup> {
+    if (!context.owner) throw quoteNotFound();
+    const ownerCondition = quoteOwnerCondition(context.owner);
+    if (!isUnexpired) {
       return QuoteLookupSchema.parse({
         status: "expired",
         quoteId: row.id,
@@ -272,10 +300,9 @@ export class QuoteService {
     ) {
       return stale(row.id, "cart_changed");
     }
+    if (isLatest === false) return stale(row.id, "destination_requoted");
 
-    const variants = await this.catalog.findPurchasableVariants(
-      context.cart.lines.map(({ variantId }) => variantId),
-    );
+    const variants = context.catalogVariants;
     if (!sameCatalogLines(row.lines, variants))
       return stale(row.id, "catalog_changed");
 
@@ -307,14 +334,16 @@ export class QuoteService {
     ) {
       return stale(row.id, "delivery_tariff_changed");
     }
-    const [newest] = await this.database.db
-      .select({ id: quoteSnapshot.id })
-      .from(quoteSnapshot)
-      .where(ownerCondition)
-      .orderBy(desc(quoteSnapshot.createdAt), desc(quoteSnapshot.id))
-      .limit(1);
-    if (newest && newest.id !== row.id)
-      return stale(row.id, "destination_requoted");
+    if (isLatest === undefined) {
+      const [newest] = await this.database.db
+        .select({ id: quoteSnapshot.id })
+        .from(quoteSnapshot)
+        .where(ownerCondition)
+        .orderBy(desc(quoteSnapshot.createdAt), desc(quoteSnapshot.id))
+        .limit(1);
+      if (newest && newest.id !== row.id)
+        return stale(row.id, "destination_requoted");
+    }
 
     return QuoteLookupSchema.parse({
       status: "current",
@@ -327,29 +356,66 @@ export class QuoteService {
     customerId: string | undefined,
     guestCartId: string | undefined,
     rawId: string,
+    existingContext?: CartQuoteContext,
   ): Promise<AuthoritativeQuote> {
     const parsedId = QuoteIdSchema.safeParse(rawId);
     if (!parsedId.success) throw quoteNotFound();
-    const context = await this.cart.getQuoteContext(customerId, guestCartId);
-    if (!context.owner) throw quoteNotFound();
-    const [row] = await this.database.db
-      .select()
-      .from(quoteSnapshot)
+    const requestedOwner = this.cart.identifyQuoteOwner(
+      customerId,
+      guestCartId,
+    );
+    const context =
+      existingContext ??
+      (await this.cart.getQuoteContext(customerId, guestCartId));
+    const owner = context.owner;
+    if (!owner || !sameCartQuoteOwner(owner, requestedOwner)) {
+      throw quoteNotFound();
+    }
+    const newerQuoteOwnerCondition =
+      owner.kind === "customer"
+        ? eq(newerQuoteSnapshot.customerId, owner.customerId)
+        : eq(newerQuoteSnapshot.guestCartHash, owner.guestCartHash);
+    const newerQuote = this.database.db
+      .select({ id: newerQuoteSnapshot.id })
+      .from(newerQuoteSnapshot)
       .where(
         and(
-          eq(quoteSnapshot.id, parsedId.data),
-          quoteOwnerCondition(context.owner),
+          newerQuoteOwnerCondition,
+          or(
+            gt(newerQuoteSnapshot.createdAt, quoteSnapshot.createdAt),
+            and(
+              eq(newerQuoteSnapshot.createdAt, quoteSnapshot.createdAt),
+              gt(newerQuoteSnapshot.id, quoteSnapshot.id),
+            ),
+          ),
         ),
       )
       .limit(1);
-    if (!row) throw quoteNotFound();
+    const [result] = await this.database.db
+      .select({
+        row: quoteSnapshot,
+        isUnexpired: sql<boolean>`${quoteSnapshot.expiresAt} > clock_timestamp()`,
+        isLatest: sql<boolean>`not ${exists(newerQuote)}`,
+      })
+      .from(quoteSnapshot)
+      .where(
+        and(eq(quoteSnapshot.id, parsedId.data), quoteOwnerCondition(owner)),
+      )
+      .limit(1);
+    if (!result) throw quoteNotFound();
 
-    const lookup = await this.get(customerId, guestCartId, parsedId.data, {
-      geographyVersion: row.geographyVersion,
-      divisionId: row.divisionId,
-      districtId: row.districtId,
-      ...(row.upazilaId ? { upazilaId: row.upazilaId } : {}),
-    });
+    const lookup = await this.lookupQuote(
+      context,
+      result.row,
+      {
+        geographyVersion: result.row.geographyVersion,
+        divisionId: result.row.divisionId,
+        districtId: result.row.districtId,
+        ...(result.row.upazilaId ? { upazilaId: result.row.upazilaId } : {}),
+      },
+      result.isUnexpired,
+      result.isLatest,
+    );
     if (lookup.status === "expired") {
       throw new ConflictException(
         "The quote has expired. Request a new quote.",
@@ -500,6 +566,16 @@ function quoteOwnerCondition(owner: CartQuoteOwner) {
   return owner.kind === "customer"
     ? eq(quoteSnapshot.customerId, owner.customerId)
     : eq(quoteSnapshot.guestCartHash, owner.guestCartHash);
+}
+
+function sameCartQuoteOwner(
+  left: CartQuoteOwner | null,
+  right: CartQuoteOwner | null,
+): boolean {
+  if (!left || !right || left.kind !== right.kind) return false;
+  return left.kind === "customer"
+    ? right.kind === "customer" && left.customerId === right.customerId
+    : right.kind === "guest" && left.guestCartHash === right.guestCartHash;
 }
 
 async function lockCartQuoteOwner(

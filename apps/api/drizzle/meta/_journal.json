@@ -435,6 +435,13 @@
       "when": 1794052342593,
       "tag": "0061_order_created_id_index",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794206400272,
+      "tag": "0062_order_query_indexes_and_address_snapshot",
+      "breakpoints": true
     }
   ]
 }

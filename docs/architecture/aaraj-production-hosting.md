@@ -234,6 +234,17 @@ expand-and-contract changes so the schema remains compatible with the active
 and previous app release; test both app versions where a schema change requires
 it.
 
+Migration `0062_order_query_indexes_and_address_snapshot` converts historical encrypted
+Order addresses. Install the updated host migration wrapper through
+`install-migration-autostart.sh` before dispatching this maintenance release.
+The wrapper checks whether conversion is needed, stops `aaraj-pm2.service`,
+runs the staged converter with the existing keyring and migration database
+role, then applies the schema change; the app restarts after activation. The
+converter holds an exclusive Order-table lock and rolls back all conversion
+changes if any address cannot be decrypted. If conversion fails, it restarts
+the old app and does not apply the migration. Keep the keyring configured for
+Pathao tokens and checkout retry fingerprints.
+
 A migration-bearing deployment passes the same migration compatibility tests
 before the deploy job runs. After the artifact is staged, CI/CD uses a
 root-owned wrapper to start
@@ -310,7 +321,7 @@ until the repository's review rules are verified in GitHub.
 | `.github/workflows/production-release.yml` | On `main` pushes, call CI once, package and smoke-test that exact commit, classify new migration files against the latest stable tag, serialize deployments, deploy through strict pinned SSH, verify health, and record the release tag after success. Maintenance migrations require a confirmed dispatch for the exact commit. |
 | `.node-version` | Add `24.22.1` as the repository's exact CI/release Node version. |
 | `apps/web/next.config.ts` | Enable standalone output, set `outputFileTracingRoot` to the monorepo root, and use the release SHA for a deterministic Next.js build ID while preserving the current same-origin API rewrite and security headers. |
-| `apps/api/scripts/migrate-production.mjs` | Add host-local production migration execution using the shipped Drizzle runtime and migration files, separate migration-role environment variables, the existing strict PostgreSQL TLS helper, and migration journal/checksum checks. Keep the existing local `db:migrate` path intact. |
+| `apps/api/scripts/migrate-production.mjs` | Add host-local production migration execution using the shipped Drizzle runtime and migration files, separate migration-role environment variables, the existing strict PostgreSQL TLS helper, and migration journal/checksum checks. Keep the local `db:migrate` command and run the address conversion before Drizzle when an existing local database still has encrypted Order addresses. |
 | `infrastructure/production/package-release.mjs` and `verify-release.mjs` | Build the isolated API deployment tree and Next standalone tree, add only runtime/migration assets and non-secret configuration, generate the manifest/checksum, and verify extracted artifacts start with no workspace paths or omitted runtime files. |
 | `infrastructure/production/host/` | Keep the site-scoped deployment script, SHA-validating migration wrapper and one-time installer, narrow sudo allowlist, per-release migration and PM2 systemd units, PM2 ecosystem, log rotation, canonical Nginx template, and site-only environment examples. Install host configuration and group-scoped directory permissions during an approved infrastructure phase. |
 | `docs/architecture/ecommerce-blueprint.md`, `docs/README.md`, and `README.md` | Point the approved initial-hosting decision and engineering portal to this operational architecture. |

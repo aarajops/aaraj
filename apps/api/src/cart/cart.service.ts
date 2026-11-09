@@ -20,13 +20,14 @@ import {
   type CartRevisionQuery,
   type CartSetLineInput,
 } from "@aaraj/contracts";
-import { and, asc, eq, or } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   CATALOG_CART_PORT,
   type CatalogCartPort,
   type CatalogCartVariant,
+  type PurchasableCatalogVariant,
 } from "../catalog/catalog-cart.port.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
@@ -59,6 +60,12 @@ const CartStoredStateSchema = z.strictObject({
 });
 type CartStoredLine = z.infer<typeof CartStoredLineSchema>;
 type CartStoredState = z.infer<typeof CartStoredStateSchema>;
+type CartAvailabilityVariant = Pick<CatalogCartVariant, "variantId"> &
+  Partial<Pick<CatalogCartVariant, "image">>;
+type CustomerCartHeader = Pick<
+  typeof customerCart.$inferSelect,
+  "id" | "currency" | "schemaVersion" | "revision"
+>;
 
 export type CartQuoteOwner =
   | { kind: "customer"; customerId: string }
@@ -66,6 +73,7 @@ export type CartQuoteOwner =
 
 export type CartQuoteContext = {
   cart: Cart;
+  catalogVariants: readonly PurchasableCatalogVariant[];
   owner: CartQuoteOwner | null;
 };
 
@@ -168,20 +176,32 @@ export class CartService {
   ): Promise<CartQuoteContext> {
     const owner = this.identifyQuoteOwner(customerId, guestCartId);
     if (owner?.kind === "customer") {
+      const state = await this.getCustomerCartState(owner.customerId);
+      const catalogVariants = await this.catalog.findPurchasableVariants(
+        state.lines.map(({ variantId }) => variantId),
+      );
       return {
-        cart: await this.toCart(
-          await this.getCustomerCartState(owner.customerId),
-          false,
-        ),
+        cart: this.toCartFromVariants(state, catalogVariants),
+        catalogVariants,
         owner,
       };
     }
     const id = parseGuestCartId(guestCartId);
-    if (!id || !owner)
-      return { cart: await this.toCart(EMPTY_CART), owner: null };
-    const state = await this.readGuestState(id);
+    if (!id || !owner) {
+      const catalogVariants: PurchasableCatalogVariant[] = [];
+      return {
+        cart: this.toCartFromVariants(EMPTY_CART, catalogVariants),
+        catalogVariants,
+        owner: null,
+      };
+    }
+    const state = (await this.readGuestState(id)) ?? EMPTY_CART;
+    const catalogVariants = await this.catalog.findPurchasableVariants(
+      state.lines.map(({ variantId }) => variantId),
+    );
     return {
-      cart: await this.toCart(state ?? EMPTY_CART, false),
+      cart: this.toCartFromVariants(state, catalogVariants),
+      catalogVariants,
       owner,
     };
   }
@@ -532,7 +552,7 @@ export class CartService {
     try {
       committed = await this.database.db.transaction(async (transaction) => {
         await lockCartOwner(transaction, "guest", guestHash);
-        const cartId = await ensureAndLockCustomerCart(transaction, customerId);
+        const cart = await ensureAndLockCustomerCart(transaction, customerId);
         const [receipt] = await transaction
           .select({ guestRevision: guestCartRevisionReceipt.guestRevision })
           .from(guestCartRevisionReceipt)
@@ -543,7 +563,7 @@ export class CartService {
             ),
           )
           .limit(1);
-        const current = await readCustomerCartState(transaction, customerId);
+        const current = await readCustomerCartState(transaction, cart);
         if (receipt) return current;
         const currentGuest = await this.readGuestState(id);
         if (!currentGuest || currentGuest.revision !== guest.revision) {
@@ -588,32 +608,66 @@ export class CartService {
         const oldLines = new Map(
           current.lines.map((line) => [line.variantId, line]),
         );
+        const linesToInsert: CartStoredLine[] = [];
+        const linesToUpdate: CartStoredLine[] = [];
         for (const line of combined.values()) {
           const prior = oldLines.get(line.variantId);
           if (!prior) {
-            await transaction.insert(customerCartLine).values({
-              cartId,
-              variantId: line.variantId,
-              quantity: line.quantity,
-              productSnapshot: line.product,
-            });
+            linesToInsert.push(line);
           } else if (
             prior.quantity !== line.quantity ||
             !sameSnapshot(prior.product, line.product)
           ) {
-            await transaction
-              .update(customerCartLine)
-              .set({
-                quantity: line.quantity,
-                productSnapshot: line.product,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(customerCartLine.cartId, cartId),
-                  eq(customerCartLine.variantId, line.variantId),
+            linesToUpdate.push(line);
+          }
+        }
+        if (linesToInsert.length > 0) {
+          await transaction.insert(customerCartLine).values(
+            linesToInsert.map((line) => ({
+              cartId: cart.id,
+              variantId: line.variantId,
+              quantity: line.quantity,
+              productSnapshot: line.product,
+            })),
+          );
+        }
+        if (linesToUpdate.length > 0) {
+          const quantityCase = sql`CASE ${customerCartLine.variantId} ${sql.join(
+            linesToUpdate.map(
+              (line) =>
+                sql`WHEN ${line.variantId}::uuid THEN ${line.quantity}::integer`,
+            ),
+            sql` `,
+          )} ELSE ${customerCartLine.quantity} END`;
+          const productSnapshotCase = sql`CASE ${customerCartLine.variantId} ${sql.join(
+            linesToUpdate.map(
+              (line) =>
+                sql`WHEN ${line.variantId}::uuid THEN ${JSON.stringify(line.product)}::jsonb`,
+            ),
+            sql` `,
+          )} ELSE ${customerCartLine.productSnapshot} END`;
+          const updatedLines = await transaction
+            .update(customerCartLine)
+            .set({
+              quantity: quantityCase,
+              productSnapshot: productSnapshotCase,
+              updatedAt: sql`clock_timestamp()`,
+            })
+            .where(
+              and(
+                eq(customerCartLine.cartId, cart.id),
+                inArray(
+                  customerCartLine.variantId,
+                  linesToUpdate.map(({ variantId }) => variantId),
                 ),
-              );
+              ),
+            )
+            .returning({ variantId: customerCartLine.variantId });
+          if (updatedLines.length !== linesToUpdate.length) {
+            throw new ConflictException(
+              "The account cart changed during guest cart merge. Refresh the cart and try again.",
+              { errorCode: "CART_REVISION_STALE" },
+            );
           }
         }
 
@@ -634,7 +688,7 @@ export class CartService {
           await transaction
             .update(customerCart)
             .set({ revision, updatedAt: new Date() })
-            .where(eq(customerCart.id, cartId));
+            .where(eq(customerCart.id, cart.id));
         }
         await transaction.insert(guestCartRevisionReceipt).values({
           guestCartHash: guestHash,
@@ -734,26 +788,40 @@ export class CartService {
   private async getCustomerCartState(
     customerId: string,
   ): Promise<CartStoredState> {
-    const [row] = await this.database.db
-      .select()
-      .from(customerCart)
-      .where(eq(customerCart.customerId, customerId))
-      .limit(1);
-    if (!row) return EMPTY_CART;
     const rows = await this.database.db
       .select({
+        currency: customerCart.currency,
+        schemaVersion: customerCart.schemaVersion,
+        revision: customerCart.revision,
         variantId: customerCartLine.variantId,
         quantity: customerCartLine.quantity,
         product: customerCartLine.productSnapshot,
       })
-      .from(customerCartLine)
-      .where(eq(customerCartLine.cartId, row.id))
+      .from(customerCart)
+      .leftJoin(customerCartLine, eq(customerCartLine.cartId, customerCart.id))
+      .where(eq(customerCart.customerId, customerId))
       .orderBy(asc(customerCartLine.variantId));
+    if (rows.length === 0) return EMPTY_CART;
+    const row = rows[0];
+    if (!row) return EMPTY_CART;
+    const lines = rows.flatMap((line) => {
+      if (line.variantId === null) return [];
+      if (line.quantity === null || line.product === null) {
+        throw invalidStoredCart();
+      }
+      return [
+        {
+          variantId: line.variantId,
+          quantity: line.quantity,
+          product: line.product,
+        },
+      ];
+    });
     return parseStoredState({
       schemaVersion: row.schemaVersion,
       currency: row.currency,
       revision: row.revision,
-      lines: rows,
+      lines,
     });
   }
 
@@ -791,8 +859,8 @@ export class CartService {
     line: CartStoredLine,
   ): Promise<CartStoredState> {
     return this.database.db.transaction(async (transaction) => {
-      const cartId = await ensureAndLockCustomerCart(transaction, customerId);
-      const current = await readCustomerCartState(transaction, customerId);
+      const cart = await ensureAndLockCustomerCart(transaction, customerId);
+      const current = await readCustomerCartState(transaction, cart);
       if (current.revision !== expectedRevision) {
         throw staleRevision(current.revision);
       }
@@ -806,7 +874,7 @@ export class CartService {
         }
         lines.push(line);
         await transaction.insert(customerCartLine).values({
-          cartId,
+          cartId: cart.id,
           variantId: line.variantId,
           quantity: line.quantity,
           productSnapshot: line.product,
@@ -829,7 +897,7 @@ export class CartService {
             })
             .where(
               and(
-                eq(customerCartLine.cartId, cartId),
+                eq(customerCartLine.cartId, cart.id),
                 eq(customerCartLine.variantId, line.variantId),
               ),
             );
@@ -846,7 +914,7 @@ export class CartService {
         await transaction
           .update(customerCart)
           .set({ revision, updatedAt: new Date() })
-          .where(eq(customerCart.id, cartId));
+          .where(eq(customerCart.id, cart.id));
       }
       return { ...current, revision, lines: lines.sort(byVariantId) };
     });
@@ -859,7 +927,12 @@ export class CartService {
   ): Promise<CartStoredState> {
     return this.database.db.transaction(async (transaction) => {
       const [existingCart] = await transaction
-        .select({ id: customerCart.id, revision: customerCart.revision })
+        .select({
+          id: customerCart.id,
+          currency: customerCart.currency,
+          schemaVersion: customerCart.schemaVersion,
+          revision: customerCart.revision,
+        })
         .from(customerCart)
         .where(eq(customerCart.customerId, customerId))
         .for("update")
@@ -868,7 +941,7 @@ export class CartService {
         if (expectedRevision !== 0) throw staleRevision(0);
         return EMPTY_CART;
       }
-      const current = await readCustomerCartState(transaction, customerId);
+      const current = await readCustomerCartState(transaction, existingCart);
       if (current.revision !== expectedRevision)
         throw staleRevision(current.revision);
       const line = current.lines.find(({ variantId: id }) => id === variantId);
@@ -989,6 +1062,13 @@ export class CartService {
       state.lines.map(({ variantId }) => variantId),
       { includeImages },
     );
+    return this.toCartFromVariants(state, variants);
+  }
+
+  private toCartFromVariants(
+    state: CartStoredState,
+    variants: readonly CartAvailabilityVariant[],
+  ): Cart {
     const variantsById = new Map(
       variants.map((variant) => [variant.variantId, variant]),
     );
@@ -1009,31 +1089,30 @@ export class CartService {
 async function ensureAndLockCustomerCart(
   transaction: AuditTransaction,
   customerId: string,
-): Promise<string> {
+): Promise<CustomerCartHeader> {
   await transaction
     .insert(customerCart)
     .values({ customerId, currency: CART_CURRENCY })
     .onConflictDoNothing({ target: customerCart.customerId });
   const [row] = await transaction
-    .select({ id: customerCart.id })
+    .select({
+      id: customerCart.id,
+      currency: customerCart.currency,
+      schemaVersion: customerCart.schemaVersion,
+      revision: customerCart.revision,
+    })
     .from(customerCart)
     .where(eq(customerCart.customerId, customerId))
     .for("update")
     .limit(1);
   if (!row) throw new Error("Customer cart lock could not be acquired.");
-  return row.id;
+  return row;
 }
 
 async function readCustomerCartState(
   transaction: AuditTransaction,
-  customerId: string,
+  row: CustomerCartHeader,
 ): Promise<CartStoredState> {
-  const [row] = await transaction
-    .select()
-    .from(customerCart)
-    .where(eq(customerCart.customerId, customerId))
-    .limit(1);
-  if (!row) throw new Error("Customer cart row is missing after lock.");
   const rows = await transaction
     .select({
       variantId: customerCartLine.variantId,

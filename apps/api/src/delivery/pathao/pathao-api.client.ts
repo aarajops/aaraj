@@ -56,6 +56,13 @@ export class PathaoRequestError extends Error {
   }
 }
 
+class PathaoResponseBodyError extends Error {
+  constructor(readonly kind: "missing" | "too_large") {
+    super("The Pathao response body could not be read safely.");
+    this.name = "PathaoResponseBodyError";
+  }
+}
+
 @Injectable()
 export class PathaoApiClient {
   async issueToken(
@@ -290,15 +297,28 @@ export class PathaoApiClient {
       throw new PathaoRequestError("PATHAO_NETWORK_UNAVAILABLE");
     }
 
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new PathaoRequestError(
+        `PATHAO_HTTP_${response.status}`,
+        response.status,
+      );
+    }
+
     let text: string;
     try {
       text = await readResponseText(response);
-    } catch {
-      throw new PathaoRequestError("PATHAO_RESPONSE_INVALID", response.status);
-    }
-    if (!response.ok) {
+    } catch (error) {
+      if (error instanceof PathaoResponseBodyError) {
+        throw new PathaoRequestError(
+          error.kind === "too_large"
+            ? "PATHAO_RESPONSE_TOO_LARGE"
+            : "PATHAO_RESPONSE_INVALID",
+          response.status,
+        );
+      }
       throw new PathaoRequestError(
-        `PATHAO_HTTP_${response.status}`,
+        "PATHAO_NETWORK_UNAVAILABLE",
         response.status,
       );
     }
@@ -311,7 +331,7 @@ export class PathaoApiClient {
 }
 
 async function readResponseText(response: Response): Promise<string> {
-  if (!response.body) throw new Error("missing body");
+  if (!response.body) throw new PathaoResponseBodyError("missing");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -320,8 +340,8 @@ async function readResponseText(response: Response): Promise<string> {
     if (done) break;
     size += value.byteLength;
     if (size > MAX_RESPONSE_BYTES) {
-      await reader.cancel();
-      throw new Error("response too large");
+      await reader.cancel().catch(() => undefined);
+      throw new PathaoResponseBodyError("too_large");
     }
     chunks.push(value);
   }

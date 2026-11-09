@@ -69,7 +69,7 @@ export function readOrderPiiKeyring(
 
   if (!keys.has("legacy")) {
     throw new Error(
-      'ORDER_PII_KEYRING.keys must retain the "legacy" key for existing addresses and checkout retries.',
+      'ORDER_PII_KEYRING.keys must retain the "legacy" key for checkout retries and legacy Pathao tokens.',
     );
   }
   if (!keys.has(activeKeyId)) {

@@ -11,7 +11,7 @@ import {
   MAX_CART_LINES,
   MAX_CART_QUANTITY_PER_VARIANT,
 } from "@aaraj/contracts";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { DatabaseService } from "../platform/database/database.service.js";
@@ -37,7 +37,10 @@ import type {
   InventoryReservationLine,
 } from "./inventory-reservation.port.js";
 
-type ReservationCommandRow = typeof inventoryReservationCommand.$inferSelect;
+type ReservationCommandRow = Pick<
+  typeof inventoryReservationCommand.$inferSelect,
+  "reservationId" | "operation" | "requestFingerprint"
+>;
 
 @Injectable()
 export class InventoryReservationService implements InventoryReservationPort {
@@ -51,15 +54,22 @@ export class InventoryReservationService implements InventoryReservationPort {
     command: InventoryReserveCommand,
   ): Promise<InventoryReservation> {
     const lines = aggregateLines(command.lines);
-    const purchasable = await this.catalog.findPurchasableVariants(
-      lines.map(({ variantId }) => variantId),
-    );
-    const purchasableIds = new Set(
-      purchasable.map(({ variantId }) => variantId),
-    );
-    return this.database.db.transaction((transaction) =>
-      this.reserveInTransaction(transaction, command, lines, purchasableIds),
-    );
+    return this.database.db.transaction(async (transaction) => {
+      const purchasable =
+        await this.catalog.findPurchasableVariantsWithinTransaction(
+          transaction,
+          lines.map(({ variantId }) => variantId),
+        );
+      const purchasableIds = new Set(
+        purchasable.map(({ variantId }) => variantId),
+      );
+      return this.reserveInTransaction(
+        transaction,
+        command,
+        lines,
+        purchasableIds,
+      );
+    });
   }
 
   async reserveWithinTransaction(
@@ -112,32 +122,8 @@ export class InventoryReservationService implements InventoryReservationPort {
       })),
     );
 
-    for (const line of lines) {
-      await transaction
-        .insert(inventoryStockBalance)
-        .values({ variantId: line.variantId, quantityOnHand: 0 })
-        .onConflictDoNothing({ target: inventoryStockBalance.variantId });
-
-      const [balance] = await transaction
-        .update(inventoryStockBalance)
-        .set({
-          quantityReserved: sql`${inventoryStockBalance.quantityReserved} + ${line.quantity}`,
-          updatedAt: sql`clock_timestamp()`,
-        })
-        .where(
-          and(
-            eq(inventoryStockBalance.variantId, line.variantId),
-            sql`${inventoryStockBalance.quantityOnHand}::bigint - ${inventoryStockBalance.quantityReserved}::bigint >= ${line.quantity}`,
-          ),
-        )
-        .returning({ variantId: inventoryStockBalance.variantId });
-
-      if (!balance) {
-        throw new ConflictException(
-          "One or more variants do not have enough available stock.",
-        );
-      }
-    }
+    await ensureStockBalances(transaction, lines);
+    await applyStockBalanceDeltas(transaction, lines, "reserve");
 
     await transaction.insert(inventoryReservationCommand).values({
       commandId,
@@ -152,9 +138,13 @@ export class InventoryReservationService implements InventoryReservationPort {
       lines,
     });
 
-    const result = await loadReservation(transaction, reservation.id);
-    if (!result) throw new Error("Created reservation could not be read.");
-    return result;
+    return {
+      id: reservation.id,
+      status: "held",
+      lines: [...lines],
+      createdAt: reservation.createdAt.toISOString(),
+      updatedAt: reservation.updatedAt.toISOString(),
+    };
   }
 
   async extendWithinTransaction(
@@ -214,59 +204,60 @@ export class InventoryReservationService implements InventoryReservationPort {
       );
     }
 
-    for (const line of lines) {
-      await transaction
-        .insert(inventoryStockBalance)
-        .values({ variantId: line.variantId, quantityOnHand: 0 })
-        .onConflictDoNothing({ target: inventoryStockBalance.variantId });
+    await ensureStockBalances(transaction, lines);
+    await applyStockBalanceDeltas(transaction, lines, "reserve");
 
-      const [balance] = await transaction
-        .update(inventoryStockBalance)
+    const newLines = lines.filter(
+      ({ variantId }) => !existingQuantities.has(variantId),
+    );
+    if (newLines.length > 0) {
+      await transaction
+        .insert(inventoryStockReservationLine)
+        .values(newLines.map((line) => ({ reservationId, ...line })));
+    }
+
+    const existingUpdates = lines.flatMap((line) => {
+      const currentQuantity = existingQuantities.get(line.variantId);
+      return currentQuantity === undefined
+        ? []
+        : [{ ...line, currentQuantity }];
+    });
+    if (existingUpdates.length > 0) {
+      const additionalQuantityCase = sql`CASE ${inventoryStockReservationLine.variantId} ${sql.join(
+        existingUpdates.map(
+          (line) =>
+            sql`WHEN ${line.variantId}::uuid THEN ${line.quantity}::integer`,
+        ),
+        sql` `,
+      )} ELSE 0 END`;
+      const expectedQuantityCase = sql`CASE ${inventoryStockReservationLine.variantId} ${sql.join(
+        existingUpdates.map(
+          (line) =>
+            sql`WHEN ${line.variantId}::uuid THEN ${line.currentQuantity}::integer`,
+        ),
+        sql` `,
+      )} ELSE 0 END`;
+      const updatedLines = await transaction
+        .update(inventoryStockReservationLine)
         .set({
-          quantityReserved: sql`${inventoryStockBalance.quantityReserved} + ${line.quantity}`,
-          updatedAt: sql`clock_timestamp()`,
+          quantity: sql`${expectedQuantityCase} + ${additionalQuantityCase}`,
         })
         .where(
           and(
-            eq(inventoryStockBalance.variantId, line.variantId),
-            sql`${inventoryStockBalance.quantityOnHand}::bigint - ${inventoryStockBalance.quantityReserved}::bigint >= ${line.quantity}`,
+            eq(inventoryStockReservationLine.reservationId, reservationId),
+            inArray(
+              inventoryStockReservationLine.variantId,
+              existingUpdates.map(({ variantId }) => variantId),
+            ),
+            sql`${inventoryStockReservationLine.quantity} = ${expectedQuantityCase}`,
           ),
         )
-        .returning({ variantId: inventoryStockBalance.variantId });
-
-      if (!balance) {
+        .returning({ variantId: inventoryStockReservationLine.variantId });
+      if (updatedLines.length !== existingUpdates.length) {
         throw new ConflictException(
-          "One or more variants do not have enough available stock.",
-          { errorCode: "ORDER_ITEM_STOCK_UNAVAILABLE" },
+          "The Order stock reservation changed before it could be extended.",
+          { errorCode: "ORDER_RESERVATION_UPDATE_CONFLICT" },
         );
-      }
-    }
-
-    for (const line of lines) {
-      const currentQuantity = existingQuantities.get(line.variantId);
-      if (currentQuantity === undefined) {
-        await transaction.insert(inventoryStockReservationLine).values({
-          reservationId,
-          ...line,
-        });
-      } else {
-        const [updatedLine] = await transaction
-          .update(inventoryStockReservationLine)
-          .set({ quantity: currentQuantity + line.quantity })
-          .where(
-            and(
-              eq(inventoryStockReservationLine.reservationId, reservationId),
-              eq(inventoryStockReservationLine.variantId, line.variantId),
-              eq(inventoryStockReservationLine.quantity, currentQuantity),
-            ),
-          )
-          .returning({ variantId: inventoryStockReservationLine.variantId });
-        if (!updatedLine) {
-          throw new ConflictException(
-            "The Order stock reservation changed before it could be extended.",
-            { errorCode: "ORDER_RESERVATION_UPDATE_CONFLICT" },
-          );
-        }
       }
     }
     await transaction.insert(inventoryReservationCommand).values({
@@ -282,9 +273,17 @@ export class InventoryReservationService implements InventoryReservationPort {
       lines,
     });
 
-    const result = await loadReservation(transaction, reservationId);
-    if (!result) throw new Error("Extended reservation could not be read.");
-    return result;
+    const addedQuantities = new Map(
+      lines.map(({ variantId, quantity }) => [variantId, quantity]),
+    );
+    const resultingLines = existingLines.map(({ variantId, quantity }) => ({
+      variantId,
+      quantity: quantity + (addedQuantities.get(variantId) ?? 0),
+    }));
+    for (const line of lines) {
+      if (!existingQuantities.has(line.variantId)) resultingLines.push(line);
+    }
+    return toInventoryReservation(reservation, resultingLines);
   }
 
   async releaseLinesWithinTransaction(
@@ -342,42 +341,33 @@ export class InventoryReservationService implements InventoryReservationPort {
           { errorCode: "ORDER_RESERVATION_UPDATE_CONFLICT" },
         );
       }
+    }
 
-      const [balance] = await transaction
-        .update(inventoryStockBalance)
-        .set({
-          quantityReserved: sql`${inventoryStockBalance.quantityReserved} - ${line.quantity}`,
-          updatedAt: sql`clock_timestamp()`,
-        })
-        .where(
-          and(
-            eq(inventoryStockBalance.variantId, line.variantId),
-            sql`${inventoryStockBalance.quantityReserved} >= ${line.quantity}`,
-          ),
-        )
-        .returning({ variantId: inventoryStockBalance.variantId });
-      if (!balance) {
-        throw new Error(
-          "Reservation stock balance is missing or violates its quantity invariant.",
-        );
-      }
+    await applyStockBalanceDeltas(transaction, lines, "release");
 
-      const deletedLines = await transaction
-        .delete(inventoryStockReservationLine)
-        .where(
-          and(
-            eq(inventoryStockReservationLine.reservationId, reservationId),
-            eq(inventoryStockReservationLine.variantId, line.variantId),
-            eq(inventoryStockReservationLine.quantity, currentQuantity),
+    const expectedQuantityCase = caseForLines(
+      lines,
+      inventoryStockReservationLine.variantId,
+      (line) => sql`${line.quantity}::integer`,
+    );
+    const deletedLines = await transaction
+      .delete(inventoryStockReservationLine)
+      .where(
+        and(
+          eq(inventoryStockReservationLine.reservationId, reservationId),
+          inArray(
+            inventoryStockReservationLine.variantId,
+            lines.map(({ variantId }) => variantId),
           ),
-        )
-        .returning({ variantId: inventoryStockReservationLine.variantId });
-      if (deletedLines.length !== 1) {
-        throw new ConflictException(
-          "The Order stock reservation changed before the item could be removed.",
-          { errorCode: "ORDER_RESERVATION_UPDATE_CONFLICT" },
-        );
-      }
+          sql`${inventoryStockReservationLine.quantity} = ${expectedQuantityCase}`,
+        ),
+      )
+      .returning({ variantId: inventoryStockReservationLine.variantId });
+    if (deletedLines.length !== lines.length) {
+      throw new ConflictException(
+        "The Order stock reservation changed before the item could be removed.",
+        { errorCode: "ORDER_RESERVATION_UPDATE_CONFLICT" },
+      );
     }
 
     await transaction.insert(inventoryReservationCommand).values({
@@ -393,9 +383,13 @@ export class InventoryReservationService implements InventoryReservationPort {
       lines,
     });
 
-    const result = await loadReservation(transaction, reservationId);
-    if (!result) throw new Error("Released reservation could not be read.");
-    return result;
+    const releasedVariantIds = new Set(lines.map(({ variantId }) => variantId));
+    return toInventoryReservation(
+      reservation,
+      existingLines.filter(
+        ({ variantId }) => !releasedVariantIds.has(variantId),
+      ),
+    );
   }
 
   release(
@@ -444,10 +438,6 @@ export class InventoryReservationService implements InventoryReservationPort {
   ): Promise<InventoryReservation> {
     const commandId = requireUuid(command.commandId, "commandId");
     const reservationId = requireUuid(command.reservationId, "reservationId");
-    const fingerprint = fingerprintRequest(operation, { reservationId });
-
-    const prior = await this.findCommand(commandId);
-    if (prior) return this.replay(prior, operation, fingerprint);
 
     return this.database.db.transaction((transaction) =>
       this.transitionWithinTransaction(transaction, operation, {
@@ -519,39 +509,9 @@ export class InventoryReservationService implements InventoryReservationPort {
       .orderBy(asc(inventoryStockReservationLine.variantId));
 
     const changed = reservation.status === "held";
+    let updatedReservation = reservation;
     if (changed) {
-      for (const line of lines) {
-        const [balance] = await transaction
-          .update(inventoryStockBalance)
-          .set(
-            operation === "release"
-              ? {
-                  quantityReserved: sql`${inventoryStockBalance.quantityReserved} - ${line.quantity}`,
-                  updatedAt: sql`clock_timestamp()`,
-                }
-              : {
-                  quantityOnHand: sql`${inventoryStockBalance.quantityOnHand} - ${line.quantity}`,
-                  quantityReserved: sql`${inventoryStockBalance.quantityReserved} - ${line.quantity}`,
-                  updatedAt: sql`clock_timestamp()`,
-                },
-          )
-          .where(
-            and(
-              eq(inventoryStockBalance.variantId, line.variantId),
-              sql`${inventoryStockBalance.quantityReserved} >= ${line.quantity}`,
-              operation === "consume"
-                ? sql`${inventoryStockBalance.quantityOnHand} >= ${line.quantity}`
-                : undefined,
-            ),
-          )
-          .returning({ variantId: inventoryStockBalance.variantId });
-
-        if (!balance) {
-          throw new Error(
-            "Reservation stock balance is missing or violates its quantity invariant.",
-          );
-        }
-      }
+      await applyStockBalanceDeltas(transaction, lines, operation);
 
       const [updated] = await transaction
         .update(inventoryStockReservation)
@@ -562,8 +522,14 @@ export class InventoryReservationService implements InventoryReservationPort {
             eq(inventoryStockReservation.status, "held"),
           ),
         )
-        .returning({ id: inventoryStockReservation.id });
-      if (!updated) throw new Error("Held reservation changed while locked.");
+        .returning({ updatedAt: inventoryStockReservation.updatedAt });
+      if (!updated?.updatedAt)
+        throw new Error("Held reservation changed while locked.");
+      updatedReservation = {
+        ...reservation,
+        status: requestedStatus,
+        updatedAt: updated.updatedAt,
+      };
 
       await this.appendTransitionAudit(transaction, {
         operation,
@@ -580,32 +546,7 @@ export class InventoryReservationService implements InventoryReservationPort {
       requestFingerprint: fingerprint,
     });
 
-    const result = await loadReservation(transaction, reservationId);
-    if (!result) throw new Error("Reservation disappeared during transition.");
-    return result;
-  }
-
-  private async findCommand(
-    commandId: string,
-  ): Promise<ReservationCommandRow | undefined> {
-    const [command] = await this.database.db
-      .select()
-      .from(inventoryReservationCommand)
-      .where(eq(inventoryReservationCommand.commandId, commandId))
-      .limit(1);
-    return command;
-  }
-
-  private async replay(
-    command: ReservationCommandRow,
-    operation: InventoryReservationOperation,
-    fingerprint: string,
-  ): Promise<InventoryReservation> {
-    assertSameCommand(command, operation, fingerprint);
-    const reservation = await this.getReservation(command.reservationId);
-    if (!reservation)
-      throw new Error("Reservation command refers to a missing reservation.");
-    return reservation;
+    return toInventoryReservation(updatedReservation, lines);
   }
 
   private async replayInTransaction(
@@ -739,7 +680,11 @@ async function findCommand(
   commandId: string,
 ): Promise<ReservationCommandRow | undefined> {
   const [command] = await transaction
-    .select()
+    .select({
+      reservationId: inventoryReservationCommand.reservationId,
+      operation: inventoryReservationCommand.operation,
+      requestFingerprint: inventoryReservationCommand.requestFingerprint,
+    })
     .from(inventoryReservationCommand)
     .where(eq(inventoryReservationCommand.commandId, commandId))
     .limit(1);
@@ -766,11 +711,142 @@ async function loadReservation(
     .where(eq(inventoryStockReservationLine.reservationId, reservationId))
     .orderBy(asc(inventoryStockReservationLine.variantId));
 
+  return toInventoryReservation(reservation, lines);
+}
+
+function toInventoryReservation(
+  reservation: typeof inventoryStockReservation.$inferSelect,
+  lines: readonly InventoryReservationLine[],
+): InventoryReservation {
   return {
     id: reservation.id,
     status: reservation.status,
-    lines,
+    lines: [...lines].sort((left, right) =>
+      left.variantId < right.variantId
+        ? -1
+        : left.variantId > right.variantId
+          ? 1
+          : 0,
+    ),
     createdAt: reservation.createdAt.toISOString(),
     updatedAt: reservation.updatedAt.toISOString(),
   };
+}
+
+type StockBalanceOperation = "reserve" | "release" | "consume";
+
+async function ensureStockBalances(
+  transaction: AuditTransaction,
+  lines: readonly InventoryReservationLine[],
+): Promise<void> {
+  if (lines.length === 0) return;
+  await transaction
+    .insert(inventoryStockBalance)
+    .values(lines.map(({ variantId }) => ({ variantId, quantityOnHand: 0 })))
+    .onConflictDoNothing({ target: inventoryStockBalance.variantId });
+}
+
+async function lockStockBalances(
+  transaction: AuditTransaction,
+  lines: readonly InventoryReservationLine[],
+): Promise<void> {
+  if (lines.length === 0) return;
+  const balances = await transaction
+    .select({ variantId: inventoryStockBalance.variantId })
+    .from(inventoryStockBalance)
+    .where(
+      inArray(
+        inventoryStockBalance.variantId,
+        lines.map(({ variantId }) => variantId),
+      ),
+    )
+    .orderBy(asc(inventoryStockBalance.variantId))
+    .for("update");
+  if (balances.length !== lines.length) {
+    throw new Error(
+      "Reservation stock balance is missing or violates its quantity invariant.",
+    );
+  }
+}
+
+async function applyStockBalanceDeltas(
+  transaction: AuditTransaction,
+  lines: readonly InventoryReservationLine[],
+  operation: StockBalanceOperation,
+): Promise<void> {
+  if (lines.length === 0) return;
+  await lockStockBalances(transaction, lines);
+
+  const quantityDelta = caseForLines(
+    lines,
+    inventoryStockBalance.variantId,
+    (line) => sql`${line.quantity}::integer`,
+  );
+  const validBalance = caseForLines(
+    lines,
+    inventoryStockBalance.variantId,
+    (line) => {
+      if (operation === "reserve") {
+        return sql`${inventoryStockBalance.quantityOnHand}::bigint - ${inventoryStockBalance.quantityReserved}::bigint >= ${line.quantity}`;
+      }
+      if (operation === "release") {
+        return sql`${inventoryStockBalance.quantityReserved} >= ${line.quantity}`;
+      }
+      return sql`${inventoryStockBalance.quantityReserved} >= ${line.quantity} AND ${inventoryStockBalance.quantityOnHand} >= ${line.quantity}`;
+    },
+    sql`FALSE`,
+  );
+
+  const changed = await transaction
+    .update(inventoryStockBalance)
+    .set({
+      ...(operation === "consume"
+        ? {
+            quantityOnHand: sql`${inventoryStockBalance.quantityOnHand} - ${quantityDelta}`,
+          }
+        : {}),
+      quantityReserved:
+        operation === "reserve"
+          ? sql`${inventoryStockBalance.quantityReserved} + ${quantityDelta}`
+          : sql`${inventoryStockBalance.quantityReserved} - ${quantityDelta}`,
+      updatedAt: sql`clock_timestamp()`,
+    })
+    .where(
+      and(
+        inArray(
+          inventoryStockBalance.variantId,
+          lines.map(({ variantId }) => variantId),
+        ),
+        validBalance,
+      ),
+    )
+    .returning({ variantId: inventoryStockBalance.variantId });
+
+  if (changed.length !== lines.length) {
+    if (operation === "reserve") {
+      throw new ConflictException(
+        "One or more variants do not have enough available stock.",
+        { errorCode: "ORDER_ITEM_STOCK_UNAVAILABLE" },
+      );
+    }
+    throw new Error(
+      "Reservation stock balance is missing or violates its quantity invariant.",
+    );
+  }
+}
+
+function caseForLines(
+  lines: readonly InventoryReservationLine[],
+  variantIdColumn:
+    | typeof inventoryStockBalance.variantId
+    | typeof inventoryStockReservationLine.variantId,
+  valueForLine: (line: InventoryReservationLine) => SQL,
+  fallback: SQL = sql`0`,
+): SQL {
+  return sql`CASE ${variantIdColumn} ${sql.join(
+    lines.map(
+      (line) => sql`WHEN ${line.variantId}::uuid THEN ${valueForLine(line)}`,
+    ),
+    sql` `,
+  )} ELSE ${fallback} END`;
 }

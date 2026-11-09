@@ -30,14 +30,16 @@ import {
   type PathaoWebhookObservation,
 } from "@aaraj/contracts";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { DatabaseService } from "../../platform/database/database.service.js";
 import { AuditService } from "../../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../../platform/audit/audit.types.js";
 import {
   ORDERS_PATHAO_PORT,
+  type PathaoBookingClaimIdentity,
   type PathaoBookingClaimStatus,
+  type PathaoBookingClaimUpdate,
   type OrdersPathaoPort,
 } from "../../orders/orders-pathao.port.js";
 import {
@@ -82,6 +84,18 @@ type PathaoCancellationResult =
   | { booking: null; blockedReason: "after_pickup" | "after_dispatch" };
 
 type Progress = PathaoBooking["trackingProgress"];
+type WebhookBookingSnapshot = Pick<
+  typeof pathaoBooking.$inferSelect,
+  | "id"
+  | "environment"
+  | "status"
+  | "consignmentId"
+  | "merchantOrderId"
+  | "storeId"
+  | "updatedAt"
+  | "trackingProgress"
+  | "providerOrderStatus"
+>;
 
 const PATHAO_EVENT_PROGRESS: Readonly<Record<string, Progress | null>> = {
   "order.created": "booked",
@@ -138,6 +152,34 @@ const PATHAO_STATUS_EVENTS: Readonly<Record<string, string>> = {
 };
 
 type InboxRow = typeof pathaoWebhookInbox.$inferSelect;
+type ClaimedWebhookRow = Pick<
+  InboxRow,
+  "id" | "bookingId" | "consignmentId" | "normalizedPayload" | "attemptCount"
+>;
+type WebhookResolutionReplay = Pick<
+  typeof pathaoWebhookResolution.$inferSelect,
+  "eventId" | "requestFingerprint" | "action" | "resultingState"
+>;
+type CustomerTrackingBooking = Pick<
+  typeof pathaoBooking.$inferSelect,
+  | "id"
+  | "status"
+  | "consignmentId"
+  | "trackingProgress"
+  | "createdAt"
+  | "updatedAt"
+>;
+type PathaoObservationRow = Pick<
+  InboxRow,
+  | "eventName"
+  | "consignmentId"
+  | "processingState"
+  | "providerOrderStatus"
+  | "providerCollectedAmountBdt"
+  | "providerTimestamp"
+  | "receivedAt"
+  | "lastErrorCode"
+>;
 
 @Injectable()
 export class PathaoService {
@@ -196,6 +238,7 @@ export class PathaoService {
       commandId,
       fingerprint,
       "submitting",
+      itemQuantity,
     );
     const providerRequest = toProviderRequest(order, store.storeId);
     const bookingId = randomUUID();
@@ -308,16 +351,19 @@ export class PathaoService {
               result.consignmentId,
             );
           }
+          await this.orders.setPathaoBookingClaimWithinTransaction(
+            transaction,
+            {
+              orderId,
+              commandId,
+              requestFingerprint: fingerprint,
+              status,
+              lastErrorCode: row.lastErrorCode,
+            },
+          );
           return [row] as const;
         },
       );
-      await this.orders.setPathaoBookingClaim({
-        orderId,
-        commandId,
-        requestFingerprint: fingerprint,
-        status,
-        lastErrorCode: updated.lastErrorCode,
-      });
       return toBooking(updated);
     } catch (error) {
       await this.markUnknown(created.id, staffId, error);
@@ -418,6 +464,17 @@ export class PathaoService {
           { errorCode: "PATHAO_BOOKING_CHANGED" },
         );
       }
+      if (
+        hasTerminalProgressRegression(
+          current.trackingProgress as Progress,
+          providerProgress,
+        )
+      ) {
+        throw new ConflictException(
+          "Pathao status conflicts with the saved terminal shipment progress and needs review.",
+          { errorCode: "PATHAO_TERMINAL_STATUS_REGRESSION" },
+        );
+      }
       if (providerProgress === "cancelled") {
         const result = await this.cancelBookingWithinTransaction(
           transaction,
@@ -457,7 +514,7 @@ export class PathaoService {
     if (orderIds.length === 0) return [];
     const [bookings, claims] = await Promise.all([
       this.database.db
-        .select({
+        .selectDistinctOn([pathaoBooking.orderId], {
           orderId: pathaoBooking.orderId,
           status: pathaoBooking.status,
           trackingProgress: pathaoBooking.trackingProgress,
@@ -465,15 +522,16 @@ export class PathaoService {
         })
         .from(pathaoBooking)
         .where(inArray(pathaoBooking.orderId, [...orderIds]))
-        .orderBy(desc(pathaoBooking.createdAt), desc(pathaoBooking.id)),
+        .orderBy(
+          asc(pathaoBooking.orderId),
+          desc(pathaoBooking.createdAt),
+          desc(pathaoBooking.id),
+        ),
       this.orders.getPathaoBookingClaimStatuses(orderIds),
     ]);
-    const bookingByOrderId = new Map<string, (typeof bookings)[number]>();
-    for (const booking of bookings) {
-      if (!bookingByOrderId.has(booking.orderId)) {
-        bookingByOrderId.set(booking.orderId, booking);
-      }
-    }
+    const bookingByOrderId = new Map(
+      bookings.map((booking) => [booking.orderId, booking]),
+    );
     const claimStatusByOrderId = new Map(
       claims.map((claim) => [claim.orderId, claim.status]),
     );
@@ -493,8 +551,10 @@ export class PathaoService {
   async getManagementDetails(
     orderId: string,
   ): Promise<PathaoBookingManagement> {
-    const booking = await this.findBooking(orderId);
-    const claimStatus = await this.orders.getPathaoBookingClaimStatus(orderId);
+    const [booking, claimStatus] = await Promise.all([
+      this.findBooking(orderId),
+      this.orders.getPathaoBookingClaimStatus(orderId),
+    ]);
     if (!booking) {
       return {
         booking: null,
@@ -503,7 +563,17 @@ export class PathaoService {
       };
     }
     const observations = await this.database.db
-      .select()
+      .select({
+        eventName: pathaoWebhookInbox.eventName,
+        consignmentId: pathaoWebhookInbox.consignmentId,
+        processingState: pathaoWebhookInbox.processingState,
+        providerOrderStatus: pathaoWebhookInbox.providerOrderStatus,
+        providerCollectedAmountBdt:
+          pathaoWebhookInbox.providerCollectedAmountBdt,
+        providerTimestamp: pathaoWebhookInbox.providerTimestamp,
+        receivedAt: pathaoWebhookInbox.receivedAt,
+        lastErrorCode: pathaoWebhookInbox.lastErrorCode,
+      })
       .from(pathaoWebhookInbox)
       .where(eq(pathaoWebhookInbox.bookingId, booking.id))
       .orderBy(desc(pathaoWebhookInbox.receivedAt), desc(pathaoWebhookInbox.id))
@@ -605,7 +675,12 @@ export class PathaoService {
     try {
       return await this.database.db.transaction(async (transaction) => {
         const replay = await transaction
-          .select()
+          .select({
+            eventId: pathaoWebhookResolution.eventId,
+            requestFingerprint: pathaoWebhookResolution.requestFingerprint,
+            action: pathaoWebhookResolution.action,
+            resultingState: pathaoWebhookResolution.resultingState,
+          })
           .from(pathaoWebhookResolution)
           .where(eq(pathaoWebhookResolution.commandId, commandId))
           .limit(1);
@@ -618,7 +693,10 @@ export class PathaoService {
         }
 
         const [event] = await transaction
-          .select()
+          .select({
+            bookingId: pathaoWebhookInbox.bookingId,
+            processingState: pathaoWebhookInbox.processingState,
+          })
           .from(pathaoWebhookInbox)
           .where(eq(pathaoWebhookInbox.id, eventId))
           .for("update")
@@ -626,7 +704,12 @@ export class PathaoService {
         if (!event) throw new ConflictException("Pathao event was not found.");
 
         const afterLockReplay = await transaction
-          .select()
+          .select({
+            eventId: pathaoWebhookResolution.eventId,
+            requestFingerprint: pathaoWebhookResolution.requestFingerprint,
+            action: pathaoWebhookResolution.action,
+            resultingState: pathaoWebhookResolution.resultingState,
+          })
           .from(pathaoWebhookResolution)
           .where(eq(pathaoWebhookResolution.commandId, commandId))
           .limit(1);
@@ -706,7 +789,12 @@ export class PathaoService {
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
       const [existing] = await this.database.db
-        .select()
+        .select({
+          eventId: pathaoWebhookResolution.eventId,
+          requestFingerprint: pathaoWebhookResolution.requestFingerprint,
+          action: pathaoWebhookResolution.action,
+          resultingState: pathaoWebhookResolution.resultingState,
+        })
         .from(pathaoWebhookResolution)
         .where(eq(pathaoWebhookResolution.commandId, commandId))
         .limit(1);
@@ -840,8 +928,11 @@ export class PathaoService {
 
     try {
       const result = await this.database.db.transaction(async (transaction) => {
-        const [existing] = await transaction
-          .select()
+        const [existingRecord] = await transaction
+          .select({
+            booking: pathaoBooking,
+            staleSubmission: sql<boolean>`${pathaoBooking.submittedAt} <= clock_timestamp() - interval '15 seconds'`,
+          })
           .from(pathaoBooking)
           .where(
             and(
@@ -851,6 +942,7 @@ export class PathaoService {
           )
           .for("update")
           .limit(1);
+        const existing = existingRecord?.booking;
         if (
           existing?.reconciliationCommandId === commandId &&
           existing.reconciliationFingerprint === fingerprint
@@ -889,14 +981,7 @@ export class PathaoService {
           );
         }
         if (existing?.status === "submitting") {
-          const [staleSubmission] = await transaction
-            .select({
-              stale: sql<boolean>`${pathaoBooking.submittedAt} <= clock_timestamp() - interval '15 seconds'`,
-            })
-            .from(pathaoBooking)
-            .where(eq(pathaoBooking.id, existing.id))
-            .limit(1);
-          if (!staleSubmission?.stale) {
+          if (!existingRecord?.staleSubmission) {
             throw new ConflictException(
               "The Pathao booking request may still be in progress. Refresh after its request timeout before reconciling.",
               { errorCode: "PATHAO_RECONCILIATION_TOO_EARLY" },
@@ -976,14 +1061,14 @@ export class PathaoService {
             referenceVerifiedInPathaoPanel: input.verifiedInPathaoPanel,
           },
         });
+        await this.orders.setPathaoBookingClaimWithinTransaction(transaction, {
+          orderId,
+          commandId,
+          requestFingerprint: fingerprint,
+          status: "booked",
+          lastErrorCode: null,
+        });
         return toBooking(booking);
-      });
-      await this.orders.setPathaoBookingClaim({
-        orderId,
-        commandId,
-        requestFingerprint: fingerprint,
-        status: "booked",
-        lastErrorCode: null,
       });
       return result;
     } catch (error) {
@@ -1023,7 +1108,7 @@ export class PathaoService {
       reference,
       phone,
     );
-    const booking = await this.findBooking(orderId);
+    const booking = await this.findCustomerTrackingBooking(orderId);
     if (
       !booking ||
       (booking.status !== "booked" && booking.status !== "cancelled") ||
@@ -1113,7 +1198,7 @@ export class PathaoService {
   private async loadCustomerTracking(
     orderId: string,
   ): Promise<PathaoCustomerTracking> {
-    const booking = await this.findBooking(orderId);
+    const booking = await this.findCustomerTrackingBooking(orderId);
     if (
       !booking ||
       (booking.status !== "booked" && booking.status !== "cancelled") ||
@@ -1125,7 +1210,14 @@ export class PathaoService {
       });
     }
     const observations = await this.database.db
-      .select()
+      .select({
+        id: pathaoWebhookInbox.id,
+        eventName: pathaoWebhookInbox.eventName,
+        providerOrderStatus: pathaoWebhookInbox.providerOrderStatus,
+        providerTimestamp: pathaoWebhookInbox.providerTimestamp,
+        processedAt: pathaoWebhookInbox.processedAt,
+        receivedAt: pathaoWebhookInbox.receivedAt,
+      })
       .from(pathaoWebhookInbox)
       .where(
         and(
@@ -1160,7 +1252,7 @@ export class PathaoService {
   async expireInterruptedBookings(): Promise<number> {
     const expired = await this.database.db.transaction(async (transaction) => {
       const stale = await transaction
-        .select()
+        .select({ id: pathaoBooking.id })
         .from(pathaoBooking)
         .where(
           sql`${pathaoBooking.status} = 'submitting' and ${pathaoBooking.submittedAt} <= clock_timestamp() - interval '15 seconds'`,
@@ -1168,34 +1260,36 @@ export class PathaoService {
         .orderBy(asc(pathaoBooking.submittedAt), asc(pathaoBooking.id))
         .for("update", { skipLocked: true })
         .limit(50);
-      const updatedRows: Array<{
-        orderId: string;
-        commandId: string;
-        requestFingerprint: string;
-      }> = [];
-      for (const booking of stale) {
-        const [updated] = await transaction
-          .update(pathaoBooking)
-          .set({
-            status: "outcome_unknown",
-            lastErrorCode: "PATHAO_BOOKING_PROCESS_INTERRUPTED",
-            updatedAt: sql`clock_timestamp()`,
-          })
-          .where(
-            and(
-              eq(pathaoBooking.id, booking.id),
-              eq(pathaoBooking.status, "submitting"),
+      if (stale.length === 0) return [];
+
+      const updatedRows = await transaction
+        .update(pathaoBooking)
+        .set({
+          status: "outcome_unknown",
+          lastErrorCode: "PATHAO_BOOKING_PROCESS_INTERRUPTED",
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            inArray(
+              pathaoBooking.id,
+              stale.map(({ id }) => id),
             ),
-          )
-          .returning({
-            id: pathaoBooking.id,
-            orderId: pathaoBooking.orderId,
-            commandId: pathaoBooking.commandId,
-            requestFingerprint: pathaoBooking.requestFingerprint,
-          });
-        if (!updated) continue;
-        updatedRows.push(updated);
-        await this.audit.append(transaction, {
+            eq(pathaoBooking.status, "submitting"),
+            sql`${pathaoBooking.submittedAt} <= clock_timestamp() - interval '15 seconds'`,
+          ),
+        )
+        .returning({
+          id: pathaoBooking.id,
+          orderId: pathaoBooking.orderId,
+          commandId: pathaoBooking.commandId,
+          requestFingerprint: pathaoBooking.requestFingerprint,
+          environment: pathaoBooking.environment,
+        });
+
+      await this.audit.appendMany(
+        transaction,
+        updatedRows.map((booking) => ({
           actorType: "service",
           eventType: "commerce.pathao_booking_interrupted",
           subjectType: "order",
@@ -1207,42 +1301,113 @@ export class PathaoService {
             commandId: booking.commandId,
             environment: booking.environment,
           },
-        });
-      }
+        })),
+      );
+      await this.orders.setPathaoBookingClaimsWithinTransaction(
+        transaction,
+        updatedRows.map(({ orderId, commandId, requestFingerprint }) => ({
+          orderId,
+          commandId,
+          requestFingerprint,
+          status: "outcome_unknown",
+          lastErrorCode: "PATHAO_BOOKING_PROCESS_INTERRUPTED",
+        })),
+      );
       return updatedRows;
     });
-    await this.synchronizeBookingClaims();
+    await this.recoverOrphanedBookingClaims();
     return expired.length;
   }
 
-  private async synchronizeBookingClaims(): Promise<void> {
-    const rows = await this.database.db.select().from(pathaoBooking);
-    const updates = rows.flatMap((row) => {
-      if (!isBookingClaimStatus(row.status)) return [];
-      const usesReconciliation = row.reconciliationCommandId !== null;
-      const commandId = usesReconciliation
-        ? row.reconciliationCommandId
-        : row.commandId;
-      const requestFingerprint = usesReconciliation
-        ? row.reconciliationFingerprint
-        : row.requestFingerprint;
-      if (!commandId || !requestFingerprint) return [];
-      return [
-        {
-          orderId: row.orderId,
-          commandId,
-          requestFingerprint,
-          status: row.status,
-          lastErrorCode: row.lastErrorCode,
-        },
-      ];
+  private async recoverOrphanedBookingClaims(): Promise<void> {
+    await this.database.db.transaction(async (transaction) => {
+      const staleClaims =
+        await this.orders.getStaleSubmittingPathaoBookingClaims(
+          transaction,
+          100,
+        );
+      if (staleClaims.length === 0) return;
+
+      const bookingIdentityMatches = staleClaims.map((claim) =>
+        and(
+          eq(pathaoBooking.orderId, claim.orderId),
+          or(
+            and(
+              eq(pathaoBooking.commandId, claim.commandId),
+              eq(pathaoBooking.requestFingerprint, claim.requestFingerprint),
+            ),
+            and(
+              eq(pathaoBooking.reconciliationCommandId, claim.commandId),
+              eq(
+                pathaoBooking.reconciliationFingerprint,
+                claim.requestFingerprint,
+              ),
+            ),
+          ),
+        ),
+      );
+      const bookings = await transaction
+        .select({
+          orderId: pathaoBooking.orderId,
+          status: pathaoBooking.status,
+          commandId: pathaoBooking.commandId,
+          requestFingerprint: pathaoBooking.requestFingerprint,
+          reconciliationCommandId: pathaoBooking.reconciliationCommandId,
+          reconciliationFingerprint: pathaoBooking.reconciliationFingerprint,
+          lastErrorCode: pathaoBooking.lastErrorCode,
+        })
+        .from(pathaoBooking)
+        .where(or(...bookingIdentityMatches));
+      const bookingsByOrderId = new Map<string, (typeof bookings)[number][]>();
+      for (const booking of bookings) {
+        const rows = bookingsByOrderId.get(booking.orderId) ?? [];
+        rows.push(booking);
+        bookingsByOrderId.set(booking.orderId, rows);
+      }
+
+      const orphanedClaims: PathaoBookingClaimIdentity[] = [];
+      const claimUpdates: PathaoBookingClaimUpdate[] = [];
+      for (const claim of staleClaims) {
+        const booking = (bookingsByOrderId.get(claim.orderId) ?? []).find(
+          (
+            candidate,
+          ): candidate is (typeof bookings)[number] & {
+            status: PathaoBookingClaimStatus;
+          } =>
+            isBookingClaimStatus(candidate.status) &&
+            ((candidate.commandId === claim.commandId &&
+              candidate.requestFingerprint === claim.requestFingerprint) ||
+              (candidate.reconciliationCommandId === claim.commandId &&
+                candidate.reconciliationFingerprint ===
+                  claim.requestFingerprint)),
+        );
+        if (!booking) {
+          orphanedClaims.push(claim);
+          continue;
+        }
+        if (
+          claim.status !== booking.status ||
+          claim.lastErrorCode !== booking.lastErrorCode
+        ) {
+          claimUpdates.push({
+            orderId: claim.orderId,
+            commandId: claim.commandId,
+            requestFingerprint: claim.requestFingerprint,
+            status: booking.status,
+            lastErrorCode: booking.lastErrorCode,
+          });
+        }
+      }
+
+      await this.orders.setPathaoBookingClaimsWithinTransaction(
+        transaction,
+        claimUpdates,
+      );
+      await this.orders.removeOrphanedPathaoBookingClaims(
+        transaction,
+        orphanedClaims,
+      );
     });
-    await Promise.all(
-      updates.map((update) => this.orders.setPathaoBookingClaim(update)),
-    );
-    await this.orders.recoverPathaoBookingClaims(
-      rows.map((row) => row.orderId),
-    );
   }
 
   async acceptWebhook(body: unknown): Promise<{
@@ -1292,45 +1457,54 @@ export class PathaoService {
       ...(event.reason !== undefined ? { reason: event.reason } : {}),
     };
     const fingerprint = sha256(JSON.stringify(normalizedPayload));
-    const [booking] = event.consignment_id
-      ? await this.database.db
-          .select({ id: pathaoBooking.id })
-          .from(pathaoBooking)
-          .where(
-            and(
-              eq(pathaoBooking.environment, config.mode),
-              eq(pathaoBooking.consignmentId, event.consignment_id),
-            ),
-          )
-          .limit(1)
-      : [];
     const recognized = Object.hasOwn(PATHAO_EVENT_PROGRESS, event.event);
-    const processingState = !booking
-      ? "unmatched"
-      : recognized
-        ? "pending"
-        : "reconciliation_required";
-    const inserted = await this.database.db
-      .insert(pathaoWebhookInbox)
-      .values({
-        environment: config.mode,
-        eventName: event.event,
-        consignmentId: event.consignment_id ?? null,
-        merchantOrderId: event.merchant_order_id ?? null,
-        storeId: event.store_id ?? null,
-        bookingId: booking?.id ?? null,
-        eventFingerprint: fingerprint,
-        normalizedPayload,
-        providerTimestamp,
-        processingState,
-      })
-      .onConflictDoNothing({
-        target: [
-          pathaoWebhookInbox.environment,
-          pathaoWebhookInbox.eventFingerprint,
-        ],
-      })
-      .returning({ id: pathaoWebhookInbox.id });
+    const inserted = await this.database.db.transaction(async (transaction) => {
+      if (event.consignment_id) {
+        await lockPathaoWebhookConsignment(
+          transaction,
+          config.mode,
+          event.consignment_id,
+        );
+      }
+      const [booking] = event.consignment_id
+        ? await transaction
+            .select({ id: pathaoBooking.id })
+            .from(pathaoBooking)
+            .where(
+              and(
+                eq(pathaoBooking.environment, config.mode),
+                eq(pathaoBooking.consignmentId, event.consignment_id),
+              ),
+            )
+            .limit(1)
+        : [];
+      const processingState = !booking
+        ? "unmatched"
+        : recognized
+          ? "pending"
+          : "reconciliation_required";
+      return transaction
+        .insert(pathaoWebhookInbox)
+        .values({
+          environment: config.mode,
+          eventName: event.event,
+          consignmentId: event.consignment_id ?? null,
+          merchantOrderId: event.merchant_order_id ?? null,
+          storeId: event.store_id ?? null,
+          bookingId: booking?.id ?? null,
+          eventFingerprint: fingerprint,
+          normalizedPayload,
+          providerTimestamp,
+          processingState,
+        })
+        .onConflictDoNothing({
+          target: [
+            pathaoWebhookInbox.environment,
+            pathaoWebhookInbox.eventFingerprint,
+          ],
+        })
+        .returning({ id: pathaoWebhookInbox.id });
+    });
     if (inserted.length === 0) return { handshake: false, duplicate: true };
     return { handshake: false, duplicate: false };
   }
@@ -1341,7 +1515,7 @@ export class PathaoService {
     const leaseOwner = randomUUID();
     const claimed = await this.database.db.transaction(async (transaction) => {
       const rows = await transaction
-        .select()
+        .select({ id: pathaoWebhookInbox.id })
         .from(pathaoWebhookInbox)
         .where(
           sql`(
@@ -1370,13 +1544,51 @@ export class PathaoService {
             rows.map((row) => row.id),
           ),
         )
-        .returning();
+        .returning({
+          id: pathaoWebhookInbox.id,
+          bookingId: pathaoWebhookInbox.bookingId,
+          consignmentId: pathaoWebhookInbox.consignmentId,
+          normalizedPayload: pathaoWebhookInbox.normalizedPayload,
+          attemptCount: pathaoWebhookInbox.attemptCount,
+        });
     });
+
+    if (claimed.length === 0) return 0;
+    const bookingIds = [
+      ...new Set(
+        claimed.flatMap((event) => (event.bookingId ? [event.bookingId] : [])),
+      ),
+    ];
+    const bookingRows =
+      bookingIds.length === 0
+        ? []
+        : await this.database.db
+            .select({
+              id: pathaoBooking.id,
+              environment: pathaoBooking.environment,
+              status: pathaoBooking.status,
+              consignmentId: pathaoBooking.consignmentId,
+              merchantOrderId: pathaoBooking.merchantOrderId,
+              storeId: pathaoBooking.storeId,
+              updatedAt: pathaoBooking.updatedAt,
+              trackingProgress: pathaoBooking.trackingProgress,
+              providerOrderStatus: pathaoBooking.providerOrderStatus,
+            })
+            .from(pathaoBooking)
+            .where(inArray(pathaoBooking.id, bookingIds));
+    const bookingById = new Map(
+      bookingRows.map((booking) => [booking.id, booking]),
+    );
 
     await Promise.all(
       claimed.map(async (event) => {
         try {
-          await this.verifyWebhookObservation(config, event, leaseOwner);
+          await this.verifyWebhookObservation(
+            config,
+            event,
+            leaseOwner,
+            event.bookingId ? bookingById.get(event.bookingId) : undefined,
+          );
         } catch (error) {
           const code =
             error instanceof PathaoRequestError
@@ -1406,8 +1618,9 @@ export class PathaoService {
 
   private async verifyWebhookObservation(
     config: PathaoConfiguration,
-    event: InboxRow,
+    event: ClaimedWebhookRow,
     leaseOwner: string,
+    booking: WebhookBookingSnapshot | undefined,
   ): Promise<void> {
     if (!event.bookingId || !event.consignmentId) {
       await this.finishWebhook(
@@ -1419,11 +1632,6 @@ export class PathaoService {
       );
       return;
     }
-    const [booking] = await this.database.db
-      .select()
-      .from(pathaoBooking)
-      .where(eq(pathaoBooking.id, event.bookingId))
-      .limit(1);
     if (
       !booking ||
       booking.environment !== config.mode ||
@@ -1502,26 +1710,27 @@ export class PathaoService {
 
     const committed = await this.database.db.transaction(
       async (transaction) => {
-        const [lockedEvent] = await transaction
-          .select()
+        const [locked] = await transaction
+          .select({
+            booking: pathaoBooking,
+          })
           .from(pathaoWebhookInbox)
-          .where(eq(pathaoWebhookInbox.id, event.id))
+          .innerJoin(
+            pathaoBooking,
+            eq(pathaoBooking.id, pathaoWebhookInbox.bookingId),
+          )
+          .where(
+            and(
+              eq(pathaoWebhookInbox.id, event.id),
+              eq(pathaoWebhookInbox.processingState, "processing"),
+              eq(pathaoWebhookInbox.processingLeaseOwner, leaseOwner),
+              eq(pathaoBooking.id, booking.id),
+            ),
+          )
           .for("update")
           .limit(1);
-        if (
-          !lockedEvent ||
-          lockedEvent.processingState !== "processing" ||
-          lockedEvent.processingLeaseOwner !== leaseOwner
-        ) {
-          return false;
-        }
-        const [lockedBooking] = await transaction
-          .select()
-          .from(pathaoBooking)
-          .where(eq(pathaoBooking.id, booking.id))
-          .for("update")
-          .limit(1);
-        if (!lockedBooking) return false;
+        if (!locked) return false;
+        const lockedBooking = locked.booking;
         if (
           lockedBooking.updatedAt.getTime() !== booking.updatedAt.getTime() ||
           lockedBooking.status !== booking.status ||
@@ -1540,6 +1749,25 @@ export class PathaoService {
               processingState: "reconciliation_required",
               providerOrderStatus: info.orderStatus,
               lastErrorCode: "PATHAO_STATUS_CHANGED_AFTER_CANCELLATION",
+              processedAt: sql`clock_timestamp()`,
+              processingLeaseExpiresAt: null,
+              processingLeaseOwner: null,
+            })
+            .where(eq(pathaoWebhookInbox.id, event.id));
+          return true;
+        }
+        if (
+          hasTerminalProgressRegression(
+            lockedBooking.trackingProgress as Progress,
+            providerProgress,
+          )
+        ) {
+          await transaction
+            .update(pathaoWebhookInbox)
+            .set({
+              processingState: "reconciliation_required",
+              providerOrderStatus: info.orderStatus,
+              lastErrorCode: "PATHAO_TERMINAL_STATUS_REGRESSION",
               processedAt: sql`clock_timestamp()`,
               processingLeaseExpiresAt: null,
               processingLeaseOwner: null,
@@ -1627,7 +1855,7 @@ export class PathaoService {
   }
 
   private async retryWebhook(
-    event: InboxRow,
+    event: Pick<ClaimedWebhookRow, "id" | "attemptCount">,
     leaseOwner: string,
     code: string,
   ): Promise<void> {
@@ -1684,7 +1912,7 @@ export class PathaoService {
       error instanceof PathaoRequestError
         ? error.code
         : "PATHAO_BOOKING_OUTCOME_UNKNOWN";
-    const row = await this.database.db.transaction(async (transaction) => {
+    await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
         .update(pathaoBooking)
         .set({
@@ -1699,7 +1927,7 @@ export class PathaoService {
           ),
         )
         .returning();
-      if (!row) return null;
+      if (!row) return;
       await this.appendAudit(transaction, {
         actorId: staffId,
         eventType: "commerce.pathao_booking_outcome_unknown",
@@ -1708,22 +1936,38 @@ export class PathaoService {
           "Pathao booking response was not definitive; no retry was sent.",
         metadata: { bookingId, commandId: row.commandId, errorCode: safeCode },
       });
-      return row;
-    });
-    if (row) {
-      await this.orders.setPathaoBookingClaim({
+      await this.orders.setPathaoBookingClaimWithinTransaction(transaction, {
         orderId: row.orderId,
         commandId: row.commandId,
         requestFingerprint: row.requestFingerprint,
         status: "outcome_unknown",
         lastErrorCode: safeCode,
       });
-    }
+    });
   }
 
   private async findBooking(orderId: string) {
     const [row] = await this.database.db
       .select()
+      .from(pathaoBooking)
+      .where(eq(pathaoBooking.orderId, orderId))
+      .orderBy(desc(pathaoBooking.createdAt), desc(pathaoBooking.id))
+      .limit(1);
+    return row ?? null;
+  }
+
+  private async findCustomerTrackingBooking(
+    orderId: string,
+  ): Promise<CustomerTrackingBooking | null> {
+    const [row] = await this.database.db
+      .select({
+        id: pathaoBooking.id,
+        status: pathaoBooking.status,
+        consignmentId: pathaoBooking.consignmentId,
+        trackingProgress: pathaoBooking.trackingProgress,
+        createdAt: pathaoBooking.createdAt,
+        updatedAt: pathaoBooking.updatedAt,
+      })
       .from(pathaoBooking)
       .where(eq(pathaoBooking.orderId, orderId))
       .orderBy(desc(pathaoBooking.createdAt), desc(pathaoBooking.id))
@@ -1829,11 +2073,15 @@ export class PathaoService {
     environment: string,
     consignmentId: string,
   ): Promise<void> {
+    await lockPathaoWebhookConsignment(transaction, environment, consignmentId);
     await transaction
       .update(pathaoWebhookInbox)
       .set({
         bookingId,
-        processingState: "pending",
+        processingState: sql`case when ${inArray(
+          pathaoWebhookInbox.eventName,
+          Object.keys(PATHAO_EVENT_PROGRESS),
+        )} then 'pending' else 'reconciliation_required' end`,
         nextAttemptAt: sql`clock_timestamp()`,
         lastErrorCode: null,
         processedAt: null,
@@ -1844,10 +2092,6 @@ export class PathaoService {
           eq(pathaoWebhookInbox.consignmentId, consignmentId),
           isNull(pathaoWebhookInbox.bookingId),
           eq(pathaoWebhookInbox.processingState, "unmatched"),
-          inArray(
-            pathaoWebhookInbox.eventName,
-            Object.keys(PATHAO_EVENT_PROGRESS),
-          ),
         ),
       );
   }
@@ -1874,7 +2118,7 @@ export class PathaoService {
   }
 
   private assertWebhookResolutionReplay(
-    existing: typeof pathaoWebhookResolution.$inferSelect,
+    existing: WebhookResolutionReplay,
     eventId: string,
     fingerprint: string,
   ): PathaoWebhookResolutionResult {
@@ -1893,6 +2137,21 @@ export class PathaoService {
       status: existing.resultingState,
     });
   }
+}
+
+async function lockPathaoWebhookConsignment(
+  transaction: AuditTransaction,
+  environment: string,
+  consignmentId: string,
+): Promise<void> {
+  const resource = JSON.stringify([
+    "aaraj/pathao-webhook-consignment/v1",
+    environment,
+    consignmentId,
+  ]);
+  await transaction.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${resource}, 0))`,
+  );
 }
 
 function requiredPathaoConfiguration(): PathaoConfiguration {
@@ -2015,7 +2274,7 @@ function toBooking(row: typeof pathaoBooking.$inferSelect): PathaoBooking {
   });
 }
 
-function toObservation(row: InboxRow): PathaoWebhookObservation {
+function toObservation(row: PathaoObservationRow): PathaoWebhookObservation {
   return {
     event: row.eventName,
     consignmentId: row.consignmentId,
@@ -2063,6 +2322,18 @@ export function progressFromEvent(event: string): Progress | null {
   return Object.hasOwn(PATHAO_EVENT_PROGRESS, event)
     ? (PATHAO_EVENT_PROGRESS[event] ?? null)
     : null;
+}
+
+function hasTerminalProgressRegression(
+  current: Progress,
+  incoming: Progress | null,
+): boolean {
+  if (incoming === null) return false;
+  if (current === "returned") return incoming !== "returned";
+  if (current === "delivered") {
+    return !["delivered", "returning", "returned"].includes(incoming);
+  }
+  return false;
 }
 
 export function progressFromStatus(status: string | null): Progress | null {

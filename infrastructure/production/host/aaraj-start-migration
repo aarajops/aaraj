@@ -13,11 +13,13 @@ release_id="$commit-$digest"
 release="/srv/sites/aaraj/releases/$release_id"
 manifest="$release/release-manifest.json"
 migration_script="$release/api/scripts/migrate-production.mjs"
+address_backfill_script="$release/api/scripts/backfill-order-address-snapshots.mjs"
 [[ -d "$release" && ! -L "$release" && \
   -f "$manifest" && ! -L "$manifest" && \
   -f "$release/.artifact-sha256" && ! -L "$release/.artifact-sha256" && \
   "$(cat -- "$release/.artifact-sha256")" == "$digest" && \
-  -f "$migration_script" && ! -L "$migration_script" ]] || {
+  -f "$migration_script" && ! -L "$migration_script" && \
+  -f "$address_backfill_script" && ! -L "$address_backfill_script" ]] || {
   echo "The requested migration is not part of a staged AARAJ release." >&2
   exit 1
 }
@@ -44,7 +46,49 @@ if (
 NODE
 
 unit="aaraj-migration@$release_id.service"
+app_stopped=false
+migration_succeeded=false
+restart_app_after_failure() {
+  if [[ "$app_stopped" == true && "$migration_succeeded" != true ]]; then
+    local address_migration_status_after_failure
+    if ! address_migration_status_after_failure="$(NODE_ENV=production /usr/bin/node \
+      --env-file=/etc/sites/aaraj/migration.env \
+      "$address_backfill_script" --check)"; then
+      echo "The migration failed and the prior database schema state could not be verified; aaraj-pm2.service remains stopped." >&2
+    elif [[ "$address_migration_status_after_failure" != "required" ]]; then
+      echo "The migration failed after changing the Order address schema; aaraj-pm2.service remains stopped because the previous application may be incompatible." >&2
+    elif ! /usr/bin/systemctl start aaraj-pm2.service; then
+      echo "The migration failed and the previous application could not be restarted; inspect aaraj-pm2.service before serving traffic." >&2
+    else
+      echo "The migration failed; the previous application was restarted." >&2
+    fi
+  fi
+}
+trap restart_app_after_failure EXIT
+
+address_migration="$release/api/drizzle/0062_order_query_indexes_and_address_snapshot.sql"
+if [[ -f "$address_migration" ]]; then
+  address_migration_status="$(NODE_ENV=production /usr/bin/node \
+    --env-file=/etc/sites/aaraj/migration.env \
+    "$address_backfill_script" --check)"
+  if [[ "$address_migration_status" == "required" ]]; then
+    /usr/bin/systemctl stop aaraj-pm2.service
+    app_stopped=true
+    if ! NODE_ENV=production /usr/bin/node \
+      --env-file=/etc/sites/aaraj/runtime.env \
+      --env-file=/etc/sites/aaraj/migration.env \
+      "$address_backfill_script" --execute; then
+      echo "Order address conversion failed; no conversion changes were committed." >&2
+      exit 1
+    fi
+  elif [[ "$address_migration_status" != "complete" ]]; then
+    echo "Order address migration preflight returned an unexpected result." >&2
+    exit 1
+  fi
+fi
+
 if /usr/bin/systemctl start "$unit"; then
+  migration_succeeded=true
   /usr/bin/journalctl --unit "$unit" --no-pager --output=cat --lines 30
   echo "Migration service $unit completed successfully."
 else

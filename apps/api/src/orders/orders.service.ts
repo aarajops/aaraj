@@ -43,26 +43,13 @@ import {
   type CheckoutDraftPreviewInput,
 } from "@aaraj/contracts";
 import {
-  createCipheriv,
-  createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  inArray,
-  like,
-  lt,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import { lockCartOwner } from "../cart/cart-owner-lock.js";
 import {
@@ -70,11 +57,7 @@ import {
   type CatalogCartPort,
 } from "../catalog/catalog-cart.port.js";
 import { DatabaseService } from "../platform/database/database.service.js";
-import { user } from "../auth/auth-schema.js";
-import {
-  readOrderPiiKeyring,
-  type OrderPiiKeyring,
-} from "../platform/crypto/order-pii-keyring.js";
+import { readOrderPiiKeyring } from "../platform/crypto/order-pii-keyring.js";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { GeographyService } from "../geography/geography.service.js";
@@ -103,6 +86,7 @@ import {
   readDraftItems,
 } from "./checkout-drafts.service.js";
 import type {
+  PathaoBookingClaimIdentity,
   PathaoBookingClaimUpdate,
   PathaoOrderReference,
 } from "./orders-pathao.port.js";
@@ -110,13 +94,70 @@ import type {
 const ORDER_GUEST_COOKIE_PREFIX = "aaraj_order_";
 const ORDER_ATTEMPT_COOKIE_PREFIX = "aaraj_order_attempt_";
 type OrderRow = typeof customerOrder.$inferSelect;
+type PathaoSnapshotOrderRow = Pick<
+  OrderRow,
+  | "id"
+  | "reference"
+  | "status"
+  | "fulfillmentStatus"
+  | "addressSnapshot"
+  | "codAmountDueBdt"
+>;
 type IdempotencyRow = typeof orderIdempotency.$inferSelect;
+type CheckoutReplayOrder = Pick<
+  OrderRow,
+  | "id"
+  | "reference"
+  | "totalBdt"
+  | "codAmountDueBdt"
+  | "status"
+  | "paymentMethod"
+  | "collectionStatus"
+  | "fulfillmentStatus"
+  | "createdAt"
+  | "guestAccessExpiresAt"
+  | "customerId"
+  | "guestCartHash"
+  | "guestAccessTokenHash"
+  | "cartRevision"
+>;
+type OrderCreatedRow = Pick<
+  CheckoutReplayOrder,
+  | "id"
+  | "reference"
+  | "totalBdt"
+  | "codAmountDueBdt"
+  | "status"
+  | "paymentMethod"
+  | "collectionStatus"
+  | "fulfillmentStatus"
+  | "createdAt"
+  | "guestAccessExpiresAt"
+  | "cartRevision"
+>;
+type OrderItemMutationRow = Pick<
+  OrderRow,
+  | "id"
+  | "status"
+  | "fulfillmentStatus"
+  | "collectionStatus"
+  | "collectedAmountBdt"
+  | "merchandiseGrossBdt"
+  | "deliveryAmountBdt"
+  | "reservationId"
+  | "totalBdt"
+  | "codAmountDueBdt"
+>;
+type CheckoutReplay = {
+  order: CheckoutReplayOrder;
+  guestAccessStillValid: boolean;
+};
 type NormalizedAddress = OrderAddress;
 type ManagedOrderListRecord = Pick<
   OrderRow,
   | "id"
   | "reference"
-  | "addressCiphertext"
+  | "addressSnapshot"
   | "deliverySnapshot"
   | "status"
   | "fulfillmentStatus"
@@ -135,23 +176,13 @@ type CustomerDirectoryRecord = {
   latest_order_id: string;
   latest_order_reference: string;
   latest_order_status: string;
-  address_ciphertext: string;
-};
-type CustomerDirectoryOrderRecord = {
-  id: string;
-  reference: string;
-  customerId: string | null;
-  accountName: string | null;
-  accountEmail: string | null;
-  createdAt: Date;
-  status: string;
-  addressCiphertext: string;
+  address_snapshot: unknown;
 };
 
 const MANAGED_ORDER_LIST_SELECTION = {
   id: customerOrder.id,
   reference: customerOrder.reference,
-  addressCiphertext: customerOrder.addressCiphertext,
+  addressSnapshot: customerOrder.addressSnapshot,
   deliverySnapshot: customerOrder.deliverySnapshot,
   status: customerOrder.status,
   fulfillmentStatus: customerOrder.fulfillmentStatus,
@@ -169,7 +200,7 @@ type PersistOrderSnapshotInput = {
   quote: AuthoritativeQuote;
   cartRevision: number;
   reservationId: string;
-  addressCiphertext: string;
+  addressSnapshot: OrderAddress;
   status: "pending" | "confirmed";
   fulfillmentStatus: "not_started" | "awaiting_dispatch";
   sourceDraftId?: string;
@@ -200,7 +231,7 @@ async function persistOrderSnapshot(
       quoteId: input.quote.id,
       cartRevision: input.cartRevision,
       reservationId: input.reservationId,
-      addressCiphertext: input.addressCiphertext,
+      addressSnapshot: input.addressSnapshot,
       status: input.status,
       paymentMethod: "cod",
       collectionStatus: "uncollected",
@@ -274,7 +305,10 @@ function availableOrderStatusActions(
   return actions;
 }
 
-function canEditOrderItems(row: OrderRow, hasPathaoClaim: boolean): boolean {
+function canEditOrderItems(
+  row: OrderItemMutationRow,
+  hasPathaoClaim: boolean,
+): boolean {
   const pendingManualReview =
     row.status === "pending" && row.fulfillmentStatus === "not_started";
   const confirmedAndAwaitingDispatch =
@@ -315,7 +349,6 @@ export class OrdersService implements OrdersPathaoPort {
       );
     }
     const address = normalizeCheckoutInput(input.address);
-    await this.resolveAddress(address);
     const items = readDraftItems(draft);
     const priced = await this.quotes.previewAssisted(items, address);
     const fingerprint = fingerprintDraftPreview(
@@ -356,8 +389,6 @@ export class OrdersService implements OrdersPathaoPort {
     const draft = await this.drafts.getEligible(id);
     const owner = draftOwner(draft);
     const normalizedInput = normalizeCheckoutInput(input.address);
-    const address = await this.resolveAddress(normalizedInput);
-    const piiKeyring = readOrderPiiKeyring();
     const orderId = randomUUID();
     let saved: OrderRow;
     try {
@@ -425,6 +456,7 @@ export class OrdersService implements OrdersPathaoPort {
           selections,
           normalizedInput,
         );
+        const address = this.resolveAddress(normalizedInput, quote.destination);
         const priced = {
           lines: quote.lines,
           merchandiseGrossBdt: quote.merchandiseGrossBdt,
@@ -479,7 +511,7 @@ export class OrdersService implements OrdersPathaoPort {
           quote,
           cartRevision: current.cartRevision,
           reservationId: reservation.id,
-          addressCiphertext: encryptAddress(address, orderId, piiKeyring),
+          addressSnapshot: address,
           status: "confirmed",
           fulfillmentStatus: "awaiting_dispatch",
           sourceDraftId: id,
@@ -563,7 +595,8 @@ export class OrdersService implements OrdersPathaoPort {
     );
     if (replay) {
       return this.resolveReplay(
-        replay,
+        replay.order,
+        replay.guestAccessStillValid,
         owner,
         idempotencyKey,
         signedCookies,
@@ -580,14 +613,27 @@ export class OrdersService implements OrdersPathaoPort {
       });
     }
 
-    const address = await this.resolveAddress(input.address);
     const quote = await this.quotes.getCurrentForCheckout(
       customerId,
       guestCartId,
       input.quoteId,
+      context,
     );
+    if (!sameDestination(quote, input.address)) {
+      await this.geography.resolveStoredDestination({
+        geographyVersion: input.address.geographyVersion,
+        divisionId: input.address.divisionId,
+        districtId: input.address.districtId,
+        ...(input.address.upazilaId
+          ? { upazilaId: input.address.upazilaId }
+          : {}),
+      });
+      throw new ConflictException(
+        "The cart or delivery destination changed. Request a fresh quote.",
+        { errorCode: "QUOTE_STALE" },
+      );
+    }
     if (
-      !sameDestination(quote, input.address) ||
       quote.cartRevision !== context.cart.revision ||
       quote.lines.length !== context.cart.lines.length ||
       quote.lines.some(
@@ -606,6 +652,7 @@ export class OrdersService implements OrdersPathaoPort {
         "The Order line limit was exceeded.",
       );
     }
+    const address = this.resolveAddress(input.address, quote.destination);
 
     const orderId = randomUUID();
     const guestCredential =
@@ -621,16 +668,33 @@ export class OrdersService implements OrdersPathaoPort {
         { errorCode: "GUEST_ORDER_ACCESS_REQUIRED" },
       );
     }
-    const encryptedAddress = encryptAddress(address, orderId, piiKeyring);
-
-    let saved: OrderRow;
+    let saved: OrderCreatedRow;
     let replayed = false;
     try {
       saved = await this.database.db.transaction(async (transaction) => {
         await lockOrderIdempotency(transaction, ownerHash, keyHash);
         const [prior] = await transaction
-          .select()
+          .select({
+            order: {
+              id: customerOrder.id,
+              reference: customerOrder.reference,
+              totalBdt: customerOrder.totalBdt,
+              codAmountDueBdt: customerOrder.codAmountDueBdt,
+              status: customerOrder.status,
+              paymentMethod: customerOrder.paymentMethod,
+              collectionStatus: customerOrder.collectionStatus,
+              fulfillmentStatus: customerOrder.fulfillmentStatus,
+              createdAt: customerOrder.createdAt,
+              guestAccessExpiresAt: customerOrder.guestAccessExpiresAt,
+              cartRevision: customerOrder.cartRevision,
+            },
+            requestFingerprint: orderIdempotency.requestFingerprint,
+          })
           .from(orderIdempotency)
+          .innerJoin(
+            customerOrder,
+            eq(customerOrder.id, orderIdempotency.orderId),
+          )
           .where(
             and(
               eq(orderIdempotency.ownerHash, ownerHash),
@@ -640,10 +704,8 @@ export class OrdersService implements OrdersPathaoPort {
           .limit(1);
         if (prior) {
           assertIdempotencyFingerprint(prior, requestFingerprint);
-          const row = await loadOrderRow(transaction, prior.orderId);
-          if (!row) throw new Error("Idempotency record has no Order.");
           replayed = true;
-          return row;
+          return prior.order;
         }
 
         await this.quotes.lockAndValidateForOrderCheckout(
@@ -677,6 +739,16 @@ export class OrdersService implements OrdersPathaoPort {
           );
         }
 
+        const reservation = await this.inventory.reserveWithinTransaction(
+          transaction,
+          {
+            commandId: orderId,
+            lines: quote.lines.map(({ variantId, quantity }) => ({
+              variantId,
+              quantity,
+            })),
+          },
+        );
         const [counter] = await transaction
           .insert(orderReferenceCounter)
           .values({
@@ -688,36 +760,85 @@ export class OrdersService implements OrdersPathaoPort {
             set: {
               lastNumber: sql`${orderReferenceCounter.lastNumber} + 1`,
             },
+            setWhere: sql`${orderReferenceCounter.lastNumber} < 99999`,
           })
           .returning({
             year: orderReferenceCounter.year,
             number: orderReferenceCounter.lastNumber,
           });
-        if (!counter) throw new Error("Order reference allocation failed.");
+        if (!counter) {
+          throw new ServiceUnavailableException(
+            "This year’s Order reference limit has been reached.",
+            { errorCode: "ORDER_REFERENCE_CAPACITY_REACHED" },
+          );
+        }
         const reference = formatOrderReference(counter.year, counter.number);
 
-        const reservation = await this.inventory.reserveWithinTransaction(
-          transaction,
-          {
-            commandId: orderId,
-            lines: quote.lines.map(({ variantId, quantity }) => ({
-              variantId,
-              quantity,
-            })),
-          },
+        const [row] = await transaction
+          .insert(customerOrder)
+          .values({
+            id: orderId,
+            reference,
+            customerId: owner.kind === "customer" ? owner.customerId : null,
+            guestCartHash: owner.kind === "guest" ? owner.guestCartHash : null,
+            guestAccessTokenHash: guestCredential
+              ? sha256(guestCredential)
+              : null,
+            guestAccessExpiresAt: guestCredential
+              ? sql`now() + interval '30 days'`
+              : null,
+            quoteId: quote.id,
+            cartRevision: quote.cartRevision,
+            reservationId: reservation.id,
+            addressSnapshot: address,
+            status: "pending",
+            paymentMethod: "cod",
+            collectionStatus: "uncollected",
+            fulfillmentStatus: "not_started",
+            merchandiseGrossBdt: quote.merchandiseGrossBdt,
+            deliveryAmountBdt: quote.delivery.grossAmountBdt,
+            totalBdt: quote.totalBdt,
+            codAmountDueBdt: quote.totalBdt,
+            deliverySnapshot: {
+              tariffVersion: quote.delivery.tariffVersion,
+              effectiveFrom: quote.delivery.effectiveFrom,
+              zone: quote.delivery.zone,
+              geographyVersion: quote.destination.geographyVersion,
+              divisionId: quote.destination.divisionId,
+              districtId: quote.destination.districtId,
+              upazilaId: quote.destination.upazilaId,
+            },
+          })
+          .returning({
+            id: customerOrder.id,
+            reference: customerOrder.reference,
+            totalBdt: customerOrder.totalBdt,
+            codAmountDueBdt: customerOrder.codAmountDueBdt,
+            status: customerOrder.status,
+            paymentMethod: customerOrder.paymentMethod,
+            collectionStatus: customerOrder.collectionStatus,
+            fulfillmentStatus: customerOrder.fulfillmentStatus,
+            createdAt: customerOrder.createdAt,
+            guestAccessExpiresAt: customerOrder.guestAccessExpiresAt,
+            cartRevision: customerOrder.cartRevision,
+          });
+        if (!row) throw new Error("Order insert returned no row.");
+
+        await transaction.insert(customerOrderLine).values(
+          quote.lines.map((line) => ({
+            orderId,
+            variantId: line.variantId,
+            quantity: line.quantity,
+            unitPriceBdt: line.unitPriceBdt,
+            grossAmountBdt: line.grossAmountBdt,
+            productSnapshot: {
+              productName: line.productName,
+              color: line.color,
+              sizeLabel: line.sizeLabel,
+              compareAtPriceBdt: line.compareAtPriceBdt,
+            },
+          })),
         );
-        const row = await persistOrderSnapshot(transaction, {
-          id: orderId,
-          reference,
-          owner,
-          guestCredential,
-          quote,
-          cartRevision: quote.cartRevision,
-          reservationId: reservation.id,
-          addressCiphertext: encryptedAddress,
-          status: "pending",
-          fulfillmentStatus: "not_started",
-        });
         await transaction.insert(orderIdempotency).values({
           ownerHash,
           keyHash,
@@ -761,7 +882,7 @@ export class OrdersService implements OrdersPathaoPort {
     } catch (error) {
       if (isGuestCartAlreadyCheckedOut(error) && owner.kind === "guest") {
         const [priorOrder] = await this.database.db
-          .select()
+          .select({ cartRevision: customerOrder.cartRevision })
           .from(customerOrder)
           .where(
             guestCartRevisionCondition(owner.guestCartHash, quote.cartRevision),
@@ -783,7 +904,8 @@ export class OrdersService implements OrdersPathaoPort {
         );
         if (existing) {
           return this.resolveReplay(
-            existing,
+            existing.order,
+            existing.guestAccessStillValid,
             owner,
             idempotencyKey,
             signedCookies,
@@ -819,8 +941,17 @@ export class OrdersService implements OrdersPathaoPort {
     const attemptCookieName = guestOrderAttemptCookieName(idempotencyKey);
     const currentAttempt = signedCookies[attemptCookieName];
     const [prior] = await this.database.db
-      .select()
+      .select({
+        order: {
+          id: customerOrder.id,
+          guestAccessTokenHash: customerOrder.guestAccessTokenHash,
+          guestAccessExpiresAt: customerOrder.guestAccessExpiresAt,
+          cartRevision: customerOrder.cartRevision,
+        },
+        guestAccessStillValid: sql<boolean>`coalesce(${customerOrder.guestAccessExpiresAt} > now(), false)`,
+      })
       .from(orderIdempotency)
+      .innerJoin(customerOrder, eq(customerOrder.id, orderIdempotency.orderId))
       .where(
         and(
           eq(orderIdempotency.ownerHash, ownerHash),
@@ -829,19 +960,26 @@ export class OrdersService implements OrdersPathaoPort {
       )
       .limit(1);
     if (prior) {
-      const row = await this.database.db.transaction((transaction) =>
-        loadOrderRow(transaction, prior.orderId),
-      );
-      if (!row) throw new Error("Idempotency record has no Order.");
+      const row = prior.order;
       if (
         isGuestAttemptCredential(currentAttempt, idempotencyKey) &&
-        (await this.matchesGuestCredential(row, currentAttempt))
+        (await this.matchesGuestCredential(
+          row,
+          currentAttempt,
+          prior.guestAccessStillValid,
+        ))
       ) {
         await this.cleanupGuestCartAfterCheckout(row, owner, guestCartId);
         return currentAttempt;
       }
       const orderCookie = signedCookies[guestOrderCookieName(row.id)];
-      if (await this.matchesGuestCredential(row, orderCookie)) {
+      if (
+        await this.matchesGuestCredential(
+          row,
+          orderCookie,
+          prior.guestAccessStillValid,
+        )
+      ) {
         await this.cleanupGuestCartAfterCheckout(row, owner, guestCartId);
         return null;
       }
@@ -861,18 +999,19 @@ export class OrdersService implements OrdersPathaoPort {
   ): Promise<{ order: OrderCreated; guestCredential: string | null }> {
     const owner = this.cart.identifyQuoteOwner(customerId, guestCartId);
     if (!owner) throw orderNotFound();
-    const row = await this.findIdempotencyReplay(
+    const replay = await this.findIdempotencyReplay(
       hashOwner(owner),
       sha256(idempotencyKey),
       undefined,
     );
-    if (!row) {
+    if (!replay) {
       throw new NotFoundException("No completed checkout was found.", {
         errorCode: "CHECKOUT_NOT_FOUND",
       });
     }
     return this.resolveReplay(
-      row,
+      replay.order,
+      replay.guestAccessStillValid,
       owner,
       idempotencyKey,
       signedCookies,
@@ -881,7 +1020,8 @@ export class OrdersService implements OrdersPathaoPort {
   }
 
   private async resolveReplay(
-    row: OrderRow,
+    row: CheckoutReplayOrder,
+    guestAccessStillValid: boolean,
     owner: CartQuoteOwner,
     idempotencyKey: string,
     signedCookies: Record<string, string>,
@@ -898,13 +1038,19 @@ export class OrdersService implements OrdersPathaoPort {
     const attempt = signedCookies[attemptName];
     if (
       isGuestAttemptCredential(attempt, idempotencyKey) &&
-      (await this.matchesGuestCredential(row, attempt))
+      (await this.matchesGuestCredential(row, attempt, guestAccessStillValid))
     ) {
       await this.cleanupGuestCartAfterCheckout(row, owner, guestCartId);
       return { order: toCreated(row, true), guestCredential: attempt };
     }
     const existingOrderCookie = signedCookies[guestOrderCookieName(row.id)];
-    if (await this.matchesGuestCredential(row, existingOrderCookie)) {
+    if (
+      await this.matchesGuestCredential(
+        row,
+        existingOrderCookie,
+        guestAccessStillValid,
+      )
+    ) {
       await this.cleanupGuestCartAfterCheckout(row, owner, guestCartId);
       return { order: toCreated(row, true), guestCredential: null };
     }
@@ -912,7 +1058,7 @@ export class OrdersService implements OrdersPathaoPort {
   }
 
   private async cleanupGuestCartAfterCheckout(
-    row: OrderRow,
+    row: Pick<OrderRow, "cartRevision">,
     owner: CartQuoteOwner,
     guestCartId: string | undefined,
   ): Promise<void> {
@@ -930,12 +1076,14 @@ export class OrdersService implements OrdersPathaoPort {
   }
 
   private async matchesGuestCredential(
-    row: OrderRow,
+    row: Pick<OrderRow, "guestAccessTokenHash" | "guestAccessExpiresAt">,
     candidate: string | undefined,
+    guestAccessStillValid: boolean,
   ): Promise<boolean> {
     if (
       !row.guestAccessTokenHash ||
       !row.guestAccessExpiresAt ||
+      !guestAccessStillValid ||
       !isGuestAccessCredential(candidate)
     ) {
       return false;
@@ -948,13 +1096,7 @@ export class OrdersService implements OrdersPathaoPort {
     ) {
       return false;
     }
-    const [valid] = await this.database.db
-      .select({
-        valid: sql<boolean>`${customerOrder.guestAccessExpiresAt} > now()`,
-      })
-      .from(customerOrder)
-      .where(eq(customerOrder.id, row.id));
-    return valid?.valid === true;
+    return true;
   }
 
   async getForOwner(
@@ -962,18 +1104,26 @@ export class OrdersService implements OrdersPathaoPort {
     customerId: string | undefined,
     signedCookies: Record<string, string>,
   ): Promise<Order> {
-    const [row] = await this.database.db
-      .select()
+    const [result] = await this.database.db
+      .select({
+        order: customerOrder,
+        guestAccessStillValid: sql<boolean>`coalesce(${customerOrder.guestAccessExpiresAt} > now(), false)`,
+      })
       .from(customerOrder)
       .where(eq(customerOrder.id, orderId))
       .limit(1);
-    if (!row) throw orderNotFound();
+    if (!result) throw orderNotFound();
+    const row = result.order;
 
     const authorizedCustomer =
       customerId !== undefined && row.customerId === customerId;
     const authorizedGuest =
       row.customerId === null &&
-      (await this.hasValidGuestCredential(row, signedCookies));
+      (await this.hasValidGuestCredential(
+        row,
+        signedCookies,
+        result.guestAccessStillValid,
+      ));
     if (!authorizedCustomer && !authorizedGuest) throw orderNotFound();
     return this.loadPrivateOrder(row);
   }
@@ -994,6 +1144,7 @@ export class OrdersService implements OrdersPathaoPort {
         ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
         : undefined,
     ];
+    const oldestFirst = shouldPrioritizeHeldOrders(query);
     let rows: ManagedOrderListRecord[];
     if (query.search && !exactOrderSearch && !referencePrefixSearch) {
       rows = await this.searchManagedOrdersByCustomer(query, query.search);
@@ -1017,7 +1168,12 @@ export class OrdersService implements OrdersPathaoPort {
                 : undefined,
           ),
         )
-        .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
+        .orderBy(
+          oldestFirst
+            ? asc(customerOrder.createdAt)
+            : desc(customerOrder.createdAt),
+          oldestFirst ? asc(customerOrder.id) : desc(customerOrder.id),
+        )
         .limit(query.limit + 1)
         .offset(query.offset);
     }
@@ -1047,14 +1203,9 @@ export class OrdersService implements OrdersPathaoPort {
       lines.push(line);
       linesByOrderId.set(line.orderId, lines);
     }
-    const piiKeyring = readOrderPiiKeyring();
     return OrderManagementListSchema.parse({
       rows: pageRows.map((row) => {
-        const address = decryptAddress(
-          row.addressCiphertext,
-          row.id,
-          piiKeyring,
-        );
+        const address = parseStoredOrderAddress(row.addressSnapshot);
         return {
           id: row.id,
           reference: row.reference,
@@ -1098,15 +1249,9 @@ export class OrdersService implements OrdersPathaoPort {
     const hasMore = records.length > query.limit;
     const countedPageRecords =
       await this.attachCustomerOrderCounts(pageRecords);
-    const piiKeyring =
-      countedPageRecords.length > 0 ? readOrderPiiKeyring() : undefined;
     return ManagedCustomerDirectorySchema.parse({
       rows: countedPageRecords.map((row) => {
-        const address = decryptAddress(
-          row.address_ciphertext,
-          row.latest_order_id,
-          piiKeyring!,
-        );
+        const address = parseStoredOrderAddress(row.address_snapshot);
         const accountName = row.account_name?.trim();
         return {
           id: row.customer_key,
@@ -1192,105 +1337,103 @@ export class OrdersService implements OrdersPathaoPort {
     query: CustomerDirectoryQuery,
   ): Promise<CustomerDirectoryRecord[]> {
     const search = query.search ?? "";
-    const nameSearch = normalizeOrderSearchText(search);
+    const textSearch = normalizeOrderSearchText(search);
     const phoneSearch = normalizeOrderPhoneDigits(search);
-    const localPhoneSearch = toLocalBangladeshPhoneDigits(phoneSearch);
-    const keyring = readOrderPiiKeyring();
-    const matched: CustomerDirectoryRecord[] = [];
-    const seenAccountIds = new Set<string>();
-    let skipped = 0;
-    let cursor:
-      Pick<CustomerDirectoryOrderRecord, "createdAt" | "id"> | undefined;
+    const phoneOnly = phoneSearch.length > 0 && !/[a-z]/i.test(search);
+    if (phoneOnly && phoneSearch.length < 4) return [];
 
-    while (matched.length <= query.limit) {
-      const cursorFilter = cursor
-        ? or(
-            lt(customerOrder.createdAt, cursor.createdAt),
-            and(
-              eq(customerOrder.createdAt, cursor.createdAt),
-              lt(customerOrder.id, cursor.id),
-            ),
-          )
-        : undefined;
-      const batch = await this.database.db
-        .select({
-          id: customerOrder.id,
-          reference: customerOrder.reference,
-          customerId: customerOrder.customerId,
-          accountName: user.name,
-          accountEmail: user.email,
-          createdAt: customerOrder.createdAt,
-          status: customerOrder.status,
-          addressCiphertext: customerOrder.addressCiphertext,
-        })
-        .from(customerOrder)
-        .leftJoin(user, eq(customerOrder.customerId, user.id))
-        .where(cursorFilter)
-        .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
-        .limit(100);
-      if (batch.length === 0) break;
+    const textPrefix = escapeLikeWildcards(textSearch) + "%";
+    const phonePrefix =
+      escapeLikeWildcards(toCanonicalBangladeshPhonePrefix(phoneSearch)) + "%";
+    const exactSearch = parseExactOrderSearch(search);
+    const exactReference =
+      exactSearch?.kind === "reference" ? exactSearch.value : null;
+    const exactOrderId = exactSearch?.kind === "id" ? exactSearch.value : null;
+    const accountMatch = phoneOnly
+      ? sql`false`
+      : sql`lower(account.name) like ${textPrefix}
+          or lower(account.email) like ${textPrefix}`;
+    const orderMatch = phoneOnly
+      ? sql`regexp_replace(order_row.address_snapshot->>'phone', '[^0-9]', '', 'g')
+          like ${phonePrefix}`
+      : sql`lower(order_row.address_snapshot->>'recipientName') like ${textPrefix}
+          or order_row.reference = ${exactReference}
+          or order_row.id::text = ${exactOrderId}`;
+    const guestOrderMatch = phoneOnly
+      ? sql`regexp_replace(guest.address_snapshot->>'phone', '[^0-9]', '', 'g')
+          like ${phonePrefix}`
+      : sql`lower(guest.address_snapshot->>'recipientName') like ${textPrefix}
+          or guest.reference = ${exactReference}
+          or guest.id::text = ${exactOrderId}`;
 
-      for (const order of batch) {
-        if (order.customerId && seenAccountIds.has(order.customerId)) continue;
-        if (order.customerId) seenAccountIds.add(order.customerId);
-
-        const address = decryptAddress(
-          order.addressCiphertext,
-          order.id,
-          keyring,
-        );
-        const searchableText = normalizeOrderSearchText(
-          [
-            order.accountName,
-            order.accountEmail,
-            order.reference,
-            address.recipientName,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        );
-        const matchesText = searchableText.includes(nameSearch);
-        const matchesPhone =
-          phoneSearch.length >= 4 &&
-          (() => {
-            const digits = normalizeOrderPhoneDigits(address.phone);
-            const localDigits = toLocalBangladeshPhoneDigits(digits);
-            return (
-              digits.includes(phoneSearch) ||
-              digits.includes(localPhoneSearch) ||
-              localDigits.includes(phoneSearch) ||
-              localDigits.includes(localPhoneSearch)
-            );
-          })();
-        if (!matchesText && !matchesPhone) continue;
-        if (skipped < query.offset) {
-          skipped += 1;
-          continue;
-        }
-
-        matched.push({
-          customer_key: order.customerId
-            ? `account_${order.customerId}`
-            : `guest_${order.id}`,
-          identity_type: order.customerId ? "account" : "guest_order",
-          account_name: order.customerId ? order.accountName : null,
-          account_email: order.customerId ? order.accountEmail : null,
-          order_count: 1,
-          last_order_at: order.createdAt,
-          latest_order_id: order.id,
-          latest_order_reference: order.reference,
-          latest_order_status: order.status,
-          address_ciphertext: order.addressCiphertext,
-        });
-        if (matched.length > query.limit) break;
-      }
-      if (matched.length > query.limit) break;
-      const lastOrder = batch[batch.length - 1];
-      if (!lastOrder) break;
-      cursor = { createdAt: lastOrder.createdAt, id: lastOrder.id };
-    }
-
-    return matched;
+    const result = await this.database.db.execute(sql`
+      with matching_order_customers as materialized (
+        select distinct order_row.customer_id
+        from orders.order_header order_row
+        where order_row.customer_id is not null
+          and (${orderMatch})
+      ), candidate_accounts as (
+        select account.id as customer_id
+        from identity.user account
+        where (${accountMatch})
+        union
+        select matching_order_customers.customer_id
+        from matching_order_customers
+      ), customer_rows as (
+        select
+          'account_' || account.id as customer_key,
+          'account'::text as identity_type,
+          account.name as account_name,
+          account.email as account_email,
+          1::bigint as order_count,
+          latest.created_at as last_order_at,
+          latest.id as latest_order_id,
+          latest.reference as latest_order_reference,
+          latest.status as latest_order_status,
+          latest.address_snapshot
+        from candidate_accounts candidate
+        join identity.user account on account.id = candidate.customer_id
+        join lateral (
+          select order_row.id, order_row.reference, order_row.status,
+                 order_row.address_snapshot, order_row.created_at
+          from orders.order_header order_row
+          where order_row.customer_id = candidate.customer_id
+          order by order_row.created_at desc, order_row.id desc
+          limit 1
+        ) latest on true
+        union all
+        select
+          'guest_' || guest.id as customer_key,
+          'guest_order'::text as identity_type,
+          null::text as account_name,
+          null::text as account_email,
+          1::bigint as order_count,
+          guest.created_at as last_order_at,
+          guest.id as latest_order_id,
+          guest.reference as latest_order_reference,
+          guest.status as latest_order_status,
+          guest.address_snapshot
+        from orders.order_header guest
+        where guest.customer_id is null
+          and (${guestOrderMatch})
+      )
+      select
+        customer_rows.customer_key,
+        customer_rows.identity_type,
+        customer_rows.account_name,
+        customer_rows.account_email,
+        customer_rows.order_count,
+        customer_rows.last_order_at,
+        customer_rows.latest_order_id,
+        customer_rows.latest_order_reference,
+        customer_rows.latest_order_status,
+        customer_rows.address_snapshot
+      from customer_rows
+      order by customer_rows.last_order_at desc, customer_rows.latest_order_id desc
+      limit ${query.limit + 1}
+      offset ${query.offset}
+    `);
+    return result.rows as CustomerDirectoryRecord[];
   }
 
   private async selectCustomerDirectoryPage(
@@ -1300,7 +1443,7 @@ export class OrdersService implements OrdersPathaoPort {
     const result = await this.database.db.execute(sql`
       with latest_account_orders as (
         select distinct on (customer_id)
-          customer_id, id, reference, status, address_ciphertext, created_at
+          customer_id, id, reference, status, address_snapshot, created_at
         from orders.order_header
         where customer_id is not null
         order by customer_id, created_at desc, id desc
@@ -1315,7 +1458,7 @@ export class OrdersService implements OrdersPathaoPort {
           latest.id as latest_order_id,
           latest.reference as latest_order_reference,
           latest.status as latest_order_status,
-          latest.address_ciphertext as address_ciphertext
+          latest.address_snapshot
         from latest_account_orders latest
         join identity.user account on account.id = latest.customer_id
         union all
@@ -1329,7 +1472,7 @@ export class OrdersService implements OrdersPathaoPort {
           guest.id as latest_order_id,
           guest.reference as latest_order_reference,
           guest.status as latest_order_status,
-          guest.address_ciphertext as address_ciphertext
+          guest.address_snapshot
         from orders.order_header guest
         where guest.customer_id is null
       )
@@ -1343,7 +1486,7 @@ export class OrdersService implements OrdersPathaoPort {
         customer_rows.latest_order_id,
         customer_rows.latest_order_reference,
         customer_rows.latest_order_status,
-        customer_rows.address_ciphertext
+        customer_rows.address_snapshot
       from customer_rows
       order by customer_rows.last_order_at desc, customer_rows.latest_order_id desc
       limit ${limit}
@@ -1387,64 +1530,36 @@ export class OrdersService implements OrdersPathaoPort {
   ): Promise<ManagedOrderListRecord[]> {
     const nameSearch = normalizeOrderSearchText(search);
     const phoneSearch = normalizeOrderPhoneDigits(search);
-    const localPhoneSearch = toLocalBangladeshPhoneDigits(phoneSearch);
+    const isPhoneSearch = /^[+\d০-৯().\s-]+$/u.test(search);
     const filters = [
       query.status ? eq(customerOrder.status, query.status) : undefined,
       query.fulfillmentStatus
         ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
         : undefined,
     ];
-    const keyring = readOrderPiiKeyring();
-    const matchingRows: ManagedOrderListRecord[] = [];
-    let matchingRowsSkipped = 0;
-    let cursor: Pick<ManagedOrderListRecord, "createdAt" | "id"> | undefined;
-
-    while (matchingRows.length <= query.limit) {
-      const cursorFilter = cursor
-        ? or(
-            lt(customerOrder.createdAt, cursor.createdAt),
-            and(
-              eq(customerOrder.createdAt, cursor.createdAt),
-              lt(customerOrder.id, cursor.id),
-            ),
+    const oldestFirst = shouldPrioritizeHeldOrders(query);
+    const orderBy = oldestFirst
+      ? [asc(customerOrder.createdAt), asc(customerOrder.id)]
+      : [desc(customerOrder.createdAt), desc(customerOrder.id)];
+    const customerSearch = isPhoneSearch
+      ? phoneSearch.length === 0
+        ? sql`false`
+        : like(
+            sql`regexp_replace(${customerOrder.addressSnapshot}->>'phone', '[^0-9]', '', 'g')`,
+            `${escapeLikeWildcards(toCanonicalBangladeshPhonePrefix(phoneSearch))}%`,
           )
-        : undefined;
-      const batch = await this.database.db
-        .select(MANAGED_ORDER_LIST_SELECTION)
-        .from(customerOrder)
-        .where(and(...filters, cursorFilter))
-        .orderBy(desc(customerOrder.createdAt), desc(customerOrder.id))
-        .limit(100);
-      if (batch.length === 0) break;
+      : like(
+          sql`lower(${customerOrder.addressSnapshot}->>'recipientName')`,
+          `${escapeLikeWildcards(nameSearch)}%`,
+        );
 
-      for (const row of batch) {
-        const address = decryptAddress(row.addressCiphertext, row.id, keyring);
-        if (
-          !matchesOrderSearch(
-            row,
-            address,
-            nameSearch,
-            phoneSearch,
-            localPhoneSearch,
-          )
-        ) {
-          continue;
-        }
-        if (matchingRowsSkipped < query.offset) {
-          matchingRowsSkipped += 1;
-          continue;
-        }
-        matchingRows.push(row);
-        if (matchingRows.length > query.limit) break;
-      }
-
-      if (matchingRows.length > query.limit) break;
-      const lastRow = batch[batch.length - 1];
-      if (!lastRow) break;
-      cursor = { createdAt: lastRow.createdAt, id: lastRow.id };
-    }
-
-    return matchingRows;
+    return this.database.db
+      .select(MANAGED_ORDER_LIST_SELECTION)
+      .from(customerOrder)
+      .where(and(...filters, customerSearch))
+      .orderBy(...orderBy)
+      .limit(query.limit + 1)
+      .offset(query.offset);
   }
 
   async getForManagement(orderId: string): Promise<Order> {
@@ -1458,22 +1573,29 @@ export class OrdersService implements OrdersPathaoPort {
   }
 
   async getManagementDetail(orderId: string): Promise<OrderManagementDetail> {
-    const [row] = await this.database.db
-      .select()
+    const [result] = await this.database.db
+      .select({
+        order: customerOrder,
+        pathaoClaimStatus: orderPathaoBookingClaim.status,
+      })
       .from(customerOrder)
+      .leftJoin(
+        orderPathaoBookingClaim,
+        eq(orderPathaoBookingClaim.orderId, customerOrder.id),
+      )
       .where(eq(customerOrder.id, orderId))
       .limit(1);
-    if (!row) throw orderNotFound();
+    if (!result?.order) throw orderNotFound();
 
-    const pathaoClaimStatus = await this.getPathaoBookingClaimStatus(orderId);
+    const row = result.order;
     const order = await this.loadPrivateOrder(row);
     return OrderManagementDetailSchema.parse({
       ...order,
       availableStatusActions: availableOrderStatusActions(
         row,
-        pathaoClaimStatus !== null,
+        result.pathaoClaimStatus !== null,
       ),
-      canEditItems: canEditOrderItems(row, pathaoClaimStatus !== null),
+      canEditItems: canEditOrderItems(row, result.pathaoClaimStatus !== null),
     });
   }
 
@@ -1484,7 +1606,18 @@ export class OrdersService implements OrdersPathaoPort {
   ): Promise<OrderManagementDetail> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          collectionStatus: customerOrder.collectionStatus,
+          collectedAmountBdt: customerOrder.collectedAmountBdt,
+          merchandiseGrossBdt: customerOrder.merchandiseGrossBdt,
+          deliveryAmountBdt: customerOrder.deliveryAmountBdt,
+          reservationId: customerOrder.reservationId,
+          totalBdt: customerOrder.totalBdt,
+          codAmountDueBdt: customerOrder.codAmountDueBdt,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -1492,7 +1625,13 @@ export class OrdersService implements OrdersPathaoPort {
       if (!row) throw orderNotFound();
 
       const lines = await transaction
-        .select()
+        .select({
+          id: customerOrderLine.id,
+          variantId: customerOrderLine.variantId,
+          quantity: customerOrderLine.quantity,
+          unitPriceBdt: customerOrderLine.unitPriceBdt,
+          grossAmountBdt: customerOrderLine.grossAmountBdt,
+        })
         .from(customerOrderLine)
         .where(eq(customerOrderLine.orderId, row.id))
         .orderBy(asc(customerOrderLine.variantId));
@@ -1692,7 +1831,18 @@ export class OrdersService implements OrdersPathaoPort {
     const normalizedVariantId = variantId.toLowerCase();
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          collectionStatus: customerOrder.collectionStatus,
+          collectedAmountBdt: customerOrder.collectedAmountBdt,
+          merchandiseGrossBdt: customerOrder.merchandiseGrossBdt,
+          deliveryAmountBdt: customerOrder.deliveryAmountBdt,
+          reservationId: customerOrder.reservationId,
+          totalBdt: customerOrder.totalBdt,
+          codAmountDueBdt: customerOrder.codAmountDueBdt,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -1700,7 +1850,14 @@ export class OrdersService implements OrdersPathaoPort {
       if (!row) throw orderNotFound();
 
       const lines = await transaction
-        .select()
+        .select({
+          id: customerOrderLine.id,
+          variantId: customerOrderLine.variantId,
+          quantity: customerOrderLine.quantity,
+          productSnapshot: customerOrderLine.productSnapshot,
+          unitPriceBdt: customerOrderLine.unitPriceBdt,
+          grossAmountBdt: customerOrderLine.grossAmountBdt,
+        })
         .from(customerOrderLine)
         .where(eq(customerOrderLine.orderId, row.id))
         .orderBy(asc(customerOrderLine.variantId));
@@ -1844,7 +2001,19 @@ export class OrdersService implements OrdersPathaoPort {
     orderId: string,
   ): Promise<PathaoOrderBookingSnapshot> {
     const [row] = await this.database.db
-      .select()
+      .select({
+        id: customerOrder.id,
+        reference: customerOrder.reference,
+        status: customerOrder.status,
+        fulfillmentStatus: customerOrder.fulfillmentStatus,
+        addressSnapshot: customerOrder.addressSnapshot,
+        codAmountDueBdt: customerOrder.codAmountDueBdt,
+        itemQuantity: sql<number>`(
+          select coalesce(sum(${customerOrderLine.quantity}), 0)::integer
+          from ${customerOrderLine}
+          where ${customerOrderLine.orderId} = ${orderId}::uuid
+        )`,
+      })
       .from(customerOrder)
       .where(eq(customerOrder.id, orderId))
       .limit(1);
@@ -1858,34 +2027,7 @@ export class OrdersService implements OrdersPathaoPort {
         { errorCode: "PATHAO_ORDER_NOT_ELIGIBLE" },
       );
     }
-    const order = await this.loadPrivateOrder(row);
-    const address = order.address;
-    const recipientAddress = [
-      address.house,
-      address.street,
-      address.doorstepDetails,
-      address.upazilaName,
-      address.districtName,
-      address.divisionName,
-      address.postalCode,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(", ");
-    return {
-      id: order.id,
-      reference: order.reference,
-      status: order.status,
-      fulfillmentStatus: order.fulfillmentStatus,
-      recipientName: order.address.recipientName,
-      recipientPhone: order.address.phone,
-      recipientAddress,
-      customerInstructions: order.address.instructions,
-      itemQuantity: order.lines.reduce(
-        (total, line) => total + line.quantity,
-        0,
-      ),
-      codAmountDueBdt: order.codAmountDueBdt,
-    };
+    return toPathaoBookingSnapshot(row, row.itemQuantity);
   }
 
   async getPathaoBookingClaimStatus(
@@ -1923,10 +2065,18 @@ export class OrdersService implements OrdersPathaoPort {
     commandId: string,
     requestFingerprint: string,
     status: "submitting" | "reconciliation_required",
+    expectedItemQuantity?: number,
   ): Promise<PathaoOrderBookingSnapshot> {
     return this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          reference: customerOrder.reference,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          addressSnapshot: customerOrder.addressSnapshot,
+          codAmountDueBdt: customerOrder.codAmountDueBdt,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -1941,8 +2091,34 @@ export class OrdersService implements OrdersPathaoPort {
           { errorCode: "PATHAO_ORDER_NOT_ELIGIBLE" },
         );
       }
+      const makeSnapshot = async () => {
+        const [lineTotals] = await transaction
+          .select({
+            itemQuantity: sql<number>`coalesce(sum(${customerOrderLine.quantity}), 0)::integer`,
+          })
+          .from(customerOrderLine)
+          .where(eq(customerOrderLine.orderId, row.id));
+        const snapshot = toPathaoBookingSnapshot(
+          row,
+          lineTotals?.itemQuantity ?? 0,
+        );
+        if (
+          expectedItemQuantity !== undefined &&
+          snapshot.itemQuantity !== expectedItemQuantity
+        ) {
+          throw new ConflictException(
+            "Order items changed while the Pathao booking was being prepared. Refresh and try again.",
+            { errorCode: "PATHAO_ORDER_CHANGED" },
+          );
+        }
+        return snapshot;
+      };
       const [claim] = await transaction
-        .select()
+        .select({
+          commandId: orderPathaoBookingClaim.commandId,
+          requestFingerprint: orderPathaoBookingClaim.requestFingerprint,
+          status: orderPathaoBookingClaim.status,
+        })
         .from(orderPathaoBookingClaim)
         .where(eq(orderPathaoBookingClaim.orderId, orderId))
         .for("update")
@@ -1952,7 +2128,7 @@ export class OrdersService implements OrdersPathaoPort {
           claim.commandId === commandId &&
           claim.requestFingerprint === requestFingerprint
         ) {
-          return this.pathaoSnapshotFromRow(row);
+          return makeSnapshot();
         }
         if (
           status !== "reconciliation_required" ||
@@ -1981,7 +2157,7 @@ export class OrdersService implements OrdersPathaoPort {
           status,
         });
       }
-      return this.pathaoSnapshotFromRow(row);
+      return makeSnapshot();
     });
   }
 
@@ -2006,6 +2182,38 @@ export class OrdersService implements OrdersPathaoPort {
             update.requestFingerprint,
           ),
         ),
+      });
+  }
+
+  async setPathaoBookingClaimWithinTransaction(
+    transaction: AuditTransaction,
+    update: PathaoBookingClaimUpdate,
+  ): Promise<void> {
+    await this.setPathaoBookingClaimsWithinTransaction(transaction, [update]);
+  }
+
+  async setPathaoBookingClaimsWithinTransaction(
+    transaction: AuditTransaction,
+    updates: readonly PathaoBookingClaimUpdate[],
+  ): Promise<void> {
+    if (updates.length === 0) return;
+    await transaction
+      .insert(orderPathaoBookingClaim)
+      .values(
+        updates.map((update) => ({
+          ...update,
+          updatedAt: sql`clock_timestamp()`,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: orderPathaoBookingClaim.orderId,
+        set: {
+          status: sql`excluded.status`,
+          lastErrorCode: sql`excluded.last_error_code`,
+          updatedAt: sql`clock_timestamp()`,
+        },
+        setWhere: sql`${orderPathaoBookingClaim.commandId} = excluded.command_id
+          AND ${orderPathaoBookingClaim.requestFingerprint} = excluded.request_fingerprint`,
       });
   }
 
@@ -2067,7 +2275,11 @@ export class OrdersService implements OrdersPathaoPort {
         .limit(1);
       if (!row) throw orderNotFound();
       const [claim] = await transaction
-        .select()
+        .select({
+          commandId: orderPathaoBookingClaim.commandId,
+          requestFingerprint: orderPathaoBookingClaim.requestFingerprint,
+          status: orderPathaoBookingClaim.status,
+        })
         .from(orderPathaoBookingClaim)
         .where(eq(orderPathaoBookingClaim.orderId, orderId))
         .for("update")
@@ -2086,27 +2298,55 @@ export class OrdersService implements OrdersPathaoPort {
     });
   }
 
-  async recoverPathaoBookingClaims(
-    activeOrderIds: readonly string[],
+  async getStaleSubmittingPathaoBookingClaims(
+    transaction: AuditTransaction,
+    limit: number,
+  ): Promise<PathaoBookingClaimUpdate[]> {
+    return transaction
+      .select({
+        orderId: orderPathaoBookingClaim.orderId,
+        commandId: orderPathaoBookingClaim.commandId,
+        requestFingerprint: orderPathaoBookingClaim.requestFingerprint,
+        status: orderPathaoBookingClaim.status,
+        lastErrorCode: orderPathaoBookingClaim.lastErrorCode,
+      })
+      .from(orderPathaoBookingClaim)
+      .where(
+        sql`${orderPathaoBookingClaim.status} = 'submitting' and ${orderPathaoBookingClaim.createdAt} <= clock_timestamp() - interval '15 seconds'`,
+      )
+      .orderBy(
+        asc(orderPathaoBookingClaim.createdAt),
+        asc(orderPathaoBookingClaim.orderId),
+      )
+      .for("update", { skipLocked: true })
+      .limit(limit);
+  }
+
+  async removeOrphanedPathaoBookingClaims(
+    transaction: AuditTransaction,
+    claims: readonly PathaoBookingClaimIdentity[],
   ): Promise<void> {
-    await this.database.db.transaction(async (transaction) => {
-      const stale = await transaction
-        .select({ orderId: orderPathaoBookingClaim.orderId })
-        .from(orderPathaoBookingClaim)
-        .where(
-          sql`${orderPathaoBookingClaim.status} = 'submitting' and ${orderPathaoBookingClaim.updatedAt} <= clock_timestamp() - interval '15 seconds'`,
-        )
-        .for("update", { skipLocked: true })
-        .limit(100);
-      const orphanIds = stale
-        .map((claim) => claim.orderId)
-        .filter((id) => !activeOrderIds.includes(id));
-      if (orphanIds.length > 0) {
-        await transaction
-          .delete(orderPathaoBookingClaim)
-          .where(inArray(orderPathaoBookingClaim.orderId, orphanIds));
-      }
-    });
+    if (claims.length === 0) return;
+    await transaction
+      .delete(orderPathaoBookingClaim)
+      .where(
+        and(
+          eq(orderPathaoBookingClaim.status, "submitting"),
+          sql`${orderPathaoBookingClaim.createdAt} <= clock_timestamp() - interval '15 seconds'`,
+          or(
+            ...claims.map((claim) =>
+              and(
+                eq(orderPathaoBookingClaim.orderId, claim.orderId),
+                eq(orderPathaoBookingClaim.commandId, claim.commandId),
+                eq(
+                  orderPathaoBookingClaim.requestFingerprint,
+                  claim.requestFingerprint,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
   }
 
   async getOrderReferences(
@@ -2117,39 +2357,6 @@ export class OrdersService implements OrdersPathaoPort {
       .select({ id: customerOrder.id, reference: customerOrder.reference })
       .from(customerOrder)
       .where(inArray(customerOrder.id, [...new Set(orderIds)]));
-  }
-
-  private async pathaoSnapshotFromRow(
-    row: OrderRow,
-  ): Promise<PathaoOrderBookingSnapshot> {
-    const order = await this.loadPrivateOrder(row);
-    const address = order.address;
-    const recipientAddress = [
-      address.house,
-      address.street,
-      address.doorstepDetails,
-      address.upazilaName,
-      address.districtName,
-      address.divisionName,
-      address.postalCode,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(", ");
-    return {
-      id: order.id,
-      reference: order.reference,
-      status: order.status,
-      fulfillmentStatus: order.fulfillmentStatus,
-      recipientName: address.recipientName,
-      recipientPhone: address.phone,
-      recipientAddress,
-      customerInstructions: address.instructions,
-      itemQuantity: order.lines.reduce(
-        (total, line) => total + line.quantity,
-        0,
-      ),
-      codAmountDueBdt: order.codAmountDueBdt,
-    };
   }
 
   async authorizePathaoTrackingRead(
@@ -2174,21 +2381,19 @@ export class OrdersService implements OrdersPathaoPort {
     const [row] = await this.database.db
       .select({
         id: customerOrder.id,
-        addressCiphertext: customerOrder.addressCiphertext,
       })
       .from(customerOrder)
-      .where(eq(customerOrder.reference, reference))
+      .where(
+        and(
+          eq(customerOrder.reference, reference),
+          eq(
+            sql<string>`${customerOrder.addressSnapshot}->>'phone'`,
+            normalizedPhone,
+          ),
+        ),
+      )
       .limit(1);
     if (!row) throw customerTrackingOrderNotFound();
-
-    const address = decryptAddress(
-      row.addressCiphertext,
-      row.id,
-      readOrderPiiKeyring(),
-    );
-    if (address.phone !== normalizedPhone) {
-      throw customerTrackingOrderNotFound();
-    }
     return row.id;
   }
 
@@ -2212,7 +2417,12 @@ export class OrdersService implements OrdersPathaoPort {
 
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          cancellationReason: customerOrder.cancellationReason,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -2319,7 +2529,12 @@ export class OrdersService implements OrdersPathaoPort {
   ): Promise<void> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          reservationId: customerOrder.reservationId,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -2427,7 +2642,12 @@ export class OrdersService implements OrdersPathaoPort {
   private async markNoAnswer(orderId: string, staffId: string): Promise<void> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          cancellationReason: customerOrder.cancellationReason,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -2484,7 +2704,15 @@ export class OrdersService implements OrdersPathaoPort {
     try {
       await this.database.db.transaction(async (transaction) => {
         const [row] = await transaction
-          .select()
+          .select({
+            id: customerOrder.id,
+            status: customerOrder.status,
+            fulfillmentStatus: customerOrder.fulfillmentStatus,
+            dispatchCommandId: customerOrder.dispatchCommandId,
+            dispatchRequestFingerprint:
+              customerOrder.dispatchRequestFingerprint,
+            reservationId: customerOrder.reservationId,
+          })
           .from(customerOrder)
           .where(eq(customerOrder.id, orderId))
           .for("update")
@@ -2515,7 +2743,7 @@ export class OrdersService implements OrdersPathaoPort {
         }
 
         const [pathaoClaim] = await transaction
-          .select()
+          .select({ status: orderPathaoBookingClaim.status })
           .from(orderPathaoBookingClaim)
           .where(eq(orderPathaoBookingClaim.orderId, row.id))
           .for("update")
@@ -2630,7 +2858,13 @@ export class OrdersService implements OrdersPathaoPort {
   ): Promise<Order> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          cancellationReason: customerOrder.cancellationReason,
+          reservationId: customerOrder.reservationId,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -2709,7 +2943,14 @@ export class OrdersService implements OrdersPathaoPort {
   ): Promise<Order> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          fulfillmentOutcomeReason: customerOrder.fulfillmentOutcomeReason,
+          dispatchedAt: customerOrder.dispatchedAt,
+          deliveryProvider: customerOrder.deliveryProvider,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -2794,7 +3035,15 @@ export class OrdersService implements OrdersPathaoPort {
   ): Promise<Order> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
-        .select()
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          collectionStatus: customerOrder.collectionStatus,
+          codAmountDueBdt: customerOrder.codAmountDueBdt,
+          collectedAmountBdt: customerOrder.collectedAmountBdt,
+          collectionReason: customerOrder.collectionReason,
+        })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
@@ -2862,26 +3111,21 @@ export class OrdersService implements OrdersPathaoPort {
     return this.getForManagement(orderId);
   }
 
-  private async resolveAddress(
+  private resolveAddress(
     input: CheckoutAddressInput,
-  ): Promise<NormalizedAddress> {
+    destination: AuthoritativeQuote["destination"],
+  ): NormalizedAddress {
     const phone = normalizeBangladeshMobile(input.phone);
-    const destination = await this.geography.resolveStoredDestination({
-      geographyVersion: input.geographyVersion,
-      divisionId: input.divisionId,
-      districtId: input.districtId,
-      ...(input.upazilaId ? { upazilaId: input.upazilaId } : {}),
-    });
     return OrderAddressSchema.parse({
       recipientName: normalizeAddressText(input.recipientName),
       phone,
-      geographyVersion: input.geographyVersion,
-      divisionId: destination.division.id,
-      divisionName: destination.division.name,
-      districtId: destination.district.id,
-      districtName: destination.district.name,
-      upazilaId: destination.upazila?.id ?? null,
-      upazilaName: destination.upazila?.name ?? null,
+      geographyVersion: destination.geographyVersion,
+      divisionId: destination.divisionId,
+      divisionName: destination.divisionName,
+      districtId: destination.districtId,
+      districtName: destination.districtName,
+      upazilaId: destination.upazilaId,
+      upazilaName: destination.upazilaName,
       doorstepDetails: normalizeAddressText(input.doorstepDetails),
       street: optionalAddressText(input.street),
       house: optionalAddressText(input.house),
@@ -2894,10 +3138,30 @@ export class OrdersService implements OrdersPathaoPort {
     ownerHash: string,
     keyHash: string,
     fingerprint: string | undefined,
-  ): Promise<OrderRow | null> {
+  ): Promise<CheckoutReplay | null> {
     const [prior] = await this.database.db
-      .select()
+      .select({
+        order: {
+          id: customerOrder.id,
+          reference: customerOrder.reference,
+          totalBdt: customerOrder.totalBdt,
+          codAmountDueBdt: customerOrder.codAmountDueBdt,
+          status: customerOrder.status,
+          paymentMethod: customerOrder.paymentMethod,
+          collectionStatus: customerOrder.collectionStatus,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          createdAt: customerOrder.createdAt,
+          guestAccessExpiresAt: customerOrder.guestAccessExpiresAt,
+          customerId: customerOrder.customerId,
+          guestCartHash: customerOrder.guestCartHash,
+          guestAccessTokenHash: customerOrder.guestAccessTokenHash,
+          cartRevision: customerOrder.cartRevision,
+        },
+        requestFingerprint: orderIdempotency.requestFingerprint,
+        guestAccessStillValid: sql<boolean>`coalesce(${customerOrder.guestAccessExpiresAt} > now(), false)`,
+      })
       .from(orderIdempotency)
+      .innerJoin(customerOrder, eq(customerOrder.id, orderIdempotency.orderId))
       .where(
         and(
           eq(orderIdempotency.ownerHash, ownerHash),
@@ -2909,20 +3173,21 @@ export class OrdersService implements OrdersPathaoPort {
     if (fingerprint !== undefined) {
       assertIdempotencyFingerprint(prior, fingerprint);
     }
-    const row = await this.database.db.transaction((transaction) =>
-      loadOrderRow(transaction, prior.orderId),
-    );
-    if (!row) throw new Error("Idempotency record has no Order.");
-    return row;
+    return {
+      order: prior.order,
+      guestAccessStillValid: prior.guestAccessStillValid,
+    };
   }
 
   private async hasValidGuestCredential(
     row: OrderRow,
     signedCookies: Record<string, string>,
+    guestAccessStillValid: boolean,
   ): Promise<boolean> {
     return this.matchesGuestCredential(
       row,
       signedCookies[guestOrderCookieName(row.id)],
+      guestAccessStillValid,
     );
   }
 
@@ -2932,11 +3197,7 @@ export class OrdersService implements OrdersPathaoPort {
       .from(customerOrderLine)
       .where(eq(customerOrderLine.orderId, row.id))
       .orderBy(asc(customerOrderLine.variantId));
-    const address = decryptAddress(
-      row.addressCiphertext,
-      row.id,
-      readOrderPiiKeyring(),
-    );
+    const address = parseStoredOrderAddress(row.addressSnapshot);
     return OrderSchema.parse({
       id: row.id,
       reference: row.reference,
@@ -3183,6 +3444,36 @@ function sameReservationLines(
   );
 }
 
+function toPathaoBookingSnapshot(
+  row: PathaoSnapshotOrderRow,
+  itemQuantity: number,
+): PathaoOrderBookingSnapshot {
+  const address = parseStoredOrderAddress(row.addressSnapshot);
+  const recipientAddress = [
+    address.house,
+    address.street,
+    address.doorstepDetails,
+    address.upazilaName,
+    address.districtName,
+    address.divisionName,
+    address.postalCode,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(", ");
+  return {
+    id: row.id,
+    reference: row.reference,
+    status: row.status,
+    fulfillmentStatus: row.fulfillmentStatus,
+    recipientName: address.recipientName,
+    recipientPhone: address.phone,
+    recipientAddress,
+    customerInstructions: address.instructions,
+    itemQuantity,
+    codAmountDueBdt: row.codAmountDueBdt,
+  };
+}
+
 function dispatchCommandConflict(): ConflictException {
   return new ConflictException(
     "This handoff command ID was already used for a different Order or payload.",
@@ -3191,7 +3482,7 @@ function dispatchCommandConflict(): ConflictException {
 }
 
 function assertIdempotencyFingerprint(
-  prior: IdempotencyRow,
+  prior: Pick<IdempotencyRow, "requestFingerprint">,
   fingerprint: string,
 ): void {
   if (prior.requestFingerprint !== fingerprint) {
@@ -3217,19 +3508,7 @@ async function lockOrderIdempotency(
   );
 }
 
-async function loadOrderRow(
-  transaction: AuditTransaction,
-  id: string,
-): Promise<OrderRow | null> {
-  const [row] = await transaction
-    .select()
-    .from(customerOrder)
-    .where(eq(customerOrder.id, id))
-    .limit(1);
-  return row ?? null;
-}
-
-function toCreated(row: OrderRow, replayed: boolean): OrderCreated {
+function toCreated(row: OrderCreatedRow, replayed: boolean): OrderCreated {
   return OrderCreatedSchema.parse({
     id: row.id,
     reference: row.reference,
@@ -3245,81 +3524,24 @@ function toCreated(row: OrderRow, replayed: boolean): OrderCreated {
   });
 }
 
-function encryptAddress(
-  address: NormalizedAddress,
-  orderId: string,
-  keyring: OrderPiiKeyring,
-): string {
-  const key = keyring.keys.get(keyring.activeKeyId);
-  if (!key) throw new Error("The active Order PII encryption key is missing.");
-  const nonce = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, nonce);
-  cipher.setAAD(
-    Buffer.from(`aaraj/order-address/v2:${keyring.activeKeyId}:${orderId}`),
-  );
-  const ciphertext = Buffer.concat([
-    cipher.update(JSON.stringify(address), "utf8"),
-    cipher.final(),
-  ]);
-  return [
-    "v2",
-    keyring.activeKeyId,
-    nonce.toString("base64url"),
-    ciphertext.toString("base64url"),
-    cipher.getAuthTag().toString("base64url"),
-  ].join(".");
-}
-
-function decryptAddress(
-  value: string,
-  orderId: string,
-  keyring: OrderPiiKeyring,
-) {
-  try {
-    const [version, ...fields] = value.split(".");
-    const isV1 = version === "v1" && fields.length === 3;
-    const isV2 =
-      version === "v2" &&
-      fields.length === 4 &&
-      /^[A-Za-z0-9_-]+$/.test(fields[0] ?? "");
-    if (!isV1 && !isV2) {
-      throw new Error("invalid ciphertext envelope");
-    }
-
-    const [keyId, nonceValue, ciphertextValue, tagValue] = isV1
-      ? ["legacy", ...fields]
-      : fields;
-    if (!keyId || !nonceValue || !ciphertextValue || !tagValue) {
-      throw new Error("ciphertext key or field is unavailable");
-    }
-    const key = keyring.keys.get(keyId);
-    if (!key) throw new Error("ciphertext key is unavailable");
-
-    const nonce = Buffer.from(nonceValue, "base64url");
-    const ciphertext = Buffer.from(ciphertextValue, "base64url");
-    const tag = Buffer.from(tagValue, "base64url");
-    if (nonce.length !== 12 || tag.length !== 16)
-      throw new Error("invalid envelope");
-    const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-    decipher.setAAD(
-      Buffer.from(
-        isV1
-          ? `aaraj/order-address/v1:${orderId}`
-          : `aaraj/order-address/v2:${keyId}:${orderId}`,
-      ),
-    );
-    decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]).toString("utf8");
-    return OrderAddressSchema.parse(JSON.parse(plaintext));
-  } catch {
+function parseStoredOrderAddress(value: unknown): OrderAddress {
+  const parsed = OrderAddressSchema.safeParse(value);
+  if (!parsed.success) {
     throw new ServiceUnavailableException(
-      "The protected Order address could not be read.",
+      "The saved Order address is unavailable.",
       { errorCode: "ORDER_ADDRESS_UNAVAILABLE" },
     );
   }
+  return parsed.data;
+}
+
+function shouldPrioritizeHeldOrders(query: OrderListQuery): boolean {
+  return (
+    query.status === "pending" ||
+    query.status === "no_answer" ||
+    query.status === "on_hold" ||
+    query.fulfillmentStatus === "awaiting_dispatch"
+  );
 }
 
 function parseDeliveryZone(snapshot: unknown) {
@@ -3407,45 +3629,19 @@ function parseExactOrderSearch(
   return id.success ? { kind: "id", value: id.data } : null;
 }
 
-function matchesOrderSearch(
-  row: Pick<ManagedOrderListRecord, "reference">,
-  address: OrderAddress,
-  nameSearch: string,
-  phoneSearch: string,
-  localPhoneSearch: string,
-): boolean {
-  if (
-    normalizeOrderSearchText(row.reference).includes(nameSearch) ||
-    normalizeOrderSearchText(address.recipientName).includes(nameSearch)
-  ) {
-    return true;
-  }
-  if (phoneSearch.length < 4) return false;
-
-  const phoneDigits = normalizeOrderPhoneDigits(address.phone);
-  const localPhoneDigits = toLocalBangladeshPhoneDigits(phoneDigits);
-  return (
-    phoneDigits.includes(phoneSearch) ||
-    phoneDigits.includes(localPhoneSearch) ||
-    localPhoneDigits.includes(phoneSearch) ||
-    localPhoneDigits.includes(localPhoneSearch)
-  );
-}
-
 function normalizeOrderSearchText(value: string): string {
-  return value
-    .normalize("NFKC")
-    .trim()
-    .toLocaleLowerCase()
-    .replace(/\s+/g, " ");
+  return value.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function normalizeOrderPhoneDigits(value: string): string {
-  return value.replace(/\D/g, "");
+  return value
+    .normalize("NFKC")
+    .replace(/[০-৯]/gu, (character) => String(character.charCodeAt(0) - 0x09e6))
+    .replace(/\D/g, "");
 }
 
-function toLocalBangladeshPhoneDigits(value: string): string {
-  return /^8801[3-9]\d{8}$/.test(value) ? `0${value.slice(3)}` : value;
+function toCanonicalBangladeshPhonePrefix(value: string): string {
+  return /^0\d{1,10}$/.test(value) ? `88${value}` : value;
 }
 
 function isUniqueViolation(error: unknown): boolean {

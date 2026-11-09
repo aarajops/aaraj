@@ -18,7 +18,7 @@ import type { OrderPiiKeyring } from "../../platform/crypto/order-pii-keyring.js
 const ACCESS_TOKEN_REUSE_SAFETY_MS = 30_000;
 const REFRESH_LEASE_SECONDS = 30;
 const REFRESH_WAIT_MS = 35_000;
-const REFRESH_POLL_MS = 100;
+const REFRESH_POLL_MS = 500;
 
 type TokenDecision =
   | { kind: "ready"; accessToken: string }
@@ -27,6 +27,11 @@ type TokenDecision =
 
 @Injectable()
 export class PathaoTokenService {
+  private readonly inFlightByEnvironment = new Map<
+    PathaoConfiguration["mode"],
+    Promise<{ config: PathaoConfiguration; accessToken: string }>
+  >();
+
   constructor(
     private readonly database: DatabaseService,
     private readonly api: PathaoApiClient,
@@ -46,6 +51,23 @@ export class PathaoTokenService {
       );
     }
 
+    const inFlight = this.inFlightByEnvironment.get(config.mode);
+    if (inFlight) return inFlight;
+
+    const pending = this.acquireAccessToken(config);
+    this.inFlightByEnvironment.set(config.mode, pending);
+    try {
+      return await pending;
+    } finally {
+      if (this.inFlightByEnvironment.get(config.mode) === pending) {
+        this.inFlightByEnvironment.delete(config.mode);
+      }
+    }
+  }
+
+  private async acquireAccessToken(
+    config: PathaoConfiguration,
+  ): Promise<{ config: PathaoConfiguration; accessToken: string }> {
     const waitUntil = Date.now() + REFRESH_WAIT_MS;
     while (Date.now() < waitUntil) {
       const decision = await this.claim(config);
@@ -142,22 +164,19 @@ export class PathaoTokenService {
         .onConflictDoNothing();
 
       const [row] = await transaction
-        .select()
+        .select({
+          accessTokenCiphertext: pathaoApiToken.accessTokenCiphertext,
+          refreshTokenCiphertext: pathaoApiToken.refreshTokenCiphertext,
+          accessIsFresh: sql<boolean>`coalesce(${pathaoApiToken.accessExpiresAt} > clock_timestamp() + (${ACCESS_TOKEN_REUSE_SAFETY_MS} * interval '1 millisecond'), false)`,
+          refreshLeaseIsActive: sql<boolean>`coalesce(${pathaoApiToken.refreshLeaseExpiresAt} > clock_timestamp(), false)`,
+        })
         .from(pathaoApiToken)
         .where(eq(pathaoApiToken.environment, config.mode))
         .for("update")
         .limit(1);
       if (!row) throw new Error("Pathao token row was not created.");
 
-      const [timeState] = await transaction
-        .select({
-          accessIsFresh: sql<boolean>`coalesce(${pathaoApiToken.accessExpiresAt} > clock_timestamp() + (${ACCESS_TOKEN_REUSE_SAFETY_MS} * interval '1 millisecond'), false)`,
-          refreshLeaseIsActive: sql<boolean>`coalesce(${pathaoApiToken.refreshLeaseExpiresAt} > clock_timestamp(), false)`,
-        })
-        .from(pathaoApiToken)
-        .where(eq(pathaoApiToken.environment, config.mode))
-        .limit(1);
-      if (row.accessTokenCiphertext && timeState?.accessIsFresh) {
+      if (row.accessTokenCiphertext && row.accessIsFresh) {
         try {
           return {
             kind: "ready",
@@ -174,7 +193,7 @@ export class PathaoTokenService {
         }
       }
 
-      if (timeState?.refreshLeaseIsActive) {
+      if (row.refreshLeaseIsActive) {
         return { kind: "wait" };
       }
 

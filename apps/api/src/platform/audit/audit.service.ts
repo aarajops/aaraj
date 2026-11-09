@@ -27,6 +27,34 @@ export interface AuditEventInput {
   metadata?: Record<string, unknown>;
 }
 
+async function insertAuditEvents(
+  transaction: AuditTransaction,
+  events: readonly AuditEventInput[],
+): Promise<string[]> {
+  if (events.length === 0) return [];
+  const records = await transaction
+    .insert(auditEvent)
+    .values(
+      events.map((event) => ({
+        occurredAt: event.occurredAt,
+        actorType: event.actorType,
+        actorId: event.actorId,
+        eventType: event.eventType,
+        subjectType: event.subjectType,
+        subjectId: event.subjectId,
+        requestId: event.requestId ?? getCurrentRequestId(),
+        reason: event.reason,
+        metadata: event.metadata ?? {},
+      })),
+    )
+    .returning({ id: auditEvent.id });
+
+  if (records.length !== events.length) {
+    throw new Error("Audit event insert did not return every identifier.");
+  }
+  return records.map(({ id }) => id);
+}
+
 async function insertAuditEvent(
   transaction: AuditTransaction,
   event: AuditEventInput,
@@ -45,7 +73,6 @@ async function insertAuditEvent(
       metadata: event.metadata ?? {},
     })
     .returning({ id: auditEvent.id });
-
   if (!record)
     throw new Error("Audit event insert did not return an identifier.");
   return record.id;
@@ -181,6 +208,13 @@ export class AuditService {
     event: AuditEventInput,
   ): Promise<string> {
     return insertAuditEvent(transaction, event);
+  }
+
+  appendMany(
+    transaction: AuditTransaction,
+    events: readonly AuditEventInput[],
+  ): Promise<string[]> {
+    return insertAuditEvents(transaction, events);
   }
 
   async list(query: AuditEventQuery, actorId: string): Promise<AuditEventPage> {

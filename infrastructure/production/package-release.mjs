@@ -114,6 +114,13 @@ try {
     path.join(repository, "apps/api/scripts/migrate-production.mjs"),
     path.join(releaseApi, "scripts/migrate-production.mjs"),
   );
+  await cp(
+    path.join(
+      repository,
+      "apps/api/scripts/backfill-order-address-snapshots.mjs",
+    ),
+    path.join(releaseApi, "scripts/backfill-order-address-snapshots.mjs"),
+  );
 
   const standalone = path.join(repository, "apps/web/.next/standalone");
   const serverCandidates = [];

@@ -34,5 +34,6 @@
   "0058_pathao_pickup_failed.sql": "compatible",
   "0059_variant_compare_at_price.sql": "compatible",
   "0060_checkout_drafts.sql": "compatible",
-  "0061_order_created_id_index.sql": "maintenance"
+  "0061_order_created_id_index.sql": "maintenance",
+  "0062_order_query_indexes_and_address_snapshot.sql": "maintenance"
 }

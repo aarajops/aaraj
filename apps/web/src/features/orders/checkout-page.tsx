@@ -6,12 +6,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  CURRENCY,
   MAX_CART_QUANTITY_PER_VARIANT,
   type AuthoritativeQuote,
   type Cart,
   CheckoutAddressInputSchema,
   type CreateOrderInput,
-  type Order,
   type OrderCreated,
 } from "@aaraj/contracts";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -37,7 +37,6 @@ import {
 } from "@/features/analytics/gtm-ecommerce";
 import {
   createCodOrder,
-  fetchOrder,
   OrderRequestError,
   resumeCodOrder,
   saveCheckoutDraft,
@@ -53,6 +52,24 @@ const checkoutFormSchema = CheckoutAddressInputSchema.pick({
 
 type CheckoutFormDraft = z.input<typeof checkoutFormSchema>;
 type CheckoutFormValues = z.output<typeof checkoutFormSchema>;
+const checkoutPurchaseSnapshotSchema = z.object({
+  currency: z.literal(CURRENCY),
+  value: z.number().int().nonnegative(),
+  shipping: z.number().int().positive(),
+  items: z
+    .array(
+      z.object({
+        item_id: z.string().min(1),
+        item_name: z.string().min(1),
+        item_variant: z.string().optional(),
+        price: z.number().int().nonnegative(),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+});
+
+type CheckoutPurchaseSnapshot = z.infer<typeof checkoutPurchaseSnapshotSchema>;
 
 const initialForm: CheckoutFormDraft = {
   recipientName: "",
@@ -211,10 +228,9 @@ function SinglePageCheckout({
       void resumeCodOrder(key)
         .then(async (order) => {
           if (!active) return;
-          const details = await fetchOrder(order.id);
-          if (!active) return;
           captureStopped.current = true;
-          trackCreatedOrderPurchase(order, details);
+          const snapshot = readCheckoutPurchaseSnapshot(initialQuoteId);
+          if (snapshot) trackCreatedOrderPurchase(order, snapshot);
           await refreshCart();
           if (active) router.replace(`/orders/${order.id}`);
         })
@@ -270,10 +286,12 @@ function SinglePageCheckout({
           : {}),
       },
     };
+    const purchaseSnapshot = createCheckoutPurchaseSnapshot(quote);
+    storeCheckoutPurchaseSnapshot(quote.id, purchaseSnapshot);
     try {
       const order = await createCodOrder(input, key);
       captureStopped.current = true;
-      trackCreatedOrderPurchase(order, quote);
+      trackCreatedOrderPurchase(order, purchaseSnapshot);
       await refreshCart();
       router.push(`/orders/${order.id}`);
     } catch (reason) {
@@ -296,7 +314,7 @@ function SinglePageCheckout({
         try {
           const existing = await resumeCodOrder(key);
           captureStopped.current = true;
-          trackCreatedOrderPurchase(existing, quote);
+          trackCreatedOrderPurchase(existing, purchaseSnapshot);
           await refreshCart();
           router.push(`/orders/${existing.id}`);
           return;
@@ -705,36 +723,69 @@ function CheckoutOrderSummary({
 
 function trackCreatedOrderPurchase(
   order: Pick<OrderCreated, "id" | "reference">,
-  details:
-    | Pick<
-        AuthoritativeQuote,
-        "currency" | "merchandiseGrossBdt" | "delivery" | "lines"
-      >
-    | Pick<Order, "currency" | "merchandiseGrossBdt" | "delivery" | "lines">,
+  snapshot: CheckoutPurchaseSnapshot,
 ) {
   try {
     sendEcommerceEvent(
       "purchase",
       {
         transaction_id: order.reference,
-        currency: details.currency,
-        value: details.merchandiseGrossBdt,
-        shipping: details.delivery.grossAmountBdt,
-        items: details.lines.map((line) =>
-          variantEcommerceItem({
-            variantId: line.variantId,
-            itemName: line.productName,
-            color: line.color,
-            sizeLabel: line.sizeLabel,
-            price: line.unitPriceBdt,
-            quantity: line.quantity,
-          }),
-        ),
+        ...snapshot,
       },
       order.id,
     );
   } catch {
     // Analytics must not block checkout completion or order navigation.
+  }
+}
+
+function createCheckoutPurchaseSnapshot(
+  quote: AuthoritativeQuote,
+): CheckoutPurchaseSnapshot {
+  return checkoutPurchaseSnapshotSchema.parse({
+    currency: quote.currency,
+    value: quote.merchandiseGrossBdt,
+    shipping: quote.delivery.grossAmountBdt,
+    items: quote.lines.map((line) =>
+      variantEcommerceItem({
+        variantId: line.variantId,
+        itemName: line.productName,
+        color: line.color,
+        sizeLabel: line.sizeLabel,
+        price: line.unitPriceBdt,
+        quantity: line.quantity,
+      }),
+    ),
+  });
+}
+
+function storeCheckoutPurchaseSnapshot(
+  quoteId: string,
+  snapshot: CheckoutPurchaseSnapshot,
+): void {
+  try {
+    window.sessionStorage.setItem(
+      `aaraj.checkout.purchase:${quoteId}`,
+      JSON.stringify(snapshot),
+    );
+  } catch {
+    // Checkout can proceed when browser storage is unavailable.
+  }
+}
+
+function readCheckoutPurchaseSnapshot(
+  quoteId: string,
+): CheckoutPurchaseSnapshot | null {
+  try {
+    const stored = window.sessionStorage.getItem(
+      `aaraj.checkout.purchase:${quoteId}`,
+    );
+    if (!stored) return null;
+    const parsed: unknown = JSON.parse(stored);
+    const result = checkoutPurchaseSnapshotSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
   }
 }
 

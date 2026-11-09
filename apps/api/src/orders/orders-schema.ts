@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { OrderAddress } from "@aaraj/contracts";
 import { user } from "../auth/auth-schema.js";
 import { quoteSnapshot } from "../quote/quote-schema.js";
 import { inventoryStockReservation } from "../inventory/inventory-schema.js";
@@ -100,7 +101,7 @@ export const customerOrder = ordersSchema.table(
     reservationId: uuid("reservation_id")
       .notNull()
       .references(() => inventoryStockReservation.id, { onDelete: "restrict" }),
-    addressCiphertext: text("address_ciphertext").notNull(),
+    addressSnapshot: jsonb("address_snapshot").$type<OrderAddress>().notNull(),
     status: text("status")
       .$type<"pending" | "no_answer" | "confirmed" | "on_hold" | "cancelled">()
       .notNull()
@@ -160,6 +161,14 @@ export const customerOrder = ordersSchema.table(
     index("order_created_id_idx").on(table.createdAt.desc(), table.id.desc()),
     index("order_customer_created_idx").on(table.customerId, table.createdAt),
     index("order_status_created_idx").on(table.status, table.createdAt),
+    index("order_address_name_prefix_idx").using(
+      "btree",
+      sql`lower(${table.addressSnapshot}->>'recipientName') text_pattern_ops`,
+    ),
+    index("order_address_phone_prefix_idx").using(
+      "btree",
+      sql`regexp_replace(${table.addressSnapshot}->>'phone', '[^0-9]', '', 'g') text_pattern_ops`,
+    ),
     index("order_guest_cart_revision_idx")
       .on(table.guestCartHash, table.cartRevision)
       .where(sql`${table.guestCartHash} is not null`),
@@ -222,8 +231,8 @@ export const customerOrder = ordersSchema.table(
       sql`jsonb_typeof(${table.deliverySnapshot}) = 'object'`,
     ),
     check(
-      "order_address_ciphertext_check",
-      sql`(${table.addressCiphertext} like 'v1.%' or ${table.addressCiphertext} like 'v2.%')`,
+      "order_address_snapshot_check",
+      sql`jsonb_typeof(${table.addressSnapshot}) = 'object'`,
     ),
   ],
 );

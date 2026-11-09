@@ -1,4 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import {
+  createCipheriv,
+  createHash,
+  randomBytes,
+  randomUUID,
+} from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
@@ -8,7 +13,12 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { OrderAddressSchema } from "@aaraj/contracts";
 import { loadLocalEnvironment } from "../src/platform/config/local-environment.js";
+import {
+  backfillOrderAddressSnapshots,
+  decryptAddress,
+} from "../scripts/backfill-order-address-snapshots.mjs";
 
 process.env.NODE_ENV = "test";
 loadLocalEnvironment();
@@ -16,6 +26,24 @@ loadLocalEnvironment();
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 const operatorId = "migration-review-operator";
 const databasePrefix = "aaraj_migration_0023_";
+const addressMigrationKey = Buffer.alloc(32, 23);
+const addressMigrationRotatedKey = Buffer.alloc(32, 24);
+const migrationAddress = {
+  recipientName: "Migration Review",
+  phone: "+8801712345678",
+  geographyVersion: "TEST_ONLY_MIGRATION_FIXTURE",
+  divisionId: "00000000-0000-4000-8000-000000000001",
+  divisionName: "Migration Division",
+  districtId: "00000000-0000-4000-8000-000000000002",
+  districtName: "Migration District",
+  upazilaId: null,
+  upazilaName: null,
+  doorstepDetails: "Migration fixture address",
+  street: null,
+  house: null,
+  postalCode: null,
+  instructions: null,
+};
 const databases: { name: string; pool: Pool }[] = [];
 const migrationFolders: string[] = [];
 let admin: Pool;
@@ -85,6 +113,19 @@ describe("migration 0023 historical upgrade", () => {
 
     await migrate(drizzle(upgradePool), { migrationsFolder: through22Folder });
     historical = await seedHistoricalFixture(upgradePool);
+    await expect(runAddressBackfill(upgradePool)).rejects.toThrow(
+      "Could not convert every Order address",
+    );
+    const rolledBackAddressColumn = await upgradePool.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'orders' AND table_name = 'order_header'
+           AND column_name = 'address_snapshot'
+       ) AS present`,
+    );
+    expect(rolledBackAddressColumn.rows[0].present).toBe(false);
+    await replaceHistoricalAddressCiphertexts(upgradePool);
+    expect(await runAddressBackfill(upgradePool)).toBe(4);
     beforeOrders = await readHistoricalOrders(upgradePool);
     beforeInventory = await readInventory(upgradePool);
     beforeAuditCount = Number(
@@ -273,6 +314,39 @@ describe("migration 0023 historical upgrade", () => {
     ).toBe(true);
   });
 
+  it("converts the historical Order address ciphertext into validated snapshots", async () => {
+    const snapshots = await upgradePool.query(
+      `SELECT address_snapshot FROM orders.order_header ORDER BY reference`,
+    );
+    expect(snapshots.rows).toHaveLength(4);
+    expect(snapshots.rows).toEqual(
+      Array.from({ length: 4 }, () => ({ address_snapshot: migrationAddress })),
+    );
+  });
+
+  it("decrypts rotated v2 Order address envelopes by key ID", () => {
+    const orderId = randomUUID();
+    const ciphertext = encryptOrderAddress(
+      orderId,
+      migrationAddress,
+      "rotated",
+    );
+    expect(
+      decryptAddress(
+        ciphertext,
+        orderId,
+        {
+          activeKeyId: "rotated",
+          keys: new Map([
+            ["legacy", addressMigrationKey],
+            ["rotated", addressMigrationRotatedKey],
+          ]),
+        },
+        OrderAddressSchema,
+      ),
+    ).toEqual(migrationAddress);
+  });
+
   it("keeps old lifecycle protections and rejects a new dispatch without provider evidence", async () => {
     await expect(
       upgradePool.query(
@@ -397,6 +471,77 @@ async function currentMigrationCount(): Promise<number> {
     entries: unknown[];
   };
   return journal.entries.length;
+}
+
+async function replaceHistoricalAddressCiphertexts(pool: Pool): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      'ALTER TABLE "orders"."order_header" DISABLE TRIGGER "order_header_protect_update"',
+    );
+    const orders = await client.query(
+      'SELECT id FROM "orders"."order_header" ORDER BY id',
+    );
+    for (const { id } of orders.rows) {
+      await client.query(
+        'UPDATE "orders"."order_header" SET "address_ciphertext" = $2 WHERE id = $1',
+        [id, encryptOrderAddress(id, migrationAddress)],
+      );
+    }
+    await client.query(
+      'ALTER TABLE "orders"."order_header" ENABLE TRIGGER "order_header_protect_update"',
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function runAddressBackfill(pool: Pool): Promise<number> {
+  const client = await pool.connect();
+  try {
+    return await backfillOrderAddressSnapshots(client, {
+      activeKeyId: "rotated",
+      keys: new Map([
+        ["legacy", addressMigrationKey],
+        ["rotated", addressMigrationRotatedKey],
+      ]),
+    });
+  } finally {
+    client.release();
+  }
+}
+
+function encryptOrderAddress(
+  orderId: string,
+  address: typeof migrationAddress,
+  keyId = "legacy",
+): string {
+  const nonce = randomBytes(12);
+  const isLegacy = keyId === "legacy";
+  const key = isLegacy ? addressMigrationKey : addressMigrationRotatedKey;
+  const cipher = createCipheriv("aes-256-gcm", key, nonce);
+  cipher.setAAD(
+    Buffer.from(
+      isLegacy
+        ? `aaraj/order-address/v1:${orderId}`
+        : `aaraj/order-address/v2:${keyId}:${orderId}`,
+    ),
+  );
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(address)),
+    cipher.final(),
+  ]);
+  return [
+    ...(isLegacy ? ["v1"] : ["v2", keyId]),
+    nonce.toString("base64url"),
+    ciphertext.toString("base64url"),
+    cipher.getAuthTag().toString("base64url"),
+  ].join(".");
 }
 
 async function seedHistoricalFixture(pool: Pool): Promise<HistoricalFixtures> {

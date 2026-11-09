@@ -156,7 +156,8 @@ if (
 NODE
   [[ -f "$STAGING_DIR/api/dist/main.js" && \
     -f "$STAGING_DIR/api/drizzle/meta/_journal.json" && \
-    -f "$STAGING_DIR/api/scripts/migrate-production.mjs" ]] || {
+    -f "$STAGING_DIR/api/scripts/migrate-production.mjs" && \
+    -f "$STAGING_DIR/api/scripts/backfill-order-address-snapshots.mjs" ]] || {
     echo "Artifact is missing AARAJ API runtime or migration files." >&2
     exit 1
   }

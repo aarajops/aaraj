@@ -910,6 +910,7 @@ test("admin uploads and publishes a catalog banner through to the storefront", a
 
 test("catalog operator configures a product through to storefront visibility", async ({
   page,
+  browser,
 }) => {
   test.setTimeout(180_000);
   await page.addInitScript(() => {
@@ -1562,12 +1563,16 @@ test("catalog operator configures a product through to storefront visibility", a
 
   const checkoutUrl = page.url();
   let checkoutRequestAborted = false;
+  let createdOrderId = "";
   await page.route("**/api/v1/orders", async (route) => {
     if (route.request().method() !== "POST" || checkoutRequestAborted) {
       await route.continue();
       return;
     }
     checkoutRequestAborted = true;
+    const response = await route.fetch();
+    expect(response.status()).toBe(201);
+    createdOrderId = (await response.json()).id as string;
     await route.abort("connectionreset");
   });
   await page.getByRole("button", { name: "Place COD order" }).click();
@@ -1591,17 +1596,57 @@ test("catalog operator configures a product through to storefront visibility", a
   ).toBe(0);
   await page.unroute("**/api/v1/orders");
 
+  expect(createdOrderId).toMatch(/^[0-9a-f-]{36}$/i);
+  const adminContext = await browser.newContext({
+    baseURL: "http://127.0.0.1:3180",
+  });
+  try {
+    const adminPage = await adminContext.newPage();
+    await adminPage.goto("/account");
+    await adminPage
+      .getByLabel("Email", { exact: true })
+      .fill("catalog-e2e@example.test");
+    await adminPage
+      .getByLabel("Password", { exact: true })
+      .fill("CatalogE2E-Only-Password-2026!");
+    await adminPage
+      .locator("form")
+      .getByRole("button", { name: "Sign in", exact: true })
+      .click();
+    await expect(adminPage).toHaveURL(/\/admin$/);
+
+    const detailsResponse = await adminPage.request.get(
+      `/api/v1/orders/manage/${createdOrderId}`,
+    );
+    expect(detailsResponse.status()).toBe(200);
+    const details = await detailsResponse.json();
+    const firstLine = details.lines[0] as {
+      variantId: string;
+      quantity: number;
+      unitPriceBdt: number;
+    };
+    const editResponse = await adminPage.request.patch(
+      `/api/v1/orders/manage/${createdOrderId}/items`,
+      {
+        headers: { Origin: "http://127.0.0.1:3180" },
+        data: {
+          variantId: firstLine.variantId,
+          quantity: 1,
+          expectedQuantity: firstLine.quantity,
+          expectedUnitPriceBdt: firstLine.unitPriceBdt,
+        },
+      },
+    );
+    expect(editResponse.status()).toBe(200);
+    const editedOrder = await editResponse.json();
+    expect(editedOrder.lines[0].quantity).toBe(firstLine.quantity + 1);
+    expect(editedOrder.totalBdt).toBeGreaterThan(details.totalBdt);
+  } finally {
+    await adminContext.close();
+  }
+
   await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "Checkout", level: 1 }),
-  ).toBeVisible();
-  await page.getByLabel("Full name").fill("Integration Customer");
-  await page.getByLabel("Mobile number").fill("01712345678");
-  await page
-    .getByLabel("Delivery address")
-    .fill("House 12, Road 5, beside the park");
-  await page.getByRole("button", { name: "Place COD order" }).click();
-  await expect(page).toHaveURL(/\/orders\/[0-9a-f-]{36}$/i);
+  await expect(page).toHaveURL(`/orders/${createdOrderId}`);
   await expect(page.getByTestId("order-reference")).toBeVisible();
   await expect
     .poll(() =>
@@ -1632,7 +1677,7 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByText("Uncollected; no payment was taken at checkout"),
   ).toBeVisible();
   await expect(page.getByText("Integration Customer")).toBeVisible();
-  await expect(page.locator("del")).toContainText("৳2,990");
+  await expect(page.locator("del")).toContainText("৳5,980");
   const customerOrderId = new URL(page.url()).pathname.split("/").at(-1)!;
   const purchaseEvent = await page.evaluate(() => {
     const dataLayer = (window as Window & { dataLayer?: unknown[] }).dataLayer;
@@ -1652,6 +1697,8 @@ test("catalog operator configures a product through to storefront visibility", a
     ecommerce: {
       transaction_id: expect.any(String),
       currency: "BDT",
+      value: 2450,
+      shipping: 80,
       items: [{ item_id: expect.any(String), quantity: 1 }],
     },
   });
@@ -1675,9 +1722,15 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(storageAfterCheckout).not.toContain("01712345678");
 
   const orderReference = await page.getByTestId("order-reference").innerText();
+  let orderReadsAfterReplay = 0;
+  await page.route(`**/api/v1/orders/${customerOrderId}`, async (route) => {
+    if (route.request().method() === "GET") orderReadsAfterReplay += 1;
+    await route.continue();
+  });
   await page.goto(checkoutUrl);
   await expect(page).toHaveURL(`/orders/${customerOrderId}`);
   await expect(page.getByTestId("order-reference")).toHaveText(orderReference);
+  expect(orderReadsAfterReplay).toBeLessThanOrEqual(2);
   await expect.poll(() => ecommerceEventCount(page, "purchase")).toBe(1);
   const managementListResponse = await page.request.get(
     "/api/v1/orders/manage?limit=50&offset=0",
@@ -1767,7 +1820,7 @@ test("catalog operator configures a product through to storefront visibility", a
   });
   await expect(pathaoPanel).toBeVisible();
   await expect(pathaoPanel.getByLabel("Pathao delivery type")).toHaveCount(0);
-  await expect(pathaoPanel).toContainText("1 item");
+  await expect(pathaoPanel).toContainText("2 items");
   await expect(pathaoPanel).toContainText("0.5 kg minimum");
   await expect(pathaoPanel.getByLabel("Actual parcel count")).toHaveCount(0);
   await expect(pathaoPanel.getByLabel("Actual parcel weight (kg)")).toHaveCount(

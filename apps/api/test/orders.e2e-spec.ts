@@ -1,4 +1,4 @@
-import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -43,6 +43,7 @@ import {
   checkoutDraft,
   orderIdempotency,
   orderPathaoBookingClaim,
+  orderReferenceCounter,
 } from "../src/orders/orders-schema.js";
 import { OrdersService } from "../src/orders/orders.service.js";
 import {
@@ -70,45 +71,6 @@ type Destination = {
   districtId: string;
   upazilaId?: string;
 };
-
-function encryptOrderAddressForTest(
-  address: OrderAddress,
-  orderId: string,
-): string {
-  const configuration = process.env.ORDER_PII_KEYRING?.trim();
-  const keyring = configuration
-    ? (JSON.parse(configuration) as {
-        activeKeyId: string;
-        keys: Record<string, string>;
-      })
-    : null;
-  const keyId = keyring?.activeKeyId ?? "legacy";
-  const encodedKey =
-    keyring?.keys[keyId] ?? process.env.ORDER_PII_ENCRYPTION_KEY;
-  if (!encodedKey) {
-    throw new Error("The Order PII test key is not configured.");
-  }
-
-  const nonce = randomBytes(12);
-  const cipher = createCipheriv(
-    "aes-256-gcm",
-    Buffer.from(encodedKey, "base64url"),
-    nonce,
-  );
-  cipher.setAAD(Buffer.from(`aaraj/order-address/v2:${keyId}:${orderId}`));
-  const ciphertext = Buffer.concat([
-    cipher.update(JSON.stringify(address), "utf8"),
-    cipher.final(),
-  ]);
-
-  return [
-    "v2",
-    keyId,
-    nonce.toString("base64url"),
-    ciphertext.toString("base64url"),
-    cipher.getAuthTag().toString("base64url"),
-  ].join(".");
-}
 
 describe("COD Orders and checkout", () => {
   let app: NestExpressApplication;
@@ -1102,7 +1064,7 @@ describe("COD Orders and checkout", () => {
     expect((await stockFor(variantId)).quantityReserved).toBe(1);
   });
 
-  it("places guest COD orders with a private 30-day order-scoped cookie and atomic held stock", async () => {
+  it("stores a normalized address snapshot while keeping checkout retries idempotent", async () => {
     const legacyKey =
       process.env.ORDER_PII_ENCRYPTION_KEY ??
       (
@@ -1160,8 +1122,10 @@ describe("COD Orders and checkout", () => {
     );
     const stored = await orderById(response.body.id);
     expect(stored?.guestAccessTokenHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(stored?.addressCiphertext).not.toContain("E2E Recipient");
-    expect(stored?.addressCiphertext).toMatch(/^v2\.rotation_a\./);
+    expect(stored?.addressSnapshot).toMatchObject({
+      recipientName: "E2E Recipient",
+      phone: "+8801712345678",
+    });
     const [expiry] = await database.db
       .select({
         days: sql<number>`extract(epoch from (${customerOrder.guestAccessExpiresAt} - ${customerOrder.createdAt})) / 86400`,
@@ -1224,9 +1188,12 @@ describe("COD Orders and checkout", () => {
       checkoutBody(rotatedQuote.id),
       rotatedKey,
     ).expect(201);
-    expect((await orderById(rotatedOrder.body.id))?.addressCiphertext).toMatch(
-      /^v2\.rotation_b\./,
-    );
+    expect(
+      (await orderById(rotatedOrder.body.id))?.addressSnapshot,
+    ).toMatchObject({
+      recipientName: "E2E Recipient",
+      phone: "+8801712345678",
+    });
 
     expect(
       setCookieHeaders(response.headers).find((value) =>
@@ -1351,6 +1318,12 @@ describe("COD Orders and checkout", () => {
       recipientSearch.body.rows.map((row: { id: string }) => row.id),
     ).toEqual([`account_${buyer.id}`]);
 
+    const substringSearch = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/customers/manage?search=Receiver%20Two`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(substringSearch.body.rows).toEqual([]);
+
     const phoneSearch = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/customers/manage?search=01799887766`)
       .set("Cookie", staff.cookie)
@@ -1464,6 +1437,61 @@ describe("COD Orders and checkout", () => {
         .from(orderIdempotency)
         .where(eq(orderIdempotency.orderId, first.body.id)),
     ).toHaveLength(1);
+  });
+
+  it("rolls back stock reservation when the annual Order reference limit is reached", async () => {
+    const variantId = await createVariant(2);
+    const cart = await newGuestCart([variantId]);
+    const quote = await createQuote(cart.cookie);
+    const key = randomUUID();
+    const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
+    const year = Number(bangladeshBusinessDate().slice(0, 4));
+    const [priorCounter] = await database.db
+      .select()
+      .from(orderReferenceCounter)
+      .where(eq(orderReferenceCounter.year, year));
+    try {
+      await database.db
+        .insert(orderReferenceCounter)
+        .values({ year, lastNumber: 99_999 })
+        .onConflictDoUpdate({
+          target: orderReferenceCounter.year,
+          set: { lastNumber: 99_999 },
+        });
+
+      const response = await placeOrder(
+        checkoutCookie,
+        checkoutBody(quote.id),
+        key,
+      ).expect(503);
+      expect(response.body.errorCode).toBe("ORDER_REFERENCE_CAPACITY_REACHED");
+      expect(await stockFor(variantId)).toMatchObject({
+        quantityOnHand: 2,
+        quantityReserved: 0,
+      });
+      expect(
+        await database.db
+          .select()
+          .from(customerOrder)
+          .where(eq(customerOrder.quoteId, quote.id)),
+      ).toHaveLength(0);
+      const [counter] = await database.db
+        .select()
+        .from(orderReferenceCounter)
+        .where(eq(orderReferenceCounter.year, year));
+      expect(counter?.lastNumber).toBe(99_999);
+    } finally {
+      if (priorCounter) {
+        await database.db
+          .update(orderReferenceCounter)
+          .set({ lastNumber: priorCounter.lastNumber })
+          .where(eq(orderReferenceCounter.year, year));
+      } else {
+        await database.db
+          .delete(orderReferenceCounter)
+          .where(eq(orderReferenceCounter.year, year));
+      }
+    }
   });
 
   it("rejects stale, expired and cart-changed quotes without reserving stock", async () => {
@@ -2373,7 +2401,7 @@ describe("COD Orders and checkout", () => {
           quoteId,
           reservationId,
           reference,
-          addressCiphertext: encryptOrderAddressForTest(sourceAddress, id),
+          addressSnapshot: sourceAddress,
         })),
       );
 
@@ -2434,6 +2462,56 @@ describe("COD Orders and checkout", () => {
           expect(body).toMatchObject({ hasMore: false, nextOffset: null });
           expect(body.rows).toHaveLength(0);
         });
+
+      const namePrefix = sourceAddress.recipientName.slice(0, 5);
+      const nameMatches = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ limit: 100, search: namePrefix })
+        .expect(200);
+      const nameMatchIds = new Set(
+        nameMatches.body.rows.map((row: { id: string }) => row.id),
+      );
+      expect(synthetic.some(({ id }) => nameMatchIds.has(id))).toBe(true);
+
+      const nameSubstring = sourceAddress.recipientName.slice(1, 9);
+      const substringMatches = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ limit: 100, search: nameSubstring })
+        .expect(200);
+      expect(
+        substringMatches.body.rows.some(({ id }: { id: string }) =>
+          synthetic.some((order) => order.id === id),
+        ),
+      ).toBe(false);
+
+      const phoneMatches = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ limit: 100, search: "0171" })
+        .expect(200);
+      expect(
+        phoneMatches.body.rows.some(({ id }: { id: string }) =>
+          synthetic.some((order) => order.id === id),
+        ),
+      ).toBe(true);
+      const phoneSubstringMatches = await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ limit: 100, search: "71234" })
+        .expect(200);
+      expect(
+        phoneSubstringMatches.body.rows.some(({ id }: { id: string }) =>
+          synthetic.some((order) => order.id === id),
+        ),
+      ).toBe(false);
+
+      await request(app.getHttpServer())
+        .get(`${API_V1_BASE_PATH}/orders/manage`)
+        .set("Cookie", staff.cookie)
+        .query({ search: "E" })
+        .expect(400);
     } finally {
       await database.db.delete(customerOrder).where(
         inArray(
@@ -2665,7 +2743,7 @@ describe("COD Orders and checkout", () => {
     );
     const afterOrder = await orderById(fixture.id);
     expect(afterOrder).toMatchObject({
-      addressCiphertext: original?.addressCiphertext,
+      addressSnapshot: original?.addressSnapshot,
       guestAccessTokenHash: original?.guestAccessTokenHash,
       guestAccessExpiresAt: original?.guestAccessExpiresAt,
       merchandiseGrossBdt: original?.merchandiseGrossBdt,
@@ -3083,6 +3161,16 @@ describe("COD Orders and checkout", () => {
     expect(bookings).toEqual([
       { status: "cancelled", consignmentId: firstConsignmentId },
       { status: "booked", consignmentId: secondConsignmentId },
+    ]);
+    await expect(
+      app.get(PathaoService).getManagementBookingSummaries([fixture.id]),
+    ).resolves.toEqual([
+      {
+        orderId: fixture.id,
+        status: "booked",
+        trackingProgress: "booked",
+        consignmentId: secondConsignmentId,
+      },
     ]);
     expect(
       provider.requests.filter(

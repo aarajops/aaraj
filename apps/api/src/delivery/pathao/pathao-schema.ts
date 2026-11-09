@@ -99,6 +99,14 @@ export const pathaoBooking = deliverySchema.table(
       table.consignmentId,
     ),
     index("pathao_booking_created_idx").on(table.createdAt, table.id),
+    index("pathao_booking_order_created_idx").on(
+      table.orderId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    index("pathao_booking_submitting_submitted_idx")
+      .on(table.submittedAt, table.id)
+      .where(sql`${table.status} = 'submitting'`),
     check(
       "pathao_booking_environment_check",
       sql`${table.environment} in ('sandbox', 'live')`,
@@ -204,6 +212,11 @@ export const pathaoWebhookInbox = deliverySchema.table(
       table.bookingId,
       table.receivedAt,
     ),
+    index("pathao_webhook_unmatched_consignment_idx")
+      .on(table.environment, table.consignmentId)
+      .where(
+        sql`${table.bookingId} is null and ${table.processingState} = 'unmatched' and ${table.consignmentId} is not null`,
+      ),
     index("pathao_webhook_processing_lease_idx")
       .on(table.processingLeaseExpiresAt, table.id)
       .where(sql`${table.processingState} = 'processing'`),
