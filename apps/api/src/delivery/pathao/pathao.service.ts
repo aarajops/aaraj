@@ -149,6 +149,7 @@ const PATHAO_STATUS_EVENTS: Readonly<Record<string, string>> = {
   exchange: "order.exchanged",
   exchanged: "order.exchanged",
   paid: "order.paid",
+  paymentinvoice: "order.paid",
 };
 
 type InboxRow = typeof pathaoWebhookInbox.$inferSelect;
@@ -421,8 +422,14 @@ export class PathaoService {
     }
     const providerEvent = pathaoEventFromStatus(info.orderStatus);
     if (!providerEvent) {
+      const receivedStatus =
+        info.orderStatus === null
+          ? "no status"
+          : `unsupported status ${JSON.stringify(
+              info.orderStatus.slice(0, 100),
+            )}`;
       throw new ConflictException(
-        "Pathao returned a status AARAJ cannot safely apply.",
+        `Pathao Order Info returned ${receivedStatus}; saved shipment status was not changed.`,
         { errorCode: "PATHAO_STATUS_REQUIRES_REVIEW" },
       );
     }
