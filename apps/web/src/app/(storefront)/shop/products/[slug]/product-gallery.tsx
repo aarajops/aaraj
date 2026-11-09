@@ -111,7 +111,7 @@ export function ProductGallery({
       {visibleImages.length > 1 && (
         <ul
           aria-label="Choose a product image"
-          className="flex gap-3 overflow-x-auto pb-1 lg:max-h-96 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto"
+          className="no-scrollbar flex gap-3 overflow-x-auto pb-1 lg:max-h-96 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto"
         >
           {visibleImages.map((image, index) => (
             <li className="shrink-0" key={image.id}>
