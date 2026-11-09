@@ -78,6 +78,7 @@ type AdminDataTableProps<TData extends RowData & { id: string }> = {
   isRefreshing?: boolean;
   page: AdminDataTablePage | null;
   className?: string;
+  tableClassName?: string;
   sortableRows?: AdminDataTableRowOrder<TData>;
 };
 
@@ -96,6 +97,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   isRefreshing = false,
   page,
   className,
+  tableClassName,
   sortableRows,
 }: AdminDataTableProps<TData>) {
   const router = useRouter();
@@ -294,6 +296,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
         ariaLabel={ariaLabel}
         columns={tableColumns}
         data={data}
+        tableClassName={tableClassName}
         sortableRows={sortableRows}
         emptyMessage={
           emptyMessage ??

@@ -55,6 +55,7 @@ type DataTableProps<TData extends RowData & { id: string }> = {
   data: TData[];
   emptyMessage: ReactNode;
   className?: string;
+  tableClassName?: string;
   sortableRows?: {
     disabled?: boolean;
     getLabel: (item: TData, index: number) => string;
@@ -147,6 +148,7 @@ export function DataTable<TData extends RowData & { id: string }>({
   data,
   emptyMessage,
   className,
+  tableClassName,
   sortableRows,
 }: DataTableProps<TData>) {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -171,7 +173,7 @@ export function DataTable<TData extends RowData & { id: string }>({
   const selectedCount = instance.getSelectedRowModel().rows.length;
 
   const table = (
-    <Table aria-label={ariaLabel}>
+    <Table aria-label={ariaLabel} className={tableClassName}>
       <TableHeader>
         {instance.getHeaderGroups().map((group) => (
           <TableRow key={group.id}>

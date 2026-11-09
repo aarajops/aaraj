@@ -19,10 +19,18 @@ import {
 import { formatBdtPrice } from "@/lib/currency";
 import type { ManagedOrderRow, ManagedOrdersPage } from "./orders-view-model";
 import { OrderDetailsSheet } from "./order-details-sheet";
-import { humanize, humanizePathaoStatus } from "./orders-format";
+import { humanizePathaoStatus } from "./orders-format";
 import { OrderStatusBadge, ShipmentStatusBadge } from "./order-status-badges";
 
 const columnHelper = createDataTableColumnHelper<ManagedOrderRow>();
+const deliveryZoneLabels: Record<
+  NonNullable<ManagedOrderRow["deliveryZone"]>,
+  string
+> = {
+  inside_dhaka: "Inside",
+  suburban: "Suburban",
+  outside_dhaka: "Outside",
+};
 
 export function OrdersManager({
   initialPage,
@@ -40,34 +48,50 @@ export function OrdersManager({
         id: "order",
         header: "Order",
         cell: ({ row }) => (
-          <div className="flex items-center gap-1">
-            <Button
-              aria-haspopup="dialog"
-              className="h-auto justify-start rounded-sm px-0 py-0 font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
-              onClick={() => setSelectedOrderId(row.original.id)}
-              type="button"
-              variant="link"
-            >
-              {row.original.reference}
-            </Button>
-            <Button
-              aria-label={`Copy order ID ${row.original.reference}`}
-              className="text-muted-foreground"
-              onClick={() =>
-                void copyOrderValue(row.original.reference, "Order ID")
-              }
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <Copy aria-hidden="true" />
-            </Button>
+          <div className="grid gap-0.5">
+            <div className="flex items-center gap-1">
+              <Button
+                aria-haspopup="dialog"
+                className="h-auto justify-start rounded-sm px-0 py-0 font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-foreground"
+                onClick={() => setSelectedOrderId(row.original.id)}
+                type="button"
+                variant="link"
+              >
+                {row.original.reference}
+              </Button>
+              <Button
+                aria-label={`Copy order ID ${row.original.reference}`}
+                className="text-muted-foreground"
+                onClick={() =>
+                  void copyOrderValue(row.original.reference, "Order ID")
+                }
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Copy aria-hidden="true" />
+              </Button>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {formatDateTime(row.original.createdAt)}
+            </span>
           </div>
         ),
       }),
-      columnHelper.accessor("createdAt", {
-        header: "Placed",
-        cell: ({ getValue }) => formatDateTime(getValue()),
+      columnHelper.display({
+        id: "status",
+        header: "Order status",
+        cell: ({ row }) => <OrderStatusBadge status={row.original.status} />,
+      }),
+      columnHelper.display({
+        id: "delivery",
+        header: "Shipment",
+        cell: ({ row }) => (
+          <CourierStatus
+            summary={row.original.pathaoSummary}
+            available={initialPage.pathaoSummaryAvailable}
+          />
+        ),
       }),
       columnHelper.display({
         id: "customer",
@@ -143,25 +167,10 @@ export function OrdersManager({
         header: "Zone",
         cell: ({ row }) =>
           row.original.deliveryZone ? (
-            humanize(row.original.deliveryZone)
+            deliveryZoneLabels[row.original.deliveryZone]
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
-      }),
-      columnHelper.display({
-        id: "status",
-        header: "Order status",
-        cell: ({ row }) => <OrderStatusBadge status={row.original.status} />,
-      }),
-      columnHelper.display({
-        id: "delivery",
-        header: "Shipment",
-        cell: ({ row }) => (
-          <CourierStatus
-            summary={row.original.pathaoSummary}
-            available={initialPage.pathaoSummaryAvailable}
-          />
-        ),
       }),
       columnHelper.display({
         id: "codDue",
@@ -210,6 +219,7 @@ export function OrdersManager({
           )}
           pathname="/admin/orders"
           query={query}
+          tableClassName="w-max min-w-full"
           filters={[
             {
               name: "status",
@@ -317,31 +327,15 @@ function CourierStatus({
     );
   }
   if (summary?.status === "cancelled") {
-    return (
-      <div className="grid gap-1">
-        <ShipmentStatusBadge label="Cancelled" status="cancelled" />
-        {summary.consignmentId && (
-          <span className="text-xs text-muted-foreground">
-            {summary.consignmentId}
-          </span>
-        )}
-      </div>
-    );
+    return <ShipmentStatusBadge label="Cancelled" status="cancelled" />;
   }
   if (summary?.status === "booked") {
     const trackingProgress = summary.trackingProgress ?? "booked";
     return (
-      <div className="grid gap-1">
-        <ShipmentStatusBadge
-          label={humanizePathaoStatus(trackingProgress)}
-          status={trackingProgress}
-        />
-        {summary.consignmentId && (
-          <span className="text-xs text-muted-foreground">
-            {summary.consignmentId}
-          </span>
-        )}
-      </div>
+      <ShipmentStatusBadge
+        label={humanizePathaoStatus(trackingProgress)}
+        status={trackingProgress}
+      />
     );
   }
   return <ShipmentStatusBadge label="Not booked" status="not_booked" />;
