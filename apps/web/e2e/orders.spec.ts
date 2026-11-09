@@ -79,7 +79,7 @@ test("Orders displays the latest Pathao shipment progress", async ({
   await expect(row.getByText("Needs review", { exact: true })).toHaveCount(0);
   await expect(
     row.getByText("E2E-PATHAO-DELIVERED", { exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 });
 
 test("Orders follows API pagination, search, empty, and error states", async ({
