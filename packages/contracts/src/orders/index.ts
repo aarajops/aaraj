@@ -56,6 +56,29 @@ export const OrderListQuerySchema = OffsetPaginationQuerySchema.extend({
   search: OptionalOrderSearchSchema,
   status: OrderStatusSchema.optional(),
   fulfillmentStatus: OrderFulfillmentStatusSchema.optional(),
+  createdFrom: z.iso.datetime({ offset: true }).optional(),
+  createdBefore: z.iso.datetime({ offset: true }).optional(),
+}).superRefine((query, context) => {
+  if (Boolean(query.createdFrom) !== Boolean(query.createdBefore)) {
+    context.addIssue({
+      code: "custom",
+      path: [query.createdFrom ? "createdBefore" : "createdFrom"],
+      message: "Both order creation range boundaries are required.",
+    });
+    return;
+  }
+
+  if (
+    query.createdFrom &&
+    query.createdBefore &&
+    Date.parse(query.createdFrom) >= Date.parse(query.createdBefore)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["createdBefore"],
+      message: "The end of the order creation range must follow its start.",
+    });
+  }
 });
 export type OrderListQuery = z.infer<typeof OrderListQuerySchema>;
 

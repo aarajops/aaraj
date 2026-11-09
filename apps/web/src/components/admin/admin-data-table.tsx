@@ -50,6 +50,7 @@ export type AdminDataTableFilter = {
 };
 
 type TableQuery = Readonly<Record<string, string | number | undefined>>;
+type AdminDataTableFilterChange = (updates: TableQuery) => void;
 type AdminDataTablePage = {
   limit: number;
   offset: number;
@@ -74,6 +75,7 @@ type AdminDataTableProps<TData extends RowData & { id: string }> = {
   emptyMessage?: ReactNode;
   rowActions?: (row: TData) => ReactNode;
   filters?: AdminDataTableFilter[];
+  additionalFilters?: (onChange: AdminDataTableFilterChange) => ReactNode;
   onRefresh: () => void;
   isRefreshing?: boolean;
   page: AdminDataTablePage | null;
@@ -93,6 +95,7 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
   emptyMessage,
   rowActions,
   filters = [],
+  additionalFilters,
   onRefresh,
   isRefreshing = false,
   page,
@@ -191,11 +194,11 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
 
   return (
     <div className={cn("rounded-xl border border-border bg-card", className)}>
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-4">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-4">
         {searchPlaceholder !== null && (
           <form
             aria-label={`Search ${itemName}`}
-            className="flex min-w-60 flex-1 gap-2"
+            className="flex min-w-60 max-w-md flex-1 gap-2"
             onSubmit={submitSearch}
           >
             <InputGroup className="h-9 has-[[data-slot=input-group-control]:focus-visible]:outline-solid has-[[data-slot=input-group-control]:focus-visible]:outline-2 has-[[data-slot=input-group-control]:focus-visible]:outline-offset-2 has-[[data-slot=input-group-control]:focus-visible]:outline-foreground">
@@ -223,72 +226,78 @@ export function AdminDataTable<TData extends RowData & { id: string }>({
           </form>
         )}
 
-        {filters.map((filter) => (
-          <Select
-            key={filter.name}
-            value={filter.value || "all"}
-            onValueChange={(value) => {
-              if (typeof value === "string") {
-                navigate({
-                  [filter.name]: value === "all" ? undefined : value,
-                });
-              }
-            }}
-          >
-            <SelectTrigger
-              aria-label={filter.label}
-              className="h-9 w-full sm:w-44"
+        {filters.map((filter) => {
+          const items = [
+            {
+              label: filter.allLabel ?? `All ${filter.label.toLowerCase()}`,
+              value: "all",
+            },
+            ...filter.options,
+          ];
+
+          return (
+            <div className="w-full sm:w-auto" key={filter.name}>
+              <Select
+                items={items}
+                value={filter.value || "all"}
+                onValueChange={(value) => {
+                  if (typeof value === "string") {
+                    navigate({
+                      [filter.name]: value === "all" ? undefined : value,
+                    });
+                  }
+                }}
+              >
+                <SelectTrigger
+                  aria-label={filter.label}
+                  className="h-9 w-full sm:w-44"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {items.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })}
+
+        {additionalFilters?.(navigate)}
+
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {hasActiveFilters && (
+            <Button
+              size="lg"
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                startTransition(() => router.push(pathname, { scroll: false }));
+              }}
             >
-              <SelectValue>
-                {filter.value
-                  ? (filter.options.find(
-                      (option) => option.value === filter.value,
-                    )?.label ?? filter.value)
-                  : (filter.allLabel ?? `All ${filter.label.toLowerCase()}`)}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent align="start">
-              <SelectItem value="all">
-                {filter.allLabel ?? `All ${filter.label.toLowerCase()}`}
-              </SelectItem>
-              {filter.options.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ))}
+              Clear filters
+            </Button>
+          )}
 
-        {hasActiveFilters && (
           <Button
-            className="shrink-0"
-            size="lg"
+            aria-label={`Refresh ${itemName}`}
+            aria-busy={isRefreshing}
+            className="h-9 shrink-0"
+            disabled={isRefreshing || isPending}
             type="button"
-            variant="ghost"
-            onClick={() => {
-              startTransition(() => router.push(pathname, { scroll: false }));
-            }}
+            variant="outline"
+            onClick={() => startTransition(() => onRefresh())}
           >
-            Clear filters
+            <RefreshCw
+              aria-hidden="true"
+              className={isRefreshing || isPending ? "animate-spin" : undefined}
+            />
+            <span>Refresh</span>
           </Button>
-        )}
-
-        <Button
-          aria-label={`Refresh ${itemName}`}
-          aria-busy={isRefreshing}
-          className="ml-auto h-9 shrink-0"
-          disabled={isRefreshing || isPending}
-          type="button"
-          variant="outline"
-          onClick={() => startTransition(() => onRefresh())}
-        >
-          <RefreshCw
-            aria-hidden="true"
-            className={isRefreshing || isPending ? "animate-spin" : undefined}
-          />
-          <span>Refresh</span>
-        </Button>
+        </div>
       </div>
 
       <DataTable

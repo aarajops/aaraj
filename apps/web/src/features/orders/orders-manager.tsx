@@ -19,6 +19,7 @@ import {
 import { formatBdtPrice } from "@/lib/currency";
 import type { ManagedOrderRow, ManagedOrdersPage } from "./orders-view-model";
 import { OrderDetailsSheet } from "./order-details-sheet";
+import { OrdersCreatedRangeFilter } from "./orders-created-range-filter";
 import { humanizePathaoStatus } from "./orders-format";
 import { OrderStatusBadge, ShipmentStatusBadge } from "./order-status-badges";
 
@@ -257,6 +258,14 @@ export function OrdersManager({
               ],
             },
           ]}
+          additionalFilters={(onChange) => (
+            <OrdersCreatedRangeFilter
+              key={`${query.createdFrom ?? ""}:${query.createdBefore ?? ""}`}
+              createdFrom={query.createdFrom}
+              createdBefore={query.createdBefore}
+              onChange={onChange}
+            />
+          )}
           itemName="orders"
           searchPlaceholder="Search order ID, name, or phone"
           onRefresh={() => router.refresh()}

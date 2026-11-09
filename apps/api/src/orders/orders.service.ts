@@ -49,7 +49,19 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, like, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  like,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
 import { lockCartOwner } from "../cart/cart-owner-lock.js";
 import {
@@ -1138,12 +1150,7 @@ export class OrdersService implements OrdersPathaoPort {
       ? query.search.toUpperCase().startsWith("ORD-") ||
         query.search.toUpperCase().startsWith("AA-")
       : false;
-    const listFilters = [
-      query.status ? eq(customerOrder.status, query.status) : undefined,
-      query.fulfillmentStatus
-        ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
-        : undefined,
-    ];
+    const listFilters = managedOrderFilters(query);
     const oldestFirst = shouldPrioritizeHeldOrders(query);
     let rows: ManagedOrderListRecord[];
     if (query.search && !exactOrderSearch && !referencePrefixSearch) {
@@ -1531,12 +1538,7 @@ export class OrdersService implements OrdersPathaoPort {
     const nameSearch = normalizeOrderSearchText(search);
     const phoneSearch = normalizeOrderPhoneDigits(search);
     const isPhoneSearch = /^[+\d০-৯().\s-]+$/u.test(search);
-    const filters = [
-      query.status ? eq(customerOrder.status, query.status) : undefined,
-      query.fulfillmentStatus
-        ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
-        : undefined,
-    ];
+    const filters = managedOrderFilters(query);
     const oldestFirst = shouldPrioritizeHeldOrders(query);
     const orderBy = oldestFirst
       ? [asc(customerOrder.createdAt), asc(customerOrder.id)]
@@ -3542,6 +3544,21 @@ function shouldPrioritizeHeldOrders(query: OrderListQuery): boolean {
     query.status === "on_hold" ||
     query.fulfillmentStatus === "awaiting_dispatch"
   );
+}
+
+function managedOrderFilters(query: OrderListQuery) {
+  return [
+    query.status ? eq(customerOrder.status, query.status) : undefined,
+    query.fulfillmentStatus
+      ? eq(customerOrder.fulfillmentStatus, query.fulfillmentStatus)
+      : undefined,
+    query.createdFrom
+      ? gte(customerOrder.createdAt, new Date(query.createdFrom))
+      : undefined,
+    query.createdBefore
+      ? lt(customerOrder.createdAt, new Date(query.createdBefore))
+      : undefined,
+  ];
 }
 
 function parseDeliveryZone(snapshot: unknown) {

@@ -18,6 +18,8 @@ export type OrdersPageSearchParams = {
   search?: string | string[];
   status?: string | string[];
   fulfillmentStatus?: string | string[];
+  createdFrom?: string | string[];
+  createdBefore?: string | string[];
 };
 
 const defaultOrderListQuery = OrderListQuerySchema.parse({});
@@ -30,7 +32,9 @@ export function parseOrdersPageQuery(
     Array.isArray(searchParams.offset) ||
     Array.isArray(searchParams.search) ||
     Array.isArray(searchParams.status) ||
-    Array.isArray(searchParams.fulfillmentStatus)
+    Array.isArray(searchParams.fulfillmentStatus) ||
+    Array.isArray(searchParams.createdFrom) ||
+    Array.isArray(searchParams.createdBefore)
   ) {
     return defaultOrderListQuery;
   }
@@ -61,6 +65,8 @@ export async function getManagedOrders(
     if (query.fulfillmentStatus) {
       search.set("fulfillmentStatus", query.fulfillmentStatus);
     }
+    if (query.createdFrom) search.set("createdFrom", query.createdFrom);
+    if (query.createdBefore) search.set("createdBefore", query.createdBefore);
     const response = await fetch(
       `${getApiInternalUrl()}${API_V1_BASE_PATH}/orders/manage?${search}`,
       { headers: await requestHeaders(), cache: "no-store" },

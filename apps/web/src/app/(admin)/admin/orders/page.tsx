@@ -76,6 +76,8 @@ function ordersPageHref(query: {
   search?: string;
   status?: string;
   fulfillmentStatus?: string;
+  createdFrom?: string;
+  createdBefore?: string;
 }): string {
   const params = new URLSearchParams();
   if (query.limit !== DEFAULT_LIST_PAGE_SIZE) {
@@ -87,6 +89,8 @@ function ordersPageHref(query: {
   if (query.fulfillmentStatus) {
     params.set("fulfillmentStatus", query.fulfillmentStatus);
   }
+  if (query.createdFrom) params.set("createdFrom", query.createdFrom);
+  if (query.createdBefore) params.set("createdBefore", query.createdBefore);
   const search = params.toString();
   return search ? `/admin/orders?${search}` : "/admin/orders";
 }
