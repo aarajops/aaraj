@@ -646,6 +646,12 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
   ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
+    page.getByRole("button", {
+      name: "Filter orders by placed date and time",
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
     page.getByRole("button", { name: "Refresh orders" }),
   ).toBeFocused();
 
