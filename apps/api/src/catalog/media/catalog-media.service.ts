@@ -511,6 +511,48 @@ export class CatalogMediaService {
     }
   }
 
+  async getManagementPreview(
+    actor: AccessPrincipal,
+    productId: string,
+    mediaId: string,
+  ): Promise<Buffer> {
+    await this.authorization.authorize(CatalogPolicy, "manage", actor);
+    const [media] = await this.database.db
+      .select({ derivatives: catalogProductMedia.derivatives })
+      .from(catalogProductMedia)
+      .where(
+        and(
+          eq(catalogProductMedia.id, mediaId),
+          eq(catalogProductMedia.productId, productId),
+          eq(catalogProductMedia.status, "ready"),
+        ),
+      )
+      .limit(1);
+    if (!media) throw new NotFoundException("Catalog media not found.");
+
+    const parsed = CatalogMediaDerivativesSchema.safeParse(media.derivatives);
+    if (!parsed.success) {
+      this.logger.error("Catalog media derivative manifest is invalid", {
+        event: "catalog.media_manifest_invalid",
+        mediaId,
+      });
+      throw mediaStorageUnavailable();
+    }
+    const preview = parsed.data.find(({ rendition }) => rendition === "card");
+    if (!preview) throw new NotFoundException("Catalog media not found.");
+
+    try {
+      return await this.storage.getPublishedDerivative({
+        key: derivativeObjectKey(mediaId, preview.sha256),
+        sha256: preview.sha256,
+        sizeBytes: preview.sizeBytes,
+      });
+    } catch (error: unknown) {
+      this.logStorageFailure("get", mediaId, error);
+      throw mediaStorageUnavailable();
+    }
+  }
+
   private async processAndPublish(
     actor: AccessPrincipal,
     record: UploadRecord,

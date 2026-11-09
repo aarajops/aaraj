@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   StandardSchemaValidationPipe,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
   UseGuards,
@@ -90,6 +91,26 @@ export class CatalogController {
     @Param("productId", { schema: CatalogProductIdSchema }) productId: string,
   ) {
     return this.catalogMedia.listForManagement(session.user, productId);
+  }
+
+  @Get("manage/:productId/media/:mediaId/preview")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Header("X-Content-Type-Options", "nosniff")
+  async previewMediaForManagement(
+    @Session() session: UserSession,
+    @Param("productId", { schema: CatalogProductIdSchema }) productId: string,
+    @Param("mediaId", { schema: CatalogProductIdSchema }) mediaId: string,
+  ): Promise<StreamableFile> {
+    const image = await this.catalogMedia.getManagementPreview(
+      session.user,
+      productId,
+      mediaId,
+    );
+    return new StreamableFile(image, {
+      type: "image/webp",
+      disposition: "inline",
+    });
   }
 
   @Post("manage/:productId/media")

@@ -160,6 +160,13 @@ export function fetchManagedProductMedia(productId: string): Promise<Response> {
   );
 }
 
+export function managedProductMediaPreviewUrl(
+  productId: string,
+  mediaId: string,
+): string {
+  return `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/media/${encodeURIComponent(mediaId)}/preview`;
+}
+
 export function reorderCatalogProductMedia(
   productId: string,
   input: CatalogProductMediaOrderInput,
