@@ -535,11 +535,23 @@ test("staff manages reusable size guides and apparel products safely", async ({
   let mediaRows: CatalogMedia[] = [mediaRow];
   let uploadAttempts = 0;
   let deleteAttempts = 0;
+  const pngBuffer = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
+    "base64",
+  );
   await page.route(
     "**/api/v1/catalog/products/manage/*/media**",
     async (route) => {
       const method = route.request().method();
       if (method === "GET") {
+        if (new URL(route.request().url()).pathname.endsWith("/preview")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "image/png",
+            body: pngBuffer,
+          });
+          return;
+        }
         await route.fulfill({ status: 200, json: { media: mediaRows } });
         return;
       }
@@ -600,10 +612,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   const retryFile = page.getByLabel(
     "Choose original file to retry Front view of Aaraj E2E Tee",
   );
-  const pngBuffer = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
-    "base64",
-  );
   await retryFile.setInputFiles({
     name: "front.png",
     mimeType: "image/png",
@@ -617,12 +625,22 @@ test("staff manages reusable size guides and apparel products safely", async ({
     mimeType: "image/png",
     buffer: pngBuffer,
   });
-  await expect(page.getByText("Processed", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Delete media" }).click();
+  const uploadedPreview = page
+    .getByRole("region", { name: "Product media" })
+    .locator('img[src$="/preview"]');
+  await expect(uploadedPreview).toBeVisible();
+  await expect
+    .poll(() =>
+      uploadedPreview.evaluate(
+        (image) => (image as HTMLImageElement).naturalWidth,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Delete image 1" }).click();
   await expect(
     page.getByText("Deletion incomplete", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Retry deletion" }).click();
+  await page.getByRole("button", { name: "Retry deletion of image 1" }).click();
   await expect(
     page.getByText("No media has been uploaded for this product."),
   ).toBeVisible();
