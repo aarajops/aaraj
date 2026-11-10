@@ -21,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { SortableList } from "@/components/dnd/sortable-list";
@@ -471,42 +472,73 @@ export function CatalogMediaManager({
             </p>
           </div>
 
-          <Field>
-            <FieldLabel htmlFor="catalog-media-file">Choose images</FieldLabel>
-            <Input
-              accept="image/jpeg,image/png,image/webp"
-              className={fileFieldClassName}
-              disabled={
-                operation !== null ||
-                hasPendingUploadCommands ||
-                mediaLimitReached ||
-                remainingMediaSlots === 0
-              }
-              id="catalog-media-file"
-              multiple
-              onChange={(event) => {
-                const files = Array.from(event.currentTarget.files ?? []);
-                const acceptedFiles = files.slice(0, remainingMediaSlots);
-                setSelectedUploads((current) => [
-                  ...current,
-                  ...acceptedFiles.map((file) => ({
-                    id: crypto.randomUUID(),
-                    file,
-                    altText: "",
-                  })),
-                ]);
-                if (acceptedFiles.length < files.length) {
-                  setProblem(
-                    `Only ${remainingMediaSlots} more image${remainingMediaSlots === 1 ? " can" : "s can"} be selected for this product.`,
-                  );
-                } else {
-                  setProblem(null);
+          <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+            <Field>
+              <FieldLabel htmlFor="catalog-media-file">
+                Choose images
+              </FieldLabel>
+              <Input
+                accept="image/jpeg,image/png,image/webp"
+                className={fileFieldClassName}
+                disabled={
+                  operation !== null ||
+                  hasPendingUploadCommands ||
+                  mediaLimitReached ||
+                  remainingMediaSlots === 0
                 }
-                event.currentTarget.value = "";
-              }}
-              type="file"
-            />
-          </Field>
+                id="catalog-media-file"
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.currentTarget.files ?? []);
+                  const acceptedFiles = files.slice(0, remainingMediaSlots);
+                  setSelectedUploads((current) => [
+                    ...current,
+                    ...acceptedFiles.map((file) => ({
+                      id: crypto.randomUUID(),
+                      file,
+                      altText: "",
+                    })),
+                  ]);
+                  if (acceptedFiles.length < files.length) {
+                    setProblem(
+                      `Only ${remainingMediaSlots} more image${remainingMediaSlots === 1 ? " can" : "s can"} be selected for this product.`,
+                    );
+                  } else {
+                    setProblem(null);
+                  }
+                  event.currentTarget.value = "";
+                }}
+                type="file"
+              />
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="catalog-media-variant">
+                Variant association
+              </FieldLabel>
+              <Select
+                disabled={operation !== null || hasPendingUploadCommands}
+                onValueChange={(value) =>
+                  setVariantId(value === allVariantsValue ? "" : (value ?? ""))
+                }
+                value={variantId || allVariantsValue}
+              >
+                <SelectTrigger id="catalog-media-variant">
+                  <SelectValue placeholder="All product variants" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={allVariantsValue}>
+                    All product variants
+                  </SelectItem>
+                  {activeVariants.map((variant) => (
+                    <SelectItem key={variant.id} value={variant.id}>
+                      {variant.color} · {variant.sizeLabel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
 
           {selectedUploads.length > 0 && (
             <ul
@@ -572,36 +604,9 @@ export function CatalogMediaManager({
             </ul>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
-            <Field>
-              <FieldLabel htmlFor="catalog-media-variant">
-                Variant association
-              </FieldLabel>
-              <Select
-                disabled={operation !== null || hasPendingUploadCommands}
-                onValueChange={(value) =>
-                  setVariantId(value === allVariantsValue ? "" : (value ?? ""))
-                }
-                value={variantId || allVariantsValue}
-              >
-                <SelectTrigger id="catalog-media-variant">
-                  <SelectValue placeholder="All product variants" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={allVariantsValue}>
-                    All product variants
-                  </SelectItem>
-                  {activeVariants.map((variant) => (
-                    <SelectItem key={variant.id} value={variant.id}>
-                      {variant.color} · {variant.sizeLabel}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-
+          <div className="flex justify-end border-t border-border pt-4">
             <Button
-              className="sm:justify-self-end"
+              className="w-full sm:w-auto"
               disabled={
                 operation !== null ||
                 selectedUploads.length === 0 ||
@@ -648,54 +653,86 @@ export function CatalogMediaManager({
           ) : (
             <SortableList
               ariaLabel="Uploaded product media"
-              className="divide-y divide-border rounded-lg border border-border"
+              className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
               disabled={operation !== null || mediaIsLoading}
               getItemId={({ id }) => id}
               getItemLabel={(_, index) => `image ${index + 1}`}
-              itemClassName="flex items-start gap-3 p-3 sm:p-4"
+              itemClassName="h-full min-w-0"
               items={media}
               onMove={(fromIndex, toIndex) =>
                 void reorderMedia(fromIndex, toIndex)
               }
               renderItem={(item, index, handle) => (
-                <>
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                <Card className="h-full gap-0 py-0">
+                  <CardHeader className="flex flex-row items-center justify-between gap-2 px-3 pt-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {handle}
+                      <h4 className="font-medium">Image {index + 1}</h4>
+                      {item.status !== "ready" && (
+                        <Badge
+                          className={mediaStatusClassName(item.status)}
+                          variant="outline"
+                        >
+                          {mediaStatusLabel(item.status)}
+                        </Badge>
+                      )}
+                    </div>
+                    {(item.status === "quarantined" ||
+                      item.status === "ready" ||
+                      item.status === "rejected" ||
+                      item.status === "deleting") && (
+                      <Button
+                        aria-label={
+                          operation === `delete:${item.id}`
+                            ? `Deleting image ${index + 1}`
+                            : item.status === "deleting"
+                              ? `Retry deletion of image ${index + 1}`
+                              : `Delete image ${index + 1}`
+                        }
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        disabled={operation !== null}
+                        onClick={() => void deleteMedia(item)}
+                        size="icon-sm"
+                        type="button"
+                        variant={
+                          item.status === "deleting" ? "outline" : "ghost"
+                        }
+                      >
+                        <Trash2 aria-hidden="true" />
+                      </Button>
+                    )}
+                  </CardHeader>
+
+                  <CardContent className="grid gap-3 p-3 pt-0">
                     {item.status === "ready" ? (
-                      <div className="relative aspect-[3/4] w-20 shrink-0 overflow-hidden rounded-md bg-muted">
+                      <AspectRatio
+                        className="overflow-hidden rounded-md bg-muted"
+                        ratio={4 / 3}
+                      >
                         <Image
                           alt=""
                           className="object-contain"
                           fill
-                          sizes="80px"
+                          sizes="(min-width: 1536px) 25vw, (min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw"
                           src={managedProductMediaPreviewUrl(
                             productId,
                             item.id,
                           )}
                           unoptimized
                         />
-                      </div>
+                      </AspectRatio>
                     ) : (
-                      <div
+                      <AspectRatio
                         aria-hidden="true"
-                        className="grid aspect-[3/4] w-20 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground"
+                        className="grid place-items-center rounded-md bg-muted text-muted-foreground"
+                        ratio={4 / 3}
                       >
                         <ImageOff aria-hidden="true" className="size-5" />
-                      </div>
+                      </AspectRatio>
                     )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {handle}
-                        <h4 className="font-medium">Image {index + 1}</h4>
-                        {item.status !== "ready" && (
-                          <Badge
-                            className={mediaStatusClassName(item.status)}
-                            variant="outline"
-                          >
-                            {mediaStatusLabel(item.status)}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="mt-1 break-words text-sm">{item.altText}</p>
+
+                    <div className="min-w-0">
+                      <p className="break-words text-sm">{item.altText}</p>
                       {item.variantId && (
                         <p className="mt-1 text-xs text-muted-foreground">
                           {variantLabel(variants, item.variantId)}
@@ -729,31 +766,8 @@ export function CatalogMediaManager({
                         </div>
                       )}
                     </div>
-                  </div>
-
-                  {(item.status === "quarantined" ||
-                    item.status === "ready" ||
-                    item.status === "rejected" ||
-                    item.status === "deleting") && (
-                    <Button
-                      aria-label={
-                        operation === `delete:${item.id}`
-                          ? `Deleting image ${index + 1}`
-                          : item.status === "deleting"
-                            ? `Retry deletion of image ${index + 1}`
-                            : `Delete image ${index + 1}`
-                      }
-                      className="shrink-0 text-muted-foreground hover:text-destructive"
-                      disabled={operation !== null}
-                      onClick={() => void deleteMedia(item)}
-                      size="icon-sm"
-                      type="button"
-                      variant={item.status === "deleting" ? "outline" : "ghost"}
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </Button>
-                  )}
-                </>
+                  </CardContent>
+                </Card>
               )}
             />
           )}
