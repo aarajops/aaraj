@@ -338,7 +338,7 @@ test("production storefront renders processed media through the same-origin API 
   ).toHaveAttribute("style", /transform:/);
   await expect(
     page.getByRole("button", { name: "Show image 2: Secondary media fixture" }),
-  ).toHaveAttribute("style", /aspect-ratio:/);
+  ).toHaveCSS("aspect-ratio", "1 / 1");
 
   const productCrawlerResponse = await page.request.get(
     "/shop/products/media-e2e-fixture",
