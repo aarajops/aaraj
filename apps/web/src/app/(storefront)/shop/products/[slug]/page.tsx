@@ -1,8 +1,8 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { getPublishedProduct } from "@/features/catalog/catalog-queries";
 import {
   getStorefrontMetadataDefaults,
@@ -11,6 +11,7 @@ import {
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 import { ProductGallery } from "./product-gallery";
 import { ProductPurchase } from "./product-purchase";
+import { RelatedProductsSection } from "./related-products-section";
 
 type ProductPageSearchParams = {
   color?: string | string[];
@@ -154,11 +155,11 @@ export default async function ProductPage({
 
         <div
           className={`grid items-start gap-5 sm:gap-8 lg:gap-10 ${
-            product.images.length > 0 ? "lg:grid-cols-6" : ""
+            product.images.length > 0 ? "lg:grid-cols-5" : ""
           }`}
         >
           {product.images.length > 0 && (
-            <div className="min-w-0 lg:col-span-4">
+            <div className="min-w-0 lg:col-span-3">
               <ProductGallery
                 images={product.images}
                 productName={product.name}
@@ -172,32 +173,30 @@ export default async function ProductPage({
               product.images.length > 0 ? "lg:col-span-2" : ""
             }`}
           >
-            <Card>
-              <CardHeader>
-                <h1
-                  className="text-2xl font-semibold tracking-tight sm:text-3xl"
-                  id="product-title"
-                >
-                  {product.name}
-                </h1>
-                {product.fit && (
-                  <Badge className="w-fit" variant="secondary">
-                    {product.fit} fit
-                  </Badge>
-                )}
-              </CardHeader>
-              <CardContent>
-                <ProductPurchase
-                  initialColor={initialColor}
-                  initialSize={initialSize}
-                  productId={product.id}
-                  productName={product.name}
-                  supportPhone={storefrontSettings.supportPhone}
-                  sizeGuide={product.sizeGuide}
-                  variants={product.variants}
-                />
-              </CardContent>
-            </Card>
+            <div className="space-y-1">
+              <h1
+                className="text-2xl font-semibold tracking-tight sm:text-3xl"
+                id="product-title"
+              >
+                {product.name}
+              </h1>
+              {product.fit && (
+                <Badge className="w-fit" variant="secondary">
+                  {product.fit} fit
+                </Badge>
+              )}
+            </div>
+            <div className="mt-5">
+              <ProductPurchase
+                initialColor={initialColor}
+                initialSize={initialSize}
+                productId={product.id}
+                productName={product.name}
+                supportPhone={storefrontSettings.supportPhone}
+                sizeGuide={product.sizeGuide}
+                variants={product.variants}
+              />
+            </div>
           </section>
         </div>
 
@@ -241,6 +240,17 @@ export default async function ProductPage({
             )}
           </section>
         )}
+
+        <Suspense fallback={null}>
+          <RelatedProductsSection
+            product={{
+              id: product.id,
+              audience: product.audience,
+              category: product.category,
+              price: product.price,
+            }}
+          />
+        </Suspense>
       </article>
     </main>
   );
