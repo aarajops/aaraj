@@ -117,7 +117,6 @@ export function CatalogManager({
     control,
     register,
     handleSubmit,
-    getFieldState,
     getValues,
     setError,
     setValue,
@@ -148,6 +147,7 @@ export function CatalogManager({
   );
   const productLoadRequestId = useRef(0);
   const slugSuggestionRequestId = useRef(0);
+  const slugWasManuallyEdited = useRef(false);
   const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
   const [sizeGuideLoadError, setSizeGuideLoadError] = useState<string | null>(
     null,
@@ -155,7 +155,7 @@ export function CatalogManager({
 
   async function suggestProductSlug(name: string) {
     const normalizedName = name.trim();
-    if (editingId || dirtyFields.slug || !normalizedName) return;
+    if (editingId || slugWasManuallyEdited.current || !normalizedName) return;
 
     const requestId = ++slugSuggestionRequestId.current;
     try {
@@ -167,7 +167,8 @@ export function CatalogManager({
       if (
         !result.success ||
         requestId !== slugSuggestionRequestId.current ||
-        getValues("name").trim() !== normalizedName
+        getValues("name").trim() !== normalizedName ||
+        slugWasManuallyEdited.current
       ) {
         return;
       }
@@ -271,7 +272,7 @@ export function CatalogManager({
       let response: Response;
       if (submission.id === null) {
         const input = { ...submission.input };
-        if (!getFieldState("slug").isDirty) delete input.slug;
+        if (!slugWasManuallyEdited.current) delete input.slug;
         response = await createCatalogProduct(input);
       } else {
         response = await updateCatalogProduct(submission.id, submission.input);
@@ -463,6 +464,7 @@ export function CatalogManager({
                     maxLength={CATALOG_PRODUCT_SLUG_MAX_LENGTH}
                     {...productSlugField}
                     onChange={(event) => {
+                      slugWasManuallyEdited.current = true;
                       slugSuggestionRequestId.current += 1;
                       void productSlugField.onChange(event);
                     }}
