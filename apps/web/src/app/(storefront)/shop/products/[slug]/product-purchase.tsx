@@ -165,7 +165,7 @@ export function ProductPurchase({
   if (variants.length === 0) return null;
 
   return (
-    <div className="mt-3 space-y-4">
+    <div className="space-y-4">
       {priceLabel && (
         <div
           aria-atomic="true"
@@ -284,7 +284,9 @@ function SizeGuideTable({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
           aria-describedby="size-guide-measurement-basis"
           className="min-w-max border-collapse text-left"
         >
-          <TableCaption className="sr-only">Size measurements</TableCaption>
+          <TableCaption className="sr-only">
+            Size measurements in inches
+          </TableCaption>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-auto px-3 py-2" scope="col">
@@ -333,7 +335,7 @@ function SizeGuideTable({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
       <div className="flex items-center justify-end gap-1 text-xs leading-none text-muted-foreground">
         <span id="size-guide-measurement-basis">
           {sizeGuide.measurementBasis === "garment" ? "Garment" : "Body"}{" "}
-          measurements
+          measurements in inches
         </span>
         <TooltipProvider>
           <Tooltip>
@@ -351,8 +353,8 @@ function SizeGuideTable({ sizeGuide }: { sizeGuide: CatalogSizeGuide }) {
             />
             <TooltipContent>
               {sizeGuide.measurementBasis === "garment"
-                ? "These values describe the garment, not body measurements."
-                : "These values describe body measurements, not garment dimensions."}
+                ? "Measurements are in inches and describe the garment, not body measurements."
+                : "Measurements are in inches and describe body measurements, not garment dimensions."}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

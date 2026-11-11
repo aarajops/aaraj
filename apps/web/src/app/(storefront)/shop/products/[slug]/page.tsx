@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { getPublishedProduct } from "@/features/catalog/catalog-queries";
 import {
   getStorefrontMetadataDefaults,
@@ -170,26 +172,32 @@ export default async function ProductPage({
               product.images.length > 0 ? "lg:col-span-2" : ""
             }`}
           >
-            <h1
-              className="text-2xl font-semibold tracking-tight sm:text-3xl"
-              id="product-title"
-            >
-              {product.name}
-            </h1>
-            {product.fit && (
-              <p className="mt-2 text-sm text-muted-foreground">
-                {product.fit} fit
-              </p>
-            )}
-            <ProductPurchase
-              initialColor={initialColor}
-              initialSize={initialSize}
-              productId={product.id}
-              productName={product.name}
-              supportPhone={storefrontSettings.supportPhone}
-              sizeGuide={product.sizeGuide}
-              variants={product.variants}
-            />
+            <Card>
+              <CardHeader>
+                <h1
+                  className="text-2xl font-semibold tracking-tight sm:text-3xl"
+                  id="product-title"
+                >
+                  {product.name}
+                </h1>
+                {product.fit && (
+                  <Badge className="w-fit" variant="secondary">
+                    {product.fit} fit
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent>
+                <ProductPurchase
+                  initialColor={initialColor}
+                  initialSize={initialSize}
+                  productId={product.id}
+                  productName={product.name}
+                  supportPhone={storefrontSettings.supportPhone}
+                  sizeGuide={product.sizeGuide}
+                  variants={product.variants}
+                />
+              </CardContent>
+            </Card>
           </section>
         </div>
 

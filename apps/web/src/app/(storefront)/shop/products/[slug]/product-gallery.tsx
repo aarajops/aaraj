@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { CatalogProductDetail } from "@aaraj/contracts";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 import {
   Carousel,
   CarouselContent,
@@ -118,7 +119,7 @@ export function ProductGallery({
               <button
                 aria-label={`Show image ${index + 1}: ${image.altText}`}
                 aria-pressed={selectedImage.id === image.id}
-                className={`block w-20 overflow-hidden rounded-md border bg-muted/30 outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
+                className={`block aspect-square w-20 overflow-hidden rounded-md border bg-muted/30 outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 ${
                   selectedImage.id === image.id
                     ? "border-primary"
                     : "border-border hover:border-foreground/40"
@@ -126,9 +127,6 @@ export function ProductGallery({
                 onClick={() =>
                   setManualSelection({ selectionKey, imageId: image.id })
                 }
-                style={{
-                  aspectRatio: `${image.card.width} / ${image.card.height}`,
-                }}
                 type="button"
               >
                 <Image
@@ -158,18 +156,21 @@ export function ProductGallery({
               className="pl-0"
               key={image.id}
             >
-              <div className="overflow-hidden rounded-lg bg-muted/30">
+              <AspectRatio
+                className="overflow-hidden rounded-lg bg-muted/30"
+                ratio={1}
+              >
                 <Image
                   alt={image.altText}
-                  className="block h-auto w-full object-contain"
+                  className="object-contain"
                   fetchPriority={index === selectedImageIndex ? "high" : "auto"}
-                  height={image.detail.height}
+                  fill
                   loading={index === selectedImageIndex ? "eager" : "lazy"}
+                  sizes="(min-width: 1024px) 60vw, 100vw"
                   src={image.detail.src}
                   unoptimized
-                  width={image.detail.width}
                 />
-              </div>
+              </AspectRatio>
             </CarouselItem>
           ))}
         </CarouselContent>
