@@ -41,7 +41,7 @@ export function readOrderPiiKeyring(
   };
   if (
     typeof activeKeyId !== "string" ||
-    !/^[A-Za-z0-9_-]+$/.test(activeKeyId)
+    !/^[A-Za-z0-9_-]{1,32}$/.test(activeKeyId)
   ) {
     throw new Error("ORDER_PII_KEYRING must include a valid activeKeyId.");
   }
@@ -56,7 +56,7 @@ export function readOrderPiiKeyring(
 
   const keys = new Map<string, Buffer>();
   for (const [keyId, encodedKey] of Object.entries(entries)) {
-    if (!/^[A-Za-z0-9_-]+$/.test(keyId)) {
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(keyId)) {
       throw new Error(
         "Order PII encryption key IDs must use letters, digits, underscores, or hyphens.",
       );

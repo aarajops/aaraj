@@ -29,6 +29,8 @@ import {
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3181);
 const products = [];
+const mediaByProduct = new Map();
+const videosByProduct = new Map();
 const publicStorefrontSettings = {
   siteName: "Aaraj",
   brandColor: "#7b2220",
@@ -119,6 +121,21 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
     ).toISOString(),
   };
 });
+const managedOrderNotifications = [
+  {
+    id: "00000000-0000-4000-8000-000000000501",
+    orderId: managedOrders[0].id,
+    orderReference: managedOrders[0].reference,
+    eventKey: "order_received",
+    status: "unknown",
+    attemptCount: 1,
+    providerMessageSid: null,
+    providerStatus: "provider_outcome_ambiguous",
+    lastErrorCode: "TWILIO_OUTCOME_UNKNOWN",
+    createdAt: "2026-10-01T12:00:00.000Z",
+    updatedAt: "2026-10-01T12:01:00.000Z",
+  },
+];
 const managedUsers = [
   {
     id: "e2e-staff-user",
@@ -299,6 +316,7 @@ const mediaFixtureProduct = {
     {
       id: mediaFixtureId,
       variantId: null,
+      variantColor: null,
       altText: "A one-pixel product image used to verify media delivery.",
       card: {
         src: mediaFixtureCardPath,
@@ -310,6 +328,7 @@ const mediaFixtureProduct = {
     {
       id: "b3d4f309-2b26-5d75-b2c3-a2d9db5e4ed3",
       variantId: null,
+      variantColor: null,
       altText: "Secondary media fixture",
       card: {
         src: mediaFixtureCardPath,
@@ -357,13 +376,56 @@ function requireCategoryAdmin(request, response) {
 }
 
 async function readBody(request) {
-  let body = "";
-  for await (const chunk of request) body += chunk;
+  const body = (await readRawBody(request)).toString("utf8");
   try {
     return JSON.parse(body);
   } catch {
     return null;
   }
+}
+
+async function readRawBody(request) {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+async function readMultipart(request) {
+  const contentType = request.headers["content-type"] ?? "";
+  const boundary =
+    contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/)?.[1] ??
+    contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/)?.[2];
+  if (!boundary) return { fields: {}, file: null };
+  const body = await readRawBody(request);
+  const fields = {};
+  let file = null;
+  for (const rawPart of body.toString("latin1").split(`--${boundary}`)) {
+    let part = Buffer.from(rawPart, "latin1");
+    if (part.length === 0 || part.toString("latin1").startsWith("--")) continue;
+    if (part.subarray(0, 2).toString() === "\r\n") part = part.subarray(2);
+    if (part.subarray(-2).toString() === "\r\n") part = part.subarray(0, -2);
+    const separator = part.indexOf(Buffer.from("\r\n\r\n"));
+    if (separator < 0) continue;
+    const headers = part.subarray(0, separator).toString("latin1");
+    const value = part.subarray(separator + 4);
+    const name = headers.match(/name="([^"]+)"/)?.[1];
+    if (!name) continue;
+    const filename = headers.match(/filename="([^"]*)"/)?.[1];
+    if (filename !== undefined) {
+      file = {
+        filename,
+        contentType:
+          headers.match(/\r\nContent-Type:\s*([^\r\n]+)/i)?.[1] ??
+          "application/octet-stream",
+        bytes: value,
+      };
+    } else {
+      fields[name] = value.toString("utf8");
+    }
+  }
+  return { fields, file };
 }
 
 const heldApiPaths = new Set();
@@ -730,6 +792,45 @@ const server = createServer(async (request, response) => {
           ? candidateNextOffset
           : null,
     });
+    return;
+  }
+
+  if (
+    url.pathname === "/api/v1/orders/manage/notifications/outbox" &&
+    method === "GET"
+  ) {
+    if (!requireStaff(request, response)) return;
+    send(response, 200, managedOrderNotifications);
+    return;
+  }
+  const notificationResolution =
+    /^\/api\/v1\/orders\/manage\/notifications\/([0-9a-f-]+)\/resolve$/.exec(
+      url.pathname,
+    );
+  if (notificationResolution && method === "PATCH") {
+    if (!requireStaff(request, response)) return;
+    const body = await readBody(request);
+    const notification = managedOrderNotifications.find(
+      ({ id }) => id === notificationResolution[1],
+    );
+    if (
+      !notification ||
+      !["confirmed_sent", "confirmed_not_sent"].includes(body?.resolution) ||
+      typeof body?.reason !== "string"
+    ) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid notification resolution",
+      });
+      return;
+    }
+    notification.status =
+      body.resolution === "confirmed_sent" ? "accepted" : "pending";
+    notification.providerStatus =
+      body.resolution === "confirmed_sent" ? "operator_confirmed_sent" : null;
+    notification.lastErrorCode = null;
+    notification.updatedAt = new Date().toISOString();
+    send(response, 200, notification);
     return;
   }
 
@@ -1156,6 +1257,359 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  const managedVideoPath = url.pathname.match(
+    /^\/api\/v1\/catalog\/products\/manage\/([^/]+)\/videos(?:\/([^/]+)(?:\/(complete|sync|captions\/([^/]+)))?)?$/,
+  );
+  if (managedVideoPath) {
+    if (!requireStaff(request, response)) return;
+    const [, productId, videoId, action, language] = managedVideoPath;
+    const product = products.find(({ id }) => id === productId);
+    if (!product) {
+      send(response, 404, { statusCode: 404, message: "Product not found" });
+      return;
+    }
+    const videos = videosByProduct.get(productId) ?? [];
+    if (!videoId && method === "GET") {
+      send(response, 200, { videos: videos.map(toManagedVideo) });
+      return;
+    }
+    if (!videoId && method === "POST") {
+      const body = await readBody(request);
+      if (
+        !body?.commandId ||
+        !Number.isInteger(body.fileSizeBytes) ||
+        !body.title
+      ) {
+        send(response, 400, {
+          statusCode: 400,
+          message: "Invalid video upload",
+        });
+        return;
+      }
+      const replay = videos.find(
+        ({ commandId }) => commandId === body.commandId,
+      );
+      if (replay) {
+        send(response, 201, {
+          video: toManagedVideo(replay),
+          uploadUrl: replay.uploadUrl,
+        });
+        return;
+      }
+      const now = new Date().toISOString();
+      const id = randomUUID();
+      const uploadUrl = `https://upload.videodelivery.net/${id.replaceAll("-", "")}`;
+      const video = {
+        id,
+        productId,
+        commandId: body.commandId,
+        title: body.title,
+        description: body.description ?? null,
+        variantColor: body.variantColor ?? null,
+        sortOrder: videos.length,
+        status: "awaiting_upload",
+        durationSeconds: null,
+        captions: [],
+        createdAt: now,
+        updatedAt: now,
+        uploadUrl,
+      };
+      videos.push(video);
+      videosByProduct.set(productId, videos);
+      send(response, 201, { video: toManagedVideo(video), uploadUrl });
+      return;
+    }
+    if (!videoId || action === "complete" || action === "sync") {
+      const video = videos.find((candidate) => candidate.id === videoId);
+      if (!video) {
+        send(response, 404, { statusCode: 404, message: "Video not found" });
+        return;
+      }
+      if (method === "POST" && action === "complete") {
+        video.status = "processing";
+        video.uploadUrl = null;
+        video.updatedAt = new Date().toISOString();
+        send(response, 201, toManagedVideo(video));
+        return;
+      }
+      if (method === "POST" && action === "sync") {
+        video.status = "ready";
+        video.durationSeconds = 23.5;
+        video.updatedAt = new Date().toISOString();
+        send(response, 201, toManagedVideo(video));
+        return;
+      }
+    }
+    if (videoId && action?.startsWith("captions/") && method === "POST") {
+      const video = videos.find((candidate) => candidate.id === videoId);
+      if (!video) {
+        send(response, 404, { statusCode: 404, message: "Video not found" });
+        return;
+      }
+      const { file } = await readMultipart(request);
+      if (!file || !file.filename?.endsWith(".vtt")) {
+        send(response, 400, {
+          statusCode: 400,
+          message: "Upload a WebVTT file",
+        });
+        return;
+      }
+      video.captions = [
+        {
+          language,
+          label: language === "bn" ? "বাংলা" : language,
+          status: "ready",
+        },
+      ];
+      video.updatedAt = new Date().toISOString();
+      send(response, 201, toManagedVideo(video));
+      return;
+    }
+    if (videoId === "order" && method === "PATCH") {
+      const body = await readBody(request);
+      if (
+        !Array.isArray(body?.videoIds) ||
+        body.videoIds.length !== videos.length ||
+        body.videoIds.some((id) => !videos.some((video) => video.id === id))
+      ) {
+        send(response, 409, {
+          statusCode: 409,
+          message: "Invalid video order",
+        });
+        return;
+      }
+      const reordered = body.videoIds.map((id, sortOrder) => {
+        const video = videos.find((candidate) => candidate.id === id);
+        return { ...video, sortOrder };
+      });
+      videosByProduct.set(productId, reordered);
+      send(response, 200, { videos: reordered.map(toManagedVideo) });
+      return;
+    }
+    if (videoId && method === "PATCH" && !action) {
+      const body = await readBody(request);
+      const video = videos.find((candidate) => candidate.id === videoId);
+      if (!video) {
+        send(response, 404, { statusCode: 404, message: "Video not found" });
+        return;
+      }
+      Object.assign(video, body, { updatedAt: new Date().toISOString() });
+      send(response, 200, toManagedVideo(video));
+      return;
+    }
+    if (videoId && method === "DELETE") {
+      const nextVideos = videos.filter((video) => video.id !== videoId);
+      if (nextVideos.length === videos.length) {
+        send(response, 404, { statusCode: 404, message: "Video not found" });
+        return;
+      }
+      nextVideos.forEach((video, sortOrder) => (video.sortOrder = sortOrder));
+      videosByProduct.set(productId, nextVideos);
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+  }
+
+  const publicVideoPath = url.pathname.match(
+    /^\/api\/v1\/catalog\/products\/([^/]+)\/videos$/,
+  );
+  if (publicVideoPath && method === "GET") {
+    const product = products.find(
+      (candidate) =>
+        candidate.slug === publicVideoPath[1] && candidate.isPublished,
+    );
+    if (!product) {
+      send(response, 404, { statusCode: 404, message: "Product not found" });
+      return;
+    }
+    send(response, 200, {
+      videos: (videosByProduct.get(product.id) ?? [])
+        .filter((video) => video.status === "ready")
+        .map(toPublicVideo),
+    });
+    return;
+  }
+
+  const managedMediaPath = url.pathname.match(
+    /^\/api\/v1\/catalog\/products\/manage\/([^/]+)\/media(?:\/([^/]+)(?:\/(preview))?)?$/,
+  );
+  if (managedMediaPath) {
+    if (!requireStaff(request, response)) return;
+    const [, productId, mediaId, preview] = managedMediaPath;
+    const product = products.find(({ id }) => id === productId);
+    if (!product) {
+      send(response, 404, { statusCode: 404, message: "Product not found" });
+      return;
+    }
+    const media = mediaByProduct.get(productId) ?? [];
+    if (!mediaId && method === "GET") {
+      send(response, 200, { media });
+      return;
+    }
+    if (!mediaId && method === "POST") {
+      const { fields, file } = await readMultipart(request);
+      if (!file || !fields.commandId || !fields.altText) {
+        send(response, 400, {
+          statusCode: 400,
+          message: "Invalid media upload",
+        });
+        return;
+      }
+      const replay = media.find(
+        ({ commandId }) => commandId === fields.commandId,
+      );
+      if (replay) {
+        send(response, 201, replay);
+        return;
+      }
+      const id = randomUUID();
+      const now = new Date().toISOString();
+      const record = {
+        id,
+        commandId: fields.commandId,
+        productId,
+        variantId: fields.variantId || null,
+        variantColor: fields.variantColor || null,
+        altText: fields.altText,
+        reason: fields.reason || null,
+        deletionReason: null,
+        contentType: file.contentType,
+        sizeBytes: file.bytes.byteLength,
+        sortOrder: media.length,
+        status: "ready",
+        createdAt: now,
+        updatedAt: now,
+      };
+      media.push(record);
+      mediaByProduct.set(productId, media);
+      const imagePath = `/api/v1/catalog/media/${id}/detail/${mediaFixtureSha256}.webp`;
+      product.images ??= [];
+      product.images.push({
+        id,
+        variantId: record.variantId,
+        variantColor: record.variantColor,
+        altText: record.altText,
+        card: {
+          src: imagePath.replace("/detail/", "/card/"),
+          width: 1,
+          height: 1,
+        },
+        detail: { src: imagePath, width: 1, height: 1 },
+      });
+      send(response, 201, record);
+      return;
+    }
+    if (mediaId && preview && method === "GET") {
+      if (!media.some((item) => item.id === mediaId)) {
+        send(response, 404, { statusCode: 404, message: "Media not found" });
+        return;
+      }
+      response.writeHead(200, {
+        "Content-Type": "image/webp",
+        "Content-Length": String(mediaFixtureBytes.byteLength),
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      });
+      response.end(mediaFixtureBytes);
+      return;
+    }
+    if (mediaId && !preview && method === "PATCH") {
+      const body = await readBody(request);
+      const item = media.find((candidate) => candidate.id === mediaId);
+      if (
+        !item ||
+        item.status !== "ready" ||
+        typeof body?.altText !== "string" ||
+        (body.variantId && body.variantColor)
+      ) {
+        send(response, 400, {
+          statusCode: item ? 400 : 404,
+          message: item ? "Invalid media details" : "Media not found",
+        });
+        return;
+      }
+      const nextImage = {
+        ...product.images.find((image) => image.id === mediaId),
+        altText: body.altText,
+        variantId: body.variantId ?? null,
+        variantColor: body.variantColor ?? null,
+      };
+      const nextImages = product.images.map((image) =>
+        image.id === mediaId ? nextImage : image,
+      );
+      if (
+        product.isPublished &&
+        !isPublishable(
+          { ...product, images: nextImages },
+          product.variants,
+          sizeGuides.find(({ id }) => id === product.sizeGuideId),
+        )
+      ) {
+        send(response, 409, {
+          statusCode: 409,
+          message: "Keep a processed image for every active color.",
+        });
+        return;
+      }
+      Object.assign(item, {
+        altText: body.altText,
+        variantId: body.variantId ?? null,
+        variantColor: body.variantColor ?? null,
+        updatedAt: new Date().toISOString(),
+      });
+      product.images = nextImages;
+      send(response, 200, item);
+      return;
+    }
+    if (mediaId === "order" && !preview && method === "PATCH") {
+      const body = await readBody(request);
+      if (
+        !body ||
+        !Array.isArray(body.mediaIds) ||
+        body.mediaIds.length !== media.length ||
+        new Set(body.mediaIds).size !== media.length ||
+        body.mediaIds.some((id) => !media.some((item) => item.id === id))
+      ) {
+        send(response, 409, {
+          statusCode: 409,
+          message: "Invalid media order",
+        });
+        return;
+      }
+      const reordered = body.mediaIds.map((id, sortOrder) => {
+        const item = media.find((candidate) => candidate.id === id);
+        return { ...item, sortOrder };
+      });
+      mediaByProduct.set(productId, reordered);
+      send(response, 200, { media: reordered });
+      return;
+    }
+    if (mediaId && !preview && method === "DELETE") {
+      const body = await readBody(request);
+      if (body && typeof body.reason === "string") {
+        send(response, 400, {
+          statusCode: 400,
+          message: "Invalid delete reason",
+        });
+        return;
+      }
+      const nextMedia = media.filter((item) => item.id !== mediaId);
+      if (nextMedia.length === media.length) {
+        send(response, 404, { statusCode: 404, message: "Media not found" });
+        return;
+      }
+      nextMedia.forEach((item, sortOrder) => (item.sortOrder = sortOrder));
+      mediaByProduct.set(productId, nextMedia);
+      product.images = (product.images ?? []).filter(
+        ({ id }) => id !== mediaId,
+      );
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+  }
+
   if (url.pathname === "/api/v1/catalog/products/filters" && method === "GET") {
     const publishedProducts = products.filter(({ isPublished }) => isPublished);
     const purchasableVariants = publishedProducts.flatMap((product) =>
@@ -1232,7 +1686,10 @@ const server = createServer(async (request, response) => {
   }
 
   if (
-    [mediaFixturePath, mediaFixtureCardPath].includes(url.pathname) &&
+    ([mediaFixturePath, mediaFixtureCardPath].includes(url.pathname) ||
+      /^\/api\/v1\/catalog\/media\/[0-9a-f-]{36}\/(?:card|detail)\/[0-9a-f]{64}\.webp$/.test(
+        url.pathname,
+      )) &&
     method === "GET"
   ) {
     response.writeHead(200, {
@@ -1294,6 +1751,7 @@ const server = createServer(async (request, response) => {
       slug,
       name: body.name,
       description: body.description ?? null,
+      contentBlocks: body.contentBlocks ?? [],
       audience: body.audience,
       category: body.categoryId
         ? categoryReference(categories.find(({ id }) => id === body.categoryId))
@@ -1303,6 +1761,7 @@ const server = createServer(async (request, response) => {
       careInstructions: body.careInstructions ?? null,
       sizeGuideId: body.sizeGuideId ?? null,
       isPublished: body.isPublished ?? false,
+      images: [],
       createdAt: now,
       updatedAt: now,
       variants: (body.variants ?? []).map((variant) => ({
@@ -1411,6 +1870,10 @@ const server = createServer(async (request, response) => {
       name: body.name ?? product.name,
       description:
         body.description !== undefined ? body.description : product.description,
+      contentBlocks:
+        body.contentBlocks !== undefined
+          ? body.contentBlocks
+          : product.contentBlocks,
       audience: body.audience ?? product.audience,
       category: categoryId
         ? categoryReference(categories.find(({ id }) => id === categoryId))
@@ -1611,6 +2074,7 @@ function productDetail(product, management = false) {
           images: (product.images ?? []).map((image) => ({
             ...image,
             variantId: image.variantId ?? null,
+            variantColor: image.variantColor ?? null,
           })),
         }),
     variants: product.variants
@@ -1629,9 +2093,35 @@ function productDetail(product, management = false) {
   };
 }
 
+function toManagedVideo(video) {
+  const {
+    uploadUrl: _uploadUrl,
+    commandId: _commandId,
+    ...managedVideo
+  } = video;
+  return managedVideo;
+}
+
+function toPublicVideo(video) {
+  const {
+    uploadUrl: _uploadUrl,
+    commandId: _commandId,
+    productId: _productId,
+    status: _status,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...publicVideo
+  } = video;
+  return {
+    ...publicVideo,
+    playbackUrl: `https://iframe.videodelivery.net/signed-${video.id}`,
+  };
+}
+
 function summary(product) {
   const fields = { ...product };
   delete fields.variants;
+  delete fields.images;
   const price = startingPrice(product);
   return {
     ...fields,
@@ -1647,19 +2137,26 @@ function startingPrice(product) {
 }
 
 function isPublishable(product, variants, guide) {
+  const coveredColors = new Set(
+    (product.images ?? [])
+      .map(({ variantColor }) => normalize(variantColor ?? ""))
+      .filter(Boolean),
+  );
   return Boolean(
     product.audience &&
-    product.category?.id &&
-    guide &&
-    variants.length > 0 &&
-    variants.every((variant) => variant.price !== null) &&
-    isCategoryOrDescendant(product.category.id, guide.category.id) &&
-    normalize(product.fit ?? "") === normalize(guide.fit ?? "") &&
-    variants.every((variant) =>
-      guide.rows.some(
-        (row) => normalize(row.sizeLabel) === normalize(variant.sizeLabel),
+      product.category?.id &&
+      guide &&
+      variants.length > 0 &&
+      variants.every((variant) => variant.price !== null) &&
+      isCategoryOrDescendant(product.category.id, guide.category.id) &&
+      normalize(product.fit ?? "") === normalize(guide.fit ?? "") &&
+      variants.every((variant) =>
+        guide.rows.some(
+          (row) => normalize(row.sizeLabel) === normalize(variant.sizeLabel),
+        ),
       ),
-    ),
+    coveredColors.size > 0,
+    variants.every((variant) => coveredColors.has(normalize(variant.color))),
   );
 }
 
@@ -1778,7 +2275,12 @@ function sendPublishedProductPage(response, source, url) {
       );
       return {
         ...summary(product),
-        images: product.images ?? [],
+        images: (product.images ?? []).map(({ id, altText, card, detail }) => ({
+          id,
+          altText,
+          card,
+          detail,
+        })),
         priceVaries:
           new Set(purchasableVariants.map(({ price }) => price.amountBdt))
             .size > 1,

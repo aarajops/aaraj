@@ -1,6 +1,7 @@
 import { createDecipheriv } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
+import { configuredRole, required } from "./migration-support.mjs";
 
 export async function backfillOrderAddressSnapshots(client, keyring) {
   const { OrderAddressSchema } = await import("@aaraj/contracts");
@@ -154,15 +155,27 @@ async function main() {
   const client = await pool.connect();
 
   try {
-    const oldColumn = await client.query(
-      `SELECT EXISTS (
-         SELECT 1 FROM information_schema.columns
-         WHERE table_schema = 'orders'
-           AND table_name = 'order_header'
-           AND column_name = 'address_ciphertext'
-       ) AS present`,
+    const addressColumns = await client.query(
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'orders'
+          AND table_name = 'order_header'
+          AND column_name = ANY($1::text[])`,
+      [
+        [
+          "address_snapshot",
+          "address_ciphertext",
+          "address_name_prefixes",
+          "address_phone_prefixes",
+        ],
+      ],
     );
-    if (!oldColumn.rows[0].present) {
+    const present = new Set(addressColumns.rows.map((row) => row.column_name));
+    const hasPreEncryptionPayload =
+      present.has("address_ciphertext") &&
+      !present.has("address_name_prefixes") &&
+      !present.has("address_phone_prefixes");
+    if (!hasPreEncryptionPayload) {
       process.stdout.write("complete\n");
     } else if (mode === "--check") {
       process.stdout.write("required\n");
@@ -175,19 +188,6 @@ async function main() {
     client.release();
     await pool.end();
   }
-}
-
-function configuredRole(primary, localFallback) {
-  const value = process.env[primary]?.trim();
-  if (value) return value;
-  if (process.env.NODE_ENV === "production") return required(primary);
-  return required(localFallback);
-}
-
-function required(name) {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} must be configured.`);
-  return value;
 }
 
 if (

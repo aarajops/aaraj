@@ -98,6 +98,10 @@ test("staff manages reusable size guides and apparel products safely", async ({
   baseURL,
 }) => {
   test.setTimeout(120_000);
+  const pngBuffer = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
+    "base64",
+  );
 
   await page.goto("/shop");
   await expect(
@@ -230,14 +234,90 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await variantField(page, 2, "Size").fill("M");
   await variantField(page, 2, "Selling price (BDT)").fill("2200");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
-  await page.getByLabel("Published on the storefront").check();
   await variantField(page, 2, "Selling price (BDT)").fill("2200.50");
-  await page.getByRole("button", { name: "Create and publish" }).click();
+  await page.getByRole("button", { name: "Create draft" }).click();
   await expect(
     page.getByText("Enter each price as a whole BDT amount, for example 1999."),
   ).toBeVisible();
   await variantField(page, 2, "Selling price (BDT)").fill("2200");
-  await page.getByRole("button", { name: "Create and publish" }).click();
+  await page.getByRole("button", { name: "Create draft" }).click();
+  await expect(page).toHaveURL(/\/admin\/catalog\/[0-9a-f-]+\/edit$/);
+  await page.locator("#catalog-media-file").setInputFiles({
+    name: "tee-black.png",
+    mimeType: "image/png",
+    buffer: pngBuffer,
+  });
+  await page
+    .getByLabel("Alt text for tee-black.png")
+    .fill("Black tee front view");
+  await chooseSelectOption(page, "Color association", "Black");
+  await page.getByRole("button", { name: "Upload images" }).click();
+  await expect(page.getByLabel("Alt text for image 1")).toHaveValue(
+    "Black tee front view",
+  );
+  const videoBuffer = Buffer.from("test-video-payload");
+  await page.route("https://upload.videodelivery.net/**", async (route) => {
+    const method = route.request().method();
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "OPTIONS, HEAD, PATCH",
+      "Access-Control-Allow-Headers":
+        "Tus-Resumable, Upload-Offset, Upload-Length, Upload-Metadata, Content-Type",
+      "Access-Control-Expose-Headers":
+        "Tus-Resumable, Upload-Offset, Upload-Length, Location",
+    };
+    if (method === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: corsHeaders });
+    } else if (method === "HEAD") {
+      await route.fulfill({
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Tus-Resumable": "1.0.0",
+          "Upload-Offset": "0",
+          "Upload-Length": String(videoBuffer.byteLength),
+        },
+      });
+    } else if (method === "PATCH") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          ...corsHeaders,
+          "Tus-Resumable": "1.0.0",
+          "Upload-Offset": String(videoBuffer.byteLength),
+        },
+      });
+    } else {
+      await route.fulfill({ status: 405, headers: corsHeaders });
+    }
+  });
+  await page.getByLabel("Video file").setInputFiles({
+    name: "black-tee.mp4",
+    mimeType: "video/mp4",
+    buffer: videoBuffer,
+  });
+  await page
+    .getByLabel("Accessible video title")
+    .fill("Black tee product clip");
+  await page.locator("#catalog-video-color").selectOption("Black");
+  await page.getByRole("button", { name: "Upload video" }).click();
+  await expect(page.getByText("Video uploaded for processing")).toBeVisible();
+  await expect(page.getByText("Processing", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Sync" }).click();
+  await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+  await page
+    .getByLabel("WebVTT caption file for Black tee product clip")
+    .setInputFiles({
+      name: "captions.vtt",
+      mimeType: "text/vtt",
+      buffer: Buffer.from(
+        "WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nSoft cotton.\n",
+      ),
+    });
+  await page.getByRole("button", { name: "Upload WebVTT" }).click();
+  await expect(page.getByText("বাংলা · ready")).toBeVisible();
+  await page.getByLabel("Published on the storefront").check();
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
@@ -374,7 +454,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
   const selectedSizes = new URL(page.url()).searchParams.getAll("size");
   expect(selectedSizes).toEqual(expect.arrayContaining(["M", "S"]));
   await expect(page).toHaveURL(/search=Aaraj\+E2E/);
-  await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Aaraj E2E Tee From/ }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Clear filters" }).click();
   await expect(page).toHaveURL(
     /\/shop\/categories\/t-shirts\?search=Aaraj\+E2E/,
@@ -427,8 +509,10 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
 
   await page.goto("/shop");
-  await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
-  await page.getByRole("link", { name: /Aaraj E2E Tee/ }).click();
+  await expect(
+    page.getByRole("link", { name: /Aaraj E2E Tee From/ }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: /Aaraj E2E Tee From/ }).click();
   await expect(
     page.getByRole("heading", { name: "Aaraj E2E Tee", level: 1 }),
   ).toBeVisible();
@@ -469,8 +553,23 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await variantField(page, 1, "Size").fill("M");
   await variantField(page, 1, "Selling price (BDT)").fill("1999");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
+  await page.getByRole("button", { name: "Create draft" }).click();
+  await expect(page).toHaveURL(/\/admin\/catalog\/[0-9a-f-]+\/edit$/);
+  await page.locator("#catalog-media-file").setInputFiles({
+    name: "tee-white.png",
+    mimeType: "image/png",
+    buffer: pngBuffer,
+  });
+  await page
+    .getByLabel("Alt text for tee-white.png")
+    .fill("White tee front view");
+  await chooseSelectOption(page, "Color association", "White");
+  await page.getByRole("button", { name: "Upload images" }).click();
+  await expect(page.getByLabel("Alt text for image 1")).toHaveValue(
+    "White tee front view",
+  );
   await page.getByLabel("Published on the storefront").check();
-  await page.getByRole("button", { name: "Create and publish" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   await page.goto("/admin/catalog?limit=1&offset=0");
@@ -509,6 +608,11 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
+  await openProductEdit(page, "Aaraj E2E Tee");
+  await page.getByLabel("Published on the storefront").uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
+
   await openProductActions(page, "Aaraj E2E Tee");
   const mediaEditHref = await page
     .getByRole("menuitem", { name: "Edit product" })
@@ -522,6 +626,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
     commandId: "b3dd6b45-82ac-4bf4-88d9-7c76cb14e879",
     productId: mediaProductId,
     variantId: null,
+    variantColor: null,
     altText: "Front view of Aaraj E2E Tee",
     reason: "Recover interrupted media upload",
     deletionReason: null,
@@ -535,10 +640,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
   let mediaRows: CatalogMedia[] = [mediaRow];
   let uploadAttempts = 0;
   let deleteAttempts = 0;
-  const pngBuffer = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
-    "base64",
-  );
   await page.route(
     "**/api/v1/catalog/products/manage/*/media**",
     async (route) => {
@@ -645,11 +746,6 @@ test("staff manages reusable size guides and apparel products safely", async ({
     page.getByText("No media has been uploaded for this product."),
   ).toBeVisible();
 
-  await page.goto("/admin/catalog");
-  await openProductEdit(page, "Aaraj E2E Tee");
-  await page.getByLabel("Published on the storefront").uncheck();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/admin\/catalog$/);
   await page.goto("/shop");
   await expect(
     page.getByRole("heading", { name: "No products are available yet" }),
@@ -763,6 +859,7 @@ test("customer Order page explains cancellation", async ({ page }) => {
           postalCode: null,
           instructions: null,
         },
+        smsUpdatesConsent: false,
         createdAt: "2026-10-01T12:00:00.000Z",
         guestAccessExpiresAt: "2026-10-31T12:00:00.000Z",
       },

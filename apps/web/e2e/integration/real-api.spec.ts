@@ -1052,7 +1052,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await variantField(page, 2, "Size").fill("M");
   await variantField(page, 2, "Selling price (BDT)").fill("2490");
   await page.getByRole("button", { name: "Create draft" }).click();
-  await expect(page).toHaveURL(/\/admin\/catalog$/);
+  await expect(page).toHaveURL(/\/admin\/catalog\/[^/]+\/edit$/);
 
   expect(
     (await page.request.get(`/api/v1/catalog/products/${slug}`)).status(),
@@ -1083,6 +1083,32 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("combobox", { name: "Reusable size guide" }),
   ).toContainText(guideName);
+
+  const productImage = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
+    "base64",
+  );
+  for (const [color, filename, altText] of [
+    ["Black", "black-front.png", "Black tee front view"],
+    ["Red", "red-front.png", "Red tee front view"],
+  ] as const) {
+    await page.locator("#catalog-media-file").setInputFiles({
+      name: filename,
+      mimeType: "image/png",
+      buffer: productImage,
+    });
+    await page.getByLabel(`Alt text for ${filename}`).fill(altText);
+    await page.locator("#catalog-media-variant").click();
+    await page
+      .getByRole("listbox")
+      .getByRole("option", { name: color, exact: true })
+      .click();
+    await page.getByRole("button", { name: "Upload images" }).click();
+    await expect(
+      page.getByRole("button", { name: "Save image details" }),
+    ).toHaveCount(color === "Black" ? 1 : 2);
+  }
+
   await page.getByLabel("Published on the storefront").check();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
@@ -1108,18 +1134,22 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/size=S/);
   await expect(page).toHaveURL(/audience=unisex/);
   expect(new URL(page.url()).searchParams.get("search")).toBe("100% cotton");
-  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: new RegExp(`^${productName} From`) }),
+  ).toBeVisible();
   await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
   await expect(
     page.locator("del").getByText("৳2,990", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: `${productName}: image unavailable` }),
+    page.getByRole("img", { name: "Black tee front view" }),
   ).toBeVisible();
   const minimumPrice = productFilters.getByLabel("Minimum (৳)");
   await minimumPrice.fill("2450");
   await expect(page).toHaveURL(/minPriceBdt=2450/);
-  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: new RegExp(`^${productName} From`) }),
+  ).toBeVisible();
 
   const minimumPriceSlider = productFilters.getByRole("slider", {
     name: "Minimum price",
@@ -1132,7 +1162,9 @@ test("catalog operator configures a product through to storefront visibility", a
 
   await minimumPrice.fill("2450");
   await expect(page).toHaveURL(/minPriceBdt=2450/);
-  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: new RegExp(`^${productName} From`) }),
+  ).toBeVisible();
 
   const filteredProducts = await page.request.get(
     "/api/v1/catalog/products?audience=unisex&category=t-shirts&color=Black&size=S",
@@ -1149,7 +1181,9 @@ test("catalog operator configures a product through to storefront visibility", a
   expect((await unavailableVariant.json()).products).toEqual([]);
 
   await page.getByRole("link", { name: "Clear filters" }).click();
-  await page.getByRole("link", { name: productName }).click();
+  await page
+    .getByRole("link", { name: new RegExp(`^${productName} From`) })
+    .click();
   await expect(
     page.getByRole("heading", { name: productName, level: 1 }),
   ).toBeVisible();
@@ -1160,14 +1194,6 @@ test("catalog operator configures a product through to storefront visibility", a
   const storefrontSettings = await page.request
     .get("/api/v1/storefront/settings")
     .then((response) => response.json());
-  const productShareImageSrc =
-    storefrontSettings.socialImage?.src ??
-    storefrontSettings.logo?.src ??
-    "/aaraj-social.png";
-  const productShareImageAlt = storefrontSettings.socialImage
-    ? (storefrontSettings.socialImageAlt ??
-      `${storefrontSettings.siteName} storefront`)
-    : `${storefrontSettings.siteName} logo`;
   const productHead = (await productSeoResponse.text()).match(
     /<head>([\s\S]*?)<\/head>/,
   )?.[1];
@@ -1184,11 +1210,14 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(productHead).toContain(
     `rel="canonical" href="http://127.0.0.1:3180/shop/products/${slug}"`,
   );
-  expect(productHead).toContain(
-    `property="og:image" content="http://127.0.0.1:3180${productShareImageSrc}"`,
+  expect(productHead).toMatch(
+    /<meta property="og:image" content="http:\/\/127\.0\.0\.1:3180\/api\/v1\/catalog\/media\/[0-9a-f-]+\/detail\/[0-9a-f]{64}\.webp"/,
   );
   expect(productHead).toContain(
-    `<meta name="twitter:image:alt" content="${productShareImageAlt}"`,
+    '<meta property="og:image:alt" content="Black tee front view"',
+  );
+  expect(productHead).toContain(
+    '<meta name="twitter:image:alt" content="Black tee front view"',
   );
 
   const robotsResponse = await page.request.get("/robots.txt");

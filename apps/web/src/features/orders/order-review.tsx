@@ -10,7 +10,6 @@ import {
   OrderDispatchInputSchema,
   type Order,
   type OrderManagementDetail,
-  type OrderStatusAction,
   type OrderStatusUpdateInput,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
@@ -40,21 +39,32 @@ import { humanize, humanizeFulfillmentStatus } from "./orders-format";
 import { OrderStatusBadge } from "./order-status-badges";
 import { PathaoBookingPanel } from "./pathao-booking-panel";
 import { OrderStatusMenu } from "./order-status-menu";
+import { OrderReturnsPanel } from "./order-returns-panel";
 
-type OrderReviewOrder = Order & {
-  availableStatusActions?: OrderStatusAction[];
-};
+type OrderReviewOrder = OrderManagementDetail;
 
 export function OrderReview({
   initialOrder,
+  canManageFinance,
 }: {
   initialOrder: OrderManagementDetail;
+  canManageFinance: boolean;
 }) {
   const [order, setOrder] = useState<OrderReviewOrder>(initialOrder);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [outcomeReason, setOutcomeReason] = useState("");
+  const [deliveredQuantities, setDeliveredQuantities] = useState<
+    Record<string, string>
+  >(() =>
+    Object.fromEntries(
+      initialOrder.deliveryLines.map((line) => [
+        line.variantId,
+        String(line.quantityDelivered),
+      ]),
+    ),
+  );
   const [collectionReason, setCollectionReason] = useState("");
   const [collectionAmount, setCollectionAmount] = useState("");
   const [pending, setPending] = useState(false);
@@ -63,8 +73,25 @@ export function OrderReview({
     null,
   );
 
-  function applyOrderUpdate(updatedOrder: Order) {
-    setOrder(updatedOrder);
+  function applyOrderUpdate(updatedOrder: Order | OrderManagementDetail) {
+    setOrder((current) => ({
+      ...current,
+      ...updatedOrder,
+      deliveryLines:
+        "deliveryLines" in updatedOrder
+          ? updatedOrder.deliveryLines
+          : current.deliveryLines,
+    }));
+    if ("deliveryLines" in updatedOrder) {
+      setDeliveredQuantities(
+        Object.fromEntries(
+          updatedOrder.deliveryLines.map((line) => [
+            line.variantId,
+            String(line.quantityDelivered),
+          ]),
+        ),
+      );
+    }
   }
 
   async function updateStatus(input: OrderStatusUpdateInput) {
@@ -151,6 +178,16 @@ export function OrderReview({
         await recordOrderFulfillmentOutcome(order.id, {
           outcome,
           reason: outcomeReason,
+          ...(outcome === "partially_delivered"
+            ? {
+                deliveredLines: order.deliveryLines.map((line) => ({
+                  variantId: line.variantId,
+                  quantityDelivered: Number(
+                    deliveredQuantities[line.variantId] ?? "0",
+                  ),
+                })),
+              }
+            : {}),
         }),
       );
     } catch (reasonError) {
@@ -429,6 +466,52 @@ export function OrderReview({
                 onChange={(event) => setOutcomeReason(event.target.value)}
               />
             </label>
+            {availableOutcomes.includes("partially_delivered") && (
+              <fieldset className="mt-5 grid gap-3">
+                <legend className="text-sm font-semibold">
+                  Units delivered by item
+                </legend>
+                <p className="text-xs text-muted-foreground">
+                  Enter cumulative quantities confirmed by delivery evidence.
+                  Required when recording a partial delivery.
+                </p>
+                {order.lines.map((line) => {
+                  const deliveryLine = order.deliveryLines.find(
+                    (entry) => entry.variantId === line.variantId,
+                  );
+                  return (
+                    <label
+                      className="grid grid-cols-[1fr_7rem] items-center gap-3 rounded-lg border border-border p-3 text-sm"
+                      key={line.variantId}
+                    >
+                      <span>
+                        <span className="block font-medium">
+                          {line.productName}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {line.color} · {line.sizeLabel} · ordered{" "}
+                          {line.quantity}
+                        </span>
+                      </span>
+                      <Input
+                        aria-label={`Units delivered: ${line.productName}, ${line.color}, ${line.sizeLabel}`}
+                        inputMode="numeric"
+                        min={deliveryLine?.quantityDelivered ?? 0}
+                        max={line.quantity}
+                        type="number"
+                        value={deliveredQuantities[line.variantId] ?? "0"}
+                        onChange={(event) =>
+                          setDeliveredQuantities((current) => ({
+                            ...current,
+                            [line.variantId]: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  );
+                })}
+              </fieldset>
+            )}
             {error && (
               <p className="mt-4 text-sm text-destructive" role="alert">
                 {error}
@@ -507,6 +590,7 @@ export function OrderReview({
             </Button>
           </section>
         )}
+        <OrderReturnsPanel order={order} canManageFinance={canManageFinance} />
       </article>
     </>
   );

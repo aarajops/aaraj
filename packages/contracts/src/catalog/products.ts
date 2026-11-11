@@ -15,6 +15,7 @@ import {
   CatalogProductImageSchema,
 } from "./media.js";
 import { CatalogSearchQuerySchema } from "./search.js";
+import { CatalogProductVideoSchema } from "./videos.js";
 export { MAX_CATALOG_SEARCH_LENGTH } from "./search.js";
 
 export const CatalogAudienceSchema = z.enum(["men", "women", "unisex"]);
@@ -29,7 +30,6 @@ export type CatalogPublishedProductSort = z.infer<
   typeof CatalogPublishedProductSortSchema
 >;
 
-/** Aaraj launch prices are whole amounts in BDT. */
 export const CatalogPriceSchema = z.strictObject({
   amountBdt: z.number().int().nonnegative().max(2_147_483_647),
 });
@@ -42,6 +42,28 @@ export const CatalogPriceRangeSchema = z
   })
   .refine(({ minPriceBdt, maxPriceBdt }) => minPriceBdt <= maxPriceBdt);
 export type CatalogPriceRange = z.infer<typeof CatalogPriceRangeSchema>;
+
+export const CatalogProductContentBlockSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("heading"),
+    level: z.union([z.literal(3), z.literal(4)]),
+    text: z.string().trim().min(1).max(120),
+  }),
+  z.strictObject({
+    type: z.literal("paragraph"),
+    text: z.string().trim().min(1).max(1500),
+  }),
+  z.strictObject({
+    type: z.literal("bullet_list"),
+    items: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
+  }),
+]);
+export type CatalogProductContentBlock = z.infer<
+  typeof CatalogProductContentBlockSchema
+>;
+export const CatalogProductContentBlocksSchema = z
+  .array(CatalogProductContentBlockSchema)
+  .max(32);
 
 export const CATALOG_PRODUCT_SLUG_MAX_LENGTH = 120;
 
@@ -97,15 +119,14 @@ export const CatalogProductSchema = z.strictObject({
   slug: CatalogProductSlugSchema,
   name: z.string().min(1).max(160),
   description: z.string().max(5000).nullable(),
+  contentBlocks: CatalogProductContentBlocksSchema.default([]),
   audience: CatalogAudienceSchema.nullable(),
   category: CatalogCategoryReferenceSchema.nullable(),
   fit: z.string().min(1).max(80).nullable(),
   fabricComposition: z.string().max(1000).nullable(),
   careInstructions: z.string().max(2000).nullable(),
   sizeGuideId: z.uuid().nullable(),
-  /** Lowest active variant price, shown as the product's starting price. */
   price: CatalogPriceSchema.nullable(),
-  /** Reference price paired with the lowest active variant, when unambiguous. */
   compareAtPrice: CatalogPriceSchema.nullable().default(null),
   isPublished: z.boolean(),
   createdAt: z.iso.datetime(),
@@ -115,6 +136,7 @@ export type CatalogProduct = z.infer<typeof CatalogProductSchema>;
 
 export const CatalogPublishedProductSchema = CatalogProductSchema.extend({
   images: CatalogProductImageSchema.array().max(12),
+  videos: CatalogProductVideoSchema.array().max(8).default([]),
 });
 export type CatalogPublishedProduct = z.infer<
   typeof CatalogPublishedProductSchema
@@ -147,6 +169,7 @@ const CatalogProductFieldsSchema = z.strictObject({
   slug: CatalogProductSlugSchema.optional(),
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(5000).nullable().optional(),
+  contentBlocks: CatalogProductContentBlocksSchema.optional(),
   audience: CatalogAudienceSchema,
   categoryId: z.uuid().nullable().optional(),
   fit: z.string().trim().min(1).max(80).nullable().optional(),

@@ -17,6 +17,7 @@ import {
   OrderReferenceSchema,
   CheckoutDraftPreviewSchema,
   CURRENCY,
+  type CatalogProductContentBlock,
   CustomerDirectoryIdSchema,
   ManagedCustomerDirectorySchema,
   ManagedCustomerOrdersPageSchema,
@@ -70,6 +71,15 @@ import {
 } from "../catalog/catalog-cart.port.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import { readOrderPiiKeyring } from "../platform/crypto/order-pii-keyring.js";
+import {
+  canonicalOrderAddressPhonePrefix,
+  decryptOrderAddress,
+  encryptOrderAddress,
+  makeOrderAddressLookups,
+  normalizeOrderAddressName,
+  normalizeOrderAddressPhone,
+  orderAddressSearchHash,
+} from "./order-address-crypto.js";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { GeographyService } from "../geography/geography.service.js";
@@ -86,9 +96,12 @@ import type {
 import {
   customerOrder,
   customerOrderLine,
+  orderDeliveryLine,
   orderIdempotency,
   orderReferenceCounter,
   orderPathaoBookingClaim,
+  orderNotificationOutbox,
+  orderNotificationConsentRevocation,
   checkoutDraft,
 } from "./orders-schema.js";
 import {
@@ -112,7 +125,7 @@ type PathaoSnapshotOrderRow = Pick<
   | "reference"
   | "status"
   | "fulfillmentStatus"
-  | "addressSnapshot"
+  | "addressCiphertext"
   | "codAmountDueBdt"
 >;
 type IdempotencyRow = typeof orderIdempotency.$inferSelect;
@@ -169,7 +182,7 @@ type ManagedOrderListRecord = Pick<
   OrderRow,
   | "id"
   | "reference"
-  | "addressSnapshot"
+  | "addressCiphertext"
   | "deliverySnapshot"
   | "status"
   | "fulfillmentStatus"
@@ -188,13 +201,13 @@ type CustomerDirectoryRecord = {
   latest_order_id: string;
   latest_order_reference: string;
   latest_order_status: string;
-  address_snapshot: unknown;
+  address_ciphertext: string;
 };
 
 const MANAGED_ORDER_LIST_SELECTION = {
   id: customerOrder.id,
   reference: customerOrder.reference,
-  addressSnapshot: customerOrder.addressSnapshot,
+  addressCiphertext: customerOrder.addressCiphertext,
   deliverySnapshot: customerOrder.deliverySnapshot,
   status: customerOrder.status,
   fulfillmentStatus: customerOrder.fulfillmentStatus,
@@ -212,7 +225,7 @@ type PersistOrderSnapshotInput = {
   quote: AuthoritativeQuote;
   cartRevision: number;
   reservationId: string;
-  addressSnapshot: OrderAddress;
+  address: OrderAddress;
   status: "pending" | "confirmed";
   fulfillmentStatus: "not_started" | "awaiting_dispatch";
   sourceDraftId?: string;
@@ -243,7 +256,7 @@ async function persistOrderSnapshot(
       quoteId: input.quote.id,
       cartRevision: input.cartRevision,
       reservationId: input.reservationId,
-      addressSnapshot: input.addressSnapshot,
+      ...orderAddressPersistence(input.id, input.address),
       status: input.status,
       paymentMethod: "cod",
       collectionStatus: "uncollected",
@@ -272,15 +285,34 @@ async function persistOrderSnapshot(
       quantity: line.quantity,
       unitPriceBdt: line.unitPriceBdt,
       grossAmountBdt: line.grossAmountBdt,
-      productSnapshot: {
-        productName: line.productName,
-        color: line.color,
-        sizeLabel: line.sizeLabel,
-        compareAtPriceBdt: line.compareAtPriceBdt,
-      },
+      productSnapshot: toOrderProductSnapshot(line),
     })),
   );
   return row;
+}
+
+function toOrderProductSnapshot(source: {
+  sku?: string | null;
+  slug?: string | null;
+  productSlug?: string | null;
+  name?: string | null;
+  productName?: string | null;
+  description?: string | null;
+  contentBlocks?: CatalogProductContentBlock[];
+  color?: string | null;
+  sizeLabel?: string | null;
+  compareAtPriceBdt?: number | null;
+}) {
+  return {
+    sku: source.sku ?? null,
+    productSlug: source.productSlug ?? source.slug ?? null,
+    productName: source.productName ?? source.name ?? "Product",
+    description: source.description ?? null,
+    contentBlocks: source.contentBlocks ?? [],
+    color: source.color ?? null,
+    sizeLabel: source.sizeLabel ?? null,
+    compareAtPriceBdt: source.compareAtPriceBdt ?? null,
+  };
 }
 
 function availableOrderStatusActions(
@@ -523,7 +555,7 @@ export class OrdersService implements OrdersPathaoPort {
           quote,
           cartRevision: current.cartRevision,
           reservationId: reservation.id,
-          addressSnapshot: address,
+          address,
           status: "confirmed",
           fulfillmentStatus: "awaiting_dispatch",
           sourceDraftId: id,
@@ -802,7 +834,8 @@ export class OrdersService implements OrdersPathaoPort {
             quoteId: quote.id,
             cartRevision: quote.cartRevision,
             reservationId: reservation.id,
-            addressSnapshot: address,
+            ...orderAddressPersistence(orderId, address),
+            smsUpdatesConsent: input.smsUpdatesConsent,
             status: "pending",
             paymentMethod: "cod",
             collectionStatus: "uncollected",
@@ -843,12 +876,7 @@ export class OrdersService implements OrdersPathaoPort {
             quantity: line.quantity,
             unitPriceBdt: line.unitPriceBdt,
             grossAmountBdt: line.grossAmountBdt,
-            productSnapshot: {
-              productName: line.productName,
-              color: line.color,
-              sizeLabel: line.sizeLabel,
-              compareAtPriceBdt: line.compareAtPriceBdt,
-            },
+            productSnapshot: toOrderProductSnapshot(line),
           })),
         );
         await transaction.insert(orderIdempotency).values({
@@ -868,6 +896,7 @@ export class OrdersService implements OrdersPathaoPort {
             reservationId: reservation.id,
             lineCount: quote.lines.length,
             totalBdt: quote.totalBdt,
+            smsUpdatesConsent: input.smsUpdatesConsent,
           },
         });
 
@@ -1140,6 +1169,89 @@ export class OrdersService implements OrdersPathaoPort {
     return this.loadPrivateOrder(row);
   }
 
+  async withdrawSmsUpdatesConsent(
+    orderId: string,
+    customerId: string | undefined,
+    signedCookies: Record<string, string>,
+  ): Promise<void> {
+    const [result] = await this.database.db
+      .select({
+        order: customerOrder,
+        guestAccessStillValid: sql<boolean>`coalesce(${customerOrder.guestAccessExpiresAt} > now(), false)`,
+      })
+      .from(customerOrder)
+      .where(eq(customerOrder.id, orderId))
+      .limit(1);
+    if (!result) throw orderNotFound();
+    const isCustomer =
+      customerId !== undefined && result.order.customerId === customerId;
+    const isGuest =
+      result.order.customerId === null &&
+      (await this.hasValidGuestCredential(
+        result.order,
+        signedCookies,
+        result.guestAccessStillValid,
+      ));
+    if (!isCustomer && !isGuest) throw orderNotFound();
+
+    await this.database.db.transaction(async (transaction) => {
+      const [order] = await transaction
+        .select()
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!order) throw orderNotFound();
+      if (order.customerId !== null && order.customerId !== customerId)
+        throw orderNotFound();
+      if (
+        order.customerId === null &&
+        !(await this.hasValidGuestCredential(
+          order,
+          signedCookies,
+          order.guestAccessExpiresAt !== null &&
+            order.guestAccessExpiresAt.getTime() > Date.now(),
+        ))
+      )
+        throw orderNotFound();
+      if (!order.smsUpdatesConsent) return;
+      const [revocation] = await transaction
+        .insert(orderNotificationConsentRevocation)
+        .values({ orderId, revokedBy: customerId ?? null })
+        .onConflictDoNothing({
+          target: orderNotificationConsentRevocation.orderId,
+        })
+        .returning({
+          occurredAt: orderNotificationConsentRevocation.revokedAt,
+        });
+      if (!revocation) return;
+      const suppressed = await transaction
+        .update(orderNotificationOutbox)
+        .set({
+          status: "suppressed",
+          providerStatus: "customer_withdrew_consent",
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(orderNotificationOutbox.orderId, orderId),
+            eq(orderNotificationOutbox.status, "pending"),
+          ),
+        )
+        .returning({ id: orderNotificationOutbox.id });
+      await this.audit.append(transaction, {
+        actorType: customerId ? "user" : "anonymous",
+        ...(customerId ? { actorId: customerId } : {}),
+        eventType: "commerce.order_sms_consent_withdrawn",
+        subjectType: "order",
+        subjectId: orderId,
+        occurredAt: revocation.occurredAt,
+        reason: "The customer withdrew consent for transactional SMS updates.",
+        metadata: { suppressedPendingMessages: suppressed.length },
+      });
+    });
+  }
+
   async listForManagement(
     query: OrderListQuery,
   ): Promise<ReturnType<typeof OrderManagementListSchema.parse>> {
@@ -1212,7 +1324,7 @@ export class OrdersService implements OrdersPathaoPort {
     }
     return OrderManagementListSchema.parse({
       rows: pageRows.map((row) => {
-        const address = parseStoredOrderAddress(row.addressSnapshot);
+        const address = parseStoredOrderAddress(row.id, row.addressCiphertext);
         return {
           id: row.id,
           reference: row.reference,
@@ -1258,7 +1370,10 @@ export class OrdersService implements OrdersPathaoPort {
       await this.attachCustomerOrderCounts(pageRecords);
     return ManagedCustomerDirectorySchema.parse({
       rows: countedPageRecords.map((row) => {
-        const address = parseStoredOrderAddress(row.address_snapshot);
+        const address = parseStoredOrderAddress(
+          row.latest_order_id,
+          row.address_ciphertext,
+        );
         const accountName = row.account_name?.trim();
         return {
           id: row.customer_key,
@@ -1350,8 +1465,11 @@ export class OrdersService implements OrdersPathaoPort {
     if (phoneOnly && phoneSearch.length < 4) return [];
 
     const textPrefix = escapeLikeWildcards(textSearch) + "%";
-    const phonePrefix =
-      escapeLikeWildcards(toCanonicalBangladeshPhonePrefix(phoneSearch)) + "%";
+    const textHash = orderAddressSearchHash("name", textSearch);
+    const phoneHash = orderAddressSearchHash(
+      "phone",
+      canonicalOrderAddressPhonePrefix(phoneSearch),
+    );
     const exactSearch = parseExactOrderSearch(search);
     const exactReference =
       exactSearch?.kind === "reference" ? exactSearch.value : null;
@@ -1361,15 +1479,13 @@ export class OrdersService implements OrdersPathaoPort {
       : sql`lower(account.name) like ${textPrefix}
           or lower(account.email) like ${textPrefix}`;
     const orderMatch = phoneOnly
-      ? sql`regexp_replace(order_row.address_snapshot->>'phone', '[^0-9]', '', 'g')
-          like ${phonePrefix}`
-      : sql`lower(order_row.address_snapshot->>'recipientName') like ${textPrefix}
+      ? sql`order_row.address_phone_prefixes @> ARRAY[${phoneHash}]::text[]`
+      : sql`order_row.address_name_prefixes @> ARRAY[${textHash}]::text[]
           or order_row.reference = ${exactReference}
           or order_row.id::text = ${exactOrderId}`;
     const guestOrderMatch = phoneOnly
-      ? sql`regexp_replace(guest.address_snapshot->>'phone', '[^0-9]', '', 'g')
-          like ${phonePrefix}`
-      : sql`lower(guest.address_snapshot->>'recipientName') like ${textPrefix}
+      ? sql`guest.address_phone_prefixes @> ARRAY[${phoneHash}]::text[]`
+      : sql`guest.address_name_prefixes @> ARRAY[${textHash}]::text[]
           or guest.reference = ${exactReference}
           or guest.id::text = ${exactOrderId}`;
 
@@ -1397,12 +1513,12 @@ export class OrdersService implements OrdersPathaoPort {
           latest.id as latest_order_id,
           latest.reference as latest_order_reference,
           latest.status as latest_order_status,
-          latest.address_snapshot
+          latest.address_ciphertext
         from candidate_accounts candidate
         join identity.user account on account.id = candidate.customer_id
         join lateral (
           select order_row.id, order_row.reference, order_row.status,
-                 order_row.address_snapshot, order_row.created_at
+                 order_row.address_ciphertext, order_row.created_at
           from orders.order_header order_row
           where order_row.customer_id = candidate.customer_id
           order by order_row.created_at desc, order_row.id desc
@@ -1419,7 +1535,7 @@ export class OrdersService implements OrdersPathaoPort {
           guest.id as latest_order_id,
           guest.reference as latest_order_reference,
           guest.status as latest_order_status,
-          guest.address_snapshot
+          guest.address_ciphertext
         from orders.order_header guest
         where guest.customer_id is null
           and (${guestOrderMatch})
@@ -1434,7 +1550,7 @@ export class OrdersService implements OrdersPathaoPort {
         customer_rows.latest_order_id,
         customer_rows.latest_order_reference,
         customer_rows.latest_order_status,
-        customer_rows.address_snapshot
+        customer_rows.address_ciphertext
       from customer_rows
       order by customer_rows.last_order_at desc, customer_rows.latest_order_id desc
       limit ${query.limit + 1}
@@ -1450,7 +1566,7 @@ export class OrdersService implements OrdersPathaoPort {
     const result = await this.database.db.execute(sql`
       with latest_account_orders as (
         select distinct on (customer_id)
-          customer_id, id, reference, status, address_snapshot, created_at
+          customer_id, id, reference, status, address_ciphertext, created_at
         from orders.order_header
         where customer_id is not null
         order by customer_id, created_at desc, id desc
@@ -1465,7 +1581,7 @@ export class OrdersService implements OrdersPathaoPort {
           latest.id as latest_order_id,
           latest.reference as latest_order_reference,
           latest.status as latest_order_status,
-          latest.address_snapshot
+          latest.address_ciphertext
         from latest_account_orders latest
         join identity.user account on account.id = latest.customer_id
         union all
@@ -1479,7 +1595,7 @@ export class OrdersService implements OrdersPathaoPort {
           guest.id as latest_order_id,
           guest.reference as latest_order_reference,
           guest.status as latest_order_status,
-          guest.address_snapshot
+          guest.address_ciphertext
         from orders.order_header guest
         where guest.customer_id is null
       )
@@ -1493,7 +1609,7 @@ export class OrdersService implements OrdersPathaoPort {
         customer_rows.latest_order_id,
         customer_rows.latest_order_reference,
         customer_rows.latest_order_status,
-        customer_rows.address_snapshot
+        customer_rows.address_ciphertext
       from customer_rows
       order by customer_rows.last_order_at desc, customer_rows.latest_order_id desc
       limit ${limit}
@@ -1546,14 +1662,14 @@ export class OrdersService implements OrdersPathaoPort {
     const customerSearch = isPhoneSearch
       ? phoneSearch.length === 0
         ? sql`false`
-        : like(
-            sql`regexp_replace(${customerOrder.addressSnapshot}->>'phone', '[^0-9]', '', 'g')`,
-            `${escapeLikeWildcards(toCanonicalBangladeshPhonePrefix(phoneSearch))}%`,
-          )
-      : like(
-          sql`lower(${customerOrder.addressSnapshot}->>'recipientName')`,
-          `${escapeLikeWildcards(nameSearch)}%`,
-        );
+        : sql`${customerOrder.addressPhonePrefixes} @> ARRAY[${orderAddressSearchHash(
+            "phone",
+            canonicalOrderAddressPhonePrefix(phoneSearch),
+          )}]::text[]`
+      : sql`${customerOrder.addressNamePrefixes} @> ARRAY[${orderAddressSearchHash(
+          "name",
+          nameSearch,
+        )}]::text[]`;
 
     return this.database.db
       .select(MANAGED_ORDER_LIST_SELECTION)
@@ -1591,8 +1707,26 @@ export class OrdersService implements OrdersPathaoPort {
 
     const row = result.order;
     const order = await this.loadPrivateOrder(row);
+    const deliveryLines = await this.database.db
+      .select({
+        variantId: customerOrderLine.variantId,
+        quantityOrdered: customerOrderLine.quantity,
+        quantityDelivered: orderDeliveryLine.quantityDelivered,
+      })
+      .from(customerOrderLine)
+      .leftJoin(
+        orderDeliveryLine,
+        eq(orderDeliveryLine.orderLineId, customerOrderLine.id),
+      )
+      .where(eq(customerOrderLine.orderId, orderId))
+      .orderBy(asc(customerOrderLine.variantId));
     return OrderManagementDetailSchema.parse({
       ...order,
+      deliveryLines: deliveryLines.map((line) => ({
+        variantId: line.variantId,
+        quantityOrdered: line.quantityOrdered,
+        quantityDelivered: line.quantityDelivered ?? 0,
+      })),
       availableStatusActions: availableOrderStatusActions(
         row,
         result.pathaoClaimStatus !== null,
@@ -1767,12 +1901,7 @@ export class OrdersService implements OrdersPathaoPort {
           quantity: input.quantity,
           unitPriceBdt,
           grossAmountBdt,
-          productSnapshot: {
-            productName: variant.name,
-            color: variant.color,
-            sizeLabel: variant.sizeLabel,
-            compareAtPriceBdt: variant.compareAtPriceBdt,
-          },
+          productSnapshot: toOrderProductSnapshot(variant),
         });
       }
 
@@ -2008,7 +2137,7 @@ export class OrdersService implements OrdersPathaoPort {
         reference: customerOrder.reference,
         status: customerOrder.status,
         fulfillmentStatus: customerOrder.fulfillmentStatus,
-        addressSnapshot: customerOrder.addressSnapshot,
+        addressCiphertext: customerOrder.addressCiphertext,
         codAmountDueBdt: customerOrder.codAmountDueBdt,
         itemQuantity: sql<number>`(
           select coalesce(sum(${customerOrderLine.quantity}), 0)::integer
@@ -2076,7 +2205,7 @@ export class OrdersService implements OrdersPathaoPort {
           reference: customerOrder.reference,
           status: customerOrder.status,
           fulfillmentStatus: customerOrder.fulfillmentStatus,
-          addressSnapshot: customerOrder.addressSnapshot,
+          addressCiphertext: customerOrder.addressCiphertext,
           codAmountDueBdt: customerOrder.codAmountDueBdt,
         })
         .from(customerOrder)
@@ -2388,10 +2517,10 @@ export class OrdersService implements OrdersPathaoPort {
       .where(
         and(
           eq(customerOrder.reference, reference),
-          eq(
-            sql<string>`${customerOrder.addressSnapshot}->>'phone'`,
-            normalizedPhone,
-          ),
+          sql`${customerOrder.addressPhonePrefixes} @> ARRAY[${orderAddressSearchHash(
+            "phone",
+            normalizeOrderAddressPhone(normalizedPhone),
+          )}]::text[]`,
         ),
       )
       .limit(1);
@@ -2942,7 +3071,7 @@ export class OrdersService implements OrdersPathaoPort {
     orderId: string,
     staffId: string,
     input: OrderFulfillmentOutcomeInput,
-  ): Promise<Order> {
+  ): Promise<OrderManagementDetail> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
         .select({
@@ -2979,6 +3108,7 @@ export class OrdersService implements OrdersPathaoPort {
           "delivered",
           "returned",
         ],
+        delivered: ["returned"],
       };
       if (
         !row.dispatchedAt ||
@@ -2989,6 +3119,131 @@ export class OrdersService implements OrdersPathaoPort {
           "This delivery outcome is not valid for the current Order state.",
           { errorCode: "ORDER_FULFILLMENT_OUTCOME_CONFLICT" },
         );
+      }
+
+      const orderLines = await transaction
+        .select({
+          id: customerOrderLine.id,
+          variantId: customerOrderLine.variantId,
+          quantity: customerOrderLine.quantity,
+        })
+        .from(customerOrderLine)
+        .where(eq(customerOrderLine.orderId, row.id))
+        .orderBy(asc(customerOrderLine.variantId))
+        .for("update");
+      if (orderLines.length === 0) {
+        throw new ConflictException(
+          "The Order has no line items to reconcile against delivery evidence.",
+          { errorCode: "ORDER_DELIVERY_LINES_MISSING" },
+        );
+      }
+      const existingDeliveryLines = await transaction
+        .select()
+        .from(orderDeliveryLine)
+        .where(eq(orderDeliveryLine.orderId, row.id))
+        .for("update");
+      const existingDelivered = new Map(
+        existingDeliveryLines.map((line) => [
+          line.orderLineId,
+          line.quantityDelivered,
+        ]),
+      );
+      let deliveryQuantities: Array<{
+        orderId: string;
+        orderLineId: string;
+        quantityOrdered: number;
+        quantityDelivered: number;
+      }> | null = null;
+
+      if (input.outcome === "partially_delivered") {
+        const requested = input.deliveredLines ?? [];
+        if (
+          requested.length !== orderLines.length ||
+          requested.some(
+            (line) =>
+              !orderLines.some(
+                (orderLine) => orderLine.variantId === line.variantId,
+              ),
+          )
+        ) {
+          throw new ConflictException(
+            "Record one delivered quantity for every Order line.",
+            { errorCode: "ORDER_DELIVERY_LINES_MISMATCH" },
+          );
+        }
+        const quantitiesByVariant = new Map(
+          requested.map(({ variantId, quantityDelivered }) => [
+            variantId,
+            quantityDelivered,
+          ]),
+        );
+        let totalDelivered = 0;
+        let totalOrdered = 0;
+        deliveryQuantities = orderLines.map((line) => {
+          const quantityDelivered = quantitiesByVariant.get(line.variantId)!;
+          if (quantityDelivered > line.quantity) {
+            throw new ConflictException(
+              "Delivered quantity cannot exceed the Order line quantity.",
+              { errorCode: "ORDER_DELIVERY_QUANTITY_INVALID" },
+            );
+          }
+          if (quantityDelivered < (existingDelivered.get(line.id) ?? 0)) {
+            throw new ConflictException(
+              "Verified delivery quantities cannot decrease after a partial delivery.",
+              { errorCode: "ORDER_DELIVERY_QUANTITY_CANNOT_DECREASE" },
+            );
+          }
+          totalDelivered += quantityDelivered;
+          totalOrdered += line.quantity;
+          return {
+            orderId: row.id,
+            orderLineId: line.id,
+            quantityOrdered: line.quantity,
+            quantityDelivered,
+          };
+        });
+        if (totalDelivered === 0 || totalDelivered >= totalOrdered) {
+          throw new ConflictException(
+            "Use delivery failed when no items arrived and delivered when every ordered unit arrived.",
+            { errorCode: "ORDER_DELIVERY_OUTCOME_QUANTITY_MISMATCH" },
+          );
+        }
+      } else if (input.outcome === "delivered") {
+        deliveryQuantities = orderLines.map((line) => ({
+          orderId: row.id,
+          orderLineId: line.id,
+          quantityOrdered: line.quantity,
+          quantityDelivered: line.quantity,
+        }));
+      } else if (
+        existingDeliveryLines.length === 0 &&
+        ["delivery_failed", "returned"].includes(input.outcome)
+      ) {
+        if (row.fulfillmentStatus === "partially_delivered") {
+          throw new ConflictException(
+            "Record verified per-line delivered quantities before closing a partially delivered Order.",
+            { errorCode: "ORDER_DELIVERY_LINES_REQUIRED" },
+          );
+        }
+        deliveryQuantities = orderLines.map((line) => ({
+          orderId: row.id,
+          orderLineId: line.id,
+          quantityOrdered: line.quantity,
+          quantityDelivered: 0,
+        }));
+      }
+      if (deliveryQuantities) {
+        await transaction
+          .insert(orderDeliveryLine)
+          .values(deliveryQuantities)
+          .onConflictDoUpdate({
+            target: orderDeliveryLine.orderLineId,
+            set: {
+              quantityOrdered: sql`excluded.quantity_ordered`,
+              quantityDelivered: sql`excluded.quantity_delivered`,
+              updatedAt: sql`clock_timestamp()`,
+            },
+          });
       }
 
       const [updated] = await transaction
@@ -3027,14 +3282,14 @@ export class OrdersService implements OrdersPathaoPort {
         },
       });
     });
-    return this.getForManagement(orderId);
+    return this.getManagementDetail(orderId);
   }
 
   async recordCodCollection(
     orderId: string,
     staffId: string,
     input: OrderCollectionInput,
-  ): Promise<Order> {
+  ): Promise<OrderManagementDetail> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
         .select({
@@ -3110,7 +3365,7 @@ export class OrdersService implements OrdersPathaoPort {
         },
       });
     });
-    return this.getForManagement(orderId);
+    return this.getManagementDetail(orderId);
   }
 
   private resolveAddress(
@@ -3199,7 +3454,12 @@ export class OrdersService implements OrdersPathaoPort {
       .from(customerOrderLine)
       .where(eq(customerOrderLine.orderId, row.id))
       .orderBy(asc(customerOrderLine.variantId));
-    const address = parseStoredOrderAddress(row.addressSnapshot);
+    const address = parseStoredOrderAddress(row.id, row.addressCiphertext);
+    const [revocation] = await this.database.db
+      .select({ id: orderNotificationConsentRevocation.id })
+      .from(orderNotificationConsentRevocation)
+      .where(eq(orderNotificationConsentRevocation.orderId, row.id))
+      .limit(1);
     return OrderSchema.parse({
       id: row.id,
       reference: row.reference,
@@ -3249,6 +3509,7 @@ export class OrdersService implements OrdersPathaoPort {
       cancellationReason: row.cancellationReason ?? null,
       cancelledAt: row.cancelledAt?.toISOString() ?? null,
       address,
+      smsUpdatesConsent: row.smsUpdatesConsent && !revocation,
       createdAt: row.createdAt.toISOString(),
       guestAccessExpiresAt: row.guestAccessExpiresAt?.toISOString() ?? null,
     });
@@ -3450,7 +3711,7 @@ function toPathaoBookingSnapshot(
   row: PathaoSnapshotOrderRow,
   itemQuantity: number,
 ): PathaoOrderBookingSnapshot {
-  const address = parseStoredOrderAddress(row.addressSnapshot);
+  const address = parseStoredOrderAddress(row.id, row.addressCiphertext);
   const recipientAddress = [
     address.house,
     address.street,
@@ -3526,15 +3787,35 @@ function toCreated(row: OrderCreatedRow, replayed: boolean): OrderCreated {
   });
 }
 
-function parseStoredOrderAddress(value: unknown): OrderAddress {
-  const parsed = OrderAddressSchema.safeParse(value);
-  if (!parsed.success) {
+function parseStoredOrderAddress(
+  orderId: string,
+  value: unknown,
+): OrderAddress {
+  try {
+    if (typeof value !== "string") throw new Error("Ciphertext is missing.");
+    return decryptOrderAddress(orderId, value);
+  } catch {
     throw new ServiceUnavailableException(
       "The saved Order address is unavailable.",
       { errorCode: "ORDER_ADDRESS_UNAVAILABLE" },
     );
   }
-  return parsed.data;
+}
+
+function orderAddressPersistence(
+  orderId: string,
+  address: OrderAddress,
+): {
+  addressCiphertext: string;
+  addressNamePrefixes: string[];
+  addressPhonePrefixes: string[];
+} {
+  const lookups = makeOrderAddressLookups(address);
+  return {
+    addressCiphertext: encryptOrderAddress(orderId, address),
+    addressNamePrefixes: lookups.namePrefixes,
+    addressPhonePrefixes: lookups.phonePrefixes,
+  };
 }
 
 function shouldPrioritizeHeldOrders(query: OrderListQuery): boolean {
@@ -3647,18 +3928,11 @@ function parseExactOrderSearch(
 }
 
 function normalizeOrderSearchText(value: string): string {
-  return value.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ");
+  return normalizeOrderAddressName(value);
 }
 
 function normalizeOrderPhoneDigits(value: string): string {
-  return value
-    .normalize("NFKC")
-    .replace(/[০-৯]/gu, (character) => String(character.charCodeAt(0) - 0x09e6))
-    .replace(/\D/g, "");
-}
-
-function toCanonicalBangladeshPhonePrefix(value: string): string {
-  return /^0\d{1,10}$/.test(value) ? `88${value}` : value;
+  return normalizeOrderAddressPhone(value);
 }
 
 function isUniqueViolation(error: unknown): boolean {

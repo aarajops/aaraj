@@ -111,7 +111,10 @@ async function verifyRuntimeFiles(root, manifest) {
   for (const relative of [
     manifest.api.entrypoint,
     manifest.api.migrationEntrypoint,
+    "api/scripts/migration-support.mjs",
     "api/scripts/backfill-order-address-snapshots.mjs",
+    "api/scripts/backfill-order-address-ciphertext.mjs",
+    "api/scripts/rotate-order-address-ciphertext.mjs",
     "api/drizzle/meta/_journal.json",
     manifest.web.serverEntrypoint,
     manifest.web.staticDirectory,

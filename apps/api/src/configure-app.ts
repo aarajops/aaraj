@@ -18,9 +18,34 @@ export function configureApp(app: NestExpressApplication): void {
         method: RequestMethod.POST,
         version: API_V1_ROUTE_VERSION,
       },
+      {
+        path: "catalog/videos/webhook",
+        method: RequestMethod.POST,
+        version: API_V1_ROUTE_VERSION,
+      },
+      {
+        path: "orders/notifications/twilio/status",
+        method: RequestMethod.POST,
+        version: API_V1_ROUTE_VERSION,
+      },
     ],
   });
   const webhookPath = `${API_V1_BASE_PATH}/delivery/pathao/webhook`;
+  const videoWebhookPath = `${API_V1_BASE_PATH}/catalog/videos/webhook`;
+  const smsStatusPath = `${API_V1_BASE_PATH}/orders/notifications/twilio/status`;
+  app.useBodyParser("raw", {
+    limit: "64kb",
+    type: (request) => {
+      const path = request.url?.split("?")[0];
+      const contentType = request.headers["content-type"];
+      return (
+        request.method === "POST" &&
+        path === videoWebhookPath &&
+        typeof contentType === "string" &&
+        /^application\/json(?:\s*;|$)/i.test(contentType)
+      );
+    },
+  });
   app.useBodyParser("json", {
     limit: "32kb",
     strict: true,
@@ -35,6 +60,12 @@ export function configureApp(app: NestExpressApplication): void {
         /^application\/json(?:\s*;|$)/i.test(contentType)
       );
     },
+  });
+  app.useBodyParser("urlencoded", {
+    limit: "32kb",
+    extended: false,
+    type: (request) =>
+      request.method === "POST" && request.url?.split("?")[0] === smsStatusPath,
   });
   const trustedProxies = process.env.BETTER_AUTH_TRUSTED_PROXIES?.trim();
   if (isProduction && trustedProxies) {

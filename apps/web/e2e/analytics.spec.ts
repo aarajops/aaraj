@@ -77,7 +77,11 @@ test("customer order details do not emit Purchase", async ({ page }) => {
     lines: [
       {
         variantId: "0d8c92cf-d31c-4ca7-9c99-4aad8e103565",
+        sku: "AA-TEST-BLUE-M",
+        productSlug: "test-shirt",
         productName: "Test shirt",
+        description: null,
+        contentBlocks: [],
         color: "Blue",
         sizeLabel: "M",
         quantity: 1,
@@ -113,6 +117,7 @@ test("customer order details do not emit Purchase", async ({ page }) => {
       postalCode: null,
       instructions: null,
     },
+    smsUpdatesConsent: true,
     createdAt: "2026-10-01T12:00:00.000Z",
     guestAccessExpiresAt: "2026-10-31T12:00:00.000Z",
   };
@@ -123,9 +128,18 @@ test("customer order details do not emit Purchase", async ({ page }) => {
   await page.route(`**/api/v1/orders/${orderId}`, (route) =>
     route.fulfill({ status: 200, json: order }),
   );
+  await page.route(`**/api/v1/orders/${orderId}/sms-consent`, (route) =>
+    route.fulfill({ status: 204, body: "" }),
+  );
 
   await page.goto(`/orders/${orderId}`);
   await expect(page.getByTestId("order-reference")).toHaveText("ORD-026-00001");
+  await page.getByRole("button", { name: "Stop SMS updates" }).click();
+  await expect(
+    page.getByText("SMS updates for this order have been stopped.", {
+      exact: true,
+    }),
+  ).toBeVisible();
 
   const purchaseEventCount = () =>
     page.evaluate(() => {

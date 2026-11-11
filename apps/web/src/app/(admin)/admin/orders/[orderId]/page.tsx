@@ -4,6 +4,7 @@ import { OrderIdSchema } from "@aaraj/contracts";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { OrderReview } from "@/features/orders/order-review";
 import { getManagedOrder } from "@/features/orders/orders-queries";
+import { getInitialAccess } from "@/features/auth/auth-session";
 
 export const metadata: Metadata = {
   title: "Review Order",
@@ -17,7 +18,10 @@ export default async function AdminOrderPage({
 }) {
   const { orderId } = await params;
   if (!OrderIdSchema.safeParse(orderId).success) notFound();
-  const result = await getManagedOrder(orderId);
+  const [result, access] = await Promise.all([
+    getManagedOrder(orderId),
+    getInitialAccess(),
+  ]);
   if ("kind" in result) {
     return (
       <>
@@ -42,5 +46,12 @@ export default async function AdminOrderPage({
       </>
     );
   }
-  return <OrderReview initialOrder={result.value} />;
+  return (
+    <OrderReview
+      initialOrder={result.value}
+      canManageFinance={
+        access?.permissions.includes("orders.finance.manage") ?? false
+      }
+    />
+  );
 }

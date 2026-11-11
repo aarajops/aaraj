@@ -227,6 +227,34 @@ try {
     for (const key of keys) brandAssetObjects.delete(key);
   };
 
+  // Browser/API integration tests must not write fixture media to the real R2
+  // bucket configured in the developer's local environment.
+  const catalogMediaObjects = new Map();
+  brandAssetStorage.putQuarantinedObject = async ({ key, body }) => {
+    catalogMediaObjects.set(key, Buffer.from(body));
+  };
+  brandAssetStorage.putDerivativeObject = async ({ key, body }) => {
+    catalogMediaObjects.set(key, Buffer.from(body));
+  };
+  brandAssetStorage.getPublishedDerivative = async ({
+    key,
+    sha256,
+    sizeBytes,
+  }) => {
+    const body = catalogMediaObjects.get(key);
+    if (
+      !body ||
+      body.byteLength !== sizeBytes ||
+      createHash("sha256").update(body).digest("hex") !== sha256
+    ) {
+      throw new Error("missing test catalog media object");
+    }
+    return Buffer.from(body);
+  };
+  brandAssetStorage.deleteMediaObjects = async (keys) => {
+    for (const key of keys) catalogMediaObjects.delete(key);
+  };
+
   const fixtureEmail = "catalog-e2e@example.test";
   const fixturePassword = "CatalogE2E-Only-Password-2026!";
   const fixtureResponse = await auth.api.signUpEmail({

@@ -5,6 +5,10 @@ import {
 } from "../cart/index.js";
 import { DeliveryZoneSchema } from "../delivery/index.js";
 import { CURRENCY } from "../platform/system-config.js";
+import {
+  CatalogProductContentBlocksSchema,
+  CatalogProductSlugSchema,
+} from "../catalog/products.js";
 
 export const QUOTE_SCHEMA_VERSION = 1 as const;
 export const QUOTE_CURRENCY = CURRENCY;
@@ -26,7 +30,11 @@ export type QuoteDestinationInput = QuoteDestinationRef;
 
 const QuoteLineSchema = z.strictObject({
   variantId: z.uuid(),
+  sku: z.string().trim().min(1).max(100).nullable().default(null),
+  productSlug: CatalogProductSlugSchema.nullable().default(null),
   productName: z.string().min(1).max(160),
+  description: z.string().max(1000).nullable().default(null),
+  contentBlocks: CatalogProductContentBlocksSchema.default([]),
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),
   quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),

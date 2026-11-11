@@ -17,6 +17,12 @@ import { CatalogMediaManageGuard } from "./media/catalog-media.guard.js";
 import { CatalogMediaUploadLifecycleInterceptor } from "./media/catalog-media-upload-lifecycle.interceptor.js";
 import { CatalogMediaService } from "./media/catalog-media.service.js";
 import { CatalogMediaPublicController } from "./media/catalog-media-public.controller.js";
+import {
+  CatalogVideoController,
+  CatalogVideoWebhookController,
+} from "./media/catalog-video.controller.js";
+import { CatalogVideoService } from "./media/catalog-video.service.js";
+import { CloudflareStreamService } from "./media/cloudflare-stream.service.js";
 
 @Module({
   imports: [
@@ -28,6 +34,8 @@ import { CatalogMediaPublicController } from "./media/catalog-media-public.contr
   controllers: [
     CatalogController,
     CatalogMediaPublicController,
+    CatalogVideoController,
+    CatalogVideoWebhookController,
     CategoryController,
     SizeGuideController,
   ],
@@ -39,6 +47,8 @@ import { CatalogMediaPublicController } from "./media/catalog-media-public.contr
     CatalogMediaManageGuard,
     CatalogMediaUploadLifecycleInterceptor,
     CatalogMediaService,
+    CatalogVideoService,
+    CloudflareStreamService,
     CatalogInventoryReader,
     {
       provide: CATALOG_INVENTORY_PORT,

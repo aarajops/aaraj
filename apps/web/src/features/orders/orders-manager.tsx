@@ -207,15 +207,23 @@ export function OrdersManager({
                 <Eye aria-hidden="true" className="size-4" />
                 View order
               </DropdownMenuItem>
-              <DropdownMenuLinkItem
-                closeOnClick
-                href={`/admin/orders/${order.id}/invoice?print=1`}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <Printer aria-hidden="true" className="size-4" />
-                Print invoice
-              </DropdownMenuLinkItem>
+              {order.fulfillmentStatus === "delivered" ||
+              order.fulfillmentStatus === "returned" ? (
+                <DropdownMenuLinkItem
+                  closeOnClick
+                  href={`/admin/orders/${order.id}/invoice?print=1`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <Printer aria-hidden="true" className="size-4" />
+                  Print delivery receipt
+                </DropdownMenuLinkItem>
+              ) : (
+                <DropdownMenuItem disabled>
+                  <Printer aria-hidden="true" className="size-4" />
+                  Receipt after delivery
+                </DropdownMenuItem>
+              )}
             </>
           )}
           pathname="/admin/orders"

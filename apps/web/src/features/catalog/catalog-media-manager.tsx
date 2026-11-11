@@ -8,6 +8,7 @@ import {
   MAX_CATALOG_PRODUCT_MEDIA,
   type CatalogManagedProductDetail,
   type CatalogMedia,
+  type CatalogMediaUpdateInput,
 } from "@aaraj/contracts";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,7 @@ import {
   fetchManagedProductMedia,
   managedProductMediaPreviewUrl,
   reorderCatalogProductMedia,
+  updateCatalogProductMedia,
   uploadCatalogProductMedia,
 } from "@/features/catalog/catalog-client";
 import {
@@ -55,6 +57,7 @@ type VariantOption = Pick<
 interface UploadDraft {
   commandId: string;
   variantId?: string;
+  variantColor?: string;
   altText: string;
 }
 
@@ -68,11 +71,16 @@ interface SelectedUpload {
 }
 
 type Operation =
-  `upload:${string}` | `delete:${string}` | "reorder" | "refresh" | null;
+  | `upload:${string}`
+  | `update:${string}`
+  | `delete:${string}`
+  | "reorder"
+  | "refresh"
+  | null;
 
 const fileFieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium";
-const allVariantsValue = "all";
+const allVariantsValue = "all-colors";
 
 interface MediaListResult {
   media: CatalogMedia[] | null;
@@ -127,7 +135,10 @@ export function CatalogMediaManager({
   const [operation, setOperation] = useState<Operation>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [selectedUploads, setSelectedUploads] = useState<SelectedUpload[]>([]);
-  const [variantId, setVariantId] = useState("");
+  const [mediaEdits, setMediaEdits] = useState<
+    Record<string, { altText: string; variantColor: string }>
+  >({});
+  const [variantColor, setVariantColor] = useState("");
   const mediaIsLoading = isLoading || loadedProductId !== productId;
   const mediaLimitReached = media.length >= MAX_CATALOG_PRODUCT_MEDIA;
   const remainingMediaSlots = Math.max(
@@ -138,6 +149,14 @@ export function CatalogMediaManager({
     (upload) => upload.draft !== undefined,
   );
   const activeVariants = variants.filter((variant) => variant.isActive);
+  const activeColors = Array.from(
+    new Map(
+      activeVariants.map((variant) => [
+        variant.color.trim().toLocaleLowerCase("en-US"),
+        variant.color,
+      ]),
+    ).values(),
+  );
 
   const loadMedia = useCallback(async () => {
     setIsLoading(true);
@@ -152,6 +171,17 @@ export function CatalogMediaManager({
     }
 
     setMedia(result.media);
+    setMediaEdits(
+      Object.fromEntries(
+        result.media.map((item) => [
+          item.id,
+          {
+            altText: item.altText,
+            variantColor: item.variantColor ?? "",
+          },
+        ]),
+      ),
+    );
     setProblem(null);
   }, [productId]);
 
@@ -241,7 +271,7 @@ export function CatalogMediaManager({
         ...upload,
         draft: upload.draft ?? {
           commandId: upload.id,
-          ...(variantId ? { variantId } : {}),
+          ...(variantColor ? { variantColor } : {}),
           altText: upload.altText.trim(),
         },
       }));
@@ -334,7 +364,7 @@ export function CatalogMediaManager({
           `${remaining.length} upload${remaining.length === 1 ? " needs" : "s need"} attention. Retry temporary failures with the same command, or remove files with permanent errors.`,
         );
       } else {
-        setVariantId("");
+        setVariantColor("");
       }
     } finally {
       setOperation(null);
@@ -345,6 +375,9 @@ export function CatalogMediaManager({
     const draft = {
       commandId: item.commandId,
       ...(item.variantId ? { variantId: item.variantId } : {}),
+      ...(!item.variantId && item.variantColor
+        ? { variantColor: item.variantColor }
+        : {}),
       altText: item.altText,
       ...(item.reason ? { reason: item.reason } : {}),
     };
@@ -372,6 +405,66 @@ export function CatalogMediaManager({
     } catch {
       await loadMedia();
       setProblem("Could not reach the API. Retry with the same original file.");
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  async function saveMediaDetails(item: CatalogMedia) {
+    const edit = mediaEdits[item.id] ?? {
+      altText: item.altText,
+      variantColor: item.variantColor ?? "",
+    };
+    if (!edit.altText.trim()) {
+      setProblem("Add useful alt text before saving this image.");
+      return;
+    }
+    const input: CatalogMediaUpdateInput = {
+      altText: edit.altText.trim(),
+      variantId: null,
+      variantColor: edit.variantColor || null,
+    };
+
+    setOperation(`update:${item.id}`);
+    setProblem(null);
+    try {
+      const response = await updateCatalogProductMedia(
+        productId,
+        item.id,
+        input,
+      );
+      if (!response.ok) {
+        const apiError = await readApiErrorResponse(response);
+        await loadMedia();
+        setProblem(
+          getApiErrorMessage(apiError) ??
+            "The API could not save the image details.",
+        );
+        return;
+      }
+
+      const parsed = CatalogMediaSchema.safeParse(await response.json());
+      if (!parsed.success) {
+        await loadMedia();
+        setProblem("The API returned invalid image details.");
+        return;
+      }
+      setMedia((current) =>
+        current.map((mediaItem) =>
+          mediaItem.id === parsed.data.id ? parsed.data : mediaItem,
+        ),
+      );
+      setMediaEdits((current) => ({
+        ...current,
+        [parsed.data.id]: {
+          altText: parsed.data.altText,
+          variantColor: parsed.data.variantColor ?? "",
+        },
+      }));
+      toast.add({ title: "Image details saved", type: "success" });
+    } catch {
+      await loadMedia();
+      setProblem("Could not reach the catalog API. Refresh and try again.");
     } finally {
       setOperation(null);
     }
@@ -514,25 +607,31 @@ export function CatalogMediaManager({
 
             <Field>
               <FieldLabel htmlFor="catalog-media-variant">
-                Variant association
+                Color association
               </FieldLabel>
               <Select
                 disabled={operation !== null || hasPendingUploadCommands}
                 onValueChange={(value) =>
-                  setVariantId(value === allVariantsValue ? "" : (value ?? ""))
+                  setVariantColor(
+                    value === allVariantsValue
+                      ? ""
+                      : (value?.slice("color:".length) ?? ""),
+                  )
                 }
-                value={variantId || allVariantsValue}
+                value={
+                  variantColor ? `color:${variantColor}` : allVariantsValue
+                }
               >
                 <SelectTrigger id="catalog-media-variant">
-                  <SelectValue placeholder="All product variants" />
+                  <SelectValue placeholder="All product colors" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={allVariantsValue}>
-                    All product variants
+                    All product colors
                   </SelectItem>
-                  {activeVariants.map((variant) => (
-                    <SelectItem key={variant.id} value={variant.id}>
-                      {variant.color} · {variant.sizeLabel}
+                  {activeColors.map((color) => (
+                    <SelectItem key={color} value={`color:${color}`}>
+                      {color}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -732,10 +831,87 @@ export function CatalogMediaManager({
                     )}
 
                     <div className="min-w-0">
-                      <p className="break-words text-sm">{item.altText}</p>
-                      {item.variantId && (
+                      <Input
+                        aria-label={`Alt text for image ${index + 1}`}
+                        className="h-9"
+                        disabled={operation !== null || item.status !== "ready"}
+                        maxLength={500}
+                        onChange={(event) =>
+                          setMediaEdits((current) => ({
+                            ...current,
+                            [item.id]: {
+                              altText: event.currentTarget.value,
+                              variantColor:
+                                current[item.id]?.variantColor ??
+                                item.variantColor ??
+                                "",
+                            },
+                          }))
+                        }
+                        value={mediaEdits[item.id]?.altText ?? item.altText}
+                      />
+                      <Select
+                        disabled={operation !== null || item.status !== "ready"}
+                        onValueChange={(value) =>
+                          setMediaEdits((current) => ({
+                            ...current,
+                            [item.id]: {
+                              altText:
+                                current[item.id]?.altText ?? item.altText,
+                              variantColor:
+                                value === allVariantsValue
+                                  ? ""
+                                  : (value?.slice("color:".length) ?? ""),
+                            },
+                          }))
+                        }
+                        value={
+                          (mediaEdits[item.id]?.variantColor ??
+                          item.variantColor ??
+                          "")
+                            ? `color:${mediaEdits[item.id]?.variantColor ?? item.variantColor}`
+                            : allVariantsValue
+                        }
+                      >
+                        <SelectTrigger
+                          aria-label={`Color association for image ${index + 1}`}
+                        >
+                          <SelectValue placeholder="All product colors" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={allVariantsValue}>
+                            All product colors
+                          </SelectItem>
+                          {activeColors.map((color) => (
+                            <SelectItem key={color} value={`color:${color}`}>
+                              {color}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        className="w-full"
+                        disabled={
+                          operation !== null ||
+                          item.status !== "ready" ||
+                          ((mediaEdits[item.id]?.altText ?? item.altText) ===
+                            item.altText &&
+                            (mediaEdits[item.id]?.variantColor ??
+                              item.variantColor ??
+                              "") === (item.variantColor ?? ""))
+                        }
+                        onClick={() => void saveMediaDetails(item)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        Save image details
+                      </Button>
+                      {item.variantColor && (
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {variantLabel(variants, item.variantId)}
+                          {item.variantId
+                            ? `${item.variantColor} · ${variantSizeLabel(variants, item.variantId)}`
+                            : `All ${item.variantColor} sizes`}
                         </p>
                       )}
                       {item.status === "rejected" && (
@@ -818,9 +994,10 @@ function mediaStatusLabel(status: CatalogMedia["status"]): string {
   }
 }
 
-function variantLabel(variants: VariantOption[], variantId: string): string {
+function variantSizeLabel(
+  variants: VariantOption[],
+  variantId: string,
+): string {
   const variant = variants.find((item) => item.id === variantId);
-  return variant
-    ? `${variant.color} · ${variant.sizeLabel}`
-    : "Archived variant";
+  return variant?.sizeLabel ?? "Archived SKU";
 }

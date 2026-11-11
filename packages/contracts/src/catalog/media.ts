@@ -68,6 +68,7 @@ export type CatalogProductImage = z.infer<typeof CatalogProductImageSchema>;
 export const CatalogProductDetailImageSchema = CatalogProductImageSchema.extend(
   {
     variantId: z.uuid().nullable(),
+    variantColor: z.string().trim().min(1).max(100).nullable(),
   },
 );
 export type CatalogProductDetailImage = z.infer<
@@ -100,11 +101,30 @@ export const CatalogMediaUploadInputSchema = z.strictObject({
     .union([z.uuid(), z.literal("")])
     .optional()
     .transform((value) => value || undefined),
+  variantColor: z
+    .union([z.string().trim().min(1).max(100), z.literal("")])
+    .optional()
+    .transform((value) => value || undefined),
   altText: z.string().trim().min(1).max(500),
   reason: z.string().trim().min(3).max(500).optional(),
 });
 export type CatalogMediaUploadInput = z.input<
   typeof CatalogMediaUploadInputSchema
+>;
+
+export const CatalogMediaUpdateInputSchema = z
+  .strictObject({
+    altText: z.string().trim().min(1).max(500),
+    variantId: z.uuid().nullable(),
+    variantColor: z.string().trim().min(1).max(100).nullable(),
+    reason: z.string().trim().min(3).max(500).optional(),
+  })
+  .refine(
+    ({ variantId, variantColor }) => !(variantId && variantColor),
+    "Choose either one exact SKU or a product color for this image.",
+  );
+export type CatalogMediaUpdateInput = z.infer<
+  typeof CatalogMediaUpdateInputSchema
 >;
 
 export const CatalogMediaDeleteInputSchema = z.strictObject({
@@ -133,6 +153,7 @@ export const CatalogMediaSchema = z.strictObject({
   commandId: z.uuid(),
   productId: z.uuid(),
   variantId: z.uuid().nullable(),
+  variantColor: z.string().trim().min(1).max(100).nullable(),
   altText: z.string().min(1).max(500),
   reason: z.string().min(3).max(500).nullable(),
   deletionReason: z.string().min(3).max(500).nullable(),

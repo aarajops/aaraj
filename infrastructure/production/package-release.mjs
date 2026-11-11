@@ -115,11 +115,29 @@ try {
     path.join(releaseApi, "scripts/migrate-production.mjs"),
   );
   await cp(
+    path.join(repository, "apps/api/scripts/migration-support.mjs"),
+    path.join(releaseApi, "scripts/migration-support.mjs"),
+  );
+  await cp(
     path.join(
       repository,
       "apps/api/scripts/backfill-order-address-snapshots.mjs",
     ),
     path.join(releaseApi, "scripts/backfill-order-address-snapshots.mjs"),
+  );
+  await cp(
+    path.join(
+      repository,
+      "apps/api/scripts/backfill-order-address-ciphertext.mjs",
+    ),
+    path.join(releaseApi, "scripts/backfill-order-address-ciphertext.mjs"),
+  );
+  await cp(
+    path.join(
+      repository,
+      "apps/api/scripts/rotate-order-address-ciphertext.mjs",
+    ),
+    path.join(releaseApi, "scripts/rotate-order-address-ciphertext.mjs"),
   );
 
   const standalone = path.join(repository, "apps/web/.next/standalone");

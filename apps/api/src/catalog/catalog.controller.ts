@@ -28,6 +28,7 @@ import {
   CatalogProductIdSchema,
   CatalogProductListQuerySchema,
   CatalogMediaDeleteInputSchema,
+  CatalogMediaUpdateInputSchema,
   CatalogProductMediaOrderInputSchema,
   CatalogMediaUploadInputSchema,
   CatalogPublishedProductListQuerySchema,
@@ -36,6 +37,7 @@ import {
   CatalogProductUpdateSchema,
   MAX_CATALOG_MEDIA_UPLOAD_BYTES,
   type CatalogMediaDeleteInput,
+  type CatalogMediaUpdateInput,
   type CatalogProductMediaOrderInput,
   type CatalogMediaUploadInput,
   type CatalogProductCreateInput,
@@ -164,6 +166,24 @@ export class CatalogController {
     input: CatalogMediaDeleteInput,
   ) {
     return this.catalogMedia.delete(session.user, productId, mediaId, input);
+  }
+
+  @Patch("manage/:productId/media/:mediaId")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  updateMediaMetadata(
+    @Session() session: UserSession,
+    @Param("productId", { schema: CatalogProductIdSchema }) productId: string,
+    @Param("mediaId", { schema: CatalogProductIdSchema }) mediaId: string,
+    @Body({ schema: CatalogMediaUpdateInputSchema })
+    input: CatalogMediaUpdateInput,
+  ) {
+    return this.catalogMedia.updateMetadata(
+      session.user,
+      productId,
+      mediaId,
+      input,
+    );
   }
 
   @Get()

@@ -11,6 +11,7 @@ import { AuthorizationDenialsLogger } from "./authorization-denials.logger.js";
 import { PermissionsService } from "./permissions.service.js";
 import { OrdersPolicy } from "./orders.policy.js";
 import { CheckoutDraftsPolicy } from "./checkout-drafts.policy.js";
+import { OrdersFinancePolicy } from "./orders-finance.policy.js";
 
 @Module({
   imports: [DatabaseModule, AuditModule, AuthorizationModule.forRoot()],
@@ -21,6 +22,7 @@ import { CheckoutDraftsPolicy } from "./checkout-drafts.policy.js";
     AccessPolicy,
     AuditPolicy,
     OrdersPolicy,
+    OrdersFinancePolicy,
     CheckoutDraftsPolicy,
     AccessService,
     CookieMutationGuard,

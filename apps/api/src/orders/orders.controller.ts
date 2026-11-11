@@ -298,6 +298,22 @@ export class OrdersController {
     return this.orders.getForOwner(orderId, session?.user.id, signedCookies);
   }
 
+  @Delete(":orderId/sms-consent")
+  @HttpCode(204)
+  @Header("Cache-Control", "no-store")
+  @UseGuards(CookieMutationGuard)
+  async withdrawSmsUpdatesConsent(
+    @Session() session: UserSession | undefined,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @SignedCookies() signedCookies: Record<string, string>,
+  ): Promise<void> {
+    await this.orders.withdrawSmsUpdatesConsent(
+      orderId,
+      session?.user.id,
+      signedCookies,
+    );
+  }
+
   private setGuestOrderCookie(
     response: unknown,
     orderId: string,

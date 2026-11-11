@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const host = "127.0.0.1";
-const webPort = 3180;
-const apiPort = 3181;
+const webPort = Number(process.env.PLAYWRIGHT_WEB_PORT ?? 3180);
+const apiPort = Number(process.env.PLAYWRIGHT_API_PORT ?? 3181);
 
 export default defineConfig({
   testDir: "./e2e",

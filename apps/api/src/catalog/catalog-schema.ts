@@ -17,6 +17,10 @@ import {
   CATALOG_MEDIA_RENDITIONS,
   MAX_CATALOG_MEDIA_DERIVATIVE_BYTES,
   MAX_CATALOG_MEDIA_UPLOAD_BYTES,
+  MAX_CATALOG_VIDEO_UPLOAD_BYTES,
+  type CatalogVideoCaption,
+  type CatalogVideoStatus,
+  type CatalogProductContentBlock,
   type CatalogMediaContentType,
   type CatalogMediaDerivatives,
   type CatalogMediaStatus,
@@ -157,6 +161,10 @@ export const catalogProduct = catalogSchema.table(
     slug: text("slug").notNull(),
     name: text("name").notNull(),
     description: text("description"),
+    contentBlocks: jsonb("content_blocks")
+      .$type<CatalogProductContentBlock[]>()
+      .notNull()
+      .default([]),
     audience: text("audience").$type<"men" | "women" | "unisex">(),
     categoryId: uuid("category_id").references(() => catalogCategory.id, {
       onDelete: "restrict",
@@ -194,6 +202,10 @@ export const catalogProduct = catalogSchema.table(
     check(
       "product_name_nonempty_check",
       sql`${table.name} = btrim(${table.name}) AND length(${table.name}) > 0`,
+    ),
+    check(
+      "product_content_blocks_check",
+      sql`jsonb_typeof(${table.contentBlocks}) = 'array' and jsonb_array_length(${table.contentBlocks}) <= 32`,
     ),
     check(
       "product_audience_check",
@@ -264,6 +276,7 @@ export const catalogProductMedia = catalogSchema.table(
     variantId: uuid("variant_id").references(() => catalogProductVariant.id, {
       onDelete: "set null",
     }),
+    variantColor: text("variant_color"),
     objectKey: text("object_key").notNull(),
     contentType: text("content_type")
       .$type<CatalogMediaContentType>()
@@ -294,6 +307,10 @@ export const catalogProductMedia = catalogSchema.table(
       table.sortOrder,
     ),
     index("product_media_variant_idx").on(table.variantId),
+    index("product_media_product_color_idx").on(
+      table.productId,
+      table.variantColor,
+    ),
     check(
       "product_media_object_key_check",
       sql`${table.objectKey} = 'quarantine/' || ${table.id}::text || '/source'`,
@@ -315,6 +332,10 @@ export const catalogProductMedia = catalogSchema.table(
       sql`${table.altText} = btrim(${table.altText}) and length(${table.altText}) between 1 and 500`,
     ),
     check(
+      "product_media_variant_color_check",
+      sql`${table.variantColor} is null or (${table.variantColor} = btrim(${table.variantColor}) and length(${table.variantColor}) between 1 and 100)`,
+    ),
+    check(
       "product_media_reason_check",
       sql`${table.reason} is null or (${table.reason} = btrim(${table.reason}) and length(${table.reason}) between 3 and 500)`,
     ),
@@ -334,6 +355,133 @@ export const catalogProductMedia = catalogSchema.table(
     check(
       "product_media_created_by_check",
       sql`${table.createdBy} = btrim(${table.createdBy}) and length(${table.createdBy}) > 0`,
+    ),
+  ],
+);
+
+export const catalogProductVideo = catalogSchema.table(
+  "product_video",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    commandId: uuid("command_id").notNull(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => catalogProduct.id, { onDelete: "restrict" }),
+    providerUid: text("provider_uid"),
+    uploadUrlCiphertext: text("upload_url_ciphertext"),
+    uploadExpiresAt: timestamp("upload_expires_at", { withTimezone: true }),
+    title: text("title").notNull(),
+    description: text("description"),
+    variantColor: text("variant_color"),
+    fileSizeBytes: integer("file_size_bytes").notNull(),
+    durationSeconds: numeric("duration_seconds", {
+      precision: 8,
+      scale: 3,
+    }),
+    captions: jsonb("captions")
+      .$type<CatalogVideoCaption[]>()
+      .notNull()
+      .default([]),
+    sortOrder: integer("sort_order").notNull(),
+    status: text("status").$type<CatalogVideoStatus>().notNull(),
+    reason: text("reason"),
+    deletionReason: text("deletion_reason"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("product_video_command_uidx").on(table.commandId),
+    uniqueIndex("product_video_provider_uidx").on(table.providerUid),
+    uniqueIndex("product_video_product_order_uidx").on(
+      table.productId,
+      table.sortOrder,
+    ),
+    index("product_video_product_status_order_idx").on(
+      table.productId,
+      table.status,
+      table.sortOrder,
+    ),
+    check(
+      "product_video_title_check",
+      sql`${table.title} = btrim(${table.title}) and length(${table.title}) between 1 and 160`,
+    ),
+    check(
+      "product_video_description_check",
+      sql`${table.description} is null or (${table.description} = btrim(${table.description}) and length(${table.description}) <= 1000)`,
+    ),
+    check(
+      "product_video_color_check",
+      sql`${table.variantColor} is null or (${table.variantColor} = btrim(${table.variantColor}) and length(${table.variantColor}) between 1 and 100)`,
+    ),
+    check(
+      "product_video_size_check",
+      sql`${table.fileSizeBytes} between 1 and ${sql.raw(String(MAX_CATALOG_VIDEO_UPLOAD_BYTES))}`,
+    ),
+    check(
+      "product_video_duration_check",
+      sql`${table.durationSeconds} is null or ${table.durationSeconds} between 0.001 and 36000`,
+    ),
+    check(
+      "product_video_captions_check",
+      sql`jsonb_typeof(${table.captions}) = 'array' and jsonb_array_length(${table.captions}) <= 50`,
+    ),
+    check("product_video_sort_order_check", sql`${table.sortOrder} >= 0`),
+    check(
+      "product_video_status_check",
+      sql`${table.status} in ('provisioning', 'awaiting_upload', 'processing', 'ready', 'error', 'deleting', 'deleted')`,
+    ),
+    check(
+      "product_video_uid_check",
+      sql`${table.providerUid} is null or ${table.providerUid} ~ '^[A-Za-z0-9_-]{16,128}$'`,
+    ),
+    check(
+      "product_video_reason_check",
+      sql`${table.reason} is null or (${table.reason} = btrim(${table.reason}) and length(${table.reason}) between 3 and 500)`,
+    ),
+    check(
+      "product_video_deletion_reason_check",
+      sql`${table.deletionReason} is null or (${table.deletionReason} = btrim(${table.deletionReason}) and length(${table.deletionReason}) between 3 and 500)`,
+    ),
+    check(
+      "product_video_created_by_check",
+      sql`${table.createdBy} = btrim(${table.createdBy}) and length(${table.createdBy}) > 0`,
+    ),
+  ],
+);
+
+export const catalogVideoWebhookInbox = catalogSchema.table(
+  "product_video_webhook_inbox",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    fingerprint: text("fingerprint").notNull(),
+    providerUid: text("provider_uid").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("product_video_webhook_fingerprint_uidx").on(table.fingerprint),
+    index("product_video_webhook_uid_received_idx").on(
+      table.providerUid,
+      table.receivedAt,
+    ),
+    check(
+      "product_video_webhook_fingerprint_check",
+      sql`${table.fingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "product_video_webhook_uid_check",
+      sql`${table.providerUid} ~ '^[A-Za-z0-9_-]{16,128}$'`,
+    ),
+    check(
+      "product_video_webhook_payload_check",
+      sql`jsonb_typeof(${table.payload}) = 'object'`,
     ),
   ],
 );

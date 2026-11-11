@@ -35,5 +35,9 @@
   "0059_variant_compare_at_price.sql": "compatible",
   "0060_checkout_drafts.sql": "compatible",
   "0061_order_created_id_index.sql": "maintenance",
-  "0062_order_query_indexes_and_address_snapshot.sql": "maintenance"
+  "0062_order_query_indexes_and_address_snapshot.sql": "maintenance",
+  "0066_order_address_encryption_expand.sql": "maintenance",
+  "0067_order_address_encryption_contract.sql": "maintenance",
+  "0063_catalog_media_and_content.sql": "maintenance",
+  "0068_order_operations_and_settlement.sql": "compatible"
 }

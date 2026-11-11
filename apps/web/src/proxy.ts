@@ -58,7 +58,7 @@ export function proxy(request: NextRequest) {
         trackingHosts.meta,
       ),
     )}`,
-    `connect-src 'self'${storefrontOnly(
+    `connect-src 'self'${isAdmin ? " https://upload.videodelivery.net" : ""}${storefrontOnly(
       sources(
         trackingHosts.googleTag,
         trackingHosts.analytics,
@@ -70,7 +70,7 @@ export function proxy(request: NextRequest) {
     `font-src 'self'${storefrontOnly(
       sources(trackingHosts.googleStatic, "data:"),
     )}`,
-    `frame-src 'self'${storefrontOnly(
+    `frame-src 'self'${isAdmin ? "" : " https://iframe.videodelivery.net"}${storefrontOnly(
       sources(
         trackingHosts.googleTag,
         trackingHosts.google,

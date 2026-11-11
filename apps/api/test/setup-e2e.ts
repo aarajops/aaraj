@@ -16,9 +16,11 @@ process.env.NODE_ENV = "test";
 process.env.BETTER_AUTH_SECRET =
   "test-only-better-auth-secret-with-32-bytes-minimum";
 process.env.BETTER_AUTH_URL = "http://localhost:3001";
-if (!process.env.ORDER_PII_KEYRING) {
+if (!process.env.ORDER_PII_KEYRING?.trim()) {
   process.env.ORDER_PII_ENCRYPTION_KEY ??=
     randomBytes(32).toString("base64url");
+} else {
+  delete process.env.ORDER_PII_ENCRYPTION_KEY;
 }
 process.env.CLIENT_URL = "http://localhost:3000";
 process.env.POSTGRES_DB ??= "aaraj_test";

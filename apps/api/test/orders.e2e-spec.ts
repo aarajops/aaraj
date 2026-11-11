@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
+import twilio from "twilio";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { afterEach, beforeEach, vi } from "vitest";
 import {
   API_V1_BASE_PATH,
+  type AuthoritativeQuote,
   type BangladeshGeography,
   type CreateOrderInput,
   type OrderAddress,
@@ -43,9 +45,16 @@ import {
   checkoutDraft,
   orderIdempotency,
   orderPathaoBookingClaim,
+  orderReceipt,
   orderReferenceCounter,
+  orderNotificationOutbox,
+  courierSettlementJournalEntry,
 } from "../src/orders/orders-schema.js";
 import { OrdersService } from "../src/orders/orders.service.js";
+import {
+  encryptOrderAddress,
+  makeOrderAddressLookups,
+} from "../src/orders/order-address-crypto.js";
 import {
   pathaoApiToken,
   pathaoBooking,
@@ -77,6 +86,7 @@ describe("COD Orders and checkout", () => {
   let database: DatabaseService;
   let staff: Account;
   let secondStaff: Account;
+  let financeStaff: Account;
   let customer: Account;
   let geography: BangladeshGeography;
   let dhaka: BangladeshGeography["locations"][number];
@@ -197,7 +207,7 @@ describe("COD Orders and checkout", () => {
       .set("Cookie", cookie)
       .send(destination)
       .expect(201);
-    return cart.body as { id: string; totalBdt: number; cartRevision: number };
+    return cart.body as AuthoritativeQuote;
   }
 
   async function prepareGuestCheckout(
@@ -233,6 +243,7 @@ describe("COD Orders and checkout", () => {
   ): CreateOrderInput {
     return {
       quoteId,
+      smsUpdatesConsent: false,
       address: {
         recipientName: "E2E Recipient",
         phone: "01712345678",
@@ -537,6 +548,7 @@ describe("COD Orders and checkout", () => {
     const bootstrap = await account("order-superadmin");
     staff = await account("order-staff");
     secondStaff = await account("order-staff-second");
+    financeStaff = await account("order-finance");
     customer = await account("order-customer");
     const access = app.get(AccessService);
     await access.bootstrapSuperadmin(bootstrap.id, {
@@ -547,6 +559,9 @@ describe("COD Orders and checkout", () => {
     });
     await access.changeRole(bootstrap, secondStaff.id, "staff", "grant", {
       reason: "COD dispatch concurrency E2E operator",
+    });
+    await access.changeRole(bootstrap, financeStaff.id, "admin", "grant", {
+      reason: "COD returns and remittance finance E2E operator",
     });
     const geographyResponse = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/geography`)
@@ -595,9 +610,33 @@ describe("COD Orders and checkout", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    for (const [key, value] of previousOrderPiiEnvironment) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+    const originalKeyring = previousOrderPiiEnvironment
+      .get("ORDER_PII_KEYRING")
+      ?.trim();
+    const originalConfiguration = originalKeyring
+      ? (JSON.parse(originalKeyring) as {
+          activeKeyId: string;
+          keys: Record<string, string>;
+        })
+      : null;
+    const legacyKey =
+      originalConfiguration?.keys.legacy ??
+      previousOrderPiiEnvironment.get("ORDER_PII_ENCRYPTION_KEY");
+    if (legacyKey) {
+      process.env.ORDER_PII_KEYRING = JSON.stringify({
+        activeKeyId: originalConfiguration?.activeKeyId ?? "legacy",
+        keys: {
+          ...originalConfiguration?.keys,
+          legacy: legacyKey,
+          ...Object.fromEntries(retainedOrderPiiKeys),
+        },
+      });
+      delete process.env.ORDER_PII_ENCRYPTION_KEY;
+    } else {
+      for (const [key, value] of previousOrderPiiEnvironment) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
   });
 
@@ -622,6 +661,33 @@ describe("COD Orders and checkout", () => {
       },
     });
     delete process.env.ORDER_PII_ENCRYPTION_KEY;
+  }
+
+  function orderPiiSubprocessEnvironment(): NodeJS.ProcessEnv {
+    const currentKeyring = process.env.ORDER_PII_KEYRING?.trim();
+    const currentConfiguration = currentKeyring
+      ? (JSON.parse(currentKeyring) as {
+          activeKeyId: string;
+          keys: Record<string, string>;
+        })
+      : null;
+    const legacyKey =
+      currentConfiguration?.keys.legacy ??
+      process.env.ORDER_PII_ENCRYPTION_KEY ??
+      previousOrderPiiEnvironment.get("ORDER_PII_ENCRYPTION_KEY");
+    if (!legacyKey) throw new Error("The legacy Order PII key is missing.");
+    return {
+      ...process.env,
+      ORDER_PII_KEYRING: JSON.stringify({
+        activeKeyId: currentConfiguration?.activeKeyId ?? "legacy",
+        keys: {
+          ...currentConfiguration?.keys,
+          legacy: legacyKey,
+          ...Object.fromEntries(retainedOrderPiiKeys),
+        },
+      }),
+      ORDER_PII_ENCRYPTION_KEY: "",
+    };
   }
 
   it("captures an abandoned guest checkout and converts it once into a confirmed Order", async () => {
@@ -1064,7 +1130,7 @@ describe("COD Orders and checkout", () => {
     expect((await stockFor(variantId)).quantityReserved).toBe(1);
   });
 
-  it("stores a normalized address snapshot while keeping checkout retries idempotent", async () => {
+  it("stores encrypted addresses while keeping checkout retries idempotent and rotatable", async () => {
     const legacyKey =
       process.env.ORDER_PII_ENCRYPTION_KEY ??
       (
@@ -1122,9 +1188,23 @@ describe("COD Orders and checkout", () => {
     );
     const stored = await orderById(response.body.id);
     expect(stored?.guestAccessTokenHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(stored?.addressSnapshot).toMatchObject({
-      recipientName: "E2E Recipient",
-      phone: "+8801712345678",
+    expect(stored?.addressCiphertext).toMatch(/^v2\.rotation_a\./);
+    expect(stored?.addressCiphertext).not.toContain("E2E Recipient");
+    expect(stored?.addressCiphertext).not.toContain("01712345678");
+    expect(stored?.addressNamePrefixes).toHaveLength("e2e recipient".length);
+    expect(stored?.addressPhonePrefixes).toHaveLength("8801712345678".length);
+    const [savedLine] = await database.db
+      .select()
+      .from(customerOrderLine)
+      .where(eq(customerOrderLine.orderId, response.body.id));
+    expect(savedLine?.productSnapshot).toMatchObject({
+      sku: quote.lines[0]?.sku,
+      productSlug: quote.lines[0]?.productSlug,
+      productName: quote.lines[0]?.productName,
+      description: quote.lines[0]?.description,
+      contentBlocks: quote.lines[0]?.contentBlocks,
+      color: quote.lines[0]?.color,
+      sizeLabel: quote.lines[0]?.sizeLabel,
     });
     const [expiry] = await database.db
       .select({
@@ -1188,12 +1268,9 @@ describe("COD Orders and checkout", () => {
       checkoutBody(rotatedQuote.id),
       rotatedKey,
     ).expect(201);
-    expect(
-      (await orderById(rotatedOrder.body.id))?.addressSnapshot,
-    ).toMatchObject({
-      recipientName: "E2E Recipient",
-      phone: "+8801712345678",
-    });
+    expect((await orderById(rotatedOrder.body.id))?.addressCiphertext).toMatch(
+      /^v2\.rotation_b\./,
+    );
 
     expect(
       setCookieHeaders(response.headers).find((value) =>
@@ -1227,6 +1304,152 @@ describe("COD Orders and checkout", () => {
       .get(`${API_V1_BASE_PATH}/orders/${response.body.id}`)
       .set("Cookie", customer.cookie)
       .expect(200);
+  });
+
+  it("queues order SMS only after explicit consent and exposes no phone to operations", async () => {
+    const variantId = await createVariant(1);
+    const cart = await newGuestCart([variantId]);
+    const quote = await createQuote(cart.cookie);
+    const key = randomUUID();
+    const cookie = await prepareGuestCheckout(cart.cookie, key);
+    const input = checkoutBody(quote.id);
+    input.smsUpdatesConsent = true;
+    const created = await placeOrder(cookie, input, key).expect(201);
+
+    const [order] = await database.db
+      .select({ consent: customerOrder.smsUpdatesConsent })
+      .from(customerOrder)
+      .where(eq(customerOrder.id, created.body.id as string));
+    expect(order?.consent).toBe(true);
+    const [outbox] = await database.db
+      .select()
+      .from(orderNotificationOutbox)
+      .where(eq(orderNotificationOutbox.orderId, created.body.id as string));
+    expect(outbox).toMatchObject({
+      eventKey: "order_received",
+      status: "pending",
+      channel: "sms",
+    });
+    expect(outbox).not.toHaveProperty("phone");
+
+    const notifications = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/notifications/outbox`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(notifications.body).toContainEqual(
+      expect.objectContaining({
+        id: outbox!.id,
+        orderReference: created.body.reference,
+        eventKey: "order_received",
+        status: "pending",
+      }),
+    );
+    expect(JSON.stringify(notifications.body)).not.toContain("+8801712345678");
+    const orderCookie = setCookieHeaders(created.headers)
+      .find((value) => value.startsWith(`aaraj_order_${created.body.id}=`))
+      ?.split(";")[0];
+    expect(orderCookie).toBeTruthy();
+    await request(app.getHttpServer())
+      .delete(`${API_V1_BASE_PATH}/orders/${created.body.id}/sms-consent`)
+      .set("Origin", origin)
+      .set("Cookie", orderCookie!)
+      .expect(204);
+    const [withdrawnOrder] = await database.db
+      .select({ consent: customerOrder.smsUpdatesConsent })
+      .from(customerOrder)
+      .where(eq(customerOrder.id, created.body.id as string));
+    const [suppressedMessage] = await database.db
+      .select({ status: orderNotificationOutbox.status })
+      .from(orderNotificationOutbox)
+      .where(eq(orderNotificationOutbox.orderId, created.body.id as string));
+    expect(withdrawnOrder?.consent).toBe(true);
+    expect(suppressedMessage?.status).toBe("suppressed");
+    const currentOrderView = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/${created.body.id}`)
+      .set("Cookie", orderCookie!)
+      .expect(200);
+    expect(currentOrderView.body.smsUpdatesConsent).toBe(false);
+  });
+
+  it("attaches an authenticated Twilio callback that races the send-result write", async () => {
+    const twilioEnvironmentKeys = [
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN",
+      "TWILIO_MESSAGING_SERVICE_SID",
+      "TWILIO_SMS_FROM",
+      "TWILIO_STATUS_CALLBACK_URL",
+    ];
+    const previousEnvironment = new Map(
+      twilioEnvironmentKeys.map((key) => [key, process.env[key]]),
+    );
+    const accountSid = `AC${"a".repeat(32)}`;
+    const authToken = "test_twilio_auth_token_long_enough_123";
+    const callbackBaseUrl =
+      "https://store.example/api/v1/orders/notifications/twilio/status";
+    try {
+      process.env.TWILIO_ACCOUNT_SID = accountSid;
+      process.env.TWILIO_AUTH_TOKEN = authToken;
+      process.env.TWILIO_MESSAGING_SERVICE_SID = `MG${"b".repeat(32)}`;
+      delete process.env.TWILIO_SMS_FROM;
+      process.env.TWILIO_STATUS_CALLBACK_URL = callbackBaseUrl;
+
+      const variantId = await createVariant(1);
+      const cart = await newGuestCart([variantId]);
+      const quote = await createQuote(cart.cookie);
+      const key = randomUUID();
+      const cookie = await prepareGuestCheckout(cart.cookie, key);
+      const input = checkoutBody(quote.id);
+      input.smsUpdatesConsent = true;
+      const created = await placeOrder(cookie, input, key).expect(201);
+      const [outbox] = await database.db
+        .select()
+        .from(orderNotificationOutbox)
+        .where(eq(orderNotificationOutbox.orderId, created.body.id as string));
+      if (!outbox)
+        throw new Error("Consent-gated notification was not queued.");
+      await database.db
+        .update(orderNotificationOutbox)
+        .set({ status: "sending", lockedAt: new Date() })
+        .where(eq(orderNotificationOutbox.id, outbox.id));
+
+      const messageSid = `SM${"c".repeat(32)}`;
+      const callbackUrl = new URL(callbackBaseUrl);
+      callbackUrl.searchParams.set("notificationId", outbox.id);
+      const params = {
+        AccountSid: accountSid,
+        MessageSid: messageSid,
+        MessageStatus: "delivered",
+      };
+      const signature = twilio.getExpectedTwilioSignature(
+        authToken,
+        callbackUrl.toString(),
+        params,
+      );
+      await request(app.getHttpServer())
+        .post(`${API_V1_BASE_PATH}/orders/notifications/twilio/status`)
+        .query({ notificationId: outbox.id })
+        .set("X-Twilio-Signature", signature)
+        .type("form")
+        .send(params)
+        .expect(201);
+
+      const [updated] = await database.db
+        .select({
+          status: orderNotificationOutbox.status,
+          providerMessageSid: orderNotificationOutbox.providerMessageSid,
+        })
+        .from(orderNotificationOutbox)
+        .where(eq(orderNotificationOutbox.id, outbox.id));
+      expect(updated).toEqual({
+        status: "delivered",
+        providerMessageSid: messageSid,
+      });
+    } finally {
+      for (const [key, value] of previousEnvironment) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it("builds the customer directory from placed orders without merging guest contacts", async () => {
@@ -2394,6 +2617,7 @@ describe("COD Orders and checkout", () => {
           status: "held" as const,
         })),
       );
+      const addressLookups = makeOrderAddressLookups(sourceAddress);
       await database.db.insert(customerOrder).values(
         synthetic.map(({ id, quoteId, reservationId, reference }) => ({
           ...sourceOrder,
@@ -2401,7 +2625,9 @@ describe("COD Orders and checkout", () => {
           quoteId,
           reservationId,
           reference,
-          addressSnapshot: sourceAddress,
+          addressCiphertext: encryptOrderAddress(id, sourceAddress),
+          addressNamePrefixes: addressLookups.namePrefixes,
+          addressPhonePrefixes: addressLookups.phonePrefixes,
         })),
       );
 
@@ -2634,6 +2860,431 @@ describe("COD Orders and checkout", () => {
     });
   });
 
+  it("issues one durable delivery receipt and records inspected customer returns safely", async () => {
+    const fixture = await createGuestOrder(2);
+    await confirmOrder(fixture.id);
+    await dispatchOrder(fixture.id, staff.cookie).expect(201);
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/fulfillment-outcome`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        outcome: "delivered",
+        reason: "Delivery evidence verified for receipt",
+      })
+      .expect(201);
+    const stored = await orderById(fixture.id);
+    if (!stored) throw new Error("Delivered return fixture is missing.");
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/collection`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        collectedAmountBdt: stored.codAmountDueBdt,
+        reason: "Courier COD amount matched the signed evidence",
+      })
+      .expect(201);
+
+    const firstReceipt = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/receipt`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .expect(201);
+    const replayedReceipt = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/receipt`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .expect(201);
+    expect(firstReceipt.body).toMatchObject({
+      receiptNumber: expect.stringMatching(/^AAR-[0-9]{4}-[0-9]{6}$/),
+      documentType: "delivery_receipt",
+      taxInvoice: false,
+      order: {
+        fulfillmentStatus: "delivered",
+        address: { recipientName: "E2E Recipient" },
+      },
+    });
+    expect(replayedReceipt.body.id).toBe(firstReceipt.body.id);
+    expect(replayedReceipt.body.receiptNumber).toBe(
+      firstReceipt.body.receiptNumber,
+    );
+    const [savedReceipt] = await database.db
+      .select()
+      .from(orderReceipt)
+      .where(eq(orderReceipt.orderId, fixture.id));
+    expect(savedReceipt?.snapshot).not.toHaveProperty("address");
+
+    const created = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/returns`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        commandId: randomUUID(),
+        origin: "customer_return",
+        reason: "Customer returned a delivered item for inspection",
+        lines: [{ variantId: fixture.variantId, quantity: 1 }],
+      })
+      .expect(201);
+    const returnCaseId = created.body.id as string;
+    await request(app.getHttpServer())
+      .patch(
+        `${API_V1_BASE_PATH}/orders/manage/returns/${returnCaseId}/decision`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        commandId: randomUUID(),
+        decision: "authorize",
+        reason: "Return eligibility verified",
+      })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/returns/${returnCaseId}/receive`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        commandId: randomUUID(),
+        reason: "One item physically received at the warehouse",
+        lines: [{ variantId: fixture.variantId, quantityReceived: 1 }],
+      })
+      .expect(201);
+    const inspected = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/returns/${returnCaseId}/inspect`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        commandId: randomUUID(),
+        reason: "Returned unit passed resale inspection",
+        lines: [
+          {
+            variantId: fixture.variantId,
+            grades: [{ grade: "sellable", quantity: 1 }],
+            restockCommandId: randomUUID(),
+          },
+        ],
+      })
+      .expect(201);
+    expect(inspected.body.status).toBe("refund_pending");
+    expect((await orderById(fixture.id))?.fulfillmentStatus).toBe("returned");
+    expect((await stockFor(fixture.variantId)).quantityOnHand).toBe(2);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/returns/${returnCaseId}/refund`)
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        amountBdt: 250,
+        method: "mobile_money",
+        reference: "E2E-REFUND-001",
+        reason: "Refund transfer verified against provider receipt",
+      })
+      .expect(201)
+      .expect(({ body }) =>
+        expect(body).toMatchObject({
+          status: "refunded",
+          refundAmountBdt: 250,
+        }),
+      );
+
+    const savedReceiptResponse = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/receipt`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(savedReceiptResponse.body.id).toBe(firstReceipt.body.id);
+    expect(savedReceiptResponse.body.order.fulfillmentStatus).toBe("delivered");
+  });
+
+  it("requires explicit review of unmatched remittance rows and replays a closed statement", async () => {
+    const providerRemittanceRef = `REMIT-${randomUUID()}`;
+    const imported = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/remittances`)
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        provider: "pathao",
+        merchantAccountRef: "E2E-PATHAO-ACCOUNT",
+        providerRemittanceRef,
+        receivedAt: new Date().toISOString(),
+        statementTotalBdt: 950,
+        lines: [
+          {
+            consignmentRef: `EXTERNAL-${randomUUID()}`,
+            collectedAmountBdt: 1000,
+            feeAmountBdt: 50,
+            netAmountBdt: 950,
+          },
+        ],
+      })
+      .expect(201);
+    expect(imported.body).toMatchObject({
+      status: "open",
+      lines: [{ resolutionStatus: "pending", orderId: null }],
+    });
+    const line = imported.body.lines[0] as { id: string };
+    const accepted = await request(app.getHttpServer())
+      .patch(
+        `${API_V1_BASE_PATH}/orders/manage/remittances/${imported.body.id}/lines/${line.id}/resolve`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        disposition: "external",
+        reason: "Provider row belongs to an outside merchant account",
+      })
+      .expect(200);
+    expect(accepted.body.lines[0].resolutionStatus).toBe("external");
+    const reconciled = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/remittances/${imported.body.id}/reconcile`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        reason:
+          "Unmatched row was documented and excluded from AARAJ order review",
+        acceptedDiscrepancy: true,
+      })
+      .expect(201);
+    expect(reconciled.body).toMatchObject({
+      status: "reconciled",
+      lines: [{ resolutionStatus: "external" }],
+    });
+    const bankConfirmation = {
+      commandId: randomUUID(),
+      bankReference: `BANK-${randomUUID()}`,
+      bankAmountBdt: 930,
+      reason:
+        "Verified the actual bank credit and transaction reference in the finance statement archive",
+    };
+    const posted = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/remittances/${imported.body.id}/bank-confirmation`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send(bankConfirmation)
+      .expect(201);
+    expect(posted.body.bankConfirmation).toMatchObject({
+      bankReference: bankConfirmation.bankReference,
+      bankAmountBdt: 930,
+      varianceBdt: -20,
+    });
+    const journalEntries = await database.db
+      .select()
+      .from(courierSettlementJournalEntry)
+      .where(
+        eq(
+          courierSettlementJournalEntry.journalId,
+          posted.body.bankConfirmation.journalId as string,
+        ),
+      );
+    const debitTotal = journalEntries.reduce(
+      (sum, entry) => sum + entry.debitBdt,
+      0,
+    );
+    const creditTotal = journalEntries.reduce(
+      (sum, entry) => sum + entry.creditBdt,
+      0,
+    );
+    expect(debitTotal).toBe(creditTotal);
+    expect(journalEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountKey: "settlement_variance_suspense",
+          debitBdt: 20,
+          creditBdt: 0,
+        }),
+        expect.objectContaining({
+          accountKey: "bank_cash",
+          debitBdt: 930,
+          creditBdt: 0,
+        }),
+      ]),
+    );
+    const secondImported = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/remittances`)
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        provider: "pathao",
+        merchantAccountRef: "E2E-PATHAO-ACCOUNT",
+        providerRemittanceRef: `REMIT-${randomUUID()}`,
+        receivedAt: new Date().toISOString(),
+        statementTotalBdt: 95,
+        lines: [
+          {
+            consignmentRef: `EXTERNAL-${randomUUID()}`,
+            collectedAmountBdt: 100,
+            feeAmountBdt: 5,
+            netAmountBdt: 95,
+          },
+        ],
+      })
+      .expect(201);
+    const secondLineId = secondImported.body.lines[0].id as string;
+    await request(app.getHttpServer())
+      .patch(
+        `${API_V1_BASE_PATH}/orders/manage/remittances/${secondImported.body.id}/lines/${secondLineId}/resolve`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        disposition: "external",
+        reason: "Verified as another merchant account's row",
+      })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/remittances/${secondImported.body.id}/reconcile`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        reason: "Separate courier statement reviewed",
+        acceptedDiscrepancy: true,
+      })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/remittances/${secondImported.body.id}/bank-confirmation`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        bankReference: bankConfirmation.bankReference,
+        bankAmountBdt: 95,
+        reason: "The same bank transaction cannot settle two statements",
+      })
+      .expect(409);
+    const replayedBankConfirmation = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/remittances/${imported.body.id}/bank-confirmation`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send(bankConfirmation)
+      .expect(201);
+    expect(replayedBankConfirmation.body.bankConfirmation.journalId).toBe(
+      posted.body.bankConfirmation.journalId,
+    );
+    const replay = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/remittances`)
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        provider: "pathao",
+        merchantAccountRef: "E2E-PATHAO-ACCOUNT",
+        providerRemittanceRef,
+        receivedAt: imported.body.receivedAt,
+        statementTotalBdt: 950,
+        lines: [
+          {
+            consignmentRef: imported.body.lines[0].consignmentRef,
+            collectedAmountBdt: 1000,
+            feeAmountBdt: 50,
+            netAmountBdt: 950,
+          },
+        ],
+      })
+      .expect(201);
+    expect(replay.body.id).toBe(imported.body.id);
+    expect(replay.body.status).toBe("reconciled");
+  });
+
+  it("matches a Pathao remittance to a booked consignment and verified COD collection", async () => {
+    const fixture = await createGuestOrder(1);
+    await confirmOrder(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao remittance Order fixture is missing.");
+    const consignmentId = `PATHAO-REMIT-${randomUUID().slice(0, 8).toUpperCase()}`;
+    mockPathaoApi({ orderReference: order.reference, consignmentId });
+
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send()
+      .expect(201);
+    await dispatchOrder(fixture.id, staff.cookie, randomUUID(), {
+      deliveryProvider: "pathao",
+      deliveryOperator: "AARAJ Dispatch Desk",
+    }).expect(201);
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/fulfillment-outcome`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ outcome: "delivered", reason: "Pathao delivery receipt checked" })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/collection`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        collectedAmountBdt: order.codAmountDueBdt,
+        reason: "COD collected amount verified against courier receipt",
+      })
+      .expect(201);
+
+    const collectedAmountBdt = order.codAmountDueBdt;
+    const feeAmountBdt = 50;
+    const netAmountBdt = collectedAmountBdt - feeAmountBdt;
+    const imported = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/remittances`)
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        provider: "pathao",
+        merchantAccountRef: "E2E-PATHAO-ACCOUNT",
+        providerRemittanceRef: `REMIT-${randomUUID()}`,
+        receivedAt: new Date().toISOString(),
+        statementTotalBdt: netAmountBdt,
+        lines: [
+          {
+            consignmentRef: consignmentId,
+            collectedAmountBdt,
+            feeAmountBdt,
+            netAmountBdt,
+          },
+        ],
+      })
+      .expect(201);
+    expect(imported.body.lines[0]).toMatchObject({
+      orderId: fixture.id,
+      expectedCollectedAmountBdt: collectedAmountBdt,
+      resolutionStatus: "matched",
+    });
+    const reconciled = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/remittances/${imported.body.id}/reconcile`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", financeStaff.cookie)
+      .send({
+        commandId: randomUUID(),
+        reason: "Matched to verified Pathao delivery and COD collection",
+        acceptedDiscrepancy: false,
+      })
+      .expect(201);
+    expect(reconciled.body.status).toBe("reconciled");
+    expect(reconciled.body.lines[0].resolutionStatus).toBe("matched");
+  });
+
   it("rejects invalid managed Order list query parameters", async () => {
     for (const query of [
       { limit: 0 },
@@ -2743,7 +3394,9 @@ describe("COD Orders and checkout", () => {
     );
     const afterOrder = await orderById(fixture.id);
     expect(afterOrder).toMatchObject({
-      addressSnapshot: original?.addressSnapshot,
+      addressCiphertext: original?.addressCiphertext,
+      addressNamePrefixes: original?.addressNamePrefixes,
+      addressPhonePrefixes: original?.addressPhonePrefixes,
       guestAccessTokenHash: original?.guestAccessTokenHash,
       guestAccessExpiresAt: original?.guestAccessExpiresAt,
       merchandiseGrossBdt: original?.merchandiseGrossBdt,
@@ -4331,7 +4984,10 @@ describe("COD Orders and checkout", () => {
         order.reference,
         "in-transit",
       ],
-      { env: process.env, timeout: 20_000 },
+      {
+        env: orderPiiSubprocessEnvironment(),
+        timeout: 20_000,
+      },
     );
     expect(JSON.parse(stdout.trim())).toEqual({
       expiredBookings: 1,
@@ -4473,7 +5129,10 @@ describe("COD Orders and checkout", () => {
         commandId,
         Buffer.from(JSON.stringify(input)).toString("base64url"),
       ],
-      { env: process.env, timeout: 20_000 },
+      {
+        env: orderPiiSubprocessEnvironment(),
+        timeout: 20_000,
+      },
     );
     expect(JSON.parse(stdout.trim())).toMatchObject({
       id: fixture.id,

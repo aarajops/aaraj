@@ -9,6 +9,7 @@ import {
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 import { ProductGallery } from "./product-gallery";
 import { ProductPurchase } from "./product-purchase";
+import { CatalogVideoGallery } from "./catalog-video-gallery";
 
 type ProductPageSearchParams = {
   color?: string | string[];
@@ -193,7 +194,15 @@ export default async function ProductPage({
           </section>
         </div>
 
+        <CatalogVideoGallery
+          initialColor={initialColor}
+          productName={product.name}
+          slug={product.slug}
+          variants={product.variants}
+        />
+
         {(product.description ||
+          product.contentBlocks.length > 0 ||
           product.fabricComposition ||
           product.careInstructions) && (
           <section
@@ -211,6 +220,39 @@ export default async function ProductPage({
                 {product.description}
               </p>
             )}
+            {product.contentBlocks.map((block, index) => {
+              if (block.type === "heading") {
+                const Heading = block.level === 3 ? "h3" : "h4";
+                return (
+                  <Heading
+                    className="mt-6 text-base font-semibold tracking-tight"
+                    key={`${block.type}-${index}`}
+                  >
+                    {block.text}
+                  </Heading>
+                );
+              }
+              if (block.type === "bullet_list") {
+                return (
+                  <ul
+                    className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-secondary-foreground"
+                    key={`${block.type}-${index}`}
+                  >
+                    {block.items.map((item, itemIndex) => (
+                      <li key={`${itemIndex}-${item}`}>{item}</li>
+                    ))}
+                  </ul>
+                );
+              }
+              return (
+                <p
+                  className="mt-3 whitespace-pre-wrap leading-7 text-secondary-foreground"
+                  key={`${block.type}-${index}`}
+                >
+                  {block.text}
+                </p>
+              );
+            })}
             {(product.fabricComposition || product.careInstructions) && (
               <dl className="mt-6 grid gap-5 sm:grid-cols-2">
                 {product.fabricComposition && (

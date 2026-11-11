@@ -29,6 +29,7 @@ import {
 } from "@/features/catalog/catalog-client";
 import { CatalogCategorySelect } from "@/features/catalog/catalog-category-select";
 import { CatalogMediaManager } from "@/features/catalog/catalog-media-manager";
+import { CatalogVideoManager } from "@/features/catalog/catalog-video-manager";
 import {
   blankProductForm,
   productFormSchema,
@@ -299,7 +300,11 @@ export function CatalogManager({
         return;
       }
 
-      router.replace("/admin/catalog");
+      if (submission.id === null) {
+        router.replace(`/admin/catalog/${result.data.id}/edit`);
+      } else {
+        router.replace("/admin/catalog");
+      }
     } catch {
       setFormErrorMessage("Could not reach the server. Please try again.");
     }
@@ -494,6 +499,37 @@ export function CatalogManager({
                   {errors.description && (
                     <FieldError id="product-description-error">
                       {errors.description.message}
+                    </FieldError>
+                  )}
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="product-content-draft">
+                    Structured product story
+                  </FieldLabel>
+                  <Textarea
+                    aria-describedby={
+                      errors.contentDraft
+                        ? "product-content-draft-help product-content-draft-error"
+                        : "product-content-draft-help"
+                    }
+                    aria-invalid={Boolean(errors.contentDraft)}
+                    className="min-h-40 resize-y bg-background px-3 py-2.5 text-base md:text-base"
+                    id="product-content-draft"
+                    maxLength={5000}
+                    placeholder={
+                      "### Fabric and feel\nSoft cotton jersey with a smooth finish.\n\n### Details\n- Relaxed fit\n- Reinforced neckline"
+                    }
+                    {...register("contentDraft")}
+                  />
+                  <FieldDescription id="product-content-draft-help">
+                    Use ### or #### for headings, one line per “- ” bullet, and
+                    blank lines between blocks. The storefront renders text as
+                    accessible headings, paragraphs, and lists.
+                  </FieldDescription>
+                  {errors.contentDraft && (
+                    <FieldError id="product-content-draft-error">
+                      {errors.contentDraft.message}
                     </FieldError>
                   )}
                 </Field>
@@ -1042,23 +1078,30 @@ export function CatalogManager({
                   )}
                 </Field>
 
-                <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
-                  <input
-                    aria-label="Published on the storefront"
-                    className="mt-0.5 accent-primary"
-                    type="checkbox"
-                    {...register("isPublished")}
-                  />
-                  <span>
-                    <span className="block font-medium">
-                      Published on the storefront
+                {view === "edit" ? (
+                  <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
+                    <input
+                      aria-label="Published on the storefront"
+                      className="mt-0.5 accent-primary"
+                      type="checkbox"
+                      {...register("isPublished")}
+                    />
+                    <span>
+                      <span className="block font-medium">
+                        Published on the storefront
+                      </span>
+                      <span className="mt-1 block text-muted-foreground">
+                        Publish after every active color has a processed image,
+                        and all variants and the size guide are complete.
+                      </span>
                     </span>
-                    <span className="mt-1 block text-muted-foreground">
-                      Only complete products with matching variants and a size
-                      guide can be published.
-                    </span>
-                  </span>
-                </label>
+                  </label>
+                ) : (
+                  <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
+                    New products are saved as drafts. Add a processed image for
+                    every color before publishing.
+                  </p>
+                )}
 
                 {formErrorMessage && (
                   <p
@@ -1079,9 +1122,7 @@ export function CatalogManager({
                     ? "Saving…"
                     : editingId
                       ? "Save changes"
-                      : isPublished
-                        ? "Create and publish"
-                        : "Create draft"}
+                      : "Create draft"}
                 </Button>
               </form>
             </Card>
@@ -1090,6 +1131,10 @@ export function CatalogManager({
           {view === "edit" && initialProduct && (
             <div className="mt-6">
               <CatalogMediaManager
+                productId={initialProduct.id}
+                variants={initialProduct.variants}
+              />
+              <CatalogVideoManager
                 productId={initialProduct.id}
                 variants={initialProduct.variants}
               />

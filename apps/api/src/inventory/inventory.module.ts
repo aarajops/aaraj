@@ -7,6 +7,7 @@ import { InventoryController } from "./inventory.controller.js";
 import { InventoryPolicy } from "./inventory.policy.js";
 import { InventoryReservationService } from "./inventory-reservation.service.js";
 import { INVENTORY_RESERVATION_PORT } from "./inventory-reservation.port.js";
+import { INVENTORY_RETURN_PORT } from "./inventory-return.port.js";
 import { InventoryService } from "./inventory.service.js";
 
 @Module({
@@ -25,7 +26,11 @@ import { InventoryService } from "./inventory.service.js";
       provide: INVENTORY_RESERVATION_PORT,
       useExisting: InventoryReservationService,
     },
+    {
+      provide: INVENTORY_RETURN_PORT,
+      useExisting: InventoryService,
+    },
   ],
-  exports: [INVENTORY_RESERVATION_PORT],
+  exports: [INVENTORY_RESERVATION_PORT, INVENTORY_RETURN_PORT],
 })
 export class InventoryModule {}

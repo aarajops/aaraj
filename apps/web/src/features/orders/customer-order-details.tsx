@@ -5,7 +5,11 @@ import Link from "next/link";
 import type { Order } from "@aaraj/contracts";
 import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
-import { fetchOrder, OrderRequestError } from "./orders-client";
+import {
+  fetchOrder,
+  OrderRequestError,
+  withdrawOrderSmsConsent,
+} from "./orders-client";
 import { getPathaoCustomerTracking } from "./pathao-client";
 import type { PathaoCustomerTracking } from "@aaraj/contracts";
 import { CustomerOrderDetailsSkeleton } from "./order-page-skeleton";
@@ -16,6 +20,9 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [tracking, setTracking] = useState<PathaoCustomerTracking | null>(null);
   const [trackingUnavailable, setTrackingUnavailable] = useState(false);
+  const [smsConsentWithdrawn, setSmsConsentWithdrawn] = useState(false);
+  const [smsConsentPending, setSmsConsentPending] = useState(false);
+  const [smsConsentError, setSmsConsentError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +68,21 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
 
   const presentation = order ? getOrderPresentation(order) : null;
   const settlement = order ? getSettlementSummary(order) : null;
+
+  async function stopSmsUpdates() {
+    setSmsConsentPending(true);
+    setSmsConsentError(null);
+    try {
+      await withdrawOrderSmsConsent(orderId);
+      setSmsConsentWithdrawn(true);
+    } catch {
+      setSmsConsentError(
+        "SMS updates could not be stopped. Try again from this secure order page.",
+      );
+    } finally {
+      setSmsConsentPending(false);
+    }
+  }
 
   return (
     <main className="flex-1 bg-background px-5 py-10 text-foreground sm:py-14">
@@ -266,6 +288,39 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
               <p className="border-t border-border py-4 text-xs text-muted-foreground">
                 Guest tracking is available in this browser until{" "}
                 {formatDateTime(order.guestAccessExpiresAt)}.
+              </p>
+            )}
+
+            {order.smsUpdatesConsent && !smsConsentWithdrawn && (
+              <section className="grid gap-3 border-t border-border py-5">
+                <div>
+                  <h2 className="text-sm font-semibold">Order SMS updates</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    You opted in to transactional updates for this order. A
+                    message already in progress may still arrive.
+                  </p>
+                </div>
+                {smsConsentError && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {smsConsentError}
+                  </p>
+                )}
+                <button
+                  className="w-fit rounded-md border border-input px-3 py-2 text-sm"
+                  disabled={smsConsentPending}
+                  onClick={() => void stopSmsUpdates()}
+                  type="button"
+                >
+                  {smsConsentPending ? "Stopping…" : "Stop SMS updates"}
+                </button>
+              </section>
+            )}
+            {smsConsentWithdrawn && (
+              <p
+                className="border-t border-border py-4 text-xs text-muted-foreground"
+                role="status"
+              >
+                SMS updates for this order have been stopped.
               </p>
             )}
 

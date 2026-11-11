@@ -12,7 +12,8 @@
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node scripts/prepare-local-migration.mjs && drizzle-kit migrate",
+    "db:migrate": "node scripts/prepare-local-migration.mjs",
+    "order-address:rotate": "node scripts/rotate-order-address-ciphertext.mjs",
     "db:grant-runtime": "node dist/platform/database/grant-runtime-privileges.js",
     "access:bootstrap": "node dist/platform/authorization/bootstrap-superadmin.js",
     "start": "node dist/main.js",
@@ -50,6 +51,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.35.5",
+    "twilio": "^6.3.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

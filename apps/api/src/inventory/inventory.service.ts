@@ -25,6 +25,7 @@ import {
   type CatalogInventoryPort,
 } from "../catalog/catalog-inventory.port.js";
 import { InventoryPolicy } from "./inventory.policy.js";
+import type { InventoryReturnPort } from "./inventory-return.port.js";
 import {
   inventoryStockBalance,
   inventoryStockMovement,
@@ -33,7 +34,7 @@ import {
 const MAX_STOCK_QUANTITY = 2_147_483_647;
 
 @Injectable()
-export class InventoryService {
+export class InventoryService implements InventoryReturnPort {
   constructor(
     private readonly database: DatabaseService,
     private readonly authorization: AuthorizationService,
@@ -267,6 +268,107 @@ export class InventoryService {
       }
       throw error;
     }
+  }
+
+  async restockReturnedGoodsWithinTransaction(
+    transaction: AuditTransaction,
+    input: {
+      commandId: string;
+      variantId: string;
+      quantity: number;
+      actorId: string;
+      reason: string;
+    },
+  ): Promise<{ quantityOnHand: number; replayed: boolean }> {
+    if (
+      !Number.isSafeInteger(input.quantity) ||
+      input.quantity < 1 ||
+      input.quantity > MAX_STOCK_QUANTITY
+    ) {
+      throw new BadRequestException("Returned stock quantity is invalid.");
+    }
+    if (
+      input.reason.trim() !== input.reason ||
+      input.reason.length < 3 ||
+      input.reason.length > 500
+    ) {
+      throw new BadRequestException(
+        "A valid returned stock reason is required.",
+      );
+    }
+
+    await lockAdjustmentCommand(transaction, input.commandId);
+    const [prior] = await transaction
+      .select()
+      .from(inventoryStockMovement)
+      .where(eq(inventoryStockMovement.commandId, input.commandId))
+      .limit(1);
+    if (prior) {
+      if (
+        prior.actorId !== input.actorId ||
+        prior.variantId !== input.variantId ||
+        prior.quantityDelta !== input.quantity ||
+        prior.reason !== input.reason
+      ) {
+        throw new ConflictException(
+          "This returned-stock command ID was already used for a different adjustment.",
+        );
+      }
+      return { quantityOnHand: prior.quantityAfter, replayed: true };
+    }
+
+    await transaction
+      .insert(inventoryStockBalance)
+      .values({ variantId: input.variantId, quantityOnHand: 0 })
+      .onConflictDoNothing({ target: inventoryStockBalance.variantId });
+
+    const [balance] = await transaction
+      .update(inventoryStockBalance)
+      .set({
+        quantityOnHand: sql`(${inventoryStockBalance.quantityOnHand}::bigint + ${input.quantity}::bigint)::integer`,
+        updatedAt: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(inventoryStockBalance.variantId, input.variantId),
+          sql`${inventoryStockBalance.quantityOnHand}::bigint + ${input.quantity}::bigint BETWEEN ${inventoryStockBalance.quantityReserved} AND ${MAX_STOCK_QUANTITY}`,
+        ),
+      )
+      .returning({
+        quantityOnHand: inventoryStockBalance.quantityOnHand,
+        updatedAt: inventoryStockBalance.updatedAt,
+      });
+    if (!balance) {
+      throw new ConflictException(
+        "Returned stock exceeds the supported on-hand quantity limit.",
+      );
+    }
+
+    await transaction.insert(inventoryStockMovement).values({
+      variantId: input.variantId,
+      quantityDelta: input.quantity,
+      quantityAfter: balance.quantityOnHand,
+      reason: input.reason,
+      actorId: input.actorId,
+      commandId: input.commandId,
+      requestId: getCurrentRequestId(),
+      createdAt: balance.updatedAt,
+    });
+    await this.audit.append(transaction, {
+      actorType: "user",
+      actorId: input.actorId,
+      eventType: "inventory.returned_goods_restocked",
+      subjectType: "catalog_variant",
+      subjectId: input.variantId,
+      occurredAt: balance.updatedAt,
+      reason: input.reason,
+      metadata: {
+        commandId: input.commandId,
+        quantity: input.quantity,
+        quantityOnHand: balance.quantityOnHand,
+      },
+    });
+    return { quantityOnHand: balance.quantityOnHand, replayed: false };
   }
 
   private async findPriorAdjustment(

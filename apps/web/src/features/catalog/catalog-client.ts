@@ -3,6 +3,7 @@ import "client-only";
 import { API_V1_BASE_PATH } from "@aaraj/contracts";
 import type {
   CatalogMediaDeleteInput,
+  CatalogMediaUpdateInput,
   CatalogProductMediaOrderInput,
   CatalogMediaUploadInput,
   CatalogCategoryCreateInput,
@@ -13,6 +14,10 @@ import type {
   CatalogSizeGuideCreateInput,
   CatalogSizeGuideListQuery,
   CatalogSizeGuideUpdateInput,
+  CatalogVideoDeleteInput,
+  CatalogVideoMetadataUpdateInput,
+  CatalogVideoOrderInput,
+  CatalogVideoProvisionInput,
 } from "@aaraj/contracts";
 
 export function suggestCatalogCategorySlug(name: string): Promise<Response> {
@@ -190,6 +195,7 @@ export function uploadCatalogProductMedia(
   const body = new FormData();
   body.set("commandId", input.commandId);
   if (input.variantId) body.set("variantId", input.variantId);
+  if (input.variantColor) body.set("variantColor", input.variantColor);
   body.set("altText", input.altText);
   if (input.reason) body.set("reason", input.reason);
   body.set("file", file, file.name);
@@ -211,6 +217,127 @@ export function deleteCatalogProductMedia(
 ): Promise<Response> {
   return fetch(
     `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/media/${encodeURIComponent(mediaId)}`,
+    {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function updateCatalogProductMedia(
+  productId: string,
+  mediaId: string,
+  input: CatalogMediaUpdateInput,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/media/${encodeURIComponent(mediaId)}`,
+    {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function fetchManagedProductVideos(
+  productId: string,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/videos`,
+    { cache: "no-store", credentials: "same-origin" },
+  );
+}
+
+export function provisionCatalogProductVideoUpload(
+  productId: string,
+  input: CatalogVideoProvisionInput,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/videos`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function completeCatalogProductVideoUpload(
+  productId: string,
+  videoId: string,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/videos/${encodeURIComponent(videoId)}/complete`,
+    { method: "POST", credentials: "same-origin" },
+  );
+}
+
+export function syncCatalogProductVideo(
+  productId: string,
+  videoId: string,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/videos/${encodeURIComponent(videoId)}/sync`,
+    { method: "POST", credentials: "same-origin" },
+  );
+}
+
+export function updateCatalogProductVideo(
+  productId: string,
+  videoId: string,
+  input: CatalogVideoMetadataUpdateInput,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/videos/${encodeURIComponent(videoId)}`,
+    {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function reorderCatalogProductVideos(
+  productId: string,
+  input: CatalogVideoOrderInput,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/videos/order`,
+    {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function uploadCatalogProductVideoCaption(
+  productId: string,
+  videoId: string,
+  language: string,
+  file: File,
+): Promise<Response> {
+  const body = new FormData();
+  body.set("file", file, file.name);
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(language)}`,
+    { method: "POST", credentials: "same-origin", body },
+  );
+}
+
+export function deleteCatalogProductVideo(
+  productId: string,
+  videoId: string,
+  input: CatalogVideoDeleteInput,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/videos/${encodeURIComponent(videoId)}`,
     {
       method: "DELETE",
       credentials: "same-origin",

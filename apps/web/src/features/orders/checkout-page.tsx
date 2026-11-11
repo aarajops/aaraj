@@ -95,6 +95,7 @@ function SinglePageCheckout({
   const [quote, setQuote] = useState<AuthoritativeQuote | null>(null);
   const [quotePending, setQuotePending] = useState(Boolean(initialQuoteId));
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [smsUpdatesConsent, setSmsUpdatesConsent] = useState(false);
   const checkoutEventSent = useRef(false);
   const checkoutAttempt = useRef<{ quoteId: string; key: string } | null>(null);
   const draftVersion = useRef<number | null>(null);
@@ -275,6 +276,7 @@ function SinglePageCheckout({
     clearErrors("phone");
     const input: CreateOrderInput = {
       quoteId: quote.id,
+      smsUpdatesConsent,
       address: {
         ...values,
         phone: `+88${values.phone}`,
@@ -511,6 +513,22 @@ function SinglePageCheckout({
                     </FieldError>
                   )}
                 </Field>
+                <label className="flex items-start gap-3 text-sm text-muted-foreground">
+                  <input
+                    className="mt-1 size-4 accent-primary"
+                    type="checkbox"
+                    checked={smsUpdatesConsent}
+                    onChange={(event) =>
+                      setSmsUpdatesConsent(event.target.checked)
+                    }
+                  />
+                  <span>
+                    Send me SMS updates about this order’s confirmation,
+                    delivery, and return status. This is optional and is not
+                    marketing. You can stop messages from your secure order
+                    page.
+                  </span>
+                </label>
               </form>
             </div>
             <CheckoutOrderSummary

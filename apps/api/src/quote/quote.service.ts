@@ -230,7 +230,11 @@ export class QuoteService {
       );
       return {
         variantId: variant.variantId,
+        sku: variant.sku,
+        productSlug: variant.slug,
         productName: variant.name,
+        description: variant.description,
+        contentBlocks: variant.contentBlocks,
         color: variant.color,
         sizeLabel: variant.sizeLabel,
         quantity: selection.quantity,

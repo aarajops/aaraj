@@ -14,12 +14,15 @@ release="/srv/sites/aaraj/releases/$release_id"
 manifest="$release/release-manifest.json"
 migration_script="$release/api/scripts/migrate-production.mjs"
 address_backfill_script="$release/api/scripts/backfill-order-address-snapshots.mjs"
+address_ciphertext_script="$release/api/scripts/backfill-order-address-ciphertext.mjs"
+address_encryption_migration="$release/api/drizzle/0066_order_address_encryption_expand.sql"
 [[ -d "$release" && ! -L "$release" && \
   -f "$manifest" && ! -L "$manifest" && \
   -f "$release/.artifact-sha256" && ! -L "$release/.artifact-sha256" && \
   "$(cat -- "$release/.artifact-sha256")" == "$digest" && \
   -f "$migration_script" && ! -L "$migration_script" && \
-  -f "$address_backfill_script" && ! -L "$address_backfill_script" ]] || {
+  -f "$address_backfill_script" && ! -L "$address_backfill_script" && \
+  -f "$address_ciphertext_script" && ! -L "$address_ciphertext_script" ]] || {
   echo "The requested migration is not part of a staged AARAJ release." >&2
   exit 1
 }
@@ -46,11 +49,57 @@ if (
 NODE
 
 unit="aaraj-migration@$release_id.service"
+release_operation="$(/usr/bin/node -e 'const manifest = require(process.argv[1]); process.stdout.write(manifest.operation ?? "release")' "$manifest")"
+if [[ "$release_operation" == "delivery-district-delete-grant" ]]; then
+  if /usr/bin/systemctl start "$unit"; then
+    /usr/bin/journalctl --unit "$unit" --no-pager --output=cat --lines 30
+    echo "Migration service $unit completed the permission repair."
+    exit 0
+  fi
+  status=$?
+  /usr/bin/journalctl --unit "$unit" --no-pager --lines 60 >&2 || true
+  exit "$status"
+fi
 app_stopped=false
 migration_succeeded=false
+migration_status="$(NODE_ENV=production RELEASE_ARTIFACT_ID="$release_id" \
+  /usr/bin/node --env-file=/etc/sites/aaraj/migration.env \
+  "$migration_script" --check)"
+[[ "$migration_status" == "current" || "$migration_status" == "pending" ]] || {
+  echo "Production migration preflight returned an unexpected result." >&2
+  exit 1
+}
+address_migration="$release/api/drizzle/0062_order_query_indexes_and_address_snapshot.sql"
+address_migration_status="complete"
+if [[ -f "$address_migration" ]]; then
+  address_migration_status="$(NODE_ENV=production /usr/bin/node \
+    --env-file=/etc/sites/aaraj/migration.env \
+    "$address_backfill_script" --check)"
+fi
+ciphertext_migration_status="complete"
+if [[ -f "$address_encryption_migration" ]]; then
+  ciphertext_migration_status="$(NODE_ENV=production /usr/bin/node \
+    --env-file=/etc/sites/aaraj/migration.env \
+    "$address_ciphertext_script" --check)"
+fi
+if [[ "$address_migration_status" != "complete" && \
+      "$address_migration_status" != "required" ]]; then
+  echo "Legacy Order address migration preflight returned an unexpected result." >&2
+  exit 1
+fi
+if [[ "$ciphertext_migration_status" != "complete" && \
+      "$ciphertext_migration_status" != "required" ]]; then
+  echo "Encrypted Order address migration preflight returned an unexpected result." >&2
+  exit 1
+fi
+
 restart_app_after_failure() {
   if [[ "$app_stopped" == true && "$migration_succeeded" != true ]]; then
     local address_migration_status_after_failure
+    if [[ "$migration_status" == "pending" ]]; then
+      echo "The migration failed after applying or attempting schema changes; aaraj-pm2.service remains stopped for recovery." >&2
+      return
+    fi
     if ! address_migration_status_after_failure="$(NODE_ENV=production /usr/bin/node \
       --env-file=/etc/sites/aaraj/migration.env \
       "$address_backfill_script" --check)"; then
@@ -66,33 +115,57 @@ restart_app_after_failure() {
 }
 trap restart_app_after_failure EXIT
 
-address_migration="$release/api/drizzle/0062_order_query_indexes_and_address_snapshot.sql"
-if [[ -f "$address_migration" ]]; then
-  address_migration_status="$(NODE_ENV=production /usr/bin/node \
+if [[ "$migration_status" == "pending" || \
+      "$address_migration_status" == "required" || \
+      "$ciphertext_migration_status" == "required" ]]; then
+  /usr/bin/systemctl stop aaraj-pm2.service
+  app_stopped=true
+fi
+
+if [[ "$address_migration_status" == "required" ]]; then
+  if ! NODE_ENV=production /usr/bin/node \
+    --env-file=/etc/sites/aaraj/runtime.env \
     --env-file=/etc/sites/aaraj/migration.env \
-    "$address_backfill_script" --check)"
-  if [[ "$address_migration_status" == "required" ]]; then
-    /usr/bin/systemctl stop aaraj-pm2.service
-    app_stopped=true
-    if ! NODE_ENV=production /usr/bin/node \
-      --env-file=/etc/sites/aaraj/runtime.env \
-      --env-file=/etc/sites/aaraj/migration.env \
-      "$address_backfill_script" --execute; then
-      echo "Order address conversion failed; no conversion changes were committed." >&2
-      exit 1
-    fi
-  elif [[ "$address_migration_status" != "complete" ]]; then
-    echo "Order address migration preflight returned an unexpected result." >&2
+    "$address_backfill_script" --execute; then
+    echo "Order address conversion failed; no conversion changes were committed." >&2
     exit 1
   fi
 fi
 
-if /usr/bin/systemctl start "$unit"; then
+start_migration_unit() {
+  if /usr/bin/systemctl start "$unit"; then
+    /usr/bin/journalctl --unit "$unit" --no-pager --output=cat --lines 30
+  else
+    local status=$?
+    /usr/bin/journalctl --unit "$unit" --no-pager --lines 60 >&2 || true
+    return "$status"
+  fi
+}
+
+if [[ -f "$address_encryption_migration" ]]; then
+  start_migration_unit
+  ciphertext_migration_status="$(NODE_ENV=production /usr/bin/node \
+    --env-file=/etc/sites/aaraj/migration.env \
+    "$address_ciphertext_script" --check)"
+  if [[ "$ciphertext_migration_status" == "required" ]]; then
+    if ! NODE_ENV=production /usr/bin/node \
+      --env-file=/etc/sites/aaraj/runtime.env \
+      --env-file=/etc/sites/aaraj/migration.env \
+      "$address_ciphertext_script" --execute; then
+      echo "Order address encryption failed; plaintext data was not removed." >&2
+      exit 1
+    fi
+  elif [[ "$ciphertext_migration_status" != "complete" ]]; then
+    echo "Encrypted Order address conversion returned an unexpected result." >&2
+    exit 1
+  fi
+  start_migration_unit
+else
+  start_migration_unit
+fi
+
+if [[ "$migration_status" == "pending" || "$app_stopped" == true ]]; then
   migration_succeeded=true
   /usr/bin/journalctl --unit "$unit" --no-pager --output=cat --lines 30
   echo "Migration service $unit completed successfully."
-else
-  status=$?
-  /usr/bin/journalctl --unit "$unit" --no-pager --lines 60 >&2 || true
-  exit "$status"
 fi

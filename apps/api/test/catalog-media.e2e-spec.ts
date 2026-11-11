@@ -159,6 +159,7 @@ describe("catalog media management", () => {
     input: {
       commandId: string;
       variantId?: string;
+      variantColor?: string;
       altText?: string;
       reason?: string;
     },
@@ -176,6 +177,8 @@ describe("catalog media management", () => {
       .field("reason", input.reason ?? "Add product media");
     if (input.variantId)
       uploadRequest = uploadRequest.field("variantId", input.variantId);
+    if (input.variantColor)
+      uploadRequest = uploadRequest.field("variantColor", input.variantColor);
     return uploadRequest.attach("file", file, { filename, contentType });
   }
 
@@ -198,9 +201,14 @@ describe("catalog media management", () => {
       .send({ mediaIds });
   }
 
-  function deleteMedia(id: string, reason: string, account = operator) {
+  function deleteMedia(
+    id: string,
+    reason: string,
+    account = operator,
+    targetProductId = productId,
+  ) {
     return request(app.getHttpServer())
-      .delete(`/api/v1/catalog/products/manage/${productId}/media/${id}`)
+      .delete(`/api/v1/catalog/products/manage/${targetProductId}/media/${id}`)
       .set("Cookie", account.cookie)
       .set("Origin", origin)
       .send({ reason });
@@ -301,10 +309,12 @@ describe("catalog media management", () => {
     const targetProductId = await createProduct("media-order-product");
     const first = await upload(targetProductId, {
       commandId: randomUUID(),
+      variantColor: "Black",
       altText: "First gallery image",
     }).expect(201);
     const second = await upload(targetProductId, {
       commandId: randomUUID(),
+      variantColor: "Black",
       altText: "Second gallery image",
     }).expect(201);
     const firstId = first.body.id as string;
@@ -352,6 +362,44 @@ describe("catalog media management", () => {
     ).toEqual([secondId, firstId]);
   });
 
+  it("lets managers correct image alt text and color scope without breaking upload retries", async () => {
+    const commandId = randomUUID();
+    const uploaded = await upload(productId, { commandId, variantId }).expect(
+      201,
+    );
+    const updated = await request(app.getHttpServer())
+      .patch(
+        `/api/v1/catalog/products/manage/${productId}/media/${uploaded.body.id}`,
+      )
+      .set("Cookie", operator.cookie)
+      .set("Origin", origin)
+      .send({
+        altText: "Black cotton tee, front view on model",
+        variantId: null,
+        variantColor: "Black",
+      })
+      .expect(200);
+    expect(updated.body).toMatchObject({
+      id: uploaded.body.id,
+      variantId: null,
+      variantColor: "Black",
+      altText: "Black cotton tee, front view on model",
+    });
+
+    const replay = await upload(productId, { commandId, variantId }).expect(
+      201,
+    );
+    expect(replay.body).toMatchObject({
+      id: uploaded.body.id,
+      altText: "Black cotton tee, front view on model",
+    });
+    expect(
+      (await listMedia()).body.media.filter(
+        (item: { commandId: string }) => item.commandId === commandId,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("lets another authorized manager recover an upload after R2 failure", async () => {
     const commandId = randomUUID();
     const input = { commandId, variantId };
@@ -360,8 +408,11 @@ describe("catalog media management", () => {
     const failed = await upload(productId, input).expect(503);
     expect(failed.body.errorCode).toBe("CATALOG_MEDIA_STORAGE_UNAVAILABLE");
     const pendingResponse = await listMedia().expect(200);
-    expect(pendingResponse.body.media).toHaveLength(1);
-    const pending = pendingResponse.body.media[0];
+    const matchingPending = pendingResponse.body.media.filter(
+      (item: { commandId: string }) => item.commandId === commandId,
+    );
+    expect(matchingPending).toHaveLength(1);
+    const pending = matchingPending[0];
     expect(pending).toMatchObject({
       commandId,
       productId,
@@ -390,10 +441,16 @@ describe("catalog media management", () => {
 
     const replay = await upload(productId, input).expect(201);
     expect(replay.body.id).toBe(uploaded.body.id);
-    await upload(productId, {
-      ...input,
-      reason: "Reusing a command for different input",
-    }).expect(409);
+    const differentContent = Buffer.from(png);
+    differentContent[differentContent.length - 1] =
+      differentContent.at(-1)! ^ 1;
+    await upload(
+      productId,
+      {
+        ...input,
+      },
+      differentContent,
+    ).expect(409);
 
     const events = await database.db
       .select({ eventType: auditEvent.eventType })
@@ -493,8 +550,16 @@ describe("catalog media management", () => {
   });
 
   it("serves only hashed, processed derivatives for published products", async () => {
-    const uploaded = await upload(productId, {
+    const targetProductId = await createProduct("media-published-delete");
+    const [targetVariant] = await database.db
+      .select({ id: catalogProductVariant.id })
+      .from(catalogProductVariant)
+      .where(eq(catalogProductVariant.productId, targetProductId))
+      .limit(1);
+    if (!targetVariant) throw new Error("Public media SKU was not created.");
+    const uploaded = await upload(targetProductId, {
       commandId: randomUUID(),
+      variantColor: "Black",
     }).expect(201);
     expect(uploaded.body.status).toBe("ready");
 
@@ -513,14 +578,14 @@ describe("catalog media management", () => {
     await database.db
       .update(catalogProductVariant)
       .set({ priceBdt: 100 })
-      .where(eq(catalogProductVariant.id, variantId));
+      .where(eq(catalogProductVariant.id, targetVariant.id));
     await database.db
       .update(catalogProduct)
       .set({ isPublished: true })
-      .where(eq(catalogProduct.id, productId));
+      .where(eq(catalogProduct.id, targetProductId));
 
     const publicProduct = await request(app.getHttpServer())
-      .get("/api/v1/catalog/products/media-test-product")
+      .get("/api/v1/catalog/products/media-published-delete")
       .expect(200);
     const publicImage = publicProduct.body.images.find(
       (image: { id: string }) => image.id === uploaded.body.id,
@@ -546,7 +611,7 @@ describe("catalog media management", () => {
     await database.db
       .update(catalogProduct)
       .set({ isPublished: false })
-      .where(eq(catalogProduct.id, productId));
+      .where(eq(catalogProduct.id, targetProductId));
     await request(app.getHttpServer())
       .get(imagePath)
       .expect(404)
@@ -555,10 +620,23 @@ describe("catalog media management", () => {
     await database.db
       .update(catalogProduct)
       .set({ isPublished: true })
-      .where(eq(catalogProduct.id, productId));
-    await deleteMedia(uploaded.body.id, "Remove outdated product photo").expect(
-      204,
-    );
+      .where(eq(catalogProduct.id, targetProductId));
+    await deleteMedia(
+      uploaded.body.id,
+      "Remove outdated product photo",
+      operator,
+      targetProductId,
+    ).expect(400);
+    await database.db
+      .update(catalogProduct)
+      .set({ isPublished: false })
+      .where(eq(catalogProduct.id, targetProductId));
+    await deleteMedia(
+      uploaded.body.id,
+      "Remove outdated product photo",
+      operator,
+      targetProductId,
+    ).expect(204);
     await request(app.getHttpServer())
       .get(imagePath)
       .expect(404)

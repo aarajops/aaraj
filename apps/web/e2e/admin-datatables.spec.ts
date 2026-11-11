@@ -715,7 +715,7 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
     page.getByRole("menuitem", { name: "Copy order number" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("menuitem", { name: "Print invoice" }),
+    page.getByRole("menuitem", { name: "Receipt after delivery" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
 });

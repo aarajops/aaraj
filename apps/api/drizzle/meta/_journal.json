@@ -442,6 +442,34 @@
       "when": 1794206400272,
       "tag": "0062_order_query_indexes_and_address_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1794288436852,
+      "tag": "0063_catalog_media_and_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794292206278,
+      "tag": "0066_order_address_encryption_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794293404402,
+      "tag": "0067_order_address_encryption_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1794294530312,
+      "tag": "0068_order_operations_and_settlement",
+      "breakpoints": true
     }
   ]
 }

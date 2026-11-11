@@ -170,3 +170,35 @@ test("Delivery issues renders its server-loaded exception page", async ({
   ).toHaveCount(0);
   await expect(page.getByText("Loading Pathao issues…")).toHaveCount(0);
 });
+
+test("Order SMS ambiguity requires operator evidence before retry", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signInAsStaff(context, baseURL);
+  await page.goto("/admin/orders/notifications");
+
+  await expect(
+    page.getByRole("heading", { name: "Order SMS delivery" }),
+  ).toBeVisible();
+  const exception = page
+    .locator("article")
+    .filter({ hasText: "provider_outcome_ambiguous" });
+  await expect(exception.getByText("ORD-026-00001")).toBeVisible();
+  await exception
+    .getByRole("textbox", { name: "Provider review note for ORD-026-00001" })
+    .fill(
+      "Checked the provider console; no message resource exists for this order update",
+    );
+  await exception
+    .getByRole("button", { name: "Confirm not sent and retry" })
+    .click();
+
+  const recent = page.getByRole("table", {
+    name: "Recent transactional updates",
+  });
+  await expect(
+    recent.getByRole("row", { name: /ORD-026-00001/ }),
+  ).toContainText("pending");
+});

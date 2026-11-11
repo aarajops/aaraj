@@ -1,17 +1,18 @@
 import Link from "next/link";
-import type { Order } from "@aaraj/contracts";
+import type { OrderReceipt } from "@aaraj/contracts";
 import { buttonVariants } from "@/components/ui/button";
 import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
 import { OrderInvoicePrintButton } from "./order-invoice-print-button";
 
 export function OrderInvoice({
-  order,
+  receipt,
   autoPrint,
 }: {
-  order: Order;
+  receipt: OrderReceipt;
   autoPrint: boolean;
 }) {
+  const { order } = receipt;
   const deliveryAddress = [
     order.address.house,
     order.address.street,
@@ -43,10 +44,16 @@ export function OrderInvoice({
               AARAJ
             </p>
             <h1 className="mt-5 text-3xl font-semibold tracking-tight">
-              Invoice
+              Delivery receipt
             </h1>
           </div>
           <dl className="grid gap-2 text-right text-sm">
+            <div>
+              <dt className="text-muted-foreground print:text-gray-600">
+                Receipt number
+              </dt>
+              <dd className="font-semibold">{receipt.receiptNumber}</dd>
+            </div>
             <div>
               <dt className="text-muted-foreground print:text-gray-600">
                 Order number
@@ -61,6 +68,11 @@ export function OrderInvoice({
             </div>
           </dl>
         </header>
+
+        <p className="mt-4 rounded-md border border-border p-3 text-xs text-muted-foreground print:border-gray-400 print:text-gray-700">
+          Order delivery receipt. This document is not a Mushak 6.3 VAT tax
+          invoice.
+        </p>
 
         <section className="grid gap-6 border-b border-border py-6 sm:grid-cols-2 print:border-black">
           <div>

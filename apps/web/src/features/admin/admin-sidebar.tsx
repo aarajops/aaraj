@@ -17,6 +17,8 @@ import {
   Images,
   UsersRound,
   ContactRound,
+  Banknote,
+  Bell,
 } from "lucide-react";
 import {
   Sidebar,
@@ -65,6 +67,18 @@ const operationsLinks = [
     href: "/admin/orders",
     label: "Orders",
     icon: ClipboardList,
+    permission: "orders.manage",
+  },
+  {
+    href: "/admin/orders/remittances",
+    label: "Courier remittances",
+    icon: Banknote,
+    permission: "orders.finance.manage",
+  },
+  {
+    href: "/admin/orders/notifications",
+    label: "Order SMS delivery",
+    icon: Bell,
     permission: "orders.manage",
   },
   {

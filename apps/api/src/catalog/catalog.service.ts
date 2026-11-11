@@ -18,6 +18,7 @@ import type {
   CatalogPublishedProductPage,
   CatalogProductUpdateInput,
   CatalogProductVariantInput,
+  CatalogProductContentBlock,
   CatalogCategoryReference,
   CatalogPrice,
   CatalogPriceRange,
@@ -106,7 +107,10 @@ export class CatalogService {
         variantId: catalogProductVariant.id,
         productId: catalogProduct.id,
         slug: catalogProduct.slug,
+        sku: catalogProductVariant.sku,
         name: catalogProduct.name,
+        description: catalogProduct.description,
+        contentBlocks: catalogProduct.contentBlocks,
         color: catalogProductVariant.color,
         sizeLabel: catalogProductVariant.sizeLabel,
         unitPriceBdt: catalogProductVariant.priceBdt,
@@ -137,12 +141,26 @@ export class CatalogService {
       const productImages = imagesByProduct.get(row.productId) ?? [];
       const image =
         productImages.find(({ variantId }) => variantId === row.variantId) ??
+        productImages.find(
+          ({ variantId, variantColor }) =>
+            variantId === null &&
+            variantColor !== null &&
+            normalize(variantColor) === normalize(row.color),
+        ) ??
+        productImages.find(
+          ({ variantColor }) =>
+            variantColor !== null &&
+            normalize(variantColor) === normalize(row.color),
+        ) ??
         productImages.find(({ variantId }) => variantId === null);
       return [
         {
           variantId: row.variantId,
           slug: row.slug,
+          sku: row.sku,
           name: row.name,
+          description: row.description,
+          contentBlocks: row.contentBlocks,
           color: row.color,
           sizeLabel: row.sizeLabel,
           unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
@@ -166,7 +184,11 @@ export class CatalogService {
     const rows = await transaction
       .select({
         variantId: catalogProductVariant.id,
+        slug: catalogProduct.slug,
+        sku: catalogProductVariant.sku,
         name: catalogProduct.name,
+        description: catalogProduct.description,
+        contentBlocks: catalogProduct.contentBlocks,
         color: catalogProductVariant.color,
         sizeLabel: catalogProductVariant.sizeLabel,
         unitPriceBdt: catalogProductVariant.priceBdt,
@@ -192,7 +214,11 @@ export class CatalogService {
       return [
         {
           variantId: row.variantId,
+          slug: row.slug,
+          sku: row.sku,
           name: row.name,
+          description: row.description,
+          contentBlocks: row.contentBlocks,
           color: row.color,
           sizeLabel: row.sizeLabel,
           unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
@@ -338,6 +364,7 @@ export class CatalogService {
         images: (imagesByProduct.get(product.id) ?? []).map(
           ({ id, altText, card, detail }) => ({ id, altText, card, detail }),
         ),
+        videos: [],
         priceVaries:
           variantSummariesByProduct.get(product.id)?.priceVaries ?? false,
       })),
@@ -393,6 +420,8 @@ export class CatalogService {
         id: catalogProductMedia.id,
         productId: catalogProductMedia.productId,
         variantId: catalogProductMedia.variantId,
+        variantColor: catalogProductMedia.variantColor,
+        skuColor: catalogProductVariant.color,
         altText: catalogProductMedia.altText,
         derivatives: catalogProductMedia.derivatives,
       })
@@ -408,6 +437,7 @@ export class CatalogService {
           or(
             isNull(catalogProductMedia.variantId),
             eq(catalogProductVariant.isActive, true),
+            isNotNull(catalogProductMedia.variantColor),
           ),
         ),
       )
@@ -427,6 +457,7 @@ export class CatalogService {
       images.push({
         id: row.id,
         variantId: row.variantId,
+        variantColor: row.variantColor ?? row.skuColor ?? null,
         altText: row.altText,
         card: {
           src: publicDerivativePath(row.id, "card", card.sha256),
@@ -661,6 +692,7 @@ export class CatalogService {
     return {
       ...product,
       images: imagesByProduct.get(product.id) ?? [],
+      videos: [],
     };
   }
 
@@ -771,7 +803,9 @@ export class CatalogService {
           await requireActiveLeafCategory(transaction, values.categoryId);
         }
         if (input.isPublished) {
-          await validatePublishability(transaction, values, variants);
+          throw new BadRequestException(
+            "Create the product as a draft, add processed images for every color, then publish it.",
+          );
         } else if (values.sizeGuideId) {
           await requireSizeGuide(transaction, values.sizeGuideId, false);
         }
@@ -879,6 +913,10 @@ export class CatalogService {
           input.description !== undefined
             ? input.description
             : current.description,
+        contentBlocks:
+          input.contentBlocks !== undefined
+            ? input.contentBlocks
+            : current.contentBlocks,
         audience:
           input.audience !== undefined ? input.audience : current.audience,
         categoryId:
@@ -948,7 +986,12 @@ export class CatalogService {
           await requireActiveLeafCategory(transaction, nextValues.categoryId);
         }
         if (nextIsPublished) {
-          await validatePublishability(transaction, nextValues, variants);
+          await validatePublishability(
+            transaction,
+            productId,
+            nextValues,
+            variants,
+          );
         } else if (nextValues.sizeGuideId) {
           await requireSizeGuide(transaction, nextValues.sizeGuideId, false);
         }
@@ -958,6 +1001,9 @@ export class CatalogService {
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.description !== undefined
             ? { description: input.description }
+            : {}),
+          ...(input.contentBlocks !== undefined
+            ? { contentBlocks: input.contentBlocks }
             : {}),
           ...(input.audience !== undefined ? { audience: input.audience } : {}),
           ...(input.categoryId !== undefined
@@ -1051,6 +1097,7 @@ function mergePriceRanges(
 
 async function validatePublishability(
   transaction: AuditTransaction,
+  productId: string,
   product: {
     audience: "men" | "women" | "unisex" | null;
     categoryId: string | null;
@@ -1109,6 +1156,71 @@ async function validatePublishability(
   if (variants.some(({ sizeLabel }) => !guideSizes.has(normalize(sizeLabel)))) {
     throw new BadRequestException(
       "Every active variant size must appear in the assigned size guide.",
+    );
+  }
+
+  await validateProductMediaCoverage(transaction, productId, variants);
+}
+
+export async function validateProductMediaCoverage(
+  transaction: AuditTransaction,
+  productId: string,
+  variants: Pick<CatalogProductVariantInput, "color">[],
+  excludedMediaId?: string,
+): Promise<void> {
+  const activeColors = new Set(variants.map(({ color }) => normalize(color)));
+  const readyMedia = await transaction
+    .select({
+      variantColor: catalogProductMedia.variantColor,
+      skuColor: catalogProductVariant.color,
+      derivatives: catalogProductMedia.derivatives,
+    })
+    .from(catalogProductMedia)
+    .leftJoin(
+      catalogProductVariant,
+      and(
+        eq(catalogProductVariant.id, catalogProductMedia.variantId),
+        eq(catalogProductVariant.isActive, true),
+      ),
+    )
+    .where(
+      and(
+        eq(catalogProductMedia.productId, productId),
+        eq(catalogProductMedia.status, "ready"),
+        excludedMediaId
+          ? sql`${catalogProductMedia.id} <> ${excludedMediaId}::uuid`
+          : undefined,
+      ),
+    );
+
+  const coveredColors = new Set<string>();
+  for (const media of readyMedia) {
+    const derivatives = CatalogMediaDerivativesSchema.safeParse(
+      media.derivatives,
+    );
+    if (
+      !derivatives.success ||
+      !derivatives.data.some(({ rendition }) => rendition === "card") ||
+      !derivatives.data.some(({ rendition }) => rendition === "detail")
+    ) {
+      continue;
+    }
+    const color = media.variantColor ?? media.skuColor;
+    if (color) coveredColors.add(normalize(color));
+  }
+
+  if (coveredColors.size === 0) {
+    throw new BadRequestException(
+      "Add a processed, color-assigned image before publishing this product.",
+    );
+  }
+
+  const missingColors = [...activeColors].filter(
+    (color) => !coveredColors.has(color),
+  );
+  if (missingColors.length > 0) {
+    throw new BadRequestException(
+      "Add at least one processed image for every active product color before publishing.",
     );
   }
 }
@@ -1530,6 +1642,7 @@ function toCatalogProduct(
     slug: product.slug,
     name: product.name,
     description: product.description,
+    contentBlocks: product.contentBlocks,
     audience: product.audience,
     category,
     fit: product.fit,
@@ -1546,6 +1659,7 @@ function toCatalogProduct(
 function toProductPersistenceValues(input: CatalogProductCreateInput): {
   name: string;
   description: string | null;
+  contentBlocks: CatalogProductContentBlock[];
   audience: "men" | "women" | "unisex";
   categoryId: string | null;
   fit: string | null;
@@ -1556,6 +1670,7 @@ function toProductPersistenceValues(input: CatalogProductCreateInput): {
   return {
     name: input.name,
     description: input.description ?? null,
+    contentBlocks: input.contentBlocks ?? [],
     audience: input.audience,
     categoryId: input.categoryId ?? null,
     fit: input.fit ?? null,

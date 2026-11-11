@@ -42,23 +42,40 @@ export function ProductGallery({
       ),
     [selectedColor, selectedSize, variants],
   );
-  const variantImages = useMemo(
-    () =>
-      images.filter(
-        (image) => image.variantId && matchingVariantIds.has(image.variantId),
-      ),
-    [images, matchingVariantIds],
-  );
-  const visibleImages = useMemo(
-    () =>
+  const variantImages = useMemo(() => {
+    const colorMatches = (image: ProductImage) =>
+      image.variantColor !== null &&
+      (!selectedColor || sameOption(image.variantColor, selectedColor));
+    const exactImages = images.filter(
+      (image) => image.variantId && matchingVariantIds.has(image.variantId),
+    );
+    const colorScopedImages = images.filter(
+      (image) => image.variantId === null && colorMatches(image),
+    );
+    const legacySameColorImages = images.filter(
+      (image) => image.variantId !== null && colorMatches(image),
+    );
+
+    const preferredImages =
+      exactImages.length > 0
+        ? [...exactImages, ...colorScopedImages, ...legacySameColorImages]
+        : colorScopedImages.length > 0
+          ? colorScopedImages
+          : legacySameColorImages;
+    return [
+      ...new Map(preferredImages.map((image) => [image.id, image])).values(),
+    ];
+  }, [images, matchingVariantIds, selectedColor]);
+  const visibleImages = useMemo(() => {
+    const preferred =
       variantImages.length > 0
         ? [
             ...variantImages,
             ...images.filter((image) => image.variantId === null),
           ]
-        : images,
-    [images, variantImages],
-  );
+        : images;
+    return [...new Map(preferred.map((image) => [image.id, image])).values()];
+  }, [images, variantImages]);
   const selectionKey = `${selectedColor ?? ""}\u0000${selectedSize ?? ""}`;
   const [manualSelection, setManualSelection] = useState<{
     selectionKey: string;

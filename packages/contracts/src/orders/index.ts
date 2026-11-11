@@ -9,6 +9,10 @@ import {
 } from "../common/pagination.js";
 import { OrderReferenceSchema } from "./order-reference.js";
 import { CheckoutAddressInputSchema } from "./checkout-address.js";
+import {
+  CatalogProductContentBlocksSchema,
+  CatalogProductSlugSchema,
+} from "../catalog/products.js";
 
 export { OrderReferenceSchema } from "./order-reference.js";
 export { CheckoutAddressInputSchema } from "./checkout-address.js";
@@ -19,6 +23,7 @@ export const MAX_ORDER_LINES = 50;
 export const CreateOrderInputSchema = z.strictObject({
   quoteId: QuoteIdSchema,
   address: CheckoutAddressInputSchema,
+  smsUpdatesConsent: z.boolean().default(false),
 });
 export type CreateOrderInput = z.infer<typeof CreateOrderInputSchema>;
 
@@ -137,15 +142,58 @@ export const OrderDispatchInputSchema = z.strictObject({
 });
 export type OrderDispatchInput = z.infer<typeof OrderDispatchInputSchema>;
 
-export const OrderFulfillmentOutcomeInputSchema = z.strictObject({
-  outcome: z.enum([
-    "partially_delivered",
-    "delivered",
-    "delivery_failed",
-    "returned",
-  ]),
-  reason: z.string().trim().min(3).max(500),
-});
+export const OrderFulfillmentOutcomeInputSchema = z
+  .strictObject({
+    outcome: z.enum([
+      "partially_delivered",
+      "delivered",
+      "delivery_failed",
+      "returned",
+    ]),
+    reason: z.string().trim().min(3).max(500),
+    deliveredLines: z
+      .array(
+        z.strictObject({
+          variantId: z.uuid(),
+          quantityDelivered: z
+            .number()
+            .int()
+            .min(0)
+            .max(MAX_CART_QUANTITY_PER_VARIANT),
+        }),
+      )
+      .min(1)
+      .max(MAX_ORDER_LINES)
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.outcome === "partially_delivered" && !value.deliveredLines) {
+      context.addIssue({
+        code: "custom",
+        path: ["deliveredLines"],
+        message: "Record the delivered quantity for every Order line.",
+      });
+    }
+    if (value.outcome !== "partially_delivered" && value.deliveredLines) {
+      context.addIssue({
+        code: "custom",
+        path: ["deliveredLines"],
+        message:
+          "Per-line delivery quantities are only accepted for partial delivery.",
+      });
+    }
+    if (
+      value.deliveredLines &&
+      new Set(value.deliveredLines.map(({ variantId }) => variantId)).size !==
+        value.deliveredLines.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["deliveredLines"],
+        message: "Each Order line can appear only once.",
+      });
+    }
+  });
 export type OrderFulfillmentOutcomeInput = z.infer<
   typeof OrderFulfillmentOutcomeInputSchema
 >;
@@ -165,7 +213,11 @@ const OrderCourierHandoffSchema = z.strictObject({
 
 const OrderLineSchema = z.strictObject({
   variantId: z.uuid(),
+  sku: z.string().trim().min(1).max(100).nullable().default(null),
+  productSlug: CatalogProductSlugSchema.nullable().default(null),
   productName: z.string().min(1).max(160),
+  description: z.string().max(1000).nullable().default(null),
+  contentBlocks: CatalogProductContentBlocksSchema.default([]),
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),
   quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
@@ -230,14 +282,40 @@ export const OrderSchema = z.strictObject({
   cancellationReason: z.literal("staff_cancelled").nullable(),
   cancelledAt: z.iso.datetime().nullable(),
   address: OrderAddressSchema,
+  smsUpdatesConsent: z.boolean(),
   createdAt: z.iso.datetime(),
   guestAccessExpiresAt: z.iso.datetime().nullable(),
 });
 export type Order = z.infer<typeof OrderSchema>;
 
+export const OrderReceiptSchema = z.strictObject({
+  id: OrderIdSchema,
+  receiptNumber: z.string().regex(/^AAR-[0-9]{4}-[0-9]{6}$/),
+  documentType: z.literal("delivery_receipt"),
+  taxInvoice: z.literal(false),
+  issuedAt: z.iso.datetime(),
+  order: OrderSchema,
+});
+export type OrderReceipt = z.infer<typeof OrderReceiptSchema>;
+
 export const OrderManagementDetailSchema = OrderSchema.extend({
   availableStatusActions: z.array(OrderStatusActionSchema),
   canEditItems: z.boolean().default(false),
+  deliveryLines: z.array(
+    z.strictObject({
+      variantId: z.uuid(),
+      quantityOrdered: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_CART_QUANTITY_PER_VARIANT),
+      quantityDelivered: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_CART_QUANTITY_PER_VARIANT),
+    }),
+  ),
 });
 export type OrderManagementDetail = z.infer<typeof OrderManagementDetailSchema>;
 
@@ -315,3 +393,4 @@ export type OrderManagementList = z.infer<typeof OrderManagementListSchema>;
 export type OrderQuoteSnapshot = AuthoritativeQuote;
 
 export * from "./checkout-draft.js";
+export * from "./operations.js";

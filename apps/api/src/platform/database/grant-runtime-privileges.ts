@@ -28,6 +28,8 @@ const runtimeTableGrants = [
   ["catalog", "product", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "product_variant", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "product_media", ["SELECT", "INSERT", "UPDATE"]],
+  ["catalog", "product_video", ["SELECT", "INSERT", "UPDATE"]],
+  ["catalog", "product_video_webhook_inbox", ["SELECT", "INSERT"]],
   ["catalog", "size_guide", ["SELECT", "INSERT", "UPDATE"]],
   ["catalog", "size_guide_row", ["SELECT", "INSERT", "DELETE"]],
   ["catalog", "size_guide_measurement", ["SELECT", "INSERT"]],
@@ -57,9 +59,23 @@ const runtimeTableGrants = [
   ["orders", "order_line", ["SELECT", "INSERT", "DELETE"]],
   ["orders", "idempotency", ["SELECT", "INSERT"]],
   ["orders", "order_reference_counter", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "order_receipt_counter", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "order_receipt", ["SELECT", "INSERT"]],
   ["orders", "pathao_booking_claim", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
   ["orders", "checkout_draft", ["SELECT", "INSERT", "UPDATE", "DELETE"]],
   ["orders", "checkout_call_suppression", ["SELECT", "INSERT"]],
+  ["orders", "order_delivery_line", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "order_return_case", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "order_return_case_line", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "order_return_inspection", ["SELECT", "INSERT"]],
+  ["orders", "order_return_refund", ["SELECT", "INSERT"]],
+  ["orders", "courier_remittance_batch", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "courier_remittance_line", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "courier_settlement_confirmation", ["SELECT", "INSERT"]],
+  ["orders", "courier_settlement_journal", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "courier_settlement_journal_entry", ["SELECT", "INSERT"]],
+  ["orders", "order_notification_outbox", ["SELECT", "INSERT", "UPDATE"]],
+  ["orders", "order_notification_consent_revocation", ["SELECT", "INSERT"]],
 ] as const;
 const runtimeColumnGrants = [
   ["storefront", "banner_asset", "publicly_released_at", ["UPDATE"]],
@@ -394,6 +410,10 @@ async function main(): Promise<void> {
     await runtimePool.query('SELECT 1 FROM "access"."role_assignment" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "catalog"."product" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "catalog"."product_media" LIMIT 0');
+    await runtimePool.query('SELECT 1 FROM "catalog"."product_video" LIMIT 0');
+    await runtimePool.query(
+      'SELECT 1 FROM "catalog"."product_video_webhook_inbox" LIMIT 0',
+    );
     await runtimePool.query('SELECT 1 FROM "cart"."customer_cart" LIMIT 0');
     await runtimePool.query(
       'SELECT 1 FROM "cart"."customer_cart_line" LIMIT 0',
@@ -420,6 +440,18 @@ async function main(): Promise<void> {
     await runtimePool.query('SELECT 1 FROM "orders"."order_header" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "orders"."order_line" LIMIT 0');
     await runtimePool.query('SELECT 1 FROM "orders"."idempotency" LIMIT 0');
+    await runtimePool.query(
+      'SELECT 1 FROM "orders"."order_notification_outbox" LIMIT 0',
+    );
+    await runtimePool.query(
+      'SELECT 1 FROM "orders"."order_notification_consent_revocation" LIMIT 0',
+    );
+    await runtimePool.query(
+      'SELECT 1 FROM "orders"."courier_settlement_journal" LIMIT 0',
+    );
+    await runtimePool.query(
+      'SELECT 1 FROM "orders"."courier_settlement_journal_entry" LIMIT 0',
+    );
     await runtimePool.query(
       'SELECT 1 FROM "orders"."order_reference_counter" LIMIT 0',
     );

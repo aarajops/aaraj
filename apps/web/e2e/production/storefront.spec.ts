@@ -13,7 +13,9 @@ test("localhost E2E keeps the live GTM container disabled", async ({
   expect(contentSecurityPolicy).toContain("upgrade-insecure-requests");
   expect(contentSecurityPolicy).toContain("script-src-elem");
   expect(contentSecurityPolicy).toContain("connect-src");
-  expect(contentSecurityPolicy).toContain("frame-src");
+  expect(contentSecurityPolicy).toContain(
+    "frame-src 'self' https://iframe.videodelivery.net",
+  );
   expect(contentSecurityPolicy).not.toContain("googletagmanager.com");
   expect(contentSecurityPolicy).not.toContain("google-analytics.com");
   expect(contentSecurityPolicy).not.toContain("in.stape.io");
@@ -59,6 +61,9 @@ test("localhost E2E keeps the live GTM container disabled", async ({
   const adminResponse = await page.request.get("/admin", { maxRedirects: 0 });
   const adminPolicy = adminResponse.headers()["content-security-policy"] ?? "";
   expect(adminPolicy).toContain("frame-src 'self'");
+  expect(adminPolicy).toContain(
+    "connect-src 'self' https://upload.videodelivery.net",
+  );
   expect(adminPolicy).not.toContain("googletagmanager.com");
   expect(adminPolicy).not.toContain("google-analytics.com");
   expect(adminPolicy).not.toContain("style-src-attr");

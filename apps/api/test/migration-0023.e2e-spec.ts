@@ -19,6 +19,7 @@ import {
   backfillOrderAddressSnapshots,
   decryptAddress,
 } from "../scripts/backfill-order-address-snapshots.mjs";
+import { backfillOrderAddressCiphertext } from "../scripts/backfill-order-address-ciphertext.mjs";
 
 process.env.NODE_ENV = "test";
 loadLocalEnvironment();
@@ -135,6 +136,10 @@ describe("migration 0023 historical upgrade", () => {
         )
       ).rows[0].count,
     );
+    await migrate(drizzle(upgradePool), {
+      migrationsFolder: await migrationPrefix(64),
+    });
+    expect(await runAddressCiphertextBackfill(upgradePool)).toBe(4);
     await migrate(drizzle(upgradePool), { migrationsFolder });
 
     await migrate(drizzle(prior23Pool), { migrationsFolder: through23Folder });
@@ -314,14 +319,40 @@ describe("migration 0023 historical upgrade", () => {
     ).toBe(true);
   });
 
-  it("converts the historical Order address ciphertext into validated snapshots", async () => {
-    const snapshots = await upgradePool.query(
-      `SELECT address_snapshot FROM orders.order_header ORDER BY reference`,
+  it("converts historical Order addresses to v2 ciphertext and removes plaintext", async () => {
+    const encrypted = await upgradePool.query(
+      `SELECT id, address_ciphertext, address_name_prefixes, address_phone_prefixes,
+              to_regclass('orders.order_header') IS NOT NULL AS present
+         FROM orders.order_header ORDER BY reference`,
     );
-    expect(snapshots.rows).toHaveLength(4);
-    expect(snapshots.rows).toEqual(
-      Array.from({ length: 4 }, () => ({ address_snapshot: migrationAddress })),
+    expect(encrypted.rows).toHaveLength(4);
+    for (const row of encrypted.rows) {
+      expect(row.address_ciphertext.startsWith("v2.rotated.")).toBe(true);
+      expect(row.address_name_prefixes).toHaveLength(1);
+      expect(row.address_phone_prefixes).toHaveLength(13);
+      expect(
+        decryptAddress(
+          row.address_ciphertext,
+          row.id,
+          {
+            activeKeyId: "rotated",
+            keys: new Map([
+              ["legacy", addressMigrationKey],
+              ["rotated", addressMigrationRotatedKey],
+            ]),
+          },
+          OrderAddressSchema,
+        ),
+      ).toEqual(migrationAddress);
+    }
+    const plaintextColumn = await upgradePool.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'orders' AND table_name = 'order_header'
+            AND column_name = 'address_snapshot'
+       ) AS present`,
     );
+    expect(plaintextColumn.rows[0].present).toBe(false);
   });
 
   it("decrypts rotated v2 Order address envelopes by key ID", () => {
@@ -510,6 +541,41 @@ async function runAddressBackfill(pool: Pool): Promise<number> {
         ["legacy", addressMigrationKey],
         ["rotated", addressMigrationRotatedKey],
       ]),
+    });
+  } finally {
+    client.release();
+  }
+}
+
+async function runAddressCiphertextBackfill(pool: Pool): Promise<number> {
+  const client = await pool.connect();
+  try {
+    return await backfillOrderAddressCiphertext(client, {
+      decryptOrderAddress: (orderId: string, envelope: string) => {
+        const address = decryptAddress(
+          envelope,
+          orderId,
+          {
+            activeKeyId: "rotated",
+            keys: new Map([
+              ["legacy", addressMigrationKey],
+              ["rotated", addressMigrationRotatedKey],
+            ]),
+          },
+          OrderAddressSchema,
+        );
+        return address;
+      },
+      encryptOrderAddress: (
+        orderId: string,
+        address: typeof migrationAddress,
+      ) => encryptOrderAddress(orderId, address, "rotated"),
+      makeOrderAddressLookups: (address: typeof migrationAddress) => ({
+        namePrefixes: [hash(`name:${address.recipientName.toLowerCase()}`)],
+        phonePrefixes: Array.from({ length: 13 }, (_, index) =>
+          hash(`phone:${address.phone}:${index}`),
+        ),
+      }),
     });
   } finally {
     client.release();

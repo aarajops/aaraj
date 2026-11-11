@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
@@ -20,6 +21,7 @@ import { getRedisClient } from "../src/platform/redis/redis-client.js";
 import {
   catalogCategory,
   catalogProduct,
+  catalogProductMedia,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
 import { getPublishedFilterOptionsCacheKey } from "../src/catalog/published-filter-cache.js";
@@ -53,6 +55,45 @@ describe("catalog and security audit", () => {
         .map((value) => value.split(";")[0])
         .join("; "),
     };
+  }
+
+  async function attachReadyColorImage(productId: string, color: string) {
+    const existing = await database.db
+      .select({ id: catalogProductMedia.id })
+      .from(catalogProductMedia)
+      .where(eq(catalogProductMedia.productId, productId));
+    const id = randomUUID();
+    await database.db.insert(catalogProductMedia).values({
+      id,
+      commandId: randomUUID(),
+      productId,
+      variantId: null,
+      variantColor: color,
+      objectKey: `quarantine/${id}/source`,
+      contentType: "image/png",
+      sizeBytes: 1,
+      sourceSha256: "0".repeat(64),
+      derivatives: [
+        {
+          rendition: "card",
+          sha256: "1".repeat(64),
+          width: 2,
+          height: 3,
+          sizeBytes: 1,
+        },
+        {
+          rendition: "detail",
+          sha256: "2".repeat(64),
+          width: 2,
+          height: 3,
+          sizeBytes: 1,
+        },
+      ],
+      altText: `${color} product photo`,
+      sortOrder: existing.length,
+      status: "ready",
+      createdBy: staff.id,
+    });
   }
 
   beforeAll(async () => {
@@ -594,23 +635,31 @@ describe("catalog and security audit", () => {
       .set("Origin", origin)
       .send({ isPublished: true, reason: "Approved for storefront" })
       .expect(400);
+    const publishInput = {
+      variants: [
+        {
+          sku: "AA-TEE-BLK-M",
+          color: "Black",
+          sizeLabel: "M",
+          price: { amountBdt: 1999 },
+          compareAtPrice: { amountBdt: 2499 },
+        },
+      ],
+      isPublished: true,
+      reason: "Set price and publish product",
+    };
     await request(app.getHttpServer())
       .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
-      .send({
-        variants: [
-          {
-            sku: "AA-TEE-BLK-M",
-            color: "Black",
-            sizeLabel: "M",
-            price: { amountBdt: 1999 },
-            compareAtPrice: { amountBdt: 2499 },
-          },
-        ],
-        isPublished: true,
-        reason: "Set price and publish product",
-      })
+      .send(publishInput)
+      .expect(400);
+    await attachReadyColorImage(created.body.id, "Black");
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send(publishInput)
       .expect(200);
     await request(app.getHttpServer())
       .patch(`/api/v1/catalog/products/${created.body.id}`)
@@ -639,7 +688,7 @@ describe("catalog and security audit", () => {
     expect(publicProduct.body.sizeGuide.rows).toHaveLength(2);
     expect(publicProduct.body.fabricComposition).toBe("100% cotton");
 
-    await request(app.getHttpServer())
+    const secondProduct = await request(app.getHttpServer())
       .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
@@ -658,10 +707,16 @@ describe("catalog and security audit", () => {
             price: { amountBdt: 2499 },
           },
         ],
-        isPublished: true,
         reason: "Second item for pagination coverage",
       })
       .expect(201);
+    await attachReadyColorImage(secondProduct.body.id, "White");
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${secondProduct.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({ isPublished: true, reason: "Publish paginated shirt" })
+      .expect(200);
 
     const variantFilterProbe = await request(app.getHttpServer())
       .post("/api/v1/catalog/products")
@@ -700,10 +755,18 @@ describe("catalog and security audit", () => {
             price: { amountBdt: 2299 },
           },
         ],
-        isPublished: true,
         reason: "Test filters against individual variants",
       })
       .expect(201);
+    for (const color of ["Black", "White", "Red"]) {
+      await attachReadyColorImage(variantFilterProbe.body.id, color);
+    }
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${variantFilterProbe.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({ isPublished: true, reason: "Publish color filter probe" })
+      .expect(200);
 
     const literalPercentSearch = await request(app.getHttpServer())
       .get("/api/v1/catalog/products")

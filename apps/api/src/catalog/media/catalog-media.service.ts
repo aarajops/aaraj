@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, isNull, not, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, not, or, sql } from "drizzle-orm";
 import {
   CatalogMediaDerivativesSchema,
   CatalogMediaSchema,
@@ -19,6 +19,7 @@ import {
   type CatalogMediaDeleteInput,
   type CatalogProductMediaOrderInput,
   type CatalogMediaUploadInput,
+  type CatalogMediaUpdateInput,
   type CatalogProductMediaList,
 } from "@aaraj/contracts";
 import { AuditService } from "../../platform/audit/audit.service.js";
@@ -30,6 +31,7 @@ import {
   catalogProductVariant,
 } from "../catalog-schema.js";
 import { CatalogPolicy } from "../catalog.policy.js";
+import { validateProductMediaCoverage } from "../catalog.service.js";
 import { R2Storage } from "./r2-storage.js";
 import { getCurrentRequestId } from "../../platform/request-context.js";
 import {
@@ -47,6 +49,7 @@ interface UploadRecord {
   commandId: string;
   productId: string;
   variantId: string | null;
+  variantColor: string | null;
   objectKey: string;
   contentType: string;
   sizeBytes: number;
@@ -223,6 +226,12 @@ export class CatalogMediaService {
       .update(image.buffer)
       .digest("hex");
     const variantId = input.variantId || null;
+    const requestedVariantColor = input.variantColor || null;
+    if (variantId && requestedVariantColor) {
+      throw new BadRequestException(
+        "Choose either one exact SKU or a product color for this image.",
+      );
+    }
 
     const record = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
@@ -242,6 +251,7 @@ export class CatalogMediaService {
         assertSameUpload(existing, {
           productId,
           variantId,
+          variantColor: requestedVariantColor,
           contentType: image.contentType,
           sizeBytes: image.buffer.byteLength,
           sourceSha256,
@@ -282,21 +292,45 @@ export class CatalogMediaService {
         );
       }
 
+      let variantColor = requestedVariantColor;
       if (variantId) {
         const [variant] = await transaction
-          .select({ id: catalogProductVariant.id })
+          .select({
+            id: catalogProductVariant.id,
+            color: catalogProductVariant.color,
+          })
           .from(catalogProductVariant)
           .where(
             and(
               eq(catalogProductVariant.id, variantId),
               eq(catalogProductVariant.productId, productId),
+              eq(catalogProductVariant.isActive, true),
             ),
           )
           .limit(1);
         if (!variant)
           throw new BadRequestException(
-            "Select a variant that belongs to this product.",
+            "Select an active SKU that belongs to this product.",
           );
+        variantColor = variant.color;
+      } else if (requestedVariantColor) {
+        const [variant] = await transaction
+          .select({ color: catalogProductVariant.color })
+          .from(catalogProductVariant)
+          .where(
+            and(
+              eq(catalogProductVariant.productId, productId),
+              eq(catalogProductVariant.isActive, true),
+              sql`lower(btrim(${catalogProductVariant.color})) = lower(btrim(${requestedVariantColor}))`,
+            ),
+          )
+          .limit(1);
+        if (!variant) {
+          throw new BadRequestException(
+            "Select a color used by an active product variant.",
+          );
+        }
+        variantColor = variant.color;
       }
 
       const [order] = await transaction
@@ -314,6 +348,7 @@ export class CatalogMediaService {
           commandId: input.commandId,
           productId,
           variantId,
+          variantColor,
           objectKey: quarantineObjectKey(id),
           contentType: image.contentType,
           sizeBytes: image.buffer.byteLength,
@@ -338,6 +373,7 @@ export class CatalogMediaService {
         assertSameUpload(raced, {
           productId,
           variantId,
+          variantColor: requestedVariantColor,
           contentType: image.contentType,
           sizeBytes: image.buffer.byteLength,
           sourceSha256,
@@ -365,6 +401,7 @@ export class CatalogMediaService {
         metadata: {
           productId,
           variantId,
+          variantColor,
           contentType: image.contentType,
           sizeBytes: image.buffer.byteLength,
         },
@@ -475,6 +512,7 @@ export class CatalogMediaService {
           or(
             isNull(catalogProductMedia.variantId),
             eq(catalogProductVariant.isActive, true),
+            isNotNull(catalogProductMedia.variantColor),
           ),
         ),
       )
@@ -565,6 +603,13 @@ export class CatalogMediaService {
         actor,
         transaction,
       );
+      const [product] = await transaction
+        .select({ id: catalogProduct.id })
+        .from(catalogProduct)
+        .where(eq(catalogProduct.id, record.productId))
+        .for("update")
+        .limit(1);
+      if (!product) throw new NotFoundException("Product not found.");
       const [current] = await transaction
         .select()
         .from(catalogProductMedia)
@@ -754,6 +799,142 @@ export class CatalogMediaService {
     });
   }
 
+  async updateMetadata(
+    actor: AccessPrincipal,
+    productId: string,
+    mediaId: string,
+    input: CatalogMediaUpdateInput,
+  ): Promise<CatalogMedia> {
+    const updated = await this.database.db.transaction(async (transaction) => {
+      await this.authorization.authorize(
+        CatalogPolicy,
+        "manage",
+        actor,
+        transaction,
+      );
+      const [product] = await transaction
+        .select({
+          id: catalogProduct.id,
+          isPublished: catalogProduct.isPublished,
+        })
+        .from(catalogProduct)
+        .where(eq(catalogProduct.id, productId))
+        .for("update")
+        .limit(1);
+      if (!product) throw new NotFoundException("Product not found.");
+
+      const [current] = await transaction
+        .select()
+        .from(catalogProductMedia)
+        .where(
+          and(
+            eq(catalogProductMedia.id, mediaId),
+            eq(catalogProductMedia.productId, productId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!current) throw new NotFoundException("Catalog media not found.");
+      if (current.status !== "ready") {
+        throw new ConflictException(
+          "Only processed images can have their alt text and color changed.",
+        );
+      }
+
+      let variantId = input.variantId;
+      let variantColor = input.variantColor;
+      if (variantId) {
+        const [variant] = await transaction
+          .select({
+            id: catalogProductVariant.id,
+            color: catalogProductVariant.color,
+          })
+          .from(catalogProductVariant)
+          .where(
+            and(
+              eq(catalogProductVariant.id, variantId),
+              eq(catalogProductVariant.productId, productId),
+              eq(catalogProductVariant.isActive, true),
+            ),
+          )
+          .limit(1);
+        if (!variant) {
+          throw new BadRequestException(
+            "Select an active SKU that belongs to this product.",
+          );
+        }
+        variantColor = variant.color;
+      } else if (variantColor) {
+        const [variant] = await transaction
+          .select({ color: catalogProductVariant.color })
+          .from(catalogProductVariant)
+          .where(
+            and(
+              eq(catalogProductVariant.productId, productId),
+              eq(catalogProductVariant.isActive, true),
+              sql`lower(btrim(${catalogProductVariant.color})) = lower(btrim(${variantColor}))`,
+            ),
+          )
+          .limit(1);
+        if (!variant) {
+          throw new BadRequestException(
+            "Select a color used by an active product variant.",
+          );
+        }
+        variantColor = variant.color;
+      }
+
+      const [saved] = await transaction
+        .update(catalogProductMedia)
+        .set({
+          altText: input.altText,
+          variantId,
+          variantColor,
+          updatedAt: new Date(),
+        })
+        .where(eq(catalogProductMedia.id, current.id))
+        .returning();
+      if (!saved) throw new Error("Catalog media update returned no row.");
+
+      if (product.isPublished) {
+        const activeVariants = await transaction
+          .select({ color: catalogProductVariant.color })
+          .from(catalogProductVariant)
+          .where(
+            and(
+              eq(catalogProductVariant.productId, productId),
+              eq(catalogProductVariant.isActive, true),
+            ),
+          );
+        await validateProductMediaCoverage(
+          transaction,
+          productId,
+          activeVariants,
+        );
+      }
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: actor.id,
+        eventType: "catalog.media_metadata_updated",
+        subjectType: "catalog_product_media",
+        subjectId: saved.id,
+        reason: input.reason,
+        metadata: {
+          productId,
+          variantId: saved.variantId,
+          variantColor: saved.variantColor,
+          altTextChanged: current.altText !== saved.altText,
+          associationChanged:
+            current.variantId !== saved.variantId ||
+            current.variantColor !== saved.variantColor,
+        },
+      });
+      return saved;
+    });
+    return toCatalogMedia(updated);
+  }
+
   async delete(
     actor: AccessPrincipal,
     productId: string,
@@ -767,6 +948,16 @@ export class CatalogMediaService {
         actor,
         transaction,
       );
+      const [product] = await transaction
+        .select({
+          id: catalogProduct.id,
+          isPublished: catalogProduct.isPublished,
+        })
+        .from(catalogProduct)
+        .where(eq(catalogProduct.id, productId))
+        .for("update")
+        .limit(1);
+      if (!product) throw new NotFoundException("Product not found.");
       const [current] = await transaction
         .select()
         .from(catalogProductMedia)
@@ -784,6 +975,24 @@ export class CatalogMediaService {
       if (current.status === "uploading" || current.status === "processing") {
         throw new ConflictException(
           "Finish or retry image processing before deleting this media item.",
+        );
+      }
+
+      if (product.isPublished && current.status === "ready") {
+        const activeVariants = await transaction
+          .select({ color: catalogProductVariant.color })
+          .from(catalogProductVariant)
+          .where(
+            and(
+              eq(catalogProductVariant.productId, productId),
+              eq(catalogProductVariant.isActive, true),
+            ),
+          );
+        await validateProductMediaCoverage(
+          transaction,
+          productId,
+          activeVariants,
+          current.id,
         );
       }
 
@@ -888,6 +1097,7 @@ function assertSameUpload(
   next: {
     productId: string;
     variantId: string | null;
+    variantColor: string | null;
     contentType: CatalogMedia["contentType"];
     sizeBytes: number;
     sourceSha256: string;
@@ -897,12 +1107,9 @@ function assertSameUpload(
 ): void {
   if (
     existing.productId !== next.productId ||
-    existing.variantId !== next.variantId ||
     existing.contentType !== next.contentType ||
     existing.sizeBytes !== next.sizeBytes ||
-    existing.sourceSha256 !== next.sourceSha256 ||
-    existing.altText !== next.altText ||
-    (next.reason !== undefined && existing.reason !== next.reason)
+    existing.sourceSha256 !== next.sourceSha256
   ) {
     throw new ConflictException(
       "This upload command was already used for different content.",
@@ -924,6 +1131,7 @@ function toCatalogMedia(record: UploadRecord): CatalogMedia {
     commandId: record.commandId,
     productId: record.productId,
     variantId: record.variantId,
+    variantColor: record.variantColor,
     altText: record.altText,
     reason: record.reason,
     deletionReason: record.deletionReason,

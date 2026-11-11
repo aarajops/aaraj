@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { migrateBeforeJournalIndex, required } from "./migration-support.mjs";
 import { getPostgresSslOptions } from "../dist/platform/database/postgres-ssl.js";
 import { grantRuntimePrivileges } from "../dist/platform/database/grant-runtime-privileges.js";
 
@@ -59,6 +60,10 @@ if (migrationUser === runtimeUser) {
 }
 
 const migrations = await readMigrationHistory(migrationsDirectory);
+const commandMode = process.argv[2] ?? "migrate";
+if (!["migrate", "--check"].includes(commandMode)) {
+  throw new Error("Use --check only for a read-only migration preflight.");
+}
 const pool = new Pool({
   host,
   port,
@@ -77,23 +82,59 @@ try {
     "aaraj:production:drizzle-migrations:v1",
   ]);
   const applied = await readAppliedHistory(lock, migrations);
-  if (operation === "delivery-district-delete-grant") {
+  if (commandMode === "--check") {
+    process.stdout.write(
+      operation === "delivery-district-delete-grant" ||
+        applied.length === migrations.length
+        ? "current\n"
+        : "pending\n",
+    );
+  } else if (operation === "delivery-district-delete-grant") {
     await grantDeliveryDistrictDelete(lock, runtimeUser);
     process.stdout.write(
       `Granted the delivery district delete privilege; no migrations were applied (${applied.length} already applied).\n`,
     );
   } else {
-    await migrate(drizzle(pool), { migrationsFolder: migrationsDirectory });
-    const after = await readAppliedHistory(lock, migrations);
-    if (after.length !== migrations.length) {
-      throw new Error(
-        "Drizzle migration journal did not reach the staged release state.",
+    const addressBarrier = migrations.findIndex(
+      (entry) => entry.tag === "0066_order_address_encryption_expand",
+    );
+    if (addressBarrier >= 0 && applied.length < addressBarrier) {
+      await migrateBeforeJournalIndex(
+        pool,
+        migrationsDirectory,
+        addressBarrier,
+        "aaraj-production-migrations-before-address-",
+      );
+      const after = await readAppliedHistory(lock, migrations);
+      if (after.length !== addressBarrier) {
+        throw new Error(
+          "Pre-address migrations did not reach the encryption conversion barrier.",
+        );
+      }
+      process.stdout.write(
+        `Applied ${after.length - applied.length} migration(s) through the Order address encryption barrier; the host wrapper must convert address data before restarting this service.\n`,
+      );
+    } else if (
+      addressBarrier >= 0 &&
+      applied.length >= addressBarrier &&
+      !(await orderAddressConversionIsComplete(lock))
+    ) {
+      process.stdout.write(
+        "Order address conversion is required before the contract migration can run.\n",
+      );
+    } else {
+      await migrate(drizzle(pool), { migrationsFolder: migrationsDirectory });
+      const after = await readAppliedHistory(lock, migrations);
+      if (after.length !== migrations.length) {
+        throw new Error(
+          "Drizzle migration journal did not reach the staged release state.",
+        );
+      }
+      await grantRuntimePrivileges(pool, database, runtimeUser);
+      process.stdout.write(
+        `Drizzle migrations are current for ${releaseSha}; ${after.length - applied.length} migration(s) applied and runtime grants reconciled.\n`,
       );
     }
-    await grantRuntimePrivileges(pool, database, runtimeUser);
-    process.stdout.write(
-      `Drizzle migrations are current for ${releaseSha}; ${after.length - applied.length} migration(s) applied and runtime grants reconciled.\n`,
-    );
   }
 } finally {
   try {
@@ -104,6 +145,44 @@ try {
     lock.release();
     await pool.end();
   }
+}
+
+async function orderAddressConversionIsComplete(client) {
+  const columns = await client.query(
+    `SELECT column_name
+       FROM information_schema.columns
+      WHERE table_schema = 'orders'
+        AND table_name = 'order_header'
+        AND column_name = ANY($1::text[])`,
+    [
+      [
+        "address_snapshot",
+        "address_ciphertext",
+        "address_name_prefixes",
+        "address_phone_prefixes",
+      ],
+    ],
+  );
+  const present = new Set(columns.rows.map((row) => row.column_name));
+  if (!present.has("address_snapshot")) return true;
+  if (
+    !present.has("address_ciphertext") ||
+    !present.has("address_name_prefixes") ||
+    !present.has("address_phone_prefixes")
+  ) {
+    return false;
+  }
+  const result = await client.query(
+    `SELECT NOT EXISTS (
+       SELECT 1 FROM "orders"."order_header"
+        WHERE "address_ciphertext" IS NULL
+           OR "address_name_prefixes" IS NULL
+           OR "address_phone_prefixes" IS NULL
+           OR split_part("address_ciphertext", '.', 1) <> 'v2'
+           OR "address_snapshot" <> '{}'::jsonb
+     ) AS complete`,
+  );
+  return Boolean(result.rows[0]?.complete);
 }
 
 async function grantDeliveryDistrictDelete(client, runtimeRole) {
@@ -233,13 +312,6 @@ async function readAppliedHistory(client, migrations) {
     }
   }
   return result.rows.map((row) => row.hash);
-}
-
-function required(name) {
-  const value = process.env[name]?.trim();
-  if (!value)
-    throw new Error(`${name} must be configured for production migrations.`);
-  return value;
 }
 
 function quoteIdentifier(value) {

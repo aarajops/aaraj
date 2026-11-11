@@ -2,6 +2,8 @@ import {
   CatalogAudienceSchema,
   CatalogProductCreateSchema,
   CatalogProductUpdateSchema,
+  CatalogProductContentBlocksSchema,
+  type CatalogProductContentBlock,
   type CatalogManagedProductDetail,
   type CatalogProductCreateInput,
   type CatalogProductUpdateInput,
@@ -26,6 +28,7 @@ export interface ProductForm {
   slug: string;
   name: string;
   description: string;
+  contentDraft: string;
   audience: Audience;
   categoryId: string;
   fit: string;
@@ -41,6 +44,7 @@ export const blankProductForm: ProductForm = {
   slug: "",
   name: "",
   description: "",
+  contentDraft: "",
   audience: "",
   categoryId: "",
   fit: "",
@@ -69,6 +73,7 @@ type PreparedProductSubmission =
 
 function prepareProductSubmission(
   form: ProductForm,
+  contentValidation = parseContentDraft(form.contentDraft),
 ): PreparedProductSubmission {
   const variantDrafts = form.variants
     .map((variant, index) => ({ variant, index }))
@@ -98,6 +103,7 @@ function prepareProductSubmission(
   const fields = {
     name: form.name.trim(),
     description: form.description.trim() || null,
+    contentBlocks: contentValidation.success ? contentValidation.data : [],
     categoryId: form.categoryId || null,
     fit: form.fit.trim() || null,
     fabricComposition: form.fabricComposition.trim() || null,
@@ -146,6 +152,7 @@ function mapProductIssuePath(
   const normalizedPath = path.filter(
     (part): part is string | number => typeof part !== "symbol",
   );
+  if (normalizedPath[0] === "contentBlocks") return ["contentDraft"];
   if (normalizedPath[0] !== "variants") return normalizedPath;
 
   const variantIndex = normalizedPath[1];
@@ -167,6 +174,7 @@ export const productFormSchema = z
     slug: z.string(),
     name: z.string(),
     description: z.string(),
+    contentDraft: z.string().max(5000),
     audience: z.union([z.literal(""), CatalogAudienceSchema]),
     categoryId: z.string(),
     fit: z.string(),
@@ -186,7 +194,17 @@ export const productFormSchema = z
     isPublished: z.boolean(),
   })
   .superRefine((form, context) => {
-    const submission = prepareProductSubmission(form);
+    const contentValidation = parseContentDraft(form.contentDraft);
+    if (!contentValidation.success) {
+      context.addIssue({
+        code: "custom",
+        path: ["contentDraft"],
+        message:
+          contentValidation.error.issues[0]?.message ??
+          "Review the structured content blocks.",
+      });
+    }
+    const submission = prepareProductSubmission(form, contentValidation);
     const validation = submission.id
       ? CatalogProductUpdateSchema.safeParse(submission.input)
       : CatalogProductCreateSchema.safeParse(submission.input);
@@ -277,6 +295,7 @@ export function toProductFormState(
     slug: product.slug,
     name: product.name,
     description: product.description ?? "",
+    contentDraft: contentBlocksToDraft(product.contentBlocks),
     audience: product.audience ?? "",
     categoryId: product.category?.id ?? "",
     fit: product.fit ?? "",
@@ -295,6 +314,46 @@ export function toProductFormState(
     })),
     isPublished: product.isPublished,
   };
+}
+
+function parseContentDraft(draft: string) {
+  const blocks: unknown[] = draft
+    .split(/\n\s*\n/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const lines = chunk.split("\n").map((line) => line.trim());
+      const heading = /^(#{3,4})\s+(.+)$/.exec(chunk);
+      if (heading?.[1] && heading[2]) {
+        return {
+          type: "heading",
+          level: heading[1].length === 3 ? 3 : 4,
+          text: heading[2].trim(),
+        };
+      }
+      if (lines.every((line) => /^-\s+/.test(line))) {
+        return {
+          type: "bullet_list",
+          items: lines.map((line) => line.replace(/^-\s+/, "").trim()),
+        };
+      }
+      return { type: "paragraph", text: chunk };
+    });
+  return CatalogProductContentBlocksSchema.safeParse(blocks);
+}
+
+function contentBlocksToDraft(blocks: CatalogProductContentBlock[]): string {
+  return blocks
+    .map((block) => {
+      if (block.type === "heading") {
+        return `${"#".repeat(block.level)} ${block.text}`;
+      }
+      if (block.type === "bullet_list") {
+        return block.items.map((item) => `- ${item}`).join("\n");
+      }
+      return block.text;
+    })
+    .join("\n\n");
 }
 
 export function withProductSizeGuide(
