@@ -1,10 +1,10 @@
-import type { CatalogPublishedCategoryOption } from "@aaraj/contracts";
+import type { CatalogCategoryOption } from "@aaraj/contracts";
 import { HomepageCategoryCarousel } from "./homepage-category-carousel";
 
 export function HomepageCategorySection({
   categories,
 }: {
-  categories: CatalogPublishedCategoryOption[];
+  categories: CatalogCategoryOption[];
 }) {
   if (categories.length === 0) return null;
 

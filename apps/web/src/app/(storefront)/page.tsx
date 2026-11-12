@@ -9,6 +9,7 @@ import {
 } from "@aaraj/contracts";
 import {
   getPublishedProducts,
+  getPublicCatalogCategories,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
 import { HomepageCategorySection } from "@/features/storefront/homepage-category-section";
@@ -67,8 +68,9 @@ export default async function Home({
       ? CatalogAudienceSchema.safeParse(query.audience)
       : null;
   const audience = audienceResult?.success ? audienceResult.data : "unisex";
-  const [settings, newArrivals] = await Promise.all([
-    getPublicStorefrontSettings(),
+  const settingsPromise = getPublicStorefrontSettings();
+  const [settings, newArrivals, categoryOptions] = await Promise.all([
+    settingsPromise,
     getPublishedProducts(
       CatalogPublishedProductListQuerySchema.parse({
         limit: 10,
@@ -77,12 +79,15 @@ export default async function Home({
         audience,
       }),
     ),
+    settingsPromise.then((storefrontSettings) =>
+      storefrontSettings.homepageCategoriesEnabled &&
+      storefrontSettings.homepageCategoryIds.length > 0
+        ? getPublicCatalogCategories()
+        : [],
+    ),
   ]);
   const categoriesById = new Map(
-    (newArrivals?.filters.categories ?? []).map((category) => [
-      category.id,
-      category,
-    ]),
+    categoryOptions.map((category) => [category.id, category]),
   );
   const homepageCategories = settings.homepageCategoriesEnabled
     ? settings.homepageCategoryIds.flatMap((id) => {

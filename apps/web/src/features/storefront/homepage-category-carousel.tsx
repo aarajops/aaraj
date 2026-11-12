@@ -13,13 +13,9 @@ import {
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ImageIcon } from "lucide-react";
-import type { CatalogPublishedCategoryOption } from "@aaraj/contracts";
+import type { CatalogCategoryOption } from "@aaraj/contracts";
 
-function CategoryImage({
-  category,
-}: {
-  category: CatalogPublishedCategoryOption;
-}) {
+function CategoryImage({ category }: { category: CatalogCategoryOption }) {
   const [imageStatus, setImageStatus] = useState<
     "loading" | "loaded" | "error"
   >(category.image ? "loading" : "error");
@@ -53,7 +49,7 @@ function CategoryImage({
 export function HomepageCategoryCarousel({
   categories,
 }: {
-  categories: CatalogPublishedCategoryOption[];
+  categories: CatalogCategoryOption[];
 }) {
   const mobileItemBasis =
     categories.length > 2
