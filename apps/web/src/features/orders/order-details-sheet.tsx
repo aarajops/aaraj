@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { FileText, Plus, Trash2 } from "lucide-react";
 import {
@@ -43,6 +43,7 @@ import {
   addOrderItem,
   fetchManagedOrder,
   removeOrderItem,
+  updateOrderManualDiscount,
   updateOrderStatus,
 } from "./orders-client";
 import {
@@ -93,9 +94,12 @@ function OrderDetailsSheetContent({
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
   const [itemEditorOpen, setItemEditorOpen] = useState(false);
+  const [discountEditorOpen, setDiscountEditorOpen] = useState(false);
+  const [discountAmountBdt, setDiscountAmountBdt] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
   const [removeVariantId, setRemoveVariantId] = useState<string | null>(null);
-  const [itemPending, setItemPending] = useState(false);
-  const [itemError, setItemError] = useState<string | null>(null);
+  const [orderEditPending, setOrderEditPending] = useState(false);
+  const [orderEditError, setOrderEditError] = useState<string | null>(null);
   const [catalogSelection, setCatalogSelection] =
     useState<CatalogVariantSelection | null>(null);
   const [itemQuantity, setItemQuantity] = useState("1");
@@ -113,7 +117,8 @@ function OrderDetailsSheetContent({
   const canCancelOrder = availableStatusActions.includes("cancelled");
 
   async function updateStatus(input: OrderStatusUpdateInput) {
-    if (!order || statusPending || itemPending) return;
+    if (!order || statusPending || orderEditPending || discountEditorOpen)
+      return;
     setStatusPending(true);
     setStatusError(null);
     try {
@@ -140,7 +145,14 @@ function OrderDetailsSheetContent({
   }
 
   async function addItem() {
-    if (!order || !catalogSelection || statusPending || itemPending) return;
+    if (
+      !order ||
+      !catalogSelection ||
+      statusPending ||
+      orderEditPending ||
+      discountEditorOpen
+    )
+      return;
     const quantity = Number(itemQuantity);
     if (
       !Number.isInteger(quantity) ||
@@ -151,8 +163,8 @@ function OrderDetailsSheetContent({
       return;
     }
 
-    setItemPending(true);
-    setItemError(null);
+    setOrderEditPending(true);
+    setOrderEditError(null);
     try {
       const updatedOrder = await addOrderItem(order.id, {
         variantId: catalogSelection.variantId,
@@ -170,21 +182,28 @@ function OrderDetailsSheetContent({
       setItemQuantity("1");
       onFulfillmentUpdated();
     } catch (reason) {
-      setItemError(
+      setOrderEditError(
         reason instanceof Error
           ? reason.message
           : "The item could not be added to this order.",
       );
     } finally {
-      setItemPending(false);
+      setOrderEditPending(false);
     }
   }
 
   async function removeItem(variantId: string, quantity: number) {
-    if (!order || statusPending || itemPending || itemEditorOpen) return;
+    if (
+      !order ||
+      statusPending ||
+      orderEditPending ||
+      itemEditorOpen ||
+      discountEditorOpen
+    )
+      return;
 
-    setItemPending(true);
-    setItemError(null);
+    setOrderEditPending(true);
+    setOrderEditError(null);
     try {
       const updatedOrder = await removeOrderItem(order.id, variantId, quantity);
       setDetails((current) =>
@@ -195,13 +214,54 @@ function OrderDetailsSheetContent({
       setRemoveVariantId(null);
       onFulfillmentUpdated();
     } catch (reason) {
-      setItemError(
+      setOrderEditError(
         reason instanceof Error
           ? reason.message
           : "The item could not be removed from this order.",
       );
     } finally {
-      setItemPending(false);
+      setOrderEditPending(false);
+    }
+  }
+
+  async function saveDiscount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!order || statusPending || orderEditPending) return;
+
+    const manualDiscountBdt = Number(discountAmountBdt);
+    if (
+      !Number.isSafeInteger(manualDiscountBdt) ||
+      manualDiscountBdt < 0 ||
+      manualDiscountBdt > order.merchandiseGrossBdt ||
+      discountReason.trim().length < 3
+    ) {
+      return;
+    }
+
+    setOrderEditPending(true);
+    setOrderEditError(null);
+    try {
+      const updatedOrder = await updateOrderManualDiscount(order.id, {
+        manualDiscountBdt,
+        expectedManualDiscountBdt: order.manualDiscountBdt,
+        reason: discountReason.trim(),
+      });
+      setDetails((current) =>
+        current?.status === "success" && current.orderId === updatedOrder.id
+          ? { ...current, order: updatedOrder }
+          : current,
+      );
+      setDiscountEditorOpen(false);
+      setDiscountReason("");
+      onFulfillmentUpdated();
+    } catch (reason) {
+      setOrderEditError(
+        reason instanceof Error
+          ? reason.message
+          : "The order discount could not be updated.",
+      );
+    } finally {
+      setOrderEditPending(false);
     }
   }
 
@@ -242,6 +302,13 @@ function OrderDetailsSheetContent({
         .filter((part): part is string => Boolean(part))
         .join(", ")
     : "";
+  const discountPreviewBdt = Number(discountAmountBdt);
+  const discountInputValid =
+    order !== null &&
+    discountAmountBdt.trim() !== "" &&
+    Number.isSafeInteger(discountPreviewBdt) &&
+    discountPreviewBdt >= 0 &&
+    discountPreviewBdt <= order.merchandiseGrossBdt;
 
   return (
     <div
@@ -303,9 +370,10 @@ function OrderDetailsSheetContent({
                   actions={availableStatusActions}
                   disabled={
                     statusPending ||
-                    itemPending ||
+                    orderEditPending ||
                     itemEditorOpen ||
-                    removeVariantId !== null
+                    removeVariantId !== null ||
+                    discountEditorOpen
                   }
                   onSelect={(action) => {
                     if (action === "cancelled") {
@@ -433,12 +501,13 @@ function OrderDetailsSheetContent({
                 </h3>
                 {order.canEditItems &&
                   !itemEditorOpen &&
+                  !discountEditorOpen &&
                   removeVariantId === null &&
                   !cancelFormOpen && (
                     <Button
-                      disabled={statusPending || itemPending}
+                      disabled={statusPending || orderEditPending}
                       onClick={() => {
-                        setItemError(null);
+                        setOrderEditError(null);
                         setRemoveVariantId(null);
                         setItemEditorOpen(true);
                       }}
@@ -481,6 +550,7 @@ function OrderDetailsSheetContent({
                         {order.canEditItems &&
                           order.lines.length > 1 &&
                           !itemEditorOpen &&
+                          !discountEditorOpen &&
                           !cancelFormOpen && (
                             <Button
                               aria-label={`Remove ${line.productName}, ${line.color}, ${line.sizeLabel} from order`}
@@ -488,12 +558,12 @@ function OrderDetailsSheetContent({
                               className="text-muted-foreground hover:text-destructive"
                               disabled={
                                 statusPending ||
-                                itemPending ||
+                                orderEditPending ||
                                 (removeVariantId !== null &&
                                   removeVariantId !== line.variantId)
                               }
                               onClick={() => {
-                                setItemError(null);
+                                setOrderEditError(null);
                                 setRemoveVariantId(line.variantId);
                               }}
                               size="icon-sm"
@@ -511,7 +581,7 @@ function OrderDetailsSheetContent({
               {itemEditorOpen && order.canEditItems && (
                 <div className="grid min-w-0 gap-3 rounded-lg border border-border p-3">
                   <CatalogVariantSearch
-                    disabled={itemPending}
+                    disabled={orderEditPending}
                     existingVariants={order.lines.map(
                       ({ variantId, quantity, unitPriceBdt }) => ({
                         variantId,
@@ -532,7 +602,7 @@ function OrderDetailsSheetContent({
                           ? "Additional quantity"
                           : "Quantity"}
                         <Input
-                          disabled={itemPending}
+                          disabled={orderEditPending}
                           max={
                             MAX_CART_QUANTITY_PER_VARIANT -
                             catalogSelection.currentQuantity
@@ -562,19 +632,19 @@ function OrderDetailsSheetContent({
                       </p>
                     </>
                   )}
-                  {itemError && (
+                  {orderEditError && (
                     <p className="text-sm text-destructive" role="alert">
-                      {itemError}
+                      {orderEditError}
                     </p>
                   )}
                   <div className="flex justify-end gap-2">
                     <Button
-                      disabled={itemPending}
+                      disabled={orderEditPending}
                       onClick={() => {
                         setItemEditorOpen(false);
                         setCatalogSelection(null);
                         setItemQuantity("1");
-                        setItemError(null);
+                        setOrderEditError(null);
                       }}
                       type="button"
                       variant="outline"
@@ -589,13 +659,13 @@ function OrderDetailsSheetContent({
                         Number(itemQuantity) +
                           (catalogSelection?.currentQuantity ?? 0) >
                           MAX_CART_QUANTITY_PER_VARIANT ||
-                        itemPending ||
+                        orderEditPending ||
                         statusPending
                       }
                       onClick={() => void addItem()}
                       type="button"
                     >
-                      {itemPending
+                      {orderEditPending
                         ? "Adding…"
                         : catalogSelection?.currentQuantity
                           ? "Add quantity"
@@ -617,9 +687,9 @@ function OrderDetailsSheetContent({
               <AlertDialog
                 open={removeLine !== null}
                 onOpenChange={(open) => {
-                  if (!open && !itemPending) {
+                  if (!open && !orderEditPending) {
                     setRemoveVariantId(null);
-                    setItemError(null);
+                    setOrderEditError(null);
                   }
                 }}
               >
@@ -638,17 +708,19 @@ function OrderDetailsSheetContent({
                       </AlertDialogDescription>
                     )}
                   </AlertDialogHeader>
-                  {itemError && (
+                  {orderEditError && (
                     <p className="text-sm text-destructive" role="alert">
-                      {itemError}
+                      {orderEditError}
                     </p>
                   )}
                   <AlertDialogFooter>
-                    <AlertDialogCancel disabled={itemPending}>
+                    <AlertDialogCancel disabled={orderEditPending}>
                       Keep item
                     </AlertDialogCancel>
                     <AlertDialogAction
-                      disabled={itemPending || statusPending || !removeLine}
+                      disabled={
+                        orderEditPending || statusPending || !removeLine
+                      }
                       onClick={() => {
                         if (removeLine) {
                           void removeItem(
@@ -659,7 +731,7 @@ function OrderDetailsSheetContent({
                       }}
                       variant="destructive"
                     >
-                      {itemPending ? "Removing…" : "Remove item"}
+                      {orderEditPending ? "Removing…" : "Remove item"}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -673,6 +745,12 @@ function OrderDetailsSheetContent({
                   amountBdt: order.merchandiseGrossBdt,
                 })}
               />
+              {order.manualDiscountBdt > 0 && (
+                <DetailRow
+                  label="Discount"
+                  value={`−${formatBdtPrice({ amountBdt: order.manualDiscountBdt })}`}
+                />
+              )}
               <DetailRow
                 label="Delivery"
                 value={formatBdtPrice({
@@ -685,6 +763,126 @@ function OrderDetailsSheetContent({
                 value={formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
               />
             </dl>
+
+            {order.canEditDiscount && !itemEditorOpen && (
+              <div className="grid gap-3">
+                {!discountEditorOpen && removeVariantId === null && (
+                  <div className="flex justify-end">
+                    <Button
+                      disabled={statusPending || orderEditPending}
+                      onClick={() => {
+                        setDiscountAmountBdt(String(order.manualDiscountBdt));
+                        setDiscountReason("");
+                        setOrderEditError(null);
+                        setDiscountEditorOpen(true);
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      {order.manualDiscountBdt > 0
+                        ? "Edit discount"
+                        : "Add discount"}
+                    </Button>
+                  </div>
+                )}
+                {discountEditorOpen && (
+                  <form
+                    className="grid gap-3 rounded-lg border border-border p-3"
+                    onSubmit={(event) => void saveDiscount(event)}
+                  >
+                    <label className="grid gap-2 text-sm font-medium">
+                      Discount amount (BDT)
+                      <Input
+                        autoFocus
+                        max={order.merchandiseGrossBdt}
+                        min={0}
+                        onChange={(event) => {
+                          setDiscountAmountBdt(event.target.value);
+                          setOrderEditError(null);
+                        }}
+                        required
+                        step={1}
+                        type="number"
+                        value={discountAmountBdt}
+                      />
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Applies to items. Delivery stays unchanged.
+                    </p>
+                    {discountAmountBdt.trim() !== "" && !discountInputValid && (
+                      <p className="text-sm text-destructive" role="alert">
+                        Enter a whole BDT amount up to the merchandise subtotal.
+                      </p>
+                    )}
+                    <label className="grid gap-2 text-sm font-medium">
+                      Reason
+                      <Textarea
+                        maxLength={500}
+                        minLength={3}
+                        onChange={(event) => {
+                          setDiscountReason(event.target.value);
+                          setOrderEditError(null);
+                        }}
+                        required
+                        rows={2}
+                        value={discountReason}
+                      />
+                    </label>
+                    <div className="flex justify-between gap-3 border-t border-border pt-2 text-sm">
+                      <span className="text-muted-foreground">
+                        Updated COD due
+                      </span>
+                      <span className="text-right">
+                        {discountInputValid
+                          ? formatBdtPrice({
+                              amountBdt:
+                                order.merchandiseGrossBdt -
+                                discountPreviewBdt +
+                                order.delivery.grossAmountBdt,
+                            })
+                          : "—"}
+                      </span>
+                    </div>
+                    {orderEditError && (
+                      <p className="text-sm text-destructive" role="alert">
+                        {orderEditError}
+                      </p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        disabled={orderEditPending}
+                        onClick={() => {
+                          setDiscountEditorOpen(false);
+                          setDiscountReason("");
+                          setOrderEditError(null);
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        disabled={
+                          statusPending ||
+                          orderEditPending ||
+                          !discountInputValid ||
+                          discountPreviewBdt === order.manualDiscountBdt ||
+                          discountReason.trim().length < 3
+                        }
+                        type="submit"
+                      >
+                        {orderEditPending
+                          ? "Saving…"
+                          : discountPreviewBdt === 0
+                            ? "Remove discount"
+                            : "Save discount"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
 
             <PathaoBookingPanel
               onFulfillmentUpdated={onFulfillmentUpdated}

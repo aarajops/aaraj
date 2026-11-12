@@ -1765,6 +1765,11 @@ test("catalog operator configures a product through to storefront visibility", a
     `/api/v1/orders/manage/${customerOrderId}`,
   );
   expect(managedOrderResponse.status()).toBe(200);
+  const managedOrderBeforeDiscount = await managedOrderResponse.json();
+  expect(managedOrderBeforeDiscount).toMatchObject({
+    manualDiscountBdt: 0,
+    canEditDiscount: true,
+  });
   await customerOrderRow
     .getByRole("button", { name: orderReference, exact: true })
     .click();
@@ -1775,6 +1780,36 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     orderStatusSection.getByText("Pending", { exact: true }),
   ).toBeVisible();
+  await orderDetailsSheet.getByRole("button", { name: "Add discount" }).click();
+  await orderDetailsSheet.getByLabel("Discount amount (BDT)").fill("100");
+  await orderDetailsSheet
+    .getByRole("textbox", { name: "Reason" })
+    .fill("Customer agreed to a phone discount");
+  const discountResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      response
+        .url()
+        .endsWith(`/api/v1/orders/manage/${customerOrderId}/discount`),
+  );
+  await orderDetailsSheet
+    .getByRole("button", { name: "Save discount" })
+    .click();
+  const discountResponse = await discountResponsePromise;
+  expect(discountResponse.status()).toBe(200);
+  const discountedOrder = await discountResponse.json();
+  expect(discountedOrder).toMatchObject({
+    manualDiscountBdt: 100,
+    totalBdt: managedOrderBeforeDiscount.totalBdt - 100,
+    codAmountDueBdt: managedOrderBeforeDiscount.codAmountDueBdt - 100,
+  });
+  await expect(
+    orderDetailsSheet.getByText("Discount", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    orderDetailsSheet.getByText("−৳100", { exact: true }),
+  ).toBeVisible();
+
   const updateStatusButton = orderStatusSection.getByRole("button", {
     name: "Update status",
   });
@@ -1923,6 +1958,8 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("status")).toContainText(
     "Your order has been handed to the courier.",
   );
+  await expect(page.getByText("Order discount", { exact: true })).toBeVisible();
+  await expect(page.getByText("−৳100", { exact: true })).toBeVisible();
 
   await page.goto(`/admin/orders/${customerOrderId}`);
   await expect(
@@ -1957,6 +1994,18 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("status").filter({ hasText: "recorded as delivered" }),
   ).toBeVisible();
   await expect(page.getByText("COD collected", { exact: true })).toBeVisible();
+
+  await page.goto(`/admin/orders/${customerOrderId}/invoice`);
+  const invoice = page.getByRole("article");
+  await expect(invoice.getByRole("heading", { name: "Invoice" })).toBeVisible();
+  await expect(invoice.getByText("Discount", { exact: true })).toBeVisible();
+  await expect(invoice.getByText("−৳100", { exact: true })).toBeVisible();
+  await expect(
+    invoice.getByText(
+      `৳${Number(discountedOrder.totalBdt).toLocaleString("en-BD")}`,
+      { exact: true },
+    ),
+  ).toBeVisible();
 
   await page.goto("/admin");
   await page.locator("summary[aria-label^='Account menu for']").click();

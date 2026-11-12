@@ -738,6 +738,7 @@ test("customer Order page explains cancellation", async ({ page }) => {
           },
         ],
         merchandiseGrossBdt: 250,
+        manualDiscountBdt: 0,
         delivery: {
           tariffVersion: "TEST_DELIVERY_V1",
           effectiveFrom: "2026-10-08",

@@ -442,6 +442,13 @@
       "when": 1794206400272,
       "tag": "0062_order_query_indexes_and_address_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1794465552643,
+      "tag": "0063_order_manual_discount",
+      "breakpoints": true
     }
   ]
 }

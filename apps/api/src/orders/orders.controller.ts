@@ -29,6 +29,7 @@ import {
   CreateOrderInputSchema,
   OrderItemAddInputSchema,
   OrderItemRemoveQuerySchema,
+  OrderManualDiscountUpdateInputSchema,
   OrderCollectionInputSchema,
   OrderDispatchCommandIdSchema,
   OrderDispatchInputSchema,
@@ -40,6 +41,7 @@ import {
   type CreateOrderInput,
   type OrderItemAddInput,
   type OrderItemRemoveQuery,
+  type OrderManualDiscountUpdateInput,
   type OrderCollectionInput,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
@@ -214,6 +216,20 @@ export class OrdersController {
       query.expectedQuantity,
       session.user.id,
     );
+  }
+
+  @Patch("manage/:orderId/discount")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  updateManualDiscount(
+    @Session() session: UserSession,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @Body({ schema: OrderManualDiscountUpdateInputSchema })
+    input: OrderManualDiscountUpdateInput,
+  ) {
+    return this.orders.updateManualDiscount(orderId, session.user.id, input);
   }
 
   @Patch("manage/:orderId/status")

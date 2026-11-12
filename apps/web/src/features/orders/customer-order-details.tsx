@@ -159,6 +159,12 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
               </h2>
               <dl className="mt-3 grid gap-2 text-sm">
                 <DataRow label="Payment method" value="Cash on Delivery" />
+                {order.manualDiscountBdt > 0 && (
+                  <DataRow
+                    label="Order discount"
+                    value={`−${formatBdtPrice({ amountBdt: order.manualDiscountBdt })}`}
+                  />
+                )}
                 <DataRow
                   label="Delivery fee"
                   value={formatBdtPrice({

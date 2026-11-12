@@ -27,6 +27,7 @@ import {
   type AuthoritativeQuote,
   type CreateOrderInput,
   type OrderItemAddInput,
+  type OrderManualDiscountUpdateInput,
   type Order,
   type OrderManagementDetail,
   type OrderAddress,
@@ -155,6 +156,7 @@ type OrderItemMutationRow = Pick<
   | "collectionStatus"
   | "collectedAmountBdt"
   | "merchandiseGrossBdt"
+  | "manualDiscountBdt"
   | "deliveryAmountBdt"
   | "reservationId"
   | "totalBdt"
@@ -317,7 +319,7 @@ function availableOrderStatusActions(
   return actions;
 }
 
-function canEditOrderItems(
+function canEditOrderPricing(
   row: OrderItemMutationRow,
   hasPathaoClaim: boolean,
 ): boolean {
@@ -1591,13 +1593,18 @@ export class OrdersService implements OrdersPathaoPort {
 
     const row = result.order;
     const order = await this.loadPrivateOrder(row);
+    const canEditPricing = canEditOrderPricing(
+      row,
+      result.pathaoClaimStatus !== null,
+    );
     return OrderManagementDetailSchema.parse({
       ...order,
       availableStatusActions: availableOrderStatusActions(
         row,
         result.pathaoClaimStatus !== null,
       ),
-      canEditItems: canEditOrderItems(row, result.pathaoClaimStatus !== null),
+      canEditItems: canEditPricing,
+      canEditDiscount: canEditPricing,
     });
   }
 
@@ -1615,6 +1622,7 @@ export class OrdersService implements OrdersPathaoPort {
           collectionStatus: customerOrder.collectionStatus,
           collectedAmountBdt: customerOrder.collectedAmountBdt,
           merchandiseGrossBdt: customerOrder.merchandiseGrossBdt,
+          manualDiscountBdt: customerOrder.manualDiscountBdt,
           deliveryAmountBdt: customerOrder.deliveryAmountBdt,
           reservationId: customerOrder.reservationId,
           totalBdt: customerOrder.totalBdt,
@@ -1673,7 +1681,7 @@ export class OrdersService implements OrdersPathaoPort {
           { errorCode: "ORDER_PATHAO_BOOKING_BLOCKS_ITEM_EDIT" },
         );
       }
-      if (!canEditOrderItems(row, false)) {
+      if (!canEditOrderPricing(row, false)) {
         throw new ConflictException(
           "Only pending or confirmed, unbooked Orders with an uncollected COD amount can have items added.",
           { errorCode: "ORDER_ITEMS_NOT_EDITABLE" },
@@ -1707,13 +1715,19 @@ export class OrdersService implements OrdersPathaoPort {
       );
       if (
         currentMerchandiseBdt !== row.merchandiseGrossBdt ||
+        row.totalBdt !==
+          row.merchandiseGrossBdt +
+            row.deliveryAmountBdt -
+            row.manualDiscountBdt ||
+        row.codAmountDueBdt !== row.totalBdt ||
         !Number.isSafeInteger(currentMerchandiseBdt)
       ) {
         throw new Error("The Order item totals do not match its saved total.");
       }
       const grossAmountBdt = unitPriceBdt * input.quantity;
       const merchandiseGrossBdt = currentMerchandiseBdt + grossAmountBdt;
-      const totalBdt = merchandiseGrossBdt + row.deliveryAmountBdt;
+      const totalBdt =
+        merchandiseGrossBdt + row.deliveryAmountBdt - row.manualDiscountBdt;
       if (
         !Number.isSafeInteger(grossAmountBdt) ||
         !Number.isSafeInteger(merchandiseGrossBdt) ||
@@ -1814,6 +1828,7 @@ export class OrdersService implements OrdersPathaoPort {
           grossAmountBdt,
           previousMerchandiseGrossBdt: row.merchandiseGrossBdt,
           merchandiseGrossBdt,
+          manualDiscountBdt: row.manualDiscountBdt,
           previousCodAmountDueBdt: row.codAmountDueBdt,
           codAmountDueBdt: totalBdt,
           reservationId: row.reservationId,
@@ -1840,6 +1855,7 @@ export class OrdersService implements OrdersPathaoPort {
           collectionStatus: customerOrder.collectionStatus,
           collectedAmountBdt: customerOrder.collectedAmountBdt,
           merchandiseGrossBdt: customerOrder.merchandiseGrossBdt,
+          manualDiscountBdt: customerOrder.manualDiscountBdt,
           deliveryAmountBdt: customerOrder.deliveryAmountBdt,
           reservationId: customerOrder.reservationId,
           totalBdt: customerOrder.totalBdt,
@@ -1889,7 +1905,7 @@ export class OrdersService implements OrdersPathaoPort {
           { errorCode: "ORDER_PATHAO_BOOKING_BLOCKS_ITEM_EDIT" },
         );
       }
-      if (!canEditOrderItems(row, false)) {
+      if (!canEditOrderPricing(row, false)) {
         throw new ConflictException(
           "Only pending or confirmed, unbooked Orders with an uncollected COD amount can have items changed.",
           { errorCode: "ORDER_ITEMS_NOT_EDITABLE" },
@@ -1902,7 +1918,10 @@ export class OrdersService implements OrdersPathaoPort {
       );
       if (
         currentMerchandiseBdt !== row.merchandiseGrossBdt ||
-        row.totalBdt !== row.merchandiseGrossBdt + row.deliveryAmountBdt ||
+        row.totalBdt !==
+          row.merchandiseGrossBdt +
+            row.deliveryAmountBdt -
+            row.manualDiscountBdt ||
         row.codAmountDueBdt !== row.totalBdt ||
         !Number.isSafeInteger(currentMerchandiseBdt)
       ) {
@@ -1910,7 +1929,14 @@ export class OrdersService implements OrdersPathaoPort {
       }
 
       const merchandiseGrossBdt = currentMerchandiseBdt - line.grossAmountBdt;
-      const totalBdt = merchandiseGrossBdt + row.deliveryAmountBdt;
+      if (row.manualDiscountBdt > merchandiseGrossBdt) {
+        throw new ConflictException(
+          "Reduce the order discount before removing this item.",
+          { errorCode: "ORDER_DISCOUNT_EXCEEDS_MERCHANDISE" },
+        );
+      }
+      const totalBdt =
+        merchandiseGrossBdt + row.deliveryAmountBdt - row.manualDiscountBdt;
       if (
         merchandiseGrossBdt < 0 ||
         !Number.isSafeInteger(merchandiseGrossBdt) ||
@@ -1989,6 +2015,131 @@ export class OrdersService implements OrdersPathaoPort {
           },
           previousMerchandiseGrossBdt: row.merchandiseGrossBdt,
           merchandiseGrossBdt,
+          manualDiscountBdt: row.manualDiscountBdt,
+          previousCodAmountDueBdt: row.codAmountDueBdt,
+          codAmountDueBdt: totalBdt,
+          reservationId: row.reservationId,
+        },
+      });
+    });
+
+    return this.getManagementDetail(orderId);
+  }
+
+  async updateManualDiscount(
+    orderId: string,
+    staffId: string,
+    input: OrderManualDiscountUpdateInput,
+  ): Promise<OrderManagementDetail> {
+    await this.database.db.transaction(async (transaction) => {
+      const [row] = await transaction
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          collectionStatus: customerOrder.collectionStatus,
+          collectedAmountBdt: customerOrder.collectedAmountBdt,
+          merchandiseGrossBdt: customerOrder.merchandiseGrossBdt,
+          manualDiscountBdt: customerOrder.manualDiscountBdt,
+          deliveryAmountBdt: customerOrder.deliveryAmountBdt,
+          reservationId: customerOrder.reservationId,
+          totalBdt: customerOrder.totalBdt,
+          codAmountDueBdt: customerOrder.codAmountDueBdt,
+        })
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!row) throw orderNotFound();
+
+      const [pathaoClaim] = await transaction
+        .select({ orderId: orderPathaoBookingClaim.orderId })
+        .from(orderPathaoBookingClaim)
+        .where(eq(orderPathaoBookingClaim.orderId, row.id))
+        .for("update")
+        .limit(1);
+      if (pathaoClaim) {
+        throw new ConflictException(
+          "The discount cannot be changed while a Pathao consignment exists for this order.",
+          { errorCode: "ORDER_PATHAO_BOOKING_BLOCKS_DISCOUNT_EDIT" },
+        );
+      }
+      if (!canEditOrderPricing(row, false)) {
+        throw new ConflictException(
+          "A discount can only be changed on a pending or confirmed, unbooked order with uncollected COD.",
+          { errorCode: "ORDER_DISCOUNT_NOT_EDITABLE" },
+        );
+      }
+      if (
+        row.totalBdt !==
+          row.merchandiseGrossBdt +
+            row.deliveryAmountBdt -
+            row.manualDiscountBdt ||
+        row.codAmountDueBdt !== row.totalBdt
+      ) {
+        throw new Error("The Order totals do not match its saved amounts.");
+      }
+
+      if (
+        row.manualDiscountBdt !== input.expectedManualDiscountBdt &&
+        row.manualDiscountBdt !== input.manualDiscountBdt
+      ) {
+        throw new ConflictException(
+          "The order discount changed. Refresh the order before saving again.",
+          { errorCode: "ORDER_DISCOUNT_CHANGED" },
+        );
+      }
+      if (input.manualDiscountBdt > row.merchandiseGrossBdt) {
+        throw new UnprocessableEntityException(
+          "The discount cannot exceed the merchandise subtotal.",
+          { errorCode: "ORDER_DISCOUNT_EXCEEDS_MERCHANDISE" },
+        );
+      }
+      if (input.manualDiscountBdt === row.manualDiscountBdt) return;
+
+      const totalBdt =
+        row.merchandiseGrossBdt +
+        row.deliveryAmountBdt -
+        input.manualDiscountBdt;
+      if (!Number.isSafeInteger(totalBdt) || totalBdt <= 0) {
+        throw new UnprocessableEntityException(
+          "The updated Order amount is invalid.",
+          { errorCode: "ORDER_AMOUNT_LIMIT_EXCEEDED" },
+        );
+      }
+
+      const [updated] = await transaction
+        .update(customerOrder)
+        .set({
+          manualDiscountBdt: input.manualDiscountBdt,
+          totalBdt,
+          codAmountDueBdt: totalBdt,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(customerOrder.id, row.id))
+        .returning({ updatedAt: customerOrder.updatedAt });
+      if (!updated?.updatedAt) {
+        throw new ConflictException(
+          "The Order changed before its discount could be updated.",
+          { errorCode: "ORDER_DISCOUNT_UPDATE_CONFLICT" },
+        );
+      }
+
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_manual_discount_updated",
+        subjectType: "order",
+        subjectId: row.id,
+        occurredAt: updated.updatedAt,
+        reason: input.reason,
+        metadata: {
+          previousManualDiscountBdt: row.manualDiscountBdt,
+          manualDiscountBdt: input.manualDiscountBdt,
+          merchandiseGrossBdt: row.merchandiseGrossBdt,
+          deliveryAmountBdt: row.deliveryAmountBdt,
+          previousTotalBdt: row.totalBdt,
+          totalBdt,
           previousCodAmountDueBdt: row.codAmountDueBdt,
           codAmountDueBdt: totalBdt,
           reservationId: row.reservationId,
@@ -3231,6 +3382,7 @@ export class OrdersService implements OrdersPathaoPort {
         grossAmountBdt: line.grossAmountBdt,
       })),
       merchandiseGrossBdt: row.merchandiseGrossBdt,
+      manualDiscountBdt: row.manualDiscountBdt,
       delivery: {
         tariffVersion: (row.deliverySnapshot as { tariffVersion: string })
           .tariffVersion,

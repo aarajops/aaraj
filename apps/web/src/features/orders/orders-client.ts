@@ -11,6 +11,7 @@ import {
   OrderFulfillmentOutcomeInputSchema,
   OrderItemAddInputSchema,
   OrderItemRemoveQuerySchema,
+  OrderManualDiscountUpdateInputSchema,
   OrderManagementDetailSchema,
   OrderSchema,
   OrderStatusUpdateInputSchema,
@@ -22,6 +23,7 @@ import {
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
   type OrderItemAddInput,
+  type OrderManualDiscountUpdateInput,
   type Order,
   type OrderManagementDetail,
   type OrderStatusUpdateInput,
@@ -174,6 +176,24 @@ export async function removeOrderItem(
       method: "DELETE",
       cache: "no-store",
       credentials: "same-origin",
+    },
+  );
+  return readResponse(response, OrderManagementDetailSchema);
+}
+
+export async function updateOrderManualDiscount(
+  orderId: string,
+  input: OrderManualDiscountUpdateInput,
+): Promise<OrderManagementDetail> {
+  const validatedInput = OrderManualDiscountUpdateInputSchema.parse(input);
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/discount`,
+    {
+      method: "PATCH",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validatedInput),
     },
   );
   return readResponse(response, OrderManagementDetailSchema);

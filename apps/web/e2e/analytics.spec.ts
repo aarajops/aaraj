@@ -87,6 +87,7 @@ test("customer order details do not emit Purchase", async ({ page }) => {
       },
     ],
     merchandiseGrossBdt: 250,
+    manualDiscountBdt: 0,
     delivery: {
       tariffVersion: "TEST_DELIVERY_V1",
       effectiveFrom: "2026-10-08",

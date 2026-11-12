@@ -2045,6 +2045,156 @@ describe("COD Orders and checkout", () => {
     expect((await stockFor(freeVariantId)).quantityReserved).toBe(1);
   });
 
+  it("updates and removes a manual discount while keeping COD, customer details, stock, and audit in sync", async () => {
+    const fixture = await createGuestOrder(4);
+    const before = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    const merchandiseGrossBdt = before.body.merchandiseGrossBdt as number;
+    const deliveryAmountBdt = before.body.delivery.grossAmountBdt as number;
+    const initialStock = await stockFor(fixture.variantId);
+    expect(before.body).toMatchObject({
+      manualDiscountBdt: 0,
+      totalBdt: merchandiseGrossBdt + deliveryAmountBdt,
+      codAmountDueBdt: merchandiseGrossBdt + deliveryAmountBdt,
+      canEditDiscount: true,
+    });
+
+    const applied = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/discount`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        manualDiscountBdt: 100,
+        expectedManualDiscountBdt: 0,
+        reason: "Customer requested a phone discount",
+      })
+      .expect(200);
+    expect(applied.body).toMatchObject({
+      manualDiscountBdt: 100,
+      totalBdt: merchandiseGrossBdt + deliveryAmountBdt - 100,
+      codAmountDueBdt: merchandiseGrossBdt + deliveryAmountBdt - 100,
+      canEditDiscount: true,
+    });
+    expect((await orderById(fixture.id))?.manualDiscountBdt).toBe(100);
+    expect(await stockFor(fixture.variantId)).toEqual(initialStock);
+
+    const customerOrder = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/${fixture.id}`)
+      .set("Cookie", fixture.cookie)
+      .expect(200);
+    expect(customerOrder.body).toMatchObject({
+      manualDiscountBdt: 100,
+      totalBdt: applied.body.totalBdt,
+      codAmountDueBdt: applied.body.codAmountDueBdt,
+    });
+
+    const [discountAudit] = await database.db
+      .select({
+        actorId: auditEvent.actorId,
+        reason: auditEvent.reason,
+        metadata: auditEvent.metadata,
+      })
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.subjectId, fixture.id),
+          eq(
+            auditEvent.eventType,
+            "commerce.cod_order_manual_discount_updated",
+          ),
+        ),
+      );
+    expect(discountAudit).toMatchObject({
+      actorId: staff.id,
+      reason: "Customer requested a phone discount",
+      metadata: {
+        previousManualDiscountBdt: 0,
+        manualDiscountBdt: 100,
+        previousTotalBdt: merchandiseGrossBdt + deliveryAmountBdt,
+        totalBdt: merchandiseGrossBdt + deliveryAmountBdt - 100,
+      },
+    });
+
+    const staleUpdate = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/discount`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        manualDiscountBdt: 150,
+        expectedManualDiscountBdt: 0,
+        reason: "Customer requested another discount",
+      })
+      .expect(409);
+    expect(staleUpdate.body.errorCode).toBe("ORDER_DISCOUNT_CHANGED");
+
+    const removed = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/discount`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        manualDiscountBdt: 0,
+        expectedManualDiscountBdt: 100,
+        reason: "Customer discount request withdrawn",
+      })
+      .expect(200);
+    expect(removed.body).toMatchObject({
+      manualDiscountBdt: 0,
+      totalBdt: merchandiseGrossBdt + deliveryAmountBdt,
+      codAmountDueBdt: merchandiseGrossBdt + deliveryAmountBdt,
+    });
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+  });
+
+  it("rejects discounts above the subtotal and blocks edits after a Pathao booking", async () => {
+    const fixture = await createGuestOrder(4);
+    const before = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    const excessiveDiscount = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/discount`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        manualDiscountBdt: before.body.merchandiseGrossBdt + 1,
+        expectedManualDiscountBdt: 0,
+        reason: "Invalid over-subtotal discount",
+      })
+      .expect(422);
+    expect(excessiveDiscount.body.errorCode).toBe(
+      "ORDER_DISCOUNT_EXCEEDS_MERCHANDISE",
+    );
+
+    await confirmOrder(fixture.id);
+    await database.db.insert(orderPathaoBookingClaim).values({
+      orderId: fixture.id,
+      commandId: randomUUID(),
+      requestFingerprint: "b".repeat(64),
+      status: "booked",
+    });
+    const booked = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(booked.body.canEditDiscount).toBe(false);
+    const blocked = await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/discount`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        manualDiscountBdt: 100,
+        expectedManualDiscountBdt: 0,
+        reason: "Too late to update the COD amount",
+      })
+      .expect(409);
+    expect(blocked.body.errorCode).toBe(
+      "ORDER_PATHAO_BOOKING_BLOCKS_DISCOUNT_EDIT",
+    );
+    expect((await orderById(fixture.id))?.manualDiscountBdt).toBe(0);
+  });
+
   it("removes an Order line, releases its stock, updates COD, and preserves an audit snapshot", async () => {
     const fixture = await createGuestOrder(4);
     const removedVariantId = await createVariant(2, 500);
@@ -3395,8 +3545,19 @@ describe("COD Orders and checkout", () => {
       instructions: "Call from the gate\nUse the east entrance",
     });
     await confirmOrder(fixture.id);
+    await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/discount`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        manualDiscountBdt: 100,
+        expectedManualDiscountBdt: 0,
+        reason: "Customer agreed to a phone discount",
+      })
+      .expect(200);
     const order = await orderById(fixture.id);
     if (!order) throw new Error("Pathao booking Order fixture is missing.");
+    expect(order.manualDiscountBdt).toBe(100);
     const provider = mockPathaoApi({
       orderReference: order.reference,
       consignmentId: "PATHAO-TEST-0001",

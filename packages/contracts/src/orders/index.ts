@@ -129,6 +129,19 @@ export const OrderItemRemoveQuerySchema = z.strictObject({
 });
 export type OrderItemRemoveQuery = z.infer<typeof OrderItemRemoveQuerySchema>;
 
+export const OrderManualDiscountUpdateInputSchema = z.strictObject({
+  manualDiscountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  expectedManualDiscountBdt: z
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER),
+  reason: z.string().trim().min(3).max(500),
+});
+export type OrderManualDiscountUpdateInput = z.infer<
+  typeof OrderManualDiscountUpdateInputSchema
+>;
+
 export const OrderDispatchCommandIdSchema = z.uuid();
 export const OrderDispatchInputSchema = z.strictObject({
   deliveryProvider: z.enum(["manual", "pathao"]).default("manual"),
@@ -219,6 +232,12 @@ export const OrderSchema = z.strictObject({
     .int()
     .nonnegative()
     .max(Number.MAX_SAFE_INTEGER),
+  manualDiscountBdt: z
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .default(0),
   delivery: z.strictObject({
     tariffVersion: z.string().min(1).max(80),
     effectiveFrom: z.iso.date(),
@@ -238,6 +257,7 @@ export type Order = z.infer<typeof OrderSchema>;
 export const OrderManagementDetailSchema = OrderSchema.extend({
   availableStatusActions: z.array(OrderStatusActionSchema),
   canEditItems: z.boolean().default(false),
+  canEditDiscount: z.boolean().default(false),
 });
 export type OrderManagementDetail = z.infer<typeof OrderManagementDetailSchema>;
 

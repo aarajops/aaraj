@@ -141,6 +141,9 @@ export const customerOrder = ordersSchema.table(
     merchandiseGrossBdt: bigint("merchandise_gross_bdt", {
       mode: "number",
     }).notNull(),
+    manualDiscountBdt: bigint("manual_discount_bdt", { mode: "number" })
+      .notNull()
+      .default(0),
     deliveryAmountBdt: bigint("delivery_amount_bdt", {
       mode: "number",
     }).notNull(),
@@ -224,7 +227,7 @@ export const customerOrder = ordersSchema.table(
     check("order_cod_method_check", sql`${table.paymentMethod} = 'cod'`),
     check(
       "order_amount_check",
-      sql`${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.codAmountDueBdt} = ${table.totalBdt} and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt}`,
+      sql`${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.manualDiscountBdt} between 0 and ${table.merchandiseGrossBdt} and ${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.codAmountDueBdt} = ${table.totalBdt} and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt} - ${table.manualDiscountBdt}`,
     ),
     check(
       "order_snapshot_object_check",

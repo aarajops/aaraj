@@ -147,6 +147,16 @@ export function OrderInvoice({
               {formatBdtPrice({ amountBdt: order.merchandiseGrossBdt })}
             </dd>
           </div>
+          {order.manualDiscountBdt > 0 && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground print:text-gray-700">
+                Discount
+              </dt>
+              <dd className="tabular-nums">
+                −{formatBdtPrice({ amountBdt: order.manualDiscountBdt })}
+              </dd>
+            </div>
+          )}
           <div className="flex justify-between gap-4">
             <dt className="text-muted-foreground print:text-gray-700">
               Delivery
