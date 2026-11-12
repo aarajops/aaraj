@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import type { CatalogCategoryOption } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ export function HomepageCategorySettings({
   categories,
   selectedCategoryIds,
   enabled,
+  disabled = false,
   onEnabledChange,
   onCategoryAdd,
   onCategoryRemove,
@@ -27,6 +27,7 @@ export function HomepageCategorySettings({
   categories: CatalogCategoryOption[];
   selectedCategoryIds: string[];
   enabled: boolean;
+  disabled?: boolean;
   onEnabledChange: (enabled: boolean) => void;
   onCategoryAdd: (categoryId: string) => void;
   onCategoryRemove: (categoryId: string) => void;
@@ -43,23 +44,12 @@ export function HomepageCategorySettings({
   }));
 
   return (
-    <section
-      aria-labelledby="homepage-categories-heading"
-      className="grid gap-5 rounded-xl border border-border p-4 sm:p-5"
-    >
-      <div>
-        <h3 className="text-lg font-semibold" id="homepage-categories-heading">
-          Homepage categories
-        </h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Feature selected catalog categories on your homepage. Drag to set
-          their display order.
-        </p>
-      </div>
-      <Field className="flex items-center gap-3">
+    <section className="grid gap-4">
+      <Field className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
         <Switch
           id="homepage-categories-enabled"
           checked={enabled}
+          disabled={disabled}
           onCheckedChange={onEnabledChange}
         />
         <FieldLabel htmlFor="homepage-categories-enabled">
@@ -67,10 +57,10 @@ export function HomepageCategorySettings({
         </FieldLabel>
       </Field>
       <Field>
-        <FieldLabel htmlFor="homepage-category-select">Categories</FieldLabel>
+        <FieldLabel htmlFor="homepage-category-select">Add category</FieldLabel>
         <Select
           value={null}
-          disabled={availableCategories.length === 0}
+          disabled={disabled || availableCategories.length === 0}
           onValueChange={(categoryId) => {
             if (categoryId) onCategoryAdd(categoryId);
           }}
@@ -95,45 +85,53 @@ export function HomepageCategorySettings({
           </SelectContent>
         </Select>
         <FieldDescription>
-          Categories without artwork use a text tile on the homepage. Add
-          artwork from{" "}
-          <Link
-            className="text-primary underline-offset-4 hover:underline"
-            href="/admin/catalog/categories"
-          >
-            catalog categories
-          </Link>
-          .
+          Categories without artwork appear as text tiles.
         </FieldDescription>
-        {selectedCategories.length > 0 && (
+      </Field>
+      {selectedCategories.length > 0 ? (
+        <div className="space-y-2">
+          <div>
+            <h3 className="text-sm font-medium">Display order</h3>
+            <p className="text-xs text-muted-foreground">
+              Drag categories to reorder them.
+            </p>
+          </div>
           <SortableList
-            ariaLabel="Homepage categories"
-            className="flex flex-wrap gap-2"
+            ariaLabel="Homepage category display order"
+            className="grid gap-2"
             getItemId={({ id }) => id}
             getItemLabel={({ path }, index) => `${path}, position ${index + 1}`}
-            itemClassName="inline-flex items-center gap-1 rounded-full border border-border bg-muted/30 py-1 pl-3 pr-1 text-sm"
+            itemClassName="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
             items={selectedCategories}
             onMove={onCategoryMove}
+            disabled={disabled}
             renderItem={({ id, path }, _index, handle) => (
               <>
-                <span>{path}</span>
-                {handle}
-                <Button
-                  aria-label={`Remove ${path} from homepage`}
-                  title={`Remove ${path} from homepage`}
-                  className="rounded-full text-muted-foreground hover:text-destructive"
-                  onClick={() => onCategoryRemove(id)}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2 aria-hidden="true" />
-                </Button>
+                <span className="min-w-0 flex-1 truncate">{path}</span>
+                <div className="flex shrink-0 items-center gap-1">
+                  {handle}
+                  <Button
+                    aria-label={`Remove ${path} from homepage`}
+                    title={`Remove ${path} from homepage`}
+                    className="text-muted-foreground hover:text-destructive"
+                    disabled={disabled}
+                    onClick={() => onCategoryRemove(id)}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </Button>
+                </div>
               </>
             )}
           />
-        )}
-      </Field>
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+          No homepage categories selected.
+        </p>
+      )}
     </section>
   );
 }

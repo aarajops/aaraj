@@ -1,13 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
 import type {
   CatalogCategory,
   CatalogCategoryManagementListQuery,
   CatalogCategoryPage,
 } from "@aaraj/contracts";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenuLinkItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   AdminDataTable,
   createDataTableColumnHelper,
@@ -21,6 +20,7 @@ export function CategoryTable({
   query,
   page,
   onRefresh,
+  onEditCategory,
   isRefreshing,
 }: {
   categories: CatalogCategory[];
@@ -30,53 +30,39 @@ export function CategoryTable({
     "limit" | "offset" | "hasMore" | "nextOffset"
   >;
   onRefresh: () => void;
+  onEditCategory: (category: CatalogCategory) => void;
   isRefreshing?: boolean;
 }) {
-  const columns = useMemo(
-    () =>
-      columnHelper.columns([
-        columnHelper.accessor("path", {
-          header: "Category",
-          cell: ({ row }) => (
-            <span className="whitespace-normal font-medium">
-              {row.original.path}
-            </span>
-          ),
-        }),
-        columnHelper.accessor("slug", {
-          header: "Slug",
-          cell: ({ getValue }) => (
-            <span className="font-mono text-sm">/{getValue()}</span>
-          ),
-        }),
-        columnHelper.display({
-          id: "kind",
-          header: "Role",
-          cell: ({ row }) => (
-            <Badge variant="secondary">
-              {row.original.isLeaf ? "Product category" : "Category group"}
-            </Badge>
-          ),
-        }),
-        columnHelper.display({
-          id: "status",
-          header: "Status",
-          cell: ({ row }) => (
-            <Badge
-              className={
-                row.original.isActive
-                  ? "border-success/30 bg-success/10 text-success"
-                  : ""
-              }
-              variant={row.original.isActive ? "outline" : "secondary"}
-            >
-              {row.original.isActive ? "Active" : "Inactive"}
-            </Badge>
-          ),
-        }),
-      ]),
-    [],
-  );
+  const columns = columnHelper.columns([
+    columnHelper.accessor("path", {
+      header: "Category",
+      cell: ({ getValue }) => (
+        <span className="whitespace-normal font-medium">{getValue()}</span>
+      ),
+    }),
+    columnHelper.accessor("slug", {
+      header: "Slug",
+      cell: ({ getValue }) => (
+        <span className="font-mono text-sm">/{getValue()}</span>
+      ),
+    }),
+    columnHelper.display({
+      id: "status",
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge
+          className={
+            row.original.isActive
+              ? "border-success/30 bg-success/10 text-success"
+              : ""
+          }
+          variant={row.original.isActive ? "outline" : "secondary"}
+        >
+          {row.original.isActive ? "Active" : "Inactive"}
+        </Badge>
+      ),
+    }),
+  ]);
 
   return (
     <AdminDataTable
@@ -84,13 +70,10 @@ export function CategoryTable({
       columns={columns}
       data={categories}
       rowActions={(category) => (
-        <DropdownMenuLinkItem
-          closeOnClick
-          href={`/admin/catalog/categories/${encodeURIComponent(category.id)}/edit`}
-        >
+        <DropdownMenuItem onClick={() => onEditCategory(category)}>
           <Pencil aria-hidden="true" className="size-4" />
           Edit category
-        </DropdownMenuLinkItem>
+        </DropdownMenuItem>
       )}
       pathname="/admin/catalog/categories"
       query={query}
@@ -109,12 +92,12 @@ export function CategoryTable({
         },
         {
           name: "kind",
-          label: "Category role",
-          allLabel: "All category roles",
+          label: "Category type",
+          allLabel: "All types",
           value: query.kind ?? "",
           options: [
-            { value: "leaf", label: "Product category" },
-            { value: "parent", label: "Category group" },
+            { value: "leaf", label: "Product categories" },
+            { value: "parent", label: "Category groups" },
           ],
         },
       ]}

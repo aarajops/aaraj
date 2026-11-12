@@ -37,7 +37,6 @@ import {
   updateManagedStorefrontSettings,
   uploadStorefrontBrandAsset,
 } from "@/features/storefront/admin/storefront-management-client";
-import { HomepageCategorySettings } from "./homepage-category-settings";
 import {
   socialFields,
   storefrontSettingsFormSchema,
@@ -138,10 +137,6 @@ export function StorefrontSettingsManager({
   };
   const footerCategoryIds =
     useWatch({ control, name: "footerCategoryIds" }) ?? [];
-  const homepageCategoryIds =
-    useWatch({ control, name: "homepageCategoryIds" }) ?? [];
-  const homepageCategoriesEnabled =
-    useWatch({ control, name: "homepageCategoriesEnabled" }) ?? false;
   const headerNavigation =
     useWatch({ control, name: "headerNavigation" }) ?? [];
   const announcementEnabled =
@@ -343,34 +338,6 @@ export function StorefrontSettingsManager({
     );
   }
 
-  function addHomepageCategory(categoryId: string) {
-    if (!categoryId || homepageCategoryIds.includes(categoryId)) return;
-    setValue("homepageCategoryIds", [...homepageCategoryIds, categoryId], {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  }
-
-  function removeHomepageCategory(categoryId: string) {
-    setValue(
-      "homepageCategoryIds",
-      homepageCategoryIds.filter((configuredId) => configuredId !== categoryId),
-      { shouldDirty: true, shouldValidate: true },
-    );
-  }
-
-  function moveHomepageCategory(fromIndex: number, toIndex: number) {
-    const reorderedCategoryIds = [...homepageCategoryIds];
-    const [categoryId] = reorderedCategoryIds.splice(fromIndex, 1);
-    if (categoryId === undefined) return;
-
-    reorderedCategoryIds.splice(toIndex, 0, categoryId);
-    setValue("homepageCategoryIds", reorderedCategoryIds, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  }
-
   const configuredCategoryIds = new Set(
     headerNavigation.map(({ categoryId }) => categoryId),
   );
@@ -384,8 +351,6 @@ export function StorefrontSettingsManager({
       fields.some((field) =>
         [
           "headerNavigation",
-          "homepageCategoryIds",
-          "homepageCategoriesEnabled",
           "footerDescription",
           "footerLinkGroups",
           "footerCategoryIds",
@@ -993,21 +958,6 @@ export function StorefrontSettingsManager({
                       </Field>
                     </div>
                   </section>
-
-                  <HomepageCategorySettings
-                    categories={categoryOptions}
-                    selectedCategoryIds={homepageCategoryIds}
-                    enabled={homepageCategoriesEnabled}
-                    onEnabledChange={(enabled) =>
-                      setValue("homepageCategoriesEnabled", enabled, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
-                    onCategoryAdd={addHomepageCategory}
-                    onCategoryRemove={removeHomepageCategory}
-                    onCategoryMove={moveHomepageCategory}
-                  />
 
                   <section
                     aria-labelledby="footer-content-heading"

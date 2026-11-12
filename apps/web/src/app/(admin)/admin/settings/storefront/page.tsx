@@ -8,7 +8,7 @@ import { StorefrontSettingsManager } from "@/features/storefront/admin/storefron
 export const metadata: Metadata = {
   title: "Storefront settings",
   description:
-    "Manage the AARAJ storefront brand, public profile, homepage categories, header navigation, and footer.",
+    "Manage the AARAJ storefront brand, public profile, header navigation, and footer.",
 };
 
 export default async function StorefrontSettingsPage() {

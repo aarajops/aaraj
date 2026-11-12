@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { CategoryManager } from "@/features/catalog/category-manager";
 import {
+  getPublicCatalogCategories,
   getManagedCategoryPage,
   parseCatalogCategoryTableQuery,
   type CatalogPageSearchParams,
@@ -19,7 +20,10 @@ export default async function StaffCatalogCategoriesPage({
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
   const query = parseCatalogCategoryTableQuery(await searchParams);
-  const result = await getManagedCategoryPage(query);
+  const [result, categoryOptions] = await Promise.all([
+    getManagedCategoryPage(query),
+    getPublicCatalogCategories(),
+  ]);
   if ("kind" in result) {
     const message =
       result.kind === "unauthenticated"
@@ -58,6 +62,7 @@ export default async function StaffCatalogCategoriesPage({
     <CategoryManager
       key={JSON.stringify(query)}
       initialPage={result.page}
+      homepageCategoryOptions={categoryOptions}
       query={query}
     />
   );
