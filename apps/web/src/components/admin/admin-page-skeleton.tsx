@@ -81,7 +81,7 @@ const adminListSkeletons: Record<
   },
   categories: {
     label: "categories",
-    columnCount: 6,
+    columnCount: 5,
     filterCount: 2,
     hasAction: true,
   },
