@@ -45,7 +45,7 @@ import { CategoryTable } from "@/features/catalog/category-table";
 import { HomepageCategoryManager } from "@/features/catalog/homepage-category-manager";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import {
   Field,
@@ -249,6 +249,10 @@ export function CategoryManager({
     } catch {
       setErrorMessage("Could not reach the server. Please try again.");
     }
+  }
+
+  function handleCategoryFormSubmit(event: FormEvent<HTMLFormElement>) {
+    void handleSubmit(saveCategory)(event);
   }
 
   const parentOptions = (
@@ -472,7 +476,7 @@ export function CategoryManager({
               <form
                 className="mt-5 space-y-4"
                 noValidate
-                onSubmit={handleSubmit(saveCategory)}
+                onSubmit={handleCategoryFormSubmit}
               >
                 {categoryFormFields}
                 <div className="flex gap-3 pt-2">
@@ -520,7 +524,7 @@ export function CategoryManager({
             <form
               className="flex min-h-0 flex-1 flex-col"
               noValidate
-              onSubmit={handleSubmit(saveCategory)}
+              onSubmit={handleCategoryFormSubmit}
             >
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {categoryFormFields}
