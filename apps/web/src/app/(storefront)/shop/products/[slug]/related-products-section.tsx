@@ -81,10 +81,7 @@ export async function RelatedProductsSection({
             className="basis-[78%] pl-3 min-[480px]:basis-1/2 md:basis-1/3 xl:basis-1/4"
             key={relatedProduct.id}
           >
-            <ProductCard
-              headingLevel="h3"
-              product={relatedProduct}
-            />
+            <ProductCard headingLevel="h3" product={relatedProduct} />
           </CarouselItem>
         ))}
       </RelatedProductsCarousel>
