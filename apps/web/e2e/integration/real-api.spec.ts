@@ -922,8 +922,10 @@ test("catalog operator configures a product through to storefront visibility", a
 
   const suffix = randomUUID().slice(0, 8);
   const guideName = `E2E guide ${suffix}`;
+  const categoryName = `E2E clothing ${suffix}`;
+  const subcategoryName = `E2E tees ${suffix}`;
   const productName = `E2E tee ${suffix}`;
-  const slug = `e2e-tee-${suffix}`;
+  const slug = `e2e-tee-${suffix}-manual`;
   const skuSmall = `E2E-${suffix}-S`;
   const skuMedium = `E2E-${suffix}-M`;
 
@@ -966,28 +968,28 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("heading", { name: "Create category", level: 1 }),
   ).toBeVisible();
-  await page.getByLabel("Name", { exact: true }).fill("Clothing");
-  await page.getByLabel("Slug").fill("clothing");
+  await page.getByLabel("Name", { exact: true }).fill(categoryName);
+  await page.getByLabel("Slug").fill(`e2e-clothing-${suffix}`);
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
   await openRowActions(
     page,
-    page.getByRole("row").filter({ hasText: "Clothing" }),
+    page.getByRole("row").filter({ hasText: categoryName }),
   );
   await page.getByRole("menuitem", { name: "Edit category" }).click();
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
-    "Clothing",
+    categoryName,
   );
   const saveCategory = page.getByRole("button", { name: "Save category" });
   await expect(saveCategory).toBeDisabled();
-  await page.getByLabel("Name", { exact: true }).fill("Clothing edited");
+  await page.getByLabel("Name", { exact: true }).fill(`${categoryName} edited`);
   await expect(saveCategory).toBeEnabled();
-  await page.getByLabel("Name", { exact: true }).fill("Clothing");
+  await page.getByLabel("Name", { exact: true }).fill(categoryName);
   await expect(saveCategory).toBeDisabled();
   await page.goto("/admin/catalog/categories/create");
-  await page.getByLabel("Name", { exact: true }).fill("T-shirts");
-  await page.getByLabel("Slug").fill("t-shirts");
-  await chooseSelectOption(page, "Parent category", "Clothing");
+  await page.getByLabel("Name", { exact: true }).fill(subcategoryName);
+  await page.getByLabel("Slug").fill(`e2e-tees-${suffix}`);
+  await chooseSelectOption(page, "Parent category", categoryName);
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
 
@@ -996,7 +998,7 @@ test("catalog operator configures a product through to storefront visibility", a
     page.getByRole("heading", { name: "Create size guide", level: 1 }),
   ).toBeVisible();
   await page.getByLabel("Guide name").fill(guideName);
-  await chooseSelectOption(page, "Guide category", "Clothing");
+  await chooseSelectOption(page, "Guide category", categoryName);
   await page.getByLabel("Fit (optional)").fill("Regular");
   await page.getByRole("button", { name: "Add size" }).click();
   await page.getByRole("button", { name: "Add size" }).click();
@@ -1033,7 +1035,11 @@ test("catalog operator configures a product through to storefront visibility", a
     .getByLabel("Description", { exact: true })
     .fill("A product configured in a real browser and database flow.");
   await chooseSelectOption(page, "Audience", "Unisex");
-  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
+  await chooseSelectOption(
+    page,
+    "Product category",
+    `${categoryName} / ${subcategoryName}`,
+  );
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByLabel("Fabric composition").fill("100% cotton");
   await page.getByLabel("Care instructions").fill("Machine wash cold");
@@ -1091,7 +1097,11 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("button", { name: "Show up to 4 columns" }),
   ).toHaveAttribute("aria-pressed", "true");
-  await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
+  await chooseSelectOption(
+    page,
+    "Product category",
+    `${categoryName} / ${subcategoryName}`,
+  );
   const productFilters = page.locator('aside[aria-label="Product filters"]');
   await page
     .getByRole("searchbox", { name: "Search products" })
@@ -1135,7 +1145,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
 
   const filteredProducts = await page.request.get(
-    "/api/v1/catalog/products?audience=unisex&category=t-shirts&color=Black&size=S",
+    `/api/v1/catalog/products?audience=unisex&category=e2e-tees-${suffix}&color=Black&size=S`,
   );
   expect(filteredProducts.status()).toBe(200);
   expect((await filteredProducts.json()).products).toEqual(

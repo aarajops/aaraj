@@ -118,6 +118,7 @@ export function CatalogManager({
     register,
     handleSubmit,
     getValues,
+    getFieldState,
     setError,
     setValue,
     formState: { errors, isSubmitting, dirtyFields },
@@ -147,7 +148,6 @@ export function CatalogManager({
   );
   const productLoadRequestId = useRef(0);
   const slugSuggestionRequestId = useRef(0);
-  const [slugWasManuallyEdited, setSlugWasManuallyEdited] = useState(false);
   const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
   const [sizeGuideLoadError, setSizeGuideLoadError] = useState<string | null>(
     null,
@@ -155,7 +155,7 @@ export function CatalogManager({
 
   async function suggestProductSlug(name: string) {
     const normalizedName = name.trim();
-    if (editingId || slugWasManuallyEdited || !normalizedName) return;
+    if (editingId || getFieldState("slug").isDirty || !normalizedName) return;
 
     const requestId = ++slugSuggestionRequestId.current;
     try {
@@ -168,7 +168,7 @@ export function CatalogManager({
         !result.success ||
         requestId !== slugSuggestionRequestId.current ||
         getValues("name").trim() !== normalizedName ||
-        slugWasManuallyEdited
+        getFieldState("slug").isDirty
       ) {
         return;
       }
@@ -272,7 +272,7 @@ export function CatalogManager({
       let response: Response;
       if (submission.id === null) {
         const input = { ...submission.input };
-        if (!slugWasManuallyEdited) delete input.slug;
+        if (!getFieldState("slug").isDirty) delete input.slug;
         response = await createCatalogProduct(input);
       } else {
         response = await updateCatalogProduct(submission.id, submission.input);
@@ -464,7 +464,6 @@ export function CatalogManager({
                     maxLength={CATALOG_PRODUCT_SLUG_MAX_LENGTH}
                     {...productSlugField}
                     onChange={(event) => {
-                      setSlugWasManuallyEdited(true);
                       slugSuggestionRequestId.current += 1;
                       void productSlugField.onChange(event);
                     }}
