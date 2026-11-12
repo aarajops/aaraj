@@ -89,7 +89,10 @@ export class StorefrontSettingsService {
         input.homepageCategoriesEnabled ?? current.homepageCategoriesEnabled;
       const nextHomepageCategoryIds =
         input.homepageCategoryIds &&
-        sameCategoryIds(current.homepageCategoryIds, input.homepageCategoryIds)
+        sameOrderedCategoryIds(
+          current.homepageCategoryIds,
+          input.homepageCategoryIds,
+        )
           ? current.homepageCategoryIds
           : (input.homepageCategoryIds ?? current.homepageCategoryIds);
       const nextLinkedinUrl =
@@ -197,7 +200,7 @@ export class StorefrontSettingsService {
         ...(current.homepageCategoriesEnabled !== nextHomepageCategoriesEnabled
           ? ["homepageCategoriesEnabled"]
           : []),
-        ...(!sameCategoryIds(
+        ...(!sameOrderedCategoryIds(
           current.homepageCategoryIds,
           nextHomepageCategoryIds,
         )
@@ -385,10 +388,10 @@ export class StorefrontSettingsService {
   }
 }
 
-function sameCategoryIds(left: string[], right: string[]): boolean {
+function sameOrderedCategoryIds(left: string[], right: string[]): boolean {
   return (
     left.length === right.length &&
-    left.every((categoryId) => right.includes(categoryId))
+    left.every((categoryId, index) => categoryId === right[index])
   );
 }
 

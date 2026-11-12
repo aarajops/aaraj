@@ -475,19 +475,27 @@ describe("storefront settings", () => {
     );
   });
 
-  it("keeps category configuration in management settings and publishes active category links", async () => {
+  it("keeps storefront category settings ordered and publishes active category links", async () => {
     const slug = `header-nav-${randomUUID().slice(0, 8)}`;
-    const [category] = await database.db
+    const [category, secondCategory] = await database.db
       .insert(catalogCategory)
-      .values({ name: "Header category", slug })
+      .values([
+        { name: "Header category", slug },
+        {
+          name: "Second homepage category",
+          slug: `homepage-category-${randomUUID().slice(0, 8)}`,
+        },
+      ])
       .returning({ id: catalogCategory.id });
     expect(category).toBeDefined();
+    expect(secondCategory).toBeDefined();
 
     const categoryConfiguration = {
       type: "category",
       categoryId: category!.id,
     } as const;
-    const updateResponse = await update(admin, {
+    const initialHomepageCategoryIds = [category!.id, secondCategory!.id];
+    const settingsUpdate = {
       siteName: "AARAJ",
       brandColor: "#7b2220",
       backgroundColor: "#fafafafa",
@@ -503,12 +511,18 @@ describe("storefront settings", () => {
       footerDescription: null,
       footerLinks: [],
       headerNavigation: [categoryConfiguration],
+      homepageCategoriesEnabled: true,
+      homepageCategoryIds: initialHomepageCategoryIds,
       expectedVersion: 1,
       reason: "Configure a category in storefront navigation",
-    }).expect(200);
+    };
+    const updateResponse = await update(admin, settingsUpdate).expect(200);
     expect(updateResponse.body.headerNavigation).toEqual([
       categoryConfiguration,
     ]);
+    expect(updateResponse.body.homepageCategoryIds).toEqual(
+      initialHomepageCategoryIds,
+    );
 
     const managementResponse = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/storefront/manage/settings`)
@@ -517,6 +531,9 @@ describe("storefront settings", () => {
     expect(managementResponse.body.headerNavigation).toEqual([
       categoryConfiguration,
     ]);
+    expect(managementResponse.body.homepageCategoryIds).toEqual(
+      initialHomepageCategoryIds,
+    );
 
     const publicResponse = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/storefront/settings`)
@@ -524,9 +541,39 @@ describe("storefront settings", () => {
     expect(publicResponse.body.headerNavigation).toEqual([
       { label: "Header category", href: `/shop/categories/${slug}` },
     ]);
+    expect(publicResponse.body.homepageCategoryIds).toEqual(
+      initialHomepageCategoryIds,
+    );
     expect(JSON.stringify(publicResponse.body.headerNavigation)).not.toContain(
       category!.id,
     );
+
+    const reorderedHomepageCategoryIds = [secondCategory!.id, category!.id];
+    const reorderResponse = await update(admin, {
+      ...settingsUpdate,
+      homepageCategoryIds: reorderedHomepageCategoryIds,
+      expectedVersion: 2,
+      reason: "Reorder homepage categories",
+    }).expect(200);
+    expect(reorderResponse.body.homepageCategoryIds).toEqual(
+      reorderedHomepageCategoryIds,
+    );
+    expect(reorderResponse.body.version).toBe(3);
+
+    const reorderedPublicSettings = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/storefront/settings`)
+      .expect(200);
+    expect(reorderedPublicSettings.body.homepageCategoryIds).toEqual(
+      reorderedHomepageCategoryIds,
+    );
+
+    const [reorderEvent] = await database.db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.reason, "Reorder homepage categories"));
+    expect(reorderEvent?.metadata).toMatchObject({
+      changedFields: expect.arrayContaining(["homepageCategoryIds"]),
+    });
 
     await database.db
       .update(catalogCategory)
