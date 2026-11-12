@@ -115,12 +115,12 @@ export function CatalogCategorySelect({
         <FieldDescription>
           {allowParentCategories
             ? "An administrator needs to add an active category before this guide can be assigned."
-            : "An administrator needs to add an active leaf category before this product can be assigned."}
+            : "An administrator needs to add an active product category before this product can be assigned."}
         </FieldDescription>
       )}
       {!allowParentCategories && assignableCategories.length > 0 && (
         <FieldDescription>
-          Choose an active leaf category. Parent categories are shown for
+          Choose an active product category. Category groups are shown for
           context.
         </FieldDescription>
       )}

@@ -366,6 +366,11 @@ export function CategoryManager({
                       </>
                     )}
                   />
+                  <FieldDescription>
+                    Top level means this category has no parent. Categories with
+                    subcategories group product categories; assign products to
+                    categories without subcategories.
+                  </FieldDescription>
                 </Field>
                 {editingId && (
                   <Field>

@@ -920,7 +920,7 @@ test("category filters keep URL state and browser history", async ({
   await page.goto("/admin/catalog/categories");
 
   const table = page.getByRole("table", { name: "Product categories" });
-  await chooseSelectOption(page, "Category type", "Parent");
+  await chooseSelectOption(page, "Category role", "Category group");
   await expect(page).toHaveURL(/kind=parent/);
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await expect(table.getByRole("row", { name: /Clothing/ })).toBeVisible();

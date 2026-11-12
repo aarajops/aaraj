@@ -51,10 +51,10 @@ export function CategoryTable({
         }),
         columnHelper.display({
           id: "kind",
-          header: "Kind",
+          header: "Role",
           cell: ({ row }) => (
             <Badge variant="secondary">
-              {row.original.isLeaf ? "Leaf" : "Parent"}
+              {row.original.isLeaf ? "Product category" : "Category group"}
             </Badge>
           ),
         }),
@@ -109,12 +109,12 @@ export function CategoryTable({
         },
         {
           name: "kind",
-          label: "Category type",
-          allLabel: "All category types",
+          label: "Category role",
+          allLabel: "All category roles",
           value: query.kind ?? "",
           options: [
-            { value: "leaf", label: "Leaf" },
-            { value: "parent", label: "Parent" },
+            { value: "leaf", label: "Product category" },
+            { value: "parent", label: "Category group" },
           ],
         },
       ]}
