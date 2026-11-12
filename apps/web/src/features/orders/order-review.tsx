@@ -229,6 +229,7 @@ export function OrderReview({
               <OrderStatusBadge status={order.status} />
               <OrderStatusMenu
                 actions={order.availableStatusActions ?? []}
+                currentStatus={order.status}
                 disabled={pending}
                 onSelect={(action) => {
                   if (action === "cancelled") {

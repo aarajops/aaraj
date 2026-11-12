@@ -1856,6 +1856,15 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("menuitem", { name: "Confirm" }).click();
   await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
   await reviewStatusButton.click();
+  await expect(
+    page.getByRole("menuitem", { name: "Return to pending" }),
+  ).toBeVisible();
+  await page.getByRole("menuitem", { name: "Return to pending" }).click();
+  await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+  await reviewStatusButton.click();
+  await page.getByRole("menuitem", { name: "Confirm" }).click();
+  await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
+  await reviewStatusButton.click();
   await page.getByRole("menuitem", { name: "Cancel" }).click();
   await expect(page.getByLabel("Cancellation reason")).toBeVisible();
   await page.getByRole("button", { name: "Keep order" }).click();

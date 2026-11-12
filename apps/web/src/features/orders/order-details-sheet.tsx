@@ -115,6 +115,13 @@ function OrderDetailsSheetContent({
   const error = currentDetails?.status === "error";
   const availableStatusActions = order?.availableStatusActions ?? [];
   const canCancelOrder = availableStatusActions.includes("cancelled");
+  const pathaoBookingLocksChanges =
+    order !== null &&
+    order.status === "confirmed" &&
+    order.fulfillmentStatus === "awaiting_dispatch" &&
+    order.collectionStatus === "uncollected" &&
+    order.collectedAmountBdt === null &&
+    availableStatusActions.length === 0;
 
   async function updateStatus(input: OrderStatusUpdateInput) {
     if (!order || statusPending || orderEditPending || discountEditorOpen)
@@ -368,6 +375,7 @@ function OrderDetailsSheetContent({
                 </div>
                 <OrderStatusMenu
                   actions={availableStatusActions}
+                  currentStatus={order.status}
                   disabled={
                     statusPending ||
                     orderEditPending ||
@@ -440,6 +448,17 @@ function OrderDetailsSheetContent({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+              {pathaoBookingLocksChanges && (
+                <p
+                  className="text-sm text-muted-foreground"
+                  id="pathao-booking-lock-note"
+                >
+                  Order status and price are locked while the Pathao booking is
+                  active or unresolved. Resolve it in Pathao and sync here;
+                  price edits unlock after cancellation is confirmed before
+                  pickup.
+                </p>
+              )}
               {statusError?.orderId === order.id && !cancelFormOpen && (
                 <p className="text-sm text-destructive" role="alert">
                   {statusError.message}
@@ -674,16 +693,6 @@ function OrderDetailsSheetContent({
                   </div>
                 </div>
               )}
-              {!order.canEditItems &&
-                order.status === "confirmed" &&
-                order.fulfillmentStatus === "awaiting_dispatch" &&
-                order.collectionStatus === "uncollected" &&
-                order.collectedAmountBdt === null && (
-                  <p className="text-sm text-muted-foreground">
-                    This order has a Pathao consignment. Its items and COD
-                    amount are locked after booking.
-                  </p>
-                )}
               <AlertDialog
                 open={removeLine !== null}
                 onOpenChange={(open) => {
@@ -881,6 +890,23 @@ function OrderDetailsSheetContent({
                     </div>
                   </form>
                 )}
+              </div>
+            )}
+            {pathaoBookingLocksChanges && !itemEditorOpen && (
+              <div className="grid gap-3">
+                <div className="flex justify-end">
+                  <Button
+                    aria-describedby="pathao-booking-lock-note"
+                    disabled
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {order.manualDiscountBdt > 0
+                      ? "Edit discount"
+                      : "Add discount"}
+                  </Button>
+                </div>
               </div>
             )}
 

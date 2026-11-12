@@ -15,6 +15,7 @@ import {
   DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
   HealthCheckResponseSchema,
   ManagedCustomerSchema,
+  OrderStatusUpdateInputSchema,
   MAX_LIST_PAGE_SIZE,
   MAX_PUBLIC_CATALOG_PAGE_SIZE,
   RoleSchema,
@@ -24,6 +25,18 @@ import {
 } from "./index.js";
 
 describe("Contracts Schema Validation", () => {
+  it("accepts an optional reason when returning an Order to pending", () => {
+    expect(
+      OrderStatusUpdateInputSchema.safeParse({
+        status: "pending",
+        reason: "Customer asked for a callback",
+      }).success,
+    ).toBe(true);
+    expect(
+      OrderStatusUpdateInputSchema.safeParse({ status: "pending" }).success,
+    ).toBe(true);
+  });
+
   it("validates customer directory identities without treating contact data as identity", () => {
     const guestOrderId = "8e7dc350-bab6-4c36-8c77-42d2424b483f";
     expect(

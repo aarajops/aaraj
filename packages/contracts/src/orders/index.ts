@@ -89,7 +89,10 @@ const OptionalOrderStatusReasonSchema = z
   .max(500)
   .optional();
 export const OrderStatusUpdateInputSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("pending") }),
+  z.strictObject({
+    status: z.literal("pending"),
+    reason: OptionalOrderStatusReasonSchema,
+  }),
   z.strictObject({
     status: z.literal("confirmed"),
     reason: OptionalOrderStatusReasonSchema,

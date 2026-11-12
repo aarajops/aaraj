@@ -2004,6 +2004,72 @@ describe("COD Orders and checkout", () => {
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
   });
 
+  it("returns an unbooked confirmed Order to pending and blocks it after a Pathao claim", async () => {
+    const fixture = await createGuestOrder(1);
+    await confirmOrder(fixture.id);
+    const statusUrl = `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/status`;
+    const confirmed = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(confirmed.body.availableStatusActions).toContain("pending");
+
+    const pending = await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        status: "pending",
+        reason: "Customer requested a callback before reconfirming",
+      })
+      .expect(200);
+    expect(pending.body).toMatchObject({
+      status: "pending",
+      fulfillmentStatus: "not_started",
+      cancellationReason: null,
+    });
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+
+    const [audit] = await database.db
+      .select({ reason: auditEvent.reason, metadata: auditEvent.metadata })
+      .from(auditEvent)
+      .where(
+        and(
+          eq(auditEvent.subjectId, fixture.id),
+          eq(auditEvent.eventType, "commerce.cod_order_returned_to_pending"),
+        ),
+      );
+    expect(audit).toMatchObject({
+      reason: "Customer requested a callback before reconfirming",
+      metadata: { previousStatus: "confirmed", status: "pending" },
+    });
+
+    await confirmOrder(fixture.id);
+    await database.db.insert(orderPathaoBookingClaim).values({
+      orderId: fixture.id,
+      commandId: randomUUID(),
+      requestFingerprint: "c".repeat(64),
+      status: "booked",
+    });
+    const claimed = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(claimed.body.availableStatusActions).not.toContain("pending");
+
+    const blocked = await request(app.getHttpServer())
+      .patch(statusUrl)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({ status: "pending", reason: "Must stay locked after booking" })
+      .expect(409);
+    expect(blocked.body.errorCode).toBe(
+      "ORDER_PATHAO_BOOKING_REQUIRES_RECONCILIATION",
+    );
+    expect((await orderById(fixture.id))?.status).toBe("confirmed");
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
+  });
+
   it("adds a zero-priced catalog item to a pending Order and reserves its stock", async () => {
     const fixture = await createGuestOrder(4);
     const freeVariantId = await createVariant(3, 0);
@@ -3538,6 +3604,86 @@ describe("COD Orders and checkout", () => {
       trackingProgress: "pickup_failed",
     });
     expect((await orderById(fixture.id))?.status).toBe("confirmed");
+  });
+
+  it("verifies Pickup_On_Hold from Order Info for webhooks and manual sync", async () => {
+    const fixture = await createGuestOrder(1);
+    await confirmOrder(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao on-hold Order fixture is missing.");
+    const provider = mockPathaoApi({ orderReference: order.reference });
+    const managementPath = `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}`;
+    const booking = await request(app.getHttpServer())
+      .post(`${managementPath}/book`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send()
+      .expect(201);
+    const consignmentId = booking.body.consignmentId as string;
+    provider.state.infoStatus = "Pickup_On_Hold";
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.on-hold",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T01:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+    await app.get(PathaoService).processPendingWebhooks();
+
+    const [webhook] = await database.db
+      .select({
+        processingState: pathaoWebhookInbox.processingState,
+        providerOrderStatus: pathaoWebhookInbox.providerOrderStatus,
+      })
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    expect(webhook).toEqual({
+      processingState: "verified",
+      providerOrderStatus: "Pickup_On_Hold",
+    });
+
+    const synced = await request(app.getHttpServer())
+      .post(`${managementPath}/sync-status`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send()
+      .expect(200);
+    expect(synced.body).toMatchObject({
+      status: "booked",
+      trackingProgress: "on_hold",
+      consignmentId,
+    });
+    const [savedBooking] = await database.db
+      .select({
+        trackingProgress: pathaoBooking.trackingProgress,
+        providerOrderStatus: pathaoBooking.providerOrderStatus,
+      })
+      .from(pathaoBooking)
+      .where(eq(pathaoBooking.orderId, fixture.id));
+    expect(savedBooking).toEqual({
+      trackingProgress: "on_hold",
+      providerOrderStatus: "Pickup_On_Hold",
+    });
+
+    const summaries = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/orders`)
+      .set("Cookie", staff.cookie)
+      .query({ orderIds: fixture.id })
+      .expect(200);
+    expect(summaries.body[0]).toMatchObject({
+      status: "booked",
+      trackingProgress: "on_hold",
+      consignmentId,
+    });
+    expect((await orderById(fixture.id))?.status).toBe("confirmed");
+    expect((await stockFor(fixture.variantId)).quantityReserved).toBe(1);
   });
 
   it("books with the active default store and derives package data from the Order", async () => {

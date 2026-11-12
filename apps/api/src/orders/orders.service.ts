@@ -298,16 +298,13 @@ function availableOrderStatusActions(
       row.fulfillmentStatus === "awaiting_dispatch");
   const confirmed =
     row.status === "confirmed" && row.fulfillmentStatus === "awaiting_dispatch";
-  const actions: OrderStatusAction[] = [];
-
-  if (
+  const cancelled =
     row.status === "cancelled" &&
     row.fulfillmentStatus === "cancelled" &&
-    row.cancellationReason !== null &&
-    !hasPathaoClaim
-  ) {
-    actions.push("pending");
-  }
+    row.cancellationReason !== null;
+  const actions: OrderStatusAction[] = [];
+
+  if (!hasPathaoClaim && (confirmed || cancelled)) actions.push("pending");
   if (pending || held) actions.push("confirmed");
   if (pending && row.status === "pending") {
     actions.push("no_answer");
@@ -2556,7 +2553,7 @@ export class OrdersService implements OrdersPathaoPort {
     input: OrderStatusUpdateInput,
   ): Promise<OrderManagementDetail> {
     if (input.status === "pending") {
-      await this.reopenCancelledOrder(orderId, staffId);
+      await this.setOrderPending(orderId, staffId, input.reason);
       return this.getManagementDetail(orderId);
     }
     if (input.status === "cancelled") {
@@ -2676,9 +2673,10 @@ export class OrdersService implements OrdersPathaoPort {
     return this.getManagementDetail(orderId);
   }
 
-  private async reopenCancelledOrder(
+  private async setOrderPending(
     orderId: string,
     staffId: string,
+    reason?: string,
   ): Promise<void> {
     await this.database.db.transaction(async (transaction) => {
       const [row] = await transaction
@@ -2686,6 +2684,7 @@ export class OrdersService implements OrdersPathaoPort {
           id: customerOrder.id,
           status: customerOrder.status,
           fulfillmentStatus: customerOrder.fulfillmentStatus,
+          cancellationReason: customerOrder.cancellationReason,
           reservationId: customerOrder.reservationId,
         })
         .from(customerOrder)
@@ -2694,9 +2693,17 @@ export class OrdersService implements OrdersPathaoPort {
         .limit(1);
       if (!row) throw orderNotFound();
       if (row.status === "pending") return;
-      if (row.status !== "cancelled" || row.fulfillmentStatus !== "cancelled") {
+
+      const returningConfirmedOrder =
+        row.status === "confirmed" &&
+        row.fulfillmentStatus === "awaiting_dispatch";
+      const reopeningCancelledOrder =
+        row.status === "cancelled" &&
+        row.fulfillmentStatus === "cancelled" &&
+        row.cancellationReason !== null;
+      if (!returningConfirmedOrder && !reopeningCancelledOrder) {
         throw new ConflictException(
-          "Only a cancelled Order can be reopened as pending.",
+          "Only an unbooked confirmed Order can be returned to pending, or a cancelled Order reopened.",
           { errorCode: "ORDER_STATUS_TRANSITION_INVALID" },
         );
       }
@@ -2707,7 +2714,60 @@ export class OrdersService implements OrdersPathaoPort {
         .where(eq(orderPathaoBookingClaim.orderId, row.id))
         .for("update")
         .limit(1);
-      if (pathaoClaim) {
+      const hasPathaoClaim = pathaoClaim !== undefined;
+
+      if (returningConfirmedOrder) {
+        if (hasPathaoClaim) {
+          throw new ConflictException(
+            "Resolve the Pathao consignment before returning this Order to pending.",
+            { errorCode: "ORDER_PATHAO_BOOKING_REQUIRES_RECONCILIATION" },
+          );
+        }
+
+        if (!availableOrderStatusActions(row, false).includes("pending")) {
+          throw new ConflictException(
+            "This Order cannot be returned to pending in its current state.",
+            { errorCode: "ORDER_STATUS_TRANSITION_INVALID" },
+          );
+        }
+
+        const [returned] = await transaction
+          .update(customerOrder)
+          .set({
+            status: "pending",
+            fulfillmentStatus: "not_started",
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(
+            and(
+              eq(customerOrder.id, row.id),
+              eq(customerOrder.status, "confirmed"),
+              eq(customerOrder.fulfillmentStatus, "awaiting_dispatch"),
+            ),
+          )
+          .returning({ updatedAt: customerOrder.updatedAt });
+        if (!returned?.updatedAt) {
+          throw new ConflictException(
+            "The Order changed before it could be returned to pending.",
+            { errorCode: "ORDER_STATUS_TRANSITION_CONFLICT" },
+          );
+        }
+
+        await this.audit.append(transaction, {
+          actorType: "user",
+          actorId: staffId,
+          eventType: "commerce.cod_order_returned_to_pending",
+          subjectType: "order",
+          subjectId: row.id,
+          occurredAt: returned.updatedAt,
+          reason:
+            reason ?? "Staff returned the unbooked Order for reconfirmation.",
+          metadata: { previousStatus: "confirmed", status: "pending" },
+        });
+        return;
+      }
+
+      if (hasPathaoClaim) {
         throw new ConflictException(
           "Resolve the Pathao consignment before reopening this Order.",
           { errorCode: "ORDER_PATHAO_BOOKING_REQUIRES_RECONCILIATION" },

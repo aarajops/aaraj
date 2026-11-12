@@ -145,6 +145,7 @@ const PATHAO_STATUS_EVENTS: Readonly<Record<string, string>> = {
   partialdelivery: "order.partial-delivery",
   deliveryfailed: "order.delivery-failed",
   onhold: "order.on-hold",
+  pickuponhold: "order.on-hold",
   return: "order.returned",
   returned: "order.returned",
   returnidcreated: "order.return-id-created",

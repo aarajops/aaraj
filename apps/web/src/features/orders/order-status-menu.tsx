@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import type { OrderStatusAction } from "@aaraj/contracts";
+import type { OrderStatus, OrderStatusAction } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,10 +20,12 @@ const actionLabels: Record<OrderStatusAction, string> = {
 
 export function OrderStatusMenu({
   actions,
+  currentStatus,
   disabled = false,
   onSelect,
 }: {
   actions: OrderStatusAction[];
+  currentStatus: OrderStatus;
   disabled?: boolean;
   onSelect: (action: OrderStatusAction) => void;
 }) {
@@ -50,7 +52,11 @@ export function OrderStatusMenu({
             key={action}
             onClick={() => onSelect(action)}
           >
-            {actionLabels[action]}
+            {action === "pending"
+              ? currentStatus === "cancelled"
+                ? "Reopen as pending"
+                : "Return to pending"
+              : actionLabels[action]}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

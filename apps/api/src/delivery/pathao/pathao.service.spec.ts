@@ -71,4 +71,9 @@ describe("Pathao tracking status mapping", () => {
     expect(progressFromStatus("Paid Return")).toBe("returned");
     expect(pathaoEventFromStatus("Unexpected status")).toBeNull();
   });
+
+  it("maps Pickup_On_Hold to the existing on-hold shipment state", () => {
+    expect(pathaoEventFromStatus("Pickup_On_Hold")).toBe("order.on-hold");
+    expect(progressFromStatus("Pickup_On_Hold")).toBe("on_hold");
+  });
 });
