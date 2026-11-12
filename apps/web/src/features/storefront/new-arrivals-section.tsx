@@ -71,7 +71,7 @@ export function NewArrivalsSection({
               className="basis-[78%] min-[480px]:basis-1/2 lg:basis-1/3 xl:basis-1/5"
               key={product.id}
             >
-              <ProductCard headingLevel="h3" imageRatio={1} product={product} />
+              <ProductCard headingLevel="h3" product={product} />
             </CarouselItem>
           ))}
         </NewArrivalsCarousel>

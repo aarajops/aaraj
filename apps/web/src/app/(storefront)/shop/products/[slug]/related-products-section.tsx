@@ -83,7 +83,6 @@ export async function RelatedProductsSection({
           >
             <ProductCard
               headingLevel="h3"
-              imageRatio={1}
               product={relatedProduct}
             />
           </CarouselItem>

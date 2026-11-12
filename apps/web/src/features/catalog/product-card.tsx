@@ -7,10 +7,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatBdtPrice } from "@/lib/currency";
 import { ProductLinkStatus } from "@/features/catalog/product-link-status";
 
+const PRODUCT_CARD_IMAGE_RATIO = 4 / 5;
+
 export function ProductCardSkeleton() {
   return (
     <article className="flex h-full flex-col">
-      <AspectRatio className="overflow-hidden bg-muted/30" ratio={1}>
+      <AspectRatio
+        className="overflow-hidden bg-muted/30"
+        ratio={PRODUCT_CARD_IMAGE_RATIO}
+      >
         <Skeleton className="size-full rounded-none" />
       </AspectRatio>
       <div className="pt-4">
@@ -23,11 +28,9 @@ export function ProductCardSkeleton() {
 
 export function ProductCard({
   product,
-  imageRatio = 1,
   headingLevel = "h2",
 }: {
   product: CatalogPublishedProductListItem;
-  imageRatio?: number;
   headingLevel?: "h2" | "h3";
 }) {
   const href = `/shop/products/${product.slug}`;
@@ -45,7 +48,7 @@ export function ProductCard({
         >
           <AspectRatio
             className="overflow-hidden bg-muted/30"
-            ratio={imageRatio}
+            ratio={PRODUCT_CARD_IMAGE_RATIO}
           >
             <Image
               alt={primaryImage.altText}
@@ -72,7 +75,7 @@ export function ProductCard({
         <AspectRatio
           aria-label={`${product.name}: image unavailable`}
           className="grid place-items-center bg-muted/30 text-muted-foreground"
-          ratio={imageRatio}
+          ratio={PRODUCT_CARD_IMAGE_RATIO}
           role="img"
         >
           <ImageOff aria-hidden="true" className="size-8" />
