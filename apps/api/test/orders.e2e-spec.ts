@@ -2634,6 +2634,52 @@ describe("COD Orders and checkout", () => {
     });
   });
 
+  it("routes partial delivery amounts through staff COD discrepancy review", async () => {
+    const fixture = await createGuestOrder();
+    await confirmOrder(fixture.id);
+    await dispatchOrder(fixture.id, staff.cookie).expect(201);
+
+    const partialDelivery = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/${fixture.id}/fulfillment-outcome`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        outcome: "partially_delivered",
+        reason: "Courier receipt confirms a partial delivery",
+      })
+      .expect(201);
+    expect(partialDelivery.body).toMatchObject({
+      fulfillmentStatus: "partially_delivered",
+      collectionStatus: "uncollected",
+    });
+
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Partial-delivery Order fixture is missing.");
+    expect(order.fulfillmentOutcomeReason).toBe(
+      "Courier receipt confirms a partial delivery",
+    );
+    const collection = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/${fixture.id}/collection`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        collectedAmountBdt: order.codAmountDueBdt - 1,
+        reason: "Partial delivery amount verified against courier receipt",
+      })
+      .expect(201);
+    expect(collection.body).toMatchObject({
+      fulfillmentStatus: "partially_delivered",
+      collectionStatus: "discrepancy",
+      collectedAmountBdt: order.codAmountDueBdt - 1,
+    });
+    const reconciledOrder = await orderById(fixture.id);
+    expect(reconciledOrder?.collectionReason).toBe(
+      "Partial delivery amount verified against courier receipt",
+    );
+  });
+
   it("rejects invalid managed Order list query parameters", async () => {
     for (const query of [
       { limit: 0 },
@@ -3675,6 +3721,88 @@ describe("COD Orders and checkout", () => {
     expect((await stockFor(fixture.variantId)).quantityReserved).toBe(0);
   });
 
+  it("routes an expired webhook lease at the retry limit to Delivery Issues", async () => {
+    const fixture = await createGuestOrder(1);
+    await confirmOrder(fixture.id);
+    const order = await orderById(fixture.id);
+    if (!order) throw new Error("Pathao retry Order fixture is missing.");
+    const consignmentId = `PATHAO-EXHAUSTED-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const provider = mockPathaoApi({
+      orderReference: order.reference,
+      consignmentId,
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/delivery/pathao/manage/orders/${fixture.id}/book`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send()
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/delivery/pathao/webhook`)
+      .set("Content-Type", "application/json")
+      .set("X-PATHAO-Signature", "pathao-test-webhook-secret")
+      .send({
+        event: "order.in-transit",
+        consignment_id: consignmentId,
+        merchant_order_id: order.reference,
+        timestamp: "2026-10-10T06:00:00Z",
+        store_id: 101,
+      })
+      .expect(202);
+
+    const [event] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.consignmentId, consignmentId));
+    if (!event) throw new Error("Pathao webhook fixture is missing.");
+    await database.db
+      .update(pathaoWebhookInbox)
+      .set({
+        processingState: "processing",
+        attemptCount: 8,
+        processingLeaseOwner: randomUUID(),
+        processingLeaseExpiresAt: sql`clock_timestamp() - interval '1 second'`,
+        lastErrorCode: null,
+      })
+      .where(eq(pathaoWebhookInbox.id, event.id));
+
+    const infoPath = `/aladdin/api/v1/orders/${consignmentId}/info`;
+    const infoRequestsBefore = provider.requests.filter(({ url }) =>
+      url.endsWith(infoPath),
+    ).length;
+    await app.get(PathaoService).processPendingWebhooks();
+
+    const [exhaustedEvent] = await database.db
+      .select()
+      .from(pathaoWebhookInbox)
+      .where(eq(pathaoWebhookInbox.id, event.id));
+    expect(exhaustedEvent).toMatchObject({
+      processingState: "reconciliation_required",
+      attemptCount: 8,
+      lastErrorCode: "PATHAO_WEBHOOK_ATTEMPTS_EXHAUSTED",
+    });
+    expect(
+      provider.requests.filter(({ url }) => url.endsWith(infoPath)),
+    ).toHaveLength(infoRequestsBefore);
+
+    const issues = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/delivery/pathao/manage/issues`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(issues.body.issues).toContainEqual(
+      expect.objectContaining({
+        id: event.id,
+        orderId: fixture.id,
+        errorCode: "PATHAO_WEBHOOK_ATTEMPTS_EXHAUSTED",
+        status: "reconciliation_required",
+      }),
+    );
+  });
+
   it("keeps delivered and paid courier observations separate from COD collection and Inventory", async () => {
     const fixture = await createGuestOrder(1);
     await confirmOrder(fixture.id);
@@ -3979,7 +4107,10 @@ describe("COD Orders and checkout", () => {
       .select()
       .from(pathaoWebhookInbox)
       .where(eq(pathaoWebhookInbox.id, issue.id));
-    expect(recheckedEvent?.processingState).toBe("reconciliation_required");
+    expect(recheckedEvent).toMatchObject({
+      processingState: "reconciliation_required",
+      attemptCount: 1,
+    });
     const acknowledgeCommandId = randomUUID();
     const acknowledgeBody = {
       action: "acknowledge_no_change",

@@ -61,6 +61,11 @@ import { PathaoTokenService } from "./pathao-token.service.js";
 
 const PATHAO_NORMAL_DELIVERY_TYPE = 48 satisfies PathaoDeliveryType;
 const PATHAO_PARCEL_ITEM_TYPE = 2;
+// Keep transient provider/API failures on the durable inbox, then route an
+// event that exhausts its processing attempts into the existing staff review.
+// Claims recovered after a worker lease expires count as processing attempts.
+// This is an AARAJ retry policy; Pathao does not publish a retry guarantee.
+const MAX_WEBHOOK_ATTEMPTS = 8;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -764,6 +769,7 @@ export class PathaoService {
           .update(pathaoWebhookInbox)
           .set({
             processingState: resultingState,
+            ...(action === "recheck" ? { attemptCount: 0 } : {}),
             nextAttemptAt: sql`clock_timestamp()`,
             lastErrorCode: null,
             processedAt:
@@ -1522,7 +1528,10 @@ export class PathaoService {
     const leaseOwner = randomUUID();
     const claimed = await this.database.db.transaction(async (transaction) => {
       const rows = await transaction
-        .select({ id: pathaoWebhookInbox.id })
+        .select({
+          id: pathaoWebhookInbox.id,
+          attemptCount: pathaoWebhookInbox.attemptCount,
+        })
         .from(pathaoWebhookInbox)
         .where(
           sql`(
@@ -1537,6 +1546,33 @@ export class PathaoService {
         .for("update", { skipLocked: true })
         .limit(10);
       if (rows.length === 0) return [];
+
+      const exhaustedRows = rows.filter(
+        (row) => row.attemptCount >= MAX_WEBHOOK_ATTEMPTS,
+      );
+      if (exhaustedRows.length > 0) {
+        await transaction
+          .update(pathaoWebhookInbox)
+          .set({
+            processingState: "reconciliation_required",
+            processingLeaseExpiresAt: null,
+            processingLeaseOwner: null,
+            lastErrorCode: sql`coalesce(${pathaoWebhookInbox.lastErrorCode}, 'PATHAO_WEBHOOK_ATTEMPTS_EXHAUSTED')`,
+            processedAt: sql`clock_timestamp()`,
+          })
+          .where(
+            inArray(
+              pathaoWebhookInbox.id,
+              exhaustedRows.map((row) => row.id),
+            ),
+          );
+      }
+
+      const rowsToProcess = rows.filter(
+        (row) => row.attemptCount < MAX_WEBHOOK_ATTEMPTS,
+      );
+      if (rowsToProcess.length === 0) return [];
+
       return transaction
         .update(pathaoWebhookInbox)
         .set({
@@ -1544,11 +1580,12 @@ export class PathaoService {
           processingLeaseExpiresAt: sql`clock_timestamp() + interval '20 seconds'`,
           processingLeaseOwner: leaseOwner,
           attemptCount: sql`${pathaoWebhookInbox.attemptCount} + 1`,
+          processedAt: null,
         })
         .where(
           inArray(
             pathaoWebhookInbox.id,
-            rows.map((row) => row.id),
+            rowsToProcess.map((row) => row.id),
           ),
         )
         .returning({
@@ -1866,14 +1903,20 @@ export class PathaoService {
     leaseOwner: string,
     code: string,
   ): Promise<void> {
+    const retryLimitReached = event.attemptCount >= MAX_WEBHOOK_ATTEMPTS;
     await this.database.db
       .update(pathaoWebhookInbox)
       .set({
-        processingState: "retry",
+        processingState: retryLimitReached
+          ? "reconciliation_required"
+          : "retry",
         processingLeaseExpiresAt: null,
         processingLeaseOwner: null,
         lastErrorCode: code,
-        nextAttemptAt: sql`clock_timestamp() + least(interval '1 hour', interval '1 minute' * power(2, greatest(0, ${event.attemptCount} - 1)))`,
+        nextAttemptAt: retryLimitReached
+          ? sql`clock_timestamp()`
+          : sql`clock_timestamp() + least(interval '1 hour', interval '1 minute' * power(2, greatest(0, ${event.attemptCount} - 1)))`,
+        processedAt: retryLimitReached ? sql`clock_timestamp()` : null,
       })
       .where(
         and(

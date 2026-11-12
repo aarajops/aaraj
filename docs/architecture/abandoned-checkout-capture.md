@@ -1,6 +1,6 @@
 # Abandoned checkout and staff-assisted COD order
 
-Status: implemented with capture enabled and fixed 10-minute inactivity and seven-day retention defaults; not deployed. These settings are code constants, with no environment variables or admin settings. Scope: show abandoned checkouts beside Orders and let authorized staff place a normal COD Order after the customer confirms by phone. No automated calls, messages, recovery links, or stock holds for drafts.
+Status: implemented in code but not deployed. The current 10-minute inactivity threshold and seven-day cleanup age are provisional implementation defaults, not approved retention policy. Do not deploy this capture flow until the business/legal owner approves its purpose, disclosure, contact basis, and retention. These settings are code constants, with no environment variables or admin settings. Scope: show abandoned checkouts beside Orders and let authorized staff place a normal COD Order after the customer confirms by phone. No automated calls, messages, recovery links, or stock holds for drafts.
 
 ## Decision
 
@@ -40,14 +40,9 @@ Add nullable `source_draft_id` (unique) and `created_by_staff_id` to Orders. Nor
 
 Reuse Orders table components, but use a distinct draft response type. A draft must never satisfy `OrderSchema` or expose Order status actions.
 
-## Repository implementation plan
+## Production rollout
 
-1. **Policy and constants:** approve the capture/contact basis and disclosure, suppression, and retention rules before production rollout. Keep the eligibility delay at 10 minutes and maximum draft age at seven days as code constants. Do not build an admin configuration screen or per-user timer.
-2. **Contracts and migration:** add dedicated draft request/response Zod schemas in `packages/contracts/src/orders/`, an Orders-owned Drizzle table and matching migration in `apps/api/src/orders/` and `apps/api/drizzle/`, unique `source_draft_id` plus nullable staff actor on `orders.order_header`, and one `checkout_drafts.manage` permission. Keep source IDs after deleting drafts without a foreign key to the short-lived draft row. Add the narrow phone suppression table only for an explicit do-not-contact request.
-3. **Capture service:** add `CheckoutDraftService` and its controller under the existing Orders module. The autosave endpoint reads the actual cart through Cart's service interface, captures optional valid quote display data through Quote's interface, encrypts PII, and upserts by owner under the shared owner lock. Compare draft/cart versions; no stock lookup, price calculation, or audit write per keystroke. Reuse global CSRF/origin checks and Redis throttling with a route-specific budget.
-4. **Staff screen:** add `/admin/orders/abandoned` and one sidebar entry. Reuse `AdminDataTable`, shared customer/item cells where meanings match, and the existing authenticated server-fetch pattern. Separate draft contracts and labels prevent an estimate or draft ID from looking like an Order total or reference. Detail reads and every staff action are audited; list phone numbers are masked. The call outcome, fresh preview, and create action live in one detail sheet.
-5. **Conversion:** extract the smallest shared quote/pricing and Order-persistence helpers needed by customer checkout and staff conversion; do not fork pricing rules into a second service. Staff conversion reads the draft, takes the existing owner lock before the draft row lock, checks the current cart/merge receipt and accepted amount, then writes fresh quote, reservation, Order, source/actor, audit, and draft deletion in one transaction. Customer checkout deletes its matching draft under the same lock order. Guest Redis cart cleanup remains a retryable post-commit step.
-6. **Cleanup and verification:** add an Orders-owned bounded cleanup worker using the existing quote-worker scheduling pattern. Verify partial capture, multi-tab ordering, sign-in merge, declined/suppressed numbers, invalid/expired cart, concurrent customer/staff checkout, price/stock changes, retry after lost response, guest cleanup failure, permission denial, and PII redaction. Pilot with a small staff group; tune only from observed false-positive calls, save failures, conflicts, and conversions.
+The capture flow, staff screen, conversion path, audit records, and cleanup worker are implemented. Keep them out of production until the business/legal owner approves the capture purpose, customer disclosure/contact basis, and retention period. Then update the fixed code defaults to the approved policy and verify the end-to-end flow on the exact release candidate. No admin configuration system or separate infrastructure is needed.
 
 No CRM, message queue, full event stream, recovery link, stock reservation on drafts, quote renewal per autosave, or separate staff idempotency ledger is required for this scope.
 
