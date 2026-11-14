@@ -3,6 +3,7 @@ import type {
   CatalogAudience,
   CatalogPublishedProductListItem,
 } from "@aaraj/contracts";
+import { Heading } from "@/components/ui/heading";
 import { ProductCard } from "@/features/catalog/product-card";
 import { CarouselItem } from "@/components/ui/carousel";
 import { NewArrivalsCarousel } from "./new-arrivals-carousel";
@@ -25,12 +26,13 @@ export function NewArrivalsSection({
   return (
     <section aria-labelledby="new-arrivals-title" className="py-10 sm:py-14">
       <div className="relative mb-6 flex min-h-9 items-center justify-center sm:mb-7">
-        <h2
-          className="text-center text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+        <Heading
+          as="h2"
           id="new-arrivals-title"
+          variant="section"
         >
           New Arrivals
-        </h2>
+        </Heading>
         <Link
           className="absolute right-0 rounded-sm text-sm font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           href="/shop"

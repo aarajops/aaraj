@@ -1,4 +1,5 @@
 import type { CatalogCategoryOption } from "@aaraj/contracts";
+import { Heading } from "@/components/ui/heading";
 import { HomepageCategoryCarousel } from "./homepage-category-carousel";
 
 export function HomepageCategorySection({
@@ -13,12 +14,14 @@ export function HomepageCategorySection({
       aria-labelledby="homepage-categories-title"
       className="pb-10 sm:pb-14"
     >
-      <h2
-        className="mb-6 text-center text-2xl font-semibold tracking-tight text-foreground sm:mb-8 sm:text-3xl"
+      <Heading
+        as="h2"
+        className="mb-6 sm:mb-8"
         id="homepage-categories-title"
+        variant="section"
       >
         Shop by category
-      </h2>
+      </Heading>
       <HomepageCategoryCarousel categories={categories} />
     </section>
   );

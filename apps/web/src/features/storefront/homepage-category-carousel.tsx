@@ -72,7 +72,7 @@ export function HomepageCategoryCarousel({
                 href={`/shop/categories/${category.slug}`}
               >
                 <CategoryImage category={category} />
-                <h3 className="text-center text-sm font-medium uppercase tracking-wide text-foreground">
+                <h3 className="line-clamp-2 min-h-8 text-center text-xs font-medium leading-4 text-foreground sm:min-h-0 sm:text-sm sm:uppercase sm:leading-normal sm:tracking-wide">
                   {category.name}
                 </h3>
               </Link>
