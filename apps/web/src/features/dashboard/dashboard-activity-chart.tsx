@@ -4,9 +4,13 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
-  Tooltip,
   XAxis,
   YAxis,
+  useActiveTooltipCoordinate,
+  useActiveTooltipDataPoints,
+  useActiveTooltipLabel,
+  useIsTooltipActive,
+  usePlotArea,
 } from "recharts";
 import type { DashboardOverview } from "@aaraj/contracts";
 
@@ -57,24 +61,6 @@ export function DashboardActivityChart({
           tickLine={false}
           tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
         />
-        <Tooltip
-          contentStyle={{
-            background: "var(--popover)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-            color: "var(--popover-foreground)",
-            boxShadow: "0 4px 12px rgb(0 0 0 / 0.08)",
-          }}
-          cursor={{
-            stroke: "var(--muted-foreground)",
-            strokeDasharray: "3 3",
-          }}
-          formatter={(value) => [
-            `${count.format(Number(value))} orders`,
-            "Orders placed",
-          ]}
-          labelFormatter={(value) => formatDate(String(value), true)}
-        />
         <Area
           activeDot={{ r: 4, fill: "var(--brand)", stroke: "var(--card)" }}
           dataKey="ordersPlaced"
@@ -83,8 +69,56 @@ export function DashboardActivityChart({
           strokeWidth={2}
           type="monotone"
         />
+        <ActivityTooltip />
       </AreaChart>
     </div>
+  );
+}
+
+function ActivityTooltip() {
+  const active = useIsTooltipActive();
+  const coordinate = useActiveTooltipCoordinate();
+  const label = useActiveTooltipLabel();
+  const dataPoints =
+    useActiveTooltipDataPoints<DashboardOverview["daily"][number]>();
+  const plotArea = usePlotArea();
+  const dataPoint = dataPoints?.[0];
+
+  if (!active || !coordinate || label == null || !dataPoint || !plotArea) {
+    return null;
+  }
+
+  const width = 160;
+  const height = 56;
+  const x = Math.max(
+    plotArea.x,
+    Math.min(coordinate.x + 12, plotArea.x + plotArea.width - width),
+  );
+  const y = Math.max(
+    plotArea.y,
+    Math.min(coordinate.y - height - 12, plotArea.y + plotArea.height - height),
+  );
+
+  return (
+    <g pointerEvents="none">
+      <line
+        stroke="var(--muted-foreground)"
+        strokeDasharray="3 3"
+        strokeOpacity={0.6}
+        x1={coordinate.x}
+        x2={coordinate.x}
+        y1={plotArea.y}
+        y2={plotArea.y + plotArea.height}
+      />
+      <foreignObject height={height} width={width} x={x} y={y}>
+        <div className="w-40 rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md">
+          <p className="font-medium">{formatDate(String(label), true)}</p>
+          <p className="mt-1 text-primary">
+            Orders placed: {count.format(dataPoint.ordersPlaced)} orders
+          </p>
+        </div>
+      </foreignObject>
+    </g>
   );
 }
 
