@@ -10,7 +10,10 @@ export class RedisService implements OnApplicationShutdown {
         let lastError: Error | undefined;
         const timeout = setTimeout(() => {
           cleanup();
-          reject(lastError ?? new Error("Redis did not become ready within 5 seconds."));
+          reject(
+            lastError ??
+              new Error("Redis did not become ready within 5 seconds."),
+          );
         }, 5_000);
         const ready = () => {
           cleanup();
