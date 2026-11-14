@@ -7,17 +7,17 @@ export class RedisService implements OnApplicationShutdown {
     const client = getRedisClient();
     if (client.status !== "ready") {
       await new Promise<void>((resolve, reject) => {
+        let lastError: Error | undefined;
         const timeout = setTimeout(() => {
           cleanup();
-          reject(new Error("Redis did not become ready within 5 seconds."));
+          reject(lastError ?? new Error("Redis did not become ready within 5 seconds."));
         }, 5_000);
         const ready = () => {
           cleanup();
           resolve();
         };
         const error = (cause: Error) => {
-          cleanup();
-          reject(cause);
+          lastError = cause;
         };
         const cleanup = () => {
           clearTimeout(timeout);

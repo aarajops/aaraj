@@ -5,6 +5,7 @@ import { configureApp } from "./configure-app.js";
 import { configureOpenApi } from "./openapi.js";
 import { loadLocalEnvironment } from "./platform/config/local-environment.js";
 import { deriveCartCookieSigningSecret } from "./cart/cart-cookie.js";
+import { RedisService } from "./platform/redis/redis.service.js";
 
 loadLocalEnvironment();
 const { AppModule } = await import("./app.module.js");
@@ -26,6 +27,7 @@ async function bootstrap() {
     configureOpenApi(app);
   }
   app.enableShutdownHooks();
+  await app.get(RedisService).checkConnection();
   const port = Number(process.env.PORT ?? 3001);
   const host = process.env.HOST ?? (isProduction ? "127.0.0.1" : undefined);
   if (host) await app.listen(port, host);
