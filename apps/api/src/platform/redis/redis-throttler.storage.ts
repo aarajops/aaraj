@@ -1,5 +1,6 @@
 import type { ThrottlerStorage } from "@nestjs/throttler";
 import type { Redis } from "ioredis";
+import { waitForRedisReady } from "./redis-client.js";
 
 type ThrottlerStorageRecord = Awaited<
   ReturnType<ThrottlerStorage["increment"]>
@@ -54,16 +55,17 @@ export class RedisThrottlerStorage implements ThrottlerStorage {
     blockDuration: number,
     throttlerName: string,
   ): Promise<ThrottlerStorageRecord> {
+    await waitForRedisReady(this.redis);
     const tag = `{${key}:${throttlerName}}`;
-    const result: unknown = await this.redis.eval(
-      incrementScript,
-      2,
-      `${tag}:hits`,
-      `${tag}:blocked`,
-      ttl,
-      limit,
-      blockDuration,
-    );
+    let result: unknown;
+    try {
+      result = await this.incrementCounter(tag, ttl, limit, blockDuration);
+    } catch (error) {
+      if (!isRedisNotReadyError(error)) throw error;
+
+      await waitForRedisReady(this.redis);
+      result = await this.incrementCounter(tag, ttl, limit, blockDuration);
+    }
     if (!Array.isArray(result) || result.length !== 4) {
       throw new Error("Redis returned an invalid throttler result.");
     }
@@ -91,4 +93,29 @@ export class RedisThrottlerStorage implements ThrottlerStorage {
       timeToBlockExpire: Math.ceil(timeToBlockExpire / 1000),
     };
   }
+
+  private incrementCounter(
+    tag: string,
+    ttl: number,
+    limit: number,
+    blockDuration: number,
+  ): Promise<unknown> {
+    return this.redis.eval(
+      incrementScript,
+      2,
+      `${tag}:hits`,
+      `${tag}:blocked`,
+      ttl,
+      limit,
+      blockDuration,
+    );
+  }
+}
+
+function isRedisNotReadyError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message ===
+      "Stream isn't writeable and enableOfflineQueue options is false"
+  );
 }
