@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatBdtPrice } from "@/lib/currency";
 import { ProductLinkStatus } from "@/features/catalog/product-link-status";
 
-const PRODUCT_CARD_IMAGE_RATIO = 4 / 5;
+const PRODUCT_CARD_IMAGE_RATIO = "portrait";
 
 export function ProductCardSkeleton() {
   return (

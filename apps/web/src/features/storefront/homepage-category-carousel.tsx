@@ -21,7 +21,7 @@ function CategoryImage({ category }: { category: CatalogCategoryOption }) {
   >(category.image ? "loading" : "error");
 
   return (
-    <AspectRatio className="overflow-hidden rounded-xl bg-muted" ratio={1}>
+    <AspectRatio className="overflow-hidden rounded-xl bg-muted" ratio="square">
       {category.image && imageStatus !== "error" && (
         <Image
           alt=""

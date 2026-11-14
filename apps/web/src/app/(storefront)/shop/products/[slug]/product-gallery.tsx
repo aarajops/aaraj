@@ -158,7 +158,7 @@ export function ProductGallery({
             >
               <AspectRatio
                 className="overflow-hidden rounded-lg bg-muted/30"
-                ratio={1}
+                ratio="square"
               >
                 <Image
                   alt={image.altText}

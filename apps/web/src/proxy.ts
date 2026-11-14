@@ -47,7 +47,6 @@ export function proxy(request: NextRequest) {
         "https://fonts.googleapis.com",
       ),
     )}`,
-    ...(!isDevelopment ? ["style-src-attr 'unsafe-inline'"] : []),
     `img-src 'self' blob: data:${storefrontOnly(
       sources(
         trackingHosts.googleTag,

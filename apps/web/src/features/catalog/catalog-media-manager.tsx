@@ -707,7 +707,7 @@ export function CatalogMediaManager({
                     {item.status === "ready" ? (
                       <AspectRatio
                         className="overflow-hidden rounded-md bg-muted"
-                        ratio={4 / 3}
+                        ratio="landscape"
                       >
                         <Image
                           alt=""
@@ -725,7 +725,7 @@ export function CatalogMediaManager({
                       <AspectRatio
                         aria-hidden="true"
                         className="grid place-items-center rounded-md bg-muted text-muted-foreground"
-                        ratio={4 / 3}
+                        ratio="landscape"
                       >
                         <ImageOff aria-hidden="true" className="size-5" />
                       </AspectRatio>

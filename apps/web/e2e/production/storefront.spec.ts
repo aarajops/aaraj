@@ -17,7 +17,7 @@ test("localhost E2E keeps the live GTM container disabled", async ({
   expect(contentSecurityPolicy).not.toContain("googletagmanager.com");
   expect(contentSecurityPolicy).not.toContain("google-analytics.com");
   expect(contentSecurityPolicy).not.toContain("in.stape.io");
-  expect(contentSecurityPolicy).toContain("style-src-attr 'unsafe-inline'");
+  expect(contentSecurityPolicy).not.toContain("style-src-attr");
   expect(contentSecurityPolicy).not.toMatch(
     /script-src(?:-elem)?[^;]*'unsafe-(?:eval|inline)'/,
   );
@@ -61,7 +61,7 @@ test("localhost E2E keeps the live GTM container disabled", async ({
   expect(adminPolicy).toContain("frame-src 'self'");
   expect(adminPolicy).not.toContain("googletagmanager.com");
   expect(adminPolicy).not.toContain("google-analytics.com");
-  expect(adminPolicy).toContain("style-src-attr 'unsafe-inline'");
+  expect(adminPolicy).not.toContain("style-src-attr");
 
   const crawlerResponse = await page.request.get("/", {
     headers: { "User-Agent": "facebookexternalhit/1.1" },
@@ -220,7 +220,7 @@ test("admin checkbox fallback stays visually hidden under production CSP", async
   expect(response?.status()).toBe(200);
   const contentSecurityPolicy =
     response?.headers()["content-security-policy"] ?? "";
-  expect(contentSecurityPolicy).toContain("style-src-attr 'unsafe-inline'");
+  expect(contentSecurityPolicy).not.toContain("style-src-attr");
 
   const checkbox = page.getByRole("checkbox", {
     name: "Publish this banner",
@@ -264,8 +264,8 @@ test("production admin orders table renders shared row-selection controls", asyn
 
   const response = await page.goto("/admin/orders");
   expect(response?.status()).toBe(200);
-  expect(response?.headers()["content-security-policy"] ?? "").toContain(
-    "style-src-attr 'unsafe-inline'",
+  expect(response?.headers()["content-security-policy"] ?? "").not.toContain(
+    "style-src-attr",
   );
 
   const table = page.getByRole("table", { name: "Orders" });
