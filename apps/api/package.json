@@ -12,7 +12,7 @@
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node scripts/prepare-local-migration.mjs && pnpm run build && drizzle-kit migrate && node scripts/protect-order-address-snapshots.mjs --execute",
+    "db:migrate": "node scripts/prepare-local-migration.mjs && pnpm run build && drizzle-kit migrate && node --env-file=../../infrastructure/local/.env.local scripts/protect-order-address-snapshots.mjs --execute",
     "db:grant-runtime": "node dist/platform/database/grant-runtime-privileges.js",
     "access:bootstrap": "node dist/platform/authorization/bootstrap-superadmin.js",
     "start": "node dist/main.js",
