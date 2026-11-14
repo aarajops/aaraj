@@ -26,11 +26,7 @@ export function NewArrivalsSection({
   return (
     <section aria-labelledby="new-arrivals-title" className="py-10 sm:py-14">
       <div className="relative mb-6 flex min-h-9 items-center justify-center sm:mb-7">
-        <Heading
-          as="h2"
-          id="new-arrivals-title"
-          variant="section"
-        >
+        <Heading as="h2" id="new-arrivals-title" variant="section">
           New Arrivals
         </Heading>
         <Link
