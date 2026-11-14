@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DashboardMetricsLoading } from "@/features/dashboard/dashboard-metric-card";
 import {
   Table,
   TableBody,
@@ -32,10 +33,14 @@ function LoadingRegion({
 
 function PageHeadingSkeleton({
   action = false,
+  actionStyle = "button",
   backLink = false,
+  description = true,
 }: {
   action?: boolean;
+  actionStyle?: "button" | "link";
   backLink?: boolean;
+  description?: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -43,9 +48,14 @@ function PageHeadingSkeleton({
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 space-y-2">
           <Skeleton className="h-9 w-48 sm:h-10" />
-          <Skeleton className="h-6 w-64 max-w-full" />
+          {description && <Skeleton className="h-6 w-64 max-w-full" />}
         </div>
-        {action && <Skeleton aria-hidden="true" className="h-10 w-36" />}
+        {action && (
+          <Skeleton
+            aria-hidden="true"
+            className={actionStyle === "link" ? "h-4 w-24" : "h-10 w-36"}
+          />
+        )}
       </header>
     </div>
   );
@@ -60,7 +70,8 @@ type AdminListVariant =
   | "customers"
   | "users"
   | "banners"
-  | "delivery-issues";
+  | "delivery-issues"
+  | "abandoned-checkouts";
 
 const adminListSkeletons: Record<
   AdminListVariant,
@@ -124,41 +135,13 @@ const adminListSkeletons: Record<
     filterCount: 0,
     hasSearch: false,
   },
+  "abandoned-checkouts": {
+    label: "abandoned checkouts",
+    columnCount: 8,
+    filterCount: 0,
+    hasSearch: false,
+  },
 };
-
-export function AdminPanelSkeleton() {
-  return (
-    <div
-      aria-busy="true"
-      aria-label="Loading admin panel"
-      className="flex min-h-svh bg-background text-foreground"
-      role="status"
-    >
-      <div aria-hidden="true" className="flex w-full">
-        <aside className="hidden w-(--sidebar-width) shrink-0 border-r border-border p-4 md:block">
-          <Skeleton className="h-8 w-32" />
-          <div className="mt-8 grid gap-4">
-            <Skeleton className="h-5 w-36" />
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-5 w-36" />
-          </div>
-        </aside>
-        <div className="min-w-0 flex-1">
-          <div className="flex h-14 items-center border-b border-border px-4">
-            <Skeleton className="h-5 w-32" />
-          </div>
-          <main className="p-6">
-            <div className="space-y-6">
-              <PageHeadingSkeleton />
-              <Skeleton className="h-72 w-full rounded-xl" />
-            </div>
-          </main>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function AdminListPageSkeleton({
   variant,
@@ -283,14 +266,118 @@ export function AdminFormPageSkeleton({
 export function AdminOverviewPageSkeleton({ label }: AdminSkeletonProps) {
   return (
     <LoadingRegion className="space-y-6" label={label}>
-      <PageHeadingSkeleton />
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Skeleton className="h-56 w-full rounded-xl" />
-        <Skeleton className="h-56 w-full rounded-xl" />
-        <Skeleton className="h-56 w-full rounded-xl" />
-      </div>
-      <Skeleton className="h-24 w-full rounded-xl" />
+      <PageHeadingSkeleton action actionStyle="link" description={false} />
+
+      <DashboardMetricsLoading />
+
+      <section className="overflow-hidden rounded-xl border border-border bg-card pb-4">
+        <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid gap-1">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-5 w-36" />
+          </div>
+          <div className="flex w-fit overflow-hidden rounded-lg border border-input">
+            {["w-8 sm:w-24", "w-8 sm:w-20", "w-8 sm:w-16"].map(
+              (width, index) => (
+                <div
+                  className="flex h-9 items-center border-r border-input px-3 last:border-r-0"
+                  key={index}
+                >
+                  <Skeleton className={`h-4 ${width}`} />
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+        <div className="flex h-72 flex-col px-4 sm:h-[21rem]">
+          <div className="flex min-h-0 flex-1 flex-col justify-between pr-2">
+            {[0, 1, 2, 3, 4].map((line) => (
+              <div className="flex items-center gap-2" key={line}>
+                <div className="flex w-8 shrink-0 justify-end">
+                  <Skeleton className="h-3 w-3" />
+                </div>
+                <Skeleton className="h-px min-w-0 flex-1 rounded-none" />
+              </div>
+            ))}
+          </div>
+          <div className="ml-10 mt-2 flex justify-between pr-2">
+            {[0, 1, 2, 3, 4, 5].map((tick) => (
+              <Skeleton className="h-3 w-8" key={tick} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <OverviewTableSkeleton
+          columns={[
+            { header: "w-16", cell: "w-40" },
+            { header: "w-12", cell: "w-8", alignRight: true },
+          ]}
+          rows={4}
+          titleWidth="w-36"
+        />
+        <OverviewTableSkeleton
+          columns={[
+            { header: "w-16", cell: "w-32" },
+            { header: "w-16", cell: "w-20" },
+            { header: "w-12", cell: "w-8", alignRight: true },
+          ]}
+          rows={5}
+          titleWidth="w-28"
+        />
+      </section>
     </LoadingRegion>
+  );
+}
+
+function OverviewTableSkeleton({
+  titleWidth,
+  columns,
+  rows,
+}: {
+  titleWidth: string;
+  columns: {
+    header: string;
+    cell: string;
+    alignRight?: boolean;
+  }[];
+  rows: number;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="p-4">
+        <Skeleton className={`h-5 ${titleWidth}`} />
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {columns.map((column, index) => (
+              <TableHead
+                className={column.alignRight ? "text-right" : undefined}
+                key={index}
+              >
+                <Skeleton className={`h-4 max-w-full ${column.header}`} />
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: rows }, (_, row) => (
+            <TableRow key={row}>
+              {columns.map((column, index) => (
+                <TableCell
+                  className={column.alignRight ? "text-right" : undefined}
+                  key={index}
+                >
+                  <Skeleton className={`h-4 max-w-full ${column.cell}`} />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </section>
   );
 }
 

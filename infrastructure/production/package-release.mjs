@@ -121,6 +121,13 @@ try {
     ),
     path.join(releaseApi, "scripts/backfill-order-address-snapshots.mjs"),
   );
+  await cp(
+    path.join(
+      repository,
+      "apps/api/scripts/protect-order-address-snapshots.mjs",
+    ),
+    path.join(releaseApi, "scripts/protect-order-address-snapshots.mjs"),
+  );
 
   const standalone = path.join(repository, "apps/web/.next/standalone");
   const serverCandidates = [];

@@ -2,7 +2,11 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Separator } from "@/components/ui/separator";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   getInitialAccess,
@@ -39,18 +43,18 @@ export default async function AdminLayout({
               : null
           }
         />
-        <div className="flex min-w-0 flex-1 flex-col print:block print:min-h-0 print:w-full">
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 print:hidden">
+        <SidebarInset className="min-w-0 print:block print:min-h-0 print:w-full print:bg-white">
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 print:hidden">
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-4" />
             <p className="text-sm font-medium text-foreground">
               Administration
             </p>
           </header>
-          <main className="min-w-0 flex-1 bg-background p-6 text-foreground print:block print:min-h-0 print:w-full print:bg-white print:p-0 print:text-black">
+          <div className="min-w-0 flex-1 bg-background p-4 text-foreground sm:p-6 lg:p-8 print:block print:min-h-0 print:w-full print:bg-white print:p-0 print:text-black">
             {children}
-          </main>
-        </div>
+          </div>
+        </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>
   );

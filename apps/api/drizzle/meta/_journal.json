@@ -456,6 +456,13 @@
       "when": 1794474904524,
       "tag": "0064_confirmed_order_return_to_pending",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794633169131,
+      "tag": "0065_encrypt_order_address_snapshots",
+      "breakpoints": true
     }
   ]
 }

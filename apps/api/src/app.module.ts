@@ -17,6 +17,7 @@ import { GeographyModule } from "./geography/geography.module.js";
 import { DeliveryModule } from "./delivery/delivery.module.js";
 import { QuoteModule } from "./quote/quote.module.js";
 import { OrdersModule } from "./orders/orders.module.js";
+import { DashboardModule } from "./dashboard/dashboard.module.js";
 import { PathaoModule } from "./delivery/pathao/pathao.module.js";
 import { StorefrontModule } from "./storefront/storefront.module.js";
 
@@ -38,6 +39,7 @@ import { StorefrontModule } from "./storefront/storefront.module.js";
     DeliveryModule,
     QuoteModule,
     OrdersModule,
+    DashboardModule,
     PathaoModule,
     StorefrontModule,
   ],

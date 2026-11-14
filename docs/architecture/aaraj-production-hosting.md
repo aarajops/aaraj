@@ -234,16 +234,24 @@ expand-and-contract changes so the schema remains compatible with the active
 and previous app release; test both app versions where a schema change requires
 it.
 
-Migration `0062_order_query_indexes_and_address_snapshot` converts historical encrypted
-Order addresses. Install the updated host migration wrapper through
-`install-migration-autostart.sh` before dispatching this maintenance release.
-The wrapper checks whether conversion is needed, stops `aaraj-pm2.service`,
-runs the staged converter with the existing keyring and migration database
-role, then applies the schema change; the app restarts after activation. The
-converter holds an exclusive Order-table lock and rolls back all conversion
-changes if any address cannot be decrypted. If conversion fails, it restarts
-the old app and does not apply the migration. Keep the keyring configured for
-Pathao tokens and checkout retry fingerprints.
+Migration `0062_order_query_indexes_and_address_snapshot` converts historical
+encrypted Order addresses to JSONB. Migration `0065_encrypt_order_address_snapshots`
+restores application-level encryption and replaces plaintext name/phone
+indexes with keyed prefix tokens. Install the updated host migration wrapper
+through `install-migration-autostart.sh` before dispatching this maintenance
+release. The wrapper stops `aaraj-pm2.service` for the schema transition,
+applies migrations, then encrypts and verifies every saved address before
+allowing activation. The address rewrite holds an exclusive Order-table lock
+and rolls back if any snapshot cannot be read or encrypted. If migration 0065
+does not change the schema, a failed migration can restart the prior app; once
+the schema changes, the service remains stopped until the backfill is complete.
+Keep `ORDER_PII_ENCRYPTION_KEY` or `ORDER_PII_KEYRING` available in the runtime
+environment during the migration so the active key can encrypt snapshots and
+the stable legacy key can derive search tokens. Retain that legacy key while
+those tokens and any legacy Pathao tokens remain in use.
+Backups created while migration 0062 stored plaintext addresses can retain that
+plaintext; keep them under the existing restricted backup access and retention
+policy.
 
 A migration-bearing deployment passes the same migration compatibility tests
 before the deploy job runs. After the artifact is staged, CI/CD uses a
@@ -297,8 +305,13 @@ until the repository's review rules are verified in GitHub.
    migration helpers as root with
    `bash infrastructure/production/host/install-migration-autostart.sh`.
    On an existing host, do this before using the updated deployment workflow.
-   Push the commit to `main`. CI/CD starts the migration unit for the exact
-   staged artifact and continues only after successful completion. The runner applies the initial
+   After review, dispatch the production workflow for the exact approved commit
+   SHA. CI runs on pushes; production deployment runs only from an explicit
+   `workflow_dispatch`. Configure required reviewers and deployment branch
+   restrictions for the `aaraj-production` GitHub environment in repository
+   settings; the workflow file alone cannot enforce those controls. CI/CD starts
+   the migration unit for the exact staged artifact and continues only after
+   successful completion. The runner applies the initial
    journal to the empty AARAJ database and refuses to treat existing AARAJ
    schemas without Drizzle history as a clean database.
 4. Verify API readiness and the runtime role's restricted permissions before

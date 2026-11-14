@@ -56,7 +56,7 @@ export async function saveCheckoutDraft(
   });
   if (!response.ok) return null;
   const body = await response.text();
-  return body
+  return body && body !== "null"
     ? CheckoutDraftSaveResultSchema.parse(JSON.parse(body) as unknown)
     : null;
 }

@@ -14,6 +14,8 @@ release="/srv/sites/aaraj/releases/$release_id"
 manifest="$release/release-manifest.json"
 migration_script="$release/api/scripts/migrate-production.mjs"
 address_backfill_script="$release/api/scripts/backfill-order-address-snapshots.mjs"
+address_protection_script="$release/api/scripts/protect-order-address-snapshots.mjs"
+address_protection_migration="$release/api/drizzle/0065_encrypt_order_address_snapshots.sql"
 [[ -d "$release" && ! -L "$release" && \
   -f "$manifest" && ! -L "$manifest" && \
   -f "$release/.artifact-sha256" && ! -L "$release/.artifact-sha256" && \
@@ -45,19 +47,46 @@ if (
 }
 NODE
 
+if [[ -f "$address_protection_migration" && \
+  ( ! -f "$address_protection_script" || -L "$address_protection_script" ) ]]; then
+  echo "The requested release is missing its Order address protection helper." >&2
+  exit 1
+fi
+
 unit="aaraj-migration@$release_id.service"
 app_stopped=false
 migration_succeeded=false
+app_stop_reason=""
+address_protection_needed=false
 restart_app_after_failure() {
   if [[ "$app_stopped" == true && "$migration_succeeded" != true ]]; then
-    local address_migration_status_after_failure
-    if ! address_migration_status_after_failure="$(NODE_ENV=production /usr/bin/node \
+    local legacy_address_status_after_failure
+    local encrypted_address_status_after_failure
+    if ! legacy_address_status_after_failure="$(NODE_ENV=production /usr/bin/node \
       --env-file=/etc/sites/aaraj/migration.env \
       "$address_backfill_script" --check)"; then
       echo "The migration failed and the prior database schema state could not be verified; aaraj-pm2.service remains stopped." >&2
-    elif [[ "$address_migration_status_after_failure" != "required" ]]; then
-      echo "The migration failed after changing the Order address schema; aaraj-pm2.service remains stopped because the previous application may be incompatible." >&2
-    elif ! /usr/bin/systemctl start aaraj-pm2.service; then
+      return
+    fi
+    if [[ "$app_stop_reason" == "legacy-address-conversion" ]]; then
+      if [[ "$legacy_address_status_after_failure" != "required" ]]; then
+        echo "The migration failed after changing the Order address schema; aaraj-pm2.service remains stopped because the previous application may be incompatible." >&2
+        return
+      fi
+    elif [[ "$app_stop_reason" == "address-encryption" ]]; then
+      if [[ "$legacy_address_status_after_failure" != "complete" ]] || \
+        ! encrypted_address_status_after_failure="$(NODE_ENV=production /usr/bin/node \
+          --env-file=/etc/sites/aaraj/migration.env \
+          "$address_protection_script" --check)" || \
+        [[ "$encrypted_address_status_after_failure" != "schema-missing" ]]; then
+        echo "The migration failed after changing the Order address schema; aaraj-pm2.service remains stopped because the previous application may be incompatible." >&2
+        return
+      fi
+    else
+      echo "The migration failed and its application compatibility state is unknown; aaraj-pm2.service remains stopped." >&2
+      return
+    fi
+    if ! /usr/bin/systemctl start aaraj-pm2.service; then
       echo "The migration failed and the previous application could not be restarted; inspect aaraj-pm2.service before serving traffic." >&2
     else
       echo "The migration failed; the previous application was restarted." >&2
@@ -74,6 +103,7 @@ if [[ -f "$address_migration" ]]; then
   if [[ "$address_migration_status" == "required" ]]; then
     /usr/bin/systemctl stop aaraj-pm2.service
     app_stopped=true
+    app_stop_reason="legacy-address-conversion"
     if ! NODE_ENV=production /usr/bin/node \
       --env-file=/etc/sites/aaraj/runtime.env \
       --env-file=/etc/sites/aaraj/migration.env \
@@ -87,8 +117,25 @@ if [[ -f "$address_migration" ]]; then
   fi
 fi
 
+if [[ -f "$address_protection_migration" ]]; then
+  address_protection_status="$(NODE_ENV=production /usr/bin/node \
+    --env-file=/etc/sites/aaraj/migration.env \
+    "$address_protection_script" --check)"
+  if [[ "$address_protection_status" == "schema-missing" || \
+    "$address_protection_status" == "required" ]]; then
+    address_protection_needed=true
+    if [[ "$app_stopped" != true ]]; then
+      /usr/bin/systemctl stop aaraj-pm2.service
+      app_stopped=true
+      app_stop_reason="address-encryption"
+    fi
+  elif [[ "$address_protection_status" != "complete" ]]; then
+    echo "Order address protection preflight returned an unexpected result." >&2
+    exit 1
+  fi
+fi
+
 if /usr/bin/systemctl start "$unit"; then
-  migration_succeeded=true
   /usr/bin/journalctl --unit "$unit" --no-pager --output=cat --lines 30
   echo "Migration service $unit completed successfully."
 else
@@ -96,3 +143,22 @@ else
   /usr/bin/journalctl --unit "$unit" --no-pager --lines 60 >&2 || true
   exit "$status"
 fi
+
+if [[ "$address_protection_needed" == true ]]; then
+  if ! NODE_ENV=production /usr/bin/node \
+    --env-file=/etc/sites/aaraj/runtime.env \
+    --env-file=/etc/sites/aaraj/migration.env \
+    "$address_protection_script" --execute; then
+    echo "Order address protection failed; the previous application remains stopped." >&2
+    exit 1
+  fi
+  address_protection_status="$(NODE_ENV=production /usr/bin/node \
+    --env-file=/etc/sites/aaraj/migration.env \
+    "$address_protection_script" --check)"
+  if [[ "$address_protection_status" != "complete" ]]; then
+    echo "Order address protection verification failed; the previous application remains stopped." >&2
+    exit 1
+  fi
+fi
+
+migration_succeeded=true

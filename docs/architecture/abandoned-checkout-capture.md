@@ -1,6 +1,6 @@
 # Abandoned checkout and staff-assisted COD order
 
-Status: implemented in code but not deployed. The current 10-minute inactivity threshold and seven-day cleanup age are provisional implementation defaults, not approved retention policy. Do not deploy this capture flow until the business/legal owner approves its purpose, disclosure, contact basis, and retention. These settings are code constants, with no environment variables or admin settings. Scope: show abandoned checkouts beside Orders and let authorized staff place a normal COD Order after the customer confirms by phone. No automated calls, messages, recovery links, or stock holds for drafts.
+Status: active. Abandoned-checkout capture, staff review, conversion, and cleanup run as part of the normal checkout flow. The 10-minute inactivity threshold and seven-day cleanup age are code constants. There is no feature flag or admin toggle. Scope: show abandoned checkouts beside Orders and let authorized staff place a normal COD Order after the customer confirms by phone. No automated calls, messages, recovery links, or stock holds for drafts.
 
 ## Decision
 
@@ -40,9 +40,9 @@ Add nullable `source_draft_id` (unique) and `created_by_staff_id` to Orders. Nor
 
 Reuse Orders table components, but use a distinct draft response type. A draft must never satisfy `OrderSchema` or expose Order status actions.
 
-## Production rollout
+## Deployment
 
-The capture flow, staff screen, conversion path, audit records, and cleanup worker are implemented. Keep them out of production until the business/legal owner approves the capture purpose, customer disclosure/contact basis, and retention period. Then update the fixed code defaults to the approved policy and verify the end-to-end flow on the exact release candidate. No admin configuration system or separate infrastructure is needed.
+The capture flow, staff screen, conversion path, audit records, and cleanup worker operate without environment configuration. Keep the fixed inactivity and retention defaults aligned with the product's customer notice and contact policy. No admin configuration system or separate infrastructure is needed.
 
 No CRM, message queue, full event stream, recovery link, stock reservation on drafts, quote renewal per autosave, or separate staff idempotency ledger is required for this scope.
 
@@ -75,6 +75,6 @@ Reuse the existing cleanup worker pattern and audit service. Track only aggregat
 
 ## Privacy and research boundary
 
-Outbound calls are a separate purpose from completing an active checkout. Bangladesh's [Personal Data Protection Act, 2026](https://bdlaws.minlaw.gov.bd/act-details-1692.html?lang=en) identifies names and mobile numbers as personal data and addresses lawful basis, purpose, transparency, security, and retention in sections 5, 15, 17, and 18. Internal-only display does not remove these duties. Have local counsel approve capture, the call basis and brief disclosure/contact choice, and retention before production rollout. If customers must receive **no disclosure whatsoever**, do not use identifiable abandoned-checkout capture or outbound calling; anonymous funnel counts remain possible.
+Outbound calls are a separate purpose from completing an active checkout. Bangladesh's [Personal Data Protection Act, 2026](https://bdlaws.minlaw.gov.bd/act-details-1692.html?lang=en) identifies names and mobile numbers as personal data and addresses lawful basis, purpose, transparency, security, and retention in sections 5, 15, 17, and 18. Internal-only display does not remove these duties. Follow the applicable customer notice and contact policy for capture and staff calls. If customers must receive **no disclosure whatsoever**, do not use identifiable abandoned-checkout capture or outbound calling; anonymous funnel counts remain possible.
 
 [Shopify's abandoned-checkout definition](https://shopify.dev/docs/api/admin-graphql/latest/objects/abandonedcheckout) uses contact information without a completed purchase. Its [draft-order completion](https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/draftOrderComplete) illustrates the separate draft-to-regular-Order action and inventory check. These are comparisons, not dependencies. [MDN page-lifecycle guidance](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon) and [`fetch` keepalive](https://developer.mozilla.org/en-US/docs/Web/API/Request/keepalive) support idle saves plus a best-effort page-hidden flush without an `unload` handler.

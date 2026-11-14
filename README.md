@@ -1,6 +1,14 @@
-# Aaraj - Enterprise E-Commerce Platform
+# Aaraj — Bangladesh Apparel Commerce
 
-Enterprise-grade full-stack TypeScript monorepo powered by **pnpm workspaces** and **Node.js 24 LTS**.
+Full-stack TypeScript monorepo powered by **pnpm workspaces** and **Node.js 24 LTS**.
+
+The implemented product slice is a clothing storefront with an admin catalog,
+inventory, Bangladesh delivery quotes, COD order operations, and Pathao
+fulfillment. The admin overview reads its operational order metrics from a
+dedicated API endpoint. Online payment, courier settlement, returns accounting,
+and profit reporting are outside the current implementation. See the
+[implementation roadmap](docs/architecture/ecommerce-implementation-roadmap.md)
+and [dashboard metric definitions](docs/architecture/commerce-dashboard-metrics.md).
 
 ---
 

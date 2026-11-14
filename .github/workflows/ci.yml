@@ -86,6 +86,15 @@ jobs:
           E2E_POSTGRES_ADMIN_USER: aaraj_test
           E2E_POSTGRES_ADMIN_PASSWORD: aaraj_test
 
+      - name: Migration compatibility tests
+        run: pnpm --filter @aaraj/api run test:migrations
+        env:
+          E2E_POSTGRES_HOST: 127.0.0.1
+          E2E_POSTGRES_PORT: 5432
+          E2E_POSTGRES_ADMIN_DATABASE: postgres
+          E2E_POSTGRES_ADMIN_USER: aaraj_test
+          E2E_POSTGRES_ADMIN_PASSWORD: aaraj_test
+
       - name: Install Playwright Chromium
         run: pnpm --filter @aaraj/web exec playwright install --with-deps chromium
 

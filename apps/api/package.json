@@ -12,7 +12,7 @@
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node scripts/prepare-local-migration.mjs && drizzle-kit migrate",
+    "db:migrate": "node scripts/prepare-local-migration.mjs && pnpm run build && drizzle-kit migrate && node scripts/protect-order-address-snapshots.mjs --execute",
     "db:grant-runtime": "node dist/platform/database/grant-runtime-privileges.js",
     "access:bootstrap": "node dist/platform/authorization/bootstrap-superadmin.js",
     "start": "node dist/main.js",
@@ -26,7 +26,7 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "pnpm --filter @aaraj/contracts run build && pnpm run build && vitest run --config ./vitest.config.e2e.ts",
-    "test:migrations": "vitest run --config ./vitest.config.migration.ts",
+    "test:migrations": "pnpm run build && vitest run --config ./vitest.config.migration.ts",
     "test:r2:live": "vitest run --config ./vitest.config.r2.ts",
     "e2e:server": "node test/e2e-server.mjs"
   },

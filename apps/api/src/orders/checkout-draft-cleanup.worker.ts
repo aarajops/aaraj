@@ -40,13 +40,17 @@ export class CheckoutDraftCleanupWorker
     if (this.active) return;
     this.active = this.drafts.cleanup(BATCH_SIZE);
     let count = 0;
+    let failed = false;
     try {
       count = await this.active;
     } catch {
+      failed = true;
       this.logger.error("Checkout draft cleanup failed.");
     } finally {
       this.active = undefined;
-      this.schedule(count === BATCH_SIZE ? 0 : POLL_INTERVAL_MS);
+      this.schedule(
+        failed ? 60_000 : count === BATCH_SIZE ? 0 : POLL_INTERVAL_MS,
+      );
     }
   }
 }

@@ -57,6 +57,11 @@ import { PathaoTokenService } from "../src/delivery/pathao/pathao-token.service.
 import { getRedisClient } from "../src/platform/redis/redis-client.js";
 import { QuoteService } from "../src/quote/quote.service.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
+import {
+  decryptOrderAddressSnapshot,
+  encryptOrderAddressSnapshot,
+  orderAddressSearchTokens,
+} from "../src/orders/order-address-crypto.js";
 
 const origin = "http://localhost:3000";
 const password = "aaraj-orders-e2e-password-123";
@@ -1123,6 +1128,15 @@ describe("COD Orders and checkout", () => {
     const stored = await orderById(response.body.id);
     expect(stored?.guestAccessTokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(stored?.addressSnapshot).toMatchObject({
+      version: 3,
+      keyId: "rotation_a",
+    });
+    expect(JSON.stringify(stored?.addressSnapshot)).not.toContain(
+      "E2E Recipient",
+    );
+    expect(
+      decryptOrderAddressSnapshot(response.body.id, stored?.addressSnapshot),
+    ).toMatchObject({
       recipientName: "E2E Recipient",
       phone: "+8801712345678",
     });
@@ -1188,8 +1202,16 @@ describe("COD Orders and checkout", () => {
       checkoutBody(rotatedQuote.id),
       rotatedKey,
     ).expect(201);
+    const rotatedStored = await orderById(rotatedOrder.body.id);
+    expect(rotatedStored?.addressSnapshot).toMatchObject({
+      version: 3,
+      keyId: "rotation_b",
+    });
     expect(
-      (await orderById(rotatedOrder.body.id))?.addressSnapshot,
+      decryptOrderAddressSnapshot(
+        rotatedOrder.body.id,
+        rotatedStored?.addressSnapshot,
+      ),
     ).toMatchObject({
       recipientName: "E2E Recipient",
       phone: "+8801712345678",
@@ -2572,6 +2594,7 @@ describe("COD Orders and checkout", () => {
   });
 
   it("paginates managed Orders with reference search and stable ordering", async () => {
+    useAvailableOrderPiiTestKeys();
     const fixture = await createGuestOrder();
     const sourceOrder = await orderById(fixture.id);
     if (!sourceOrder) throw new Error("Order pagination fixture is missing.");
@@ -2617,7 +2640,8 @@ describe("COD Orders and checkout", () => {
           quoteId,
           reservationId,
           reference,
-          addressSnapshot: sourceAddress,
+          addressSnapshot: encryptOrderAddressSnapshot(id, sourceAddress),
+          addressSearchTokens: orderAddressSearchTokens(sourceAddress),
         })),
       );
 
@@ -2742,6 +2766,47 @@ describe("COD Orders and checkout", () => {
         ),
       );
     }
+  });
+
+  it("serves authorized dashboard metrics from the Order API", async () => {
+    const fixture = await createGuestOrder();
+    const savedOrder = await orderById(fixture.id);
+    if (!savedOrder) throw new Error("Dashboard Order fixture is missing.");
+
+    const response = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/dashboard/overview?range=7d`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.body).toMatchObject({
+      range: "7d",
+      timezone: "Asia/Dhaka",
+      summary: {
+        ordersPlaced: expect.any(Number),
+        currentCodValueBdt: expect.any(Number),
+      },
+    });
+    expect(response.body.summary.ordersPlaced).toBeGreaterThan(0);
+    expect(response.body.summary.currentCodValueBdt).toBeGreaterThanOrEqual(
+      savedOrder.codAmountDueBdt,
+    );
+    expect(response.body.daily).toHaveLength(7);
+    expect(
+      response.body.daily.find(
+        (day: { date: string }) => day.date === response.body.through,
+      )?.ordersPlaced,
+    ).toBeGreaterThan(0);
+    expect(response.body.topProducts.length).toBeGreaterThan(0);
+
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/dashboard/overview`)
+      .set("Cookie", customer.cookie)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/dashboard/overview?range=365d`)
+      .set("Cookie", staff.cookie)
+      .expect(400);
   });
 
   it("filters managed Orders by fulfillment status", async () => {

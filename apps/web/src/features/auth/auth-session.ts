@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { headers } from "next/headers";
 import type { authClient } from "@/features/auth/auth-client";
 import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
@@ -31,23 +32,25 @@ export async function getInitialSession(): Promise<InitialSession> {
   }
 }
 
-export async function getInitialAccess(): Promise<EffectiveAccess | null> {
-  const cookie = (await headers()).get("cookie");
-  if (!cookie) return null;
+export const getInitialAccess = cache(
+  async (): Promise<EffectiveAccess | null> => {
+    const cookie = (await headers()).get("cookie");
+    if (!cookie) return null;
 
-  try {
-    const response = await fetch(
-      `${getApiInternalUrl()}${API_V1_BASE_PATH}/access/me`,
-      {
-        headers: { cookie },
-        cache: "no-store",
-      },
-    );
+    try {
+      const response = await fetch(
+        `${getApiInternalUrl()}${API_V1_BASE_PATH}/access/me`,
+        {
+          headers: { cookie },
+          cache: "no-store",
+        },
+      );
 
-    if (!response.ok) return null;
-    const access = EffectiveAccessSchema.safeParse(await response.json());
-    return access.success ? access.data : null;
-  } catch {
-    return null;
-  }
-}
+      if (!response.ok) return null;
+      const access = EffectiveAccessSchema.safeParse(await response.json());
+      return access.success ? access.data : null;
+    } catch {
+      return null;
+    }
+  },
+);

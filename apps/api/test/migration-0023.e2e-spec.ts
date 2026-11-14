@@ -19,6 +19,11 @@ import {
   backfillOrderAddressSnapshots,
   decryptAddress,
 } from "../scripts/backfill-order-address-snapshots.mjs";
+import {
+  orderAddressProtectionStatus,
+  protectOrderAddressSnapshots,
+} from "../scripts/protect-order-address-snapshots.mjs";
+import { decryptOrderAddressSnapshot } from "../src/orders/order-address-crypto.js";
 
 process.env.NODE_ENV = "test";
 loadLocalEnvironment();
@@ -28,6 +33,7 @@ const operatorId = "migration-review-operator";
 const databasePrefix = "aaraj_migration_0023_";
 const addressMigrationKey = Buffer.alloc(32, 23);
 const addressMigrationRotatedKey = Buffer.alloc(32, 24);
+const addressProtectionKey = Buffer.alloc(32, 25).toString("base64url");
 const migrationAddress = {
   recipientName: "Migration Review",
   phone: "+8801712345678",
@@ -110,6 +116,9 @@ describe("migration 0023 historical upgrade", () => {
     invalidHistoryPool = await createDatabase(connection);
 
     await migrate(drizzle(freshPool), { migrationsFolder });
+    delete process.env.ORDER_PII_KEYRING;
+    process.env.ORDER_PII_ENCRYPTION_KEY = addressProtectionKey;
+    expect(await runAddressProtection(freshPool)).toBe(0);
 
     await migrate(drizzle(upgradePool), { migrationsFolder: through22Folder });
     historical = await seedHistoricalFixture(upgradePool);
@@ -136,6 +145,9 @@ describe("migration 0023 historical upgrade", () => {
       ).rows[0].count,
     );
     await migrate(drizzle(upgradePool), { migrationsFolder });
+    delete process.env.ORDER_PII_KEYRING;
+    process.env.ORDER_PII_ENCRYPTION_KEY = addressProtectionKey;
+    await runAddressProtection(upgradePool);
 
     await migrate(drizzle(prior23Pool), { migrationsFolder: through23Folder });
     await prior23Pool.query(`
@@ -314,14 +326,38 @@ describe("migration 0023 historical upgrade", () => {
     ).toBe(true);
   });
 
-  it("converts the historical Order address ciphertext into validated snapshots", async () => {
+  it("encrypts historical Order address snapshots and protects their search tokens", async () => {
     const snapshots = await upgradePool.query(
-      `SELECT address_snapshot FROM orders.order_header ORDER BY reference`,
+      `SELECT id, address_snapshot, address_search_tokens
+         FROM orders.order_header ORDER BY reference`,
     );
     expect(snapshots.rows).toHaveLength(4);
-    expect(snapshots.rows).toEqual(
-      Array.from({ length: 4 }, () => ({ address_snapshot: migrationAddress })),
-    );
+    for (const row of snapshots.rows) {
+      expect(row.address_snapshot).toMatchObject({
+        version: 3,
+        keyId: "legacy",
+      });
+      expect(JSON.stringify(row.address_snapshot)).not.toContain(
+        migrationAddress.recipientName,
+      );
+      expect(decryptOrderAddressSnapshot(row.id, row.address_snapshot)).toEqual(
+        migrationAddress,
+      );
+      expect(row.address_search_tokens.length).toBeGreaterThan(0);
+      expect(JSON.stringify(row.address_search_tokens)).not.toContain(
+        migrationAddress.recipientName,
+      );
+      expect(JSON.stringify(row.address_search_tokens)).not.toContain(
+        "8801712345678",
+      );
+    }
+    expect(await orderAddressProtectionStatus(upgradePool)).toBe("complete");
+    await expect(
+      upgradePool.query(
+        `UPDATE orders.order_header SET address_search_tokens = ARRAY['tampered']::text[] WHERE id = $1`,
+        [snapshots.rows[0].id],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
   });
 
   it("decrypts rotated v2 Order address envelopes by key ID", () => {
@@ -511,6 +547,15 @@ async function runAddressBackfill(pool: Pool): Promise<number> {
         ["rotated", addressMigrationRotatedKey],
       ]),
     });
+  } finally {
+    client.release();
+  }
+}
+
+async function runAddressProtection(pool: Pool): Promise<number> {
+  const client = await pool.connect();
+  try {
+    return await protectOrderAddressSnapshots(client);
   } finally {
     client.release();
   }

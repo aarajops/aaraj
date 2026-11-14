@@ -71,6 +71,15 @@ import {
 } from "../catalog/catalog-cart.port.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import { readOrderPiiKeyring } from "../platform/crypto/order-pii-keyring.js";
+import {
+  canonicalAddressPhonePrefix,
+  decryptOrderAddressSnapshot,
+  encryptOrderAddressSnapshot,
+  normalizeAddressName,
+  normalizeAddressPhoneDigits,
+  orderAddressSearchToken,
+  orderAddressSearchTokens,
+} from "./order-address-crypto.js";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { GeographyService } from "../geography/geography.service.js";
@@ -245,7 +254,11 @@ async function persistOrderSnapshot(
       quoteId: input.quote.id,
       cartRevision: input.cartRevision,
       reservationId: input.reservationId,
-      addressSnapshot: input.addressSnapshot,
+      addressSnapshot: encryptOrderAddressSnapshot(
+        input.id,
+        input.addressSnapshot,
+      ),
+      addressSearchTokens: orderAddressSearchTokens(input.addressSnapshot),
       status: input.status,
       paymentMethod: "cod",
       collectionStatus: "uncollected",
@@ -801,7 +814,8 @@ export class OrdersService implements OrdersPathaoPort {
             quoteId: quote.id,
             cartRevision: quote.cartRevision,
             reservationId: reservation.id,
-            addressSnapshot: address,
+            addressSnapshot: encryptOrderAddressSnapshot(orderId, address),
+            addressSearchTokens: orderAddressSearchTokens(address),
             status: "pending",
             paymentMethod: "cod",
             collectionStatus: "uncollected",
@@ -1211,7 +1225,7 @@ export class OrdersService implements OrdersPathaoPort {
     }
     return OrderManagementListSchema.parse({
       rows: pageRows.map((row) => {
-        const address = parseStoredOrderAddress(row.addressSnapshot);
+        const address = parseStoredOrderAddress(row.id, row.addressSnapshot);
         return {
           id: row.id,
           reference: row.reference,
@@ -1257,7 +1271,10 @@ export class OrdersService implements OrdersPathaoPort {
       await this.attachCustomerOrderCounts(pageRecords);
     return ManagedCustomerDirectorySchema.parse({
       rows: countedPageRecords.map((row) => {
-        const address = parseStoredOrderAddress(row.address_snapshot);
+        const address = parseStoredOrderAddress(
+          row.latest_order_id,
+          row.address_snapshot,
+        );
         const accountName = row.account_name?.trim();
         return {
           id: row.customer_key,
@@ -1343,32 +1360,32 @@ export class OrdersService implements OrdersPathaoPort {
     query: CustomerDirectoryQuery,
   ): Promise<CustomerDirectoryRecord[]> {
     const search = query.search ?? "";
-    const textSearch = normalizeOrderSearchText(search);
-    const phoneSearch = normalizeOrderPhoneDigits(search);
+    const textSearch = normalizeAddressName(search);
+    const phoneSearch = normalizeAddressPhoneDigits(search);
     const phoneOnly = phoneSearch.length > 0 && !/[a-z]/i.test(search);
     if (phoneOnly && phoneSearch.length < 4) return [];
 
-    const textPrefix = escapeLikeWildcards(textSearch) + "%";
-    const phonePrefix =
-      escapeLikeWildcards(toCanonicalBangladeshPhonePrefix(phoneSearch)) + "%";
+    const nameToken = orderAddressSearchToken("name", textSearch);
+    const phoneToken = orderAddressSearchToken(
+      "phone",
+      canonicalAddressPhonePrefix(phoneSearch),
+    );
     const exactSearch = parseExactOrderSearch(search);
     const exactReference =
       exactSearch?.kind === "reference" ? exactSearch.value : null;
     const exactOrderId = exactSearch?.kind === "id" ? exactSearch.value : null;
     const accountMatch = phoneOnly
       ? sql`false`
-      : sql`lower(account.name) like ${textPrefix}
-          or lower(account.email) like ${textPrefix}`;
+      : sql`lower(account.name) like ${escapeLikeWildcards(textSearch) + "%"}
+          or lower(account.email) like ${escapeLikeWildcards(textSearch) + "%"}`;
     const orderMatch = phoneOnly
-      ? sql`regexp_replace(order_row.address_snapshot->>'phone', '[^0-9]', '', 'g')
-          like ${phonePrefix}`
-      : sql`lower(order_row.address_snapshot->>'recipientName') like ${textPrefix}
+      ? sql`order_row.address_search_tokens @> ARRAY[${phoneToken}]::text[]`
+      : sql`order_row.address_search_tokens @> ARRAY[${nameToken}]::text[]
           or order_row.reference = ${exactReference}
           or order_row.id::text = ${exactOrderId}`;
     const guestOrderMatch = phoneOnly
-      ? sql`regexp_replace(guest.address_snapshot->>'phone', '[^0-9]', '', 'g')
-          like ${phonePrefix}`
-      : sql`lower(guest.address_snapshot->>'recipientName') like ${textPrefix}
+      ? sql`guest.address_search_tokens @> ARRAY[${phoneToken}]::text[]`
+      : sql`guest.address_search_tokens @> ARRAY[${nameToken}]::text[]
           or guest.reference = ${exactReference}
           or guest.id::text = ${exactOrderId}`;
 
@@ -1534,8 +1551,8 @@ export class OrdersService implements OrdersPathaoPort {
     query: OrderListQuery,
     search: string,
   ): Promise<ManagedOrderListRecord[]> {
-    const nameSearch = normalizeOrderSearchText(search);
-    const phoneSearch = normalizeOrderPhoneDigits(search);
+    const nameSearch = normalizeAddressName(search);
+    const phoneSearch = normalizeAddressPhoneDigits(search);
     const isPhoneSearch = /^[+\d০-৯().\s-]+$/u.test(search);
     const filters = managedOrderFilters(query);
     const oldestFirst = shouldPrioritizeHeldOrders(query);
@@ -1545,14 +1562,14 @@ export class OrdersService implements OrdersPathaoPort {
     const customerSearch = isPhoneSearch
       ? phoneSearch.length === 0
         ? sql`false`
-        : like(
-            sql`regexp_replace(${customerOrder.addressSnapshot}->>'phone', '[^0-9]', '', 'g')`,
-            `${escapeLikeWildcards(toCanonicalBangladeshPhonePrefix(phoneSearch))}%`,
-          )
-      : like(
-          sql`lower(${customerOrder.addressSnapshot}->>'recipientName')`,
-          `${escapeLikeWildcards(nameSearch)}%`,
-        );
+        : sql`${customerOrder.addressSearchTokens} @> ARRAY[${orderAddressSearchToken(
+            "phone",
+            canonicalAddressPhonePrefix(phoneSearch),
+          )}]::text[]`
+      : sql`${customerOrder.addressSearchTokens} @> ARRAY[${orderAddressSearchToken(
+          "name",
+          nameSearch,
+        )}]::text[]`;
 
     return this.database.db
       .select(MANAGED_ORDER_LIST_SELECTION)
@@ -2536,10 +2553,10 @@ export class OrdersService implements OrdersPathaoPort {
       .where(
         and(
           eq(customerOrder.reference, reference),
-          eq(
-            sql<string>`${customerOrder.addressSnapshot}->>'phone'`,
-            normalizedPhone,
-          ),
+          sql`${customerOrder.addressSearchTokens} @> ARRAY[${orderAddressSearchToken(
+            "phone",
+            normalizeAddressPhoneDigits(normalizedPhone),
+          )}]::text[]`,
         ),
       )
       .limit(1);
@@ -3410,7 +3427,7 @@ export class OrdersService implements OrdersPathaoPort {
       .from(customerOrderLine)
       .where(eq(customerOrderLine.orderId, row.id))
       .orderBy(asc(customerOrderLine.variantId));
-    const address = parseStoredOrderAddress(row.addressSnapshot);
+    const address = parseStoredOrderAddress(row.id, row.addressSnapshot);
     return OrderSchema.parse({
       id: row.id,
       reference: row.reference,
@@ -3662,7 +3679,7 @@ function toPathaoBookingSnapshot(
   row: PathaoSnapshotOrderRow,
   itemQuantity: number,
 ): PathaoOrderBookingSnapshot {
-  const address = parseStoredOrderAddress(row.addressSnapshot);
+  const address = parseStoredOrderAddress(row.id, row.addressSnapshot);
   const recipientAddress = [
     address.house,
     address.street,
@@ -3738,15 +3755,18 @@ function toCreated(row: OrderCreatedRow, replayed: boolean): OrderCreated {
   });
 }
 
-function parseStoredOrderAddress(value: unknown): OrderAddress {
-  const parsed = OrderAddressSchema.safeParse(value);
-  if (!parsed.success) {
+function parseStoredOrderAddress(
+  orderId: string,
+  value: unknown,
+): OrderAddress {
+  try {
+    return decryptOrderAddressSnapshot(orderId, value);
+  } catch {
     throw new ServiceUnavailableException(
       "The saved Order address is unavailable.",
       { errorCode: "ORDER_ADDRESS_UNAVAILABLE" },
     );
   }
-  return parsed.data;
 }
 
 function shouldPrioritizeHeldOrders(query: OrderListQuery): boolean {
@@ -3856,21 +3876,6 @@ function parseExactOrderSearch(
   }
   const id = OrderIdSchema.safeParse(value);
   return id.success ? { kind: "id", value: id.data } : null;
-}
-
-function normalizeOrderSearchText(value: string): string {
-  return value.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function normalizeOrderPhoneDigits(value: string): string {
-  return value
-    .normalize("NFKC")
-    .replace(/[০-৯]/gu, (character) => String(character.charCodeAt(0) - 0x09e6))
-    .replace(/\D/g, "");
-}
-
-function toCanonicalBangladeshPhonePrefix(value: string): string {
-  return /^0\d{1,10}$/.test(value) ? `88${value}` : value;
 }
 
 function isUniqueViolation(error: unknown): boolean {

@@ -2,6 +2,7 @@ export * from "./access/index.js";
 export * from "./audit/index.js";
 export * from "./catalog/index.js";
 export * from "./customers/index.js";
+export * from "./dashboard/overview.js";
 export * from "./cart/index.js";
 export * from "./common/api-error.js";
 export * from "./common/pagination.js";

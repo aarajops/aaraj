@@ -38,7 +38,7 @@ const adminLinks = [
     href: "/admin",
     label: "Overview",
     icon: LayoutDashboard,
-    permission: "catalog.manage",
+    permissions: ["catalog.manage", "orders.manage"],
   },
   {
     href: "/admin/catalog",
@@ -131,8 +131,10 @@ type AdminSidebarProps = {
 export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
-  const availableLinks = adminLinks.filter(({ permission }) =>
-    permissions.includes(permission),
+  const availableLinks = adminLinks.filter((link) =>
+    "permissions" in link
+      ? link.permissions.some((permission) => permissions.includes(permission))
+      : permissions.includes(link.permission),
   );
   const availableOperationsLinks = operationsLinks.filter(({ permission }) =>
     permissions.includes(permission),
@@ -161,7 +163,7 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
   const closeMobileSidebar = () => setOpenMobile(false);
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -187,7 +189,7 @@ export function AdminSidebar({ user, permissions }: AdminSidebarProps) {
       <SidebarContent>
         {availableLinks.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>Catalog</SidebarGroupLabel>
+            <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <nav aria-label="Administration">
                 <SidebarMenu>

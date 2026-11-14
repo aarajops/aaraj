@@ -11,7 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { OrderAddress } from "@aaraj/contracts";
+import type { OrderAddressSnapshotEnvelope } from "./order-address-crypto.js";
 import { user } from "../auth/auth-schema.js";
 import { quoteSnapshot } from "../quote/quote-schema.js";
 import { inventoryStockReservation } from "../inventory/inventory-schema.js";
@@ -101,7 +101,10 @@ export const customerOrder = ordersSchema.table(
     reservationId: uuid("reservation_id")
       .notNull()
       .references(() => inventoryStockReservation.id, { onDelete: "restrict" }),
-    addressSnapshot: jsonb("address_snapshot").$type<OrderAddress>().notNull(),
+    addressSnapshot: jsonb("address_snapshot")
+      .$type<OrderAddressSnapshotEnvelope>()
+      .notNull(),
+    addressSearchTokens: text("address_search_tokens").array().notNull(),
     status: text("status")
       .$type<"pending" | "no_answer" | "confirmed" | "on_hold" | "cancelled">()
       .notNull()
@@ -164,13 +167,9 @@ export const customerOrder = ordersSchema.table(
     index("order_created_id_idx").on(table.createdAt.desc(), table.id.desc()),
     index("order_customer_created_idx").on(table.customerId, table.createdAt),
     index("order_status_created_idx").on(table.status, table.createdAt),
-    index("order_address_name_prefix_idx").using(
-      "btree",
-      sql`lower(${table.addressSnapshot}->>'recipientName') text_pattern_ops`,
-    ),
-    index("order_address_phone_prefix_idx").using(
-      "btree",
-      sql`regexp_replace(${table.addressSnapshot}->>'phone', '[^0-9]', '', 'g') text_pattern_ops`,
+    index("order_address_search_tokens_gin_idx").using(
+      "gin",
+      table.addressSearchTokens,
     ),
     index("order_guest_cart_revision_idx")
       .on(table.guestCartHash, table.cartRevision)
@@ -236,6 +235,10 @@ export const customerOrder = ordersSchema.table(
     check(
       "order_address_snapshot_check",
       sql`jsonb_typeof(${table.addressSnapshot}) = 'object'`,
+    ),
+    check(
+      "order_address_search_tokens_check",
+      sql`cardinality(${table.addressSearchTokens}) > 0`,
     ),
   ],
 );
