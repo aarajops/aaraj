@@ -260,6 +260,15 @@ NODE
 }
 
 run_migration() {
+  local capabilities
+  if ! capabilities="$(/usr/bin/sudo -n /usr/local/sbin/aaraj-start-migration --capabilities)"; then
+    echo "The installed VPS migration helper is outdated. Refresh it with install-migration-autostart.sh before deploying migrations." >&2
+    exit 1
+  fi
+  [[ "$capabilities" == "order-address-protection-v1" ]] || {
+    echo "The installed VPS migration helper lacks order-address-protection-v1. Refresh it with install-migration-autostart.sh before deploying migrations." >&2
+    exit 1
+  }
   /usr/bin/sudo -n /usr/local/sbin/aaraj-start-migration "$commit" "$digest"
 }
 

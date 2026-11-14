@@ -2,6 +2,10 @@
 set -euo pipefail
 
 [[ "$(id -u)" == 0 ]] || { echo "Run this command through sudo." >&2; exit 1; }
+if [[ $# == 1 && "$1" == "--capabilities" ]]; then
+  echo "order-address-protection-v1"
+  exit 0
+fi
 [[ $# == 2 && "$1" =~ ^[0-9a-f]{40}$ && "$2" =~ ^[0-9a-f]{64}$ ]] || {
   echo "Usage: aaraj-start-migration <commit-sha> <artifact-sha256>" >&2
   exit 2

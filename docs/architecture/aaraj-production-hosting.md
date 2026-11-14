@@ -245,6 +245,9 @@ allowing activation. The address rewrite holds an exclusive Order-table lock
 and rolls back if any snapshot cannot be read or encrypted. If migration 0065
 does not change the schema, a failed migration can restart the prior app; once
 the schema changes, the service remains stopped until the backfill is complete.
+The deployment checks the installed wrapper's `order-address-protection-v1`
+capability before running migrations, so an outdated VPS helper fails before
+changing the database instead of silently skipping address protection.
 Keep `ORDER_PII_ENCRYPTION_KEY` or `ORDER_PII_KEYRING` available in the runtime
 environment during the migration so the active key can encrypt snapshots and
 the stable legacy key can derive search tokens. Retain that legacy key while

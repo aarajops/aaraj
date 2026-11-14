@@ -62,6 +62,10 @@ install -o root -g root -m 0755 "$pathao_helper_source" "$pathao_helper_stage"
 install -o root -g root -m 0644 "$service_source" "$service_stage"
 install -o root -g root -m 0440 "$sudoers_source" "$sudoers_stage"
 bash -n "$wrapper_stage"
+[[ "$("$wrapper_stage" --capabilities)" == "order-address-protection-v1" ]] || {
+  echo "The staged migration helper does not provide the required address-protection capability." >&2
+  exit 1
+}
 /usr/bin/node --input-type=commonjs --check < "$pathao_helper_stage"
 visudo -cf "$sudoers_stage"
 
