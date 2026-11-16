@@ -87,8 +87,8 @@ flowchart LR
 
 GitHub Actions is the only routine production deployment path. Pull requests
 run CI before merge. Each push to `main` runs the same CI checks and builds and
-smoke-tests that exact commit. Compatible releases can deploy through the
-`aaraj-production` environment; maintenance migrations require a manual
+smoke-tests that exact commit before deploying it through the
+`aaraj-production` environment. Maintenance migrations require a manual
 dispatch for the exact SHA. Publishing a GitHub
 Release page is optional and does not trigger another deployment. Configure
 the `aaraj-production` environment for `main` and scope the SSH credential to
@@ -309,8 +309,9 @@ until the repository's review rules are verified in GitHub.
    `bash infrastructure/production/host/install-migration-autostart.sh`.
    On an existing host, do this before using the updated deployment workflow.
    After review, dispatch the production workflow for the exact approved commit
-   SHA. CI runs on pushes; production deployment runs only from an explicit
-   `workflow_dispatch`. Configure required reviewers and deployment branch
+   SHA when performing the initial schema bootstrap or another maintenance
+   migration. Routine compatible `main` pushes deploy automatically after CI
+   and package smoke checks. Configure required reviewers and deployment branch
    restrictions for the `aaraj-production` GitHub environment in repository
    settings; the workflow file alone cannot enforce those controls. CI/CD starts
    the migration unit for the exact staged artifact and continues only after
