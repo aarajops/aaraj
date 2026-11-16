@@ -3,9 +3,10 @@ import Link from "next/link";
 import { ImageOff } from "lucide-react";
 import type { CatalogPublishedProductListItem } from "@aaraj/contracts";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatBdtPrice } from "@/lib/currency";
 import { ProductLinkStatus } from "@/features/catalog/product-link-status";
+import { ProductPrice } from "@/features/catalog/product-price";
 
 const PRODUCT_CARD_IMAGE_RATIO = "portrait";
 
@@ -89,18 +90,18 @@ export function ProductCard({
           <Heading className="line-clamp-2 text-xs font-medium uppercase leading-5 tracking-wide text-foreground group-hover/link:text-primary">
             {product.name}
           </Heading>
+          {!product.inStock && (
+            <Badge className="mt-2" variant="destructive">
+              Stock out
+            </Badge>
+          )}
           {product.price && (
-            <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-xs">
-              <span className="font-medium text-primary">
-                {product.priceVaries && "From "}
-                {formatBdtPrice(product.price)}
-              </span>
-              {product.compareAtPrice &&
-                product.compareAtPrice.amountBdt > product.price.amountBdt && (
-                  <del className="text-muted-foreground">
-                    {formatBdtPrice(product.compareAtPrice)}
-                  </del>
-                )}
+            <p className="mt-1">
+              <ProductPrice
+                compareAtPrice={product.compareAtPrice}
+                price={product.price}
+                startingAt={product.priceVaries}
+              />
             </p>
           )}
           <ProductLinkStatus />

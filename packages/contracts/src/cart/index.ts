@@ -36,7 +36,7 @@ export type CartLineImage = z.infer<typeof CartLineImageSchema>;
 export const CartLineSchema = z.strictObject({
   variantId: z.uuid(),
   quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
-  availability: z.enum(["available", "unavailable"]),
+  availability: z.enum(["available", "unavailable", "out_of_stock"]),
   image: CartLineImageSchema.nullable().optional(),
   product: CartProductSnapshotSchema,
 });

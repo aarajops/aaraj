@@ -24,6 +24,7 @@ import {
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
+import { inventoryStockBalance } from "../src/inventory/inventory-schema.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
 import { QuoteService } from "../src/quote/quote.service.js";
 import { geographySnapshot } from "../src/geography/geography-schema.js";
@@ -239,6 +240,17 @@ describe("authoritative Bangladesh quotes", () => {
       .set({ priceBdt: variantPrice, isActive: true })
       .where(eq(catalogProductVariant.id, variantId));
     await database.db
+      .insert(inventoryStockBalance)
+      .values({
+        variantId,
+        quantityOnHand: 100,
+        quantityReserved: 0,
+      })
+      .onConflictDoUpdate({
+        target: inventoryStockBalance.variantId,
+        set: { quantityOnHand: 100, quantityReserved: 0 },
+      });
+    await database.db
       .delete(deliveryTariffArea)
       .where(
         eq(deliveryTariffArea.tariffVersion, "AARAJ_DELIVERY_2026_10_07_V1"),
@@ -337,6 +349,31 @@ describe("authoritative Bangladesh quotes", () => {
       .set("Cookie", guest.cookie)
       .send({ ...quoteBody(), recipientPhone: "+8801712345678" })
       .expect(400);
+  });
+
+  it("rejects a quote when all units in the cart are reserved", async () => {
+    const guest = await newGuestCart();
+    await database.db
+      .update(inventoryStockBalance)
+      .set({ quantityOnHand: 1, quantityReserved: 1 })
+      .where(eq(inventoryStockBalance.variantId, variantId));
+
+    await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/cart`)
+      .set("Cookie", guest.cookie)
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body.lines[0]).toMatchObject({ availability: "out_of_stock" }),
+      );
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/quotes`)
+      .set("Origin", origin)
+      .set("Cookie", guest.cookie)
+      .send(quoteBody())
+      .expect(422)
+      .expect(({ body }) =>
+        expect(body.errorCode).toBe("QUOTE_CART_UNAVAILABLE"),
+      );
   });
 
   it("prunes expired unreferenced snapshots while preserving current quotes", async () => {

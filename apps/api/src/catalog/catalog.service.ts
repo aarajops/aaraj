@@ -67,6 +67,7 @@ import {
   catalogSizeGuideRow,
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
+import { inventoryStockBalance } from "../inventory/inventory-schema.js";
 import type {
   CatalogCartVariant,
   PurchasableCatalogVariant,
@@ -109,6 +110,7 @@ export class CatalogService {
         name: catalogProduct.name,
         color: catalogProductVariant.color,
         sizeLabel: catalogProductVariant.sizeLabel,
+        inStock: sql<boolean>`coalesce(${inventoryStockBalance.quantityOnHand}, 0) > coalesce(${inventoryStockBalance.quantityReserved}, 0)`,
         unitPriceBdt: catalogProductVariant.priceBdt,
         compareAtPriceBdt: catalogProductVariant.compareAtPriceBdt,
       })
@@ -116,6 +118,10 @@ export class CatalogService {
       .innerJoin(
         catalogProduct,
         eq(catalogProduct.id, catalogProductVariant.productId),
+      )
+      .leftJoin(
+        inventoryStockBalance,
+        eq(inventoryStockBalance.variantId, catalogProductVariant.id),
       )
       .where(
         and(
@@ -145,6 +151,7 @@ export class CatalogService {
           name: row.name,
           color: row.color,
           sizeLabel: row.sizeLabel,
+          inStock: row.inStock,
           unitPriceBdt: safeAmountBdt(row.unitPriceBdt),
           compareAtPriceBdt:
             row.compareAtPriceBdt === null
@@ -340,6 +347,7 @@ export class CatalogService {
         ),
         priceVaries:
           variantSummariesByProduct.get(product.id)?.priceVaries ?? false,
+        inStock: variantSummariesByProduct.get(product.id)?.inStock ?? false,
       })),
       filters: filterOptions,
     };
@@ -347,38 +355,34 @@ export class CatalogService {
 
   private async loadPublishedProductVariantSummaries(
     productIds: string[],
-  ): Promise<Map<string, { priceVaries: boolean }>> {
-    const summariesByProduct = new Map<string, Set<number>>();
+  ): Promise<Map<string, { priceVaries: boolean; inStock: boolean }>> {
     if (!productIds.length) return new Map();
 
     const rows = await this.database.db
       .select({
         productId: catalogProductVariant.productId,
-        priceBdt: catalogProductVariant.priceBdt,
+        priceVaries: sql<boolean>`count(distinct ${catalogProductVariant.priceBdt}) > 1`,
+        inStock: sql<boolean>`bool_or(coalesce(${inventoryStockBalance.quantityOnHand}, 0) > coalesce(${inventoryStockBalance.quantityReserved}, 0))`,
       })
       .from(catalogProductVariant)
+      .leftJoin(
+        inventoryStockBalance,
+        eq(inventoryStockBalance.variantId, catalogProductVariant.id),
+      )
       .where(
         and(
           inArray(catalogProductVariant.productId, productIds),
           eq(catalogProductVariant.isActive, true),
           isNotNull(catalogProductVariant.priceBdt),
         ),
-      );
-
-    for (const { productId, priceBdt } of rows) {
-      if (priceBdt === null) continue;
-      const prices = summariesByProduct.get(productId) ?? new Set<number>();
-      prices.add(priceBdt);
-      summariesByProduct.set(productId, prices);
-    }
+      )
+      .groupBy(catalogProductVariant.productId);
 
     return new Map(
-      [...summariesByProduct].map(([productId, prices]) => [
-        productId,
-        {
-          priceVaries: prices.size > 1,
-        },
-      ]),
+      rows.map(
+        ({ productId, priceVaries, inStock }) =>
+          [productId, { priceVaries, inStock }] as const,
+      ),
     );
   }
 
@@ -643,16 +647,43 @@ export class CatalogService {
         .limit(1);
       if (!product) throw new NotFoundException("Product not found");
       const detail = await loadProductDetail(transaction, product);
+      const stockRows = detail.variants.length
+        ? await transaction
+            .select({
+              variantId: inventoryStockBalance.variantId,
+              inStock: sql<boolean>`${inventoryStockBalance.quantityOnHand} > ${inventoryStockBalance.quantityReserved}`,
+            })
+            .from(inventoryStockBalance)
+            .where(
+              inArray(
+                inventoryStockBalance.variantId,
+                detail.variants.map(({ id }) => id),
+              ),
+            )
+        : [];
+      const inStockByVariant = new Map(
+        stockRows.map(
+          ({ variantId, inStock }) => [variantId, inStock] as const,
+        ),
+      );
       const variants = detail.variants.map(
         ({ id, color, sizeLabel, price, compareAtPrice }) => {
           if (!price) {
             throw new Error("Published product variant is missing its price.");
           }
-          return { id, color, sizeLabel, price, compareAtPrice };
+          return {
+            id,
+            color,
+            sizeLabel,
+            price,
+            compareAtPrice,
+            inStock: inStockByVariant.get(id) ?? false,
+          };
         },
       );
       return {
         ...detail,
+        inStock: variants.some(({ inStock }) => inStock),
         variants,
         sizeGuide: detail.sizeGuide,
       };

@@ -180,6 +180,9 @@ export default async function ProductPage({
               >
                 {product.name}
               </h1>
+              {!product.inStock && (
+                <Badge variant="destructive">Stock out</Badge>
+              )}
               {product.fit && (
                 <Badge className="w-fit" variant="secondary">
                   {product.fit} fit

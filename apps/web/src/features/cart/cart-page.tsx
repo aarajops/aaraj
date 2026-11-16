@@ -287,6 +287,14 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                             </del>
                           )}
                       </p>
+                      {line.availability === "out_of_stock" && (
+                        <p
+                          className="mt-2 text-sm text-destructive"
+                          role="status"
+                        >
+                          Stock out. Remove this item before checkout.
+                        </p>
+                      )}
                       {line.availability === "unavailable" && (
                         <p
                           className="mt-2 text-sm text-destructive"
@@ -299,9 +307,7 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                     </div>
                     <div className="flex items-center gap-3">
                       <Select
-                        disabled={
-                          mutating || line.availability === "unavailable"
-                        }
+                        disabled={mutating || line.availability !== "available"}
                         items={quantityOptions}
                         value={String(line.quantity)}
                         onValueChange={(value) => {
@@ -407,6 +413,11 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                         {line.product.color} · {line.product.sizeLabel} ·{" "}
                         {line.quantity} in guest cart
                       </p>
+                      {line.availability === "out_of_stock" && (
+                        <p className="mt-1 text-sm text-destructive">
+                          Stock out. Remove this item before checkout.
+                        </p>
+                      )}
                       {line.availability === "unavailable" && (
                         <p className="mt-1 text-sm text-destructive">
                           No longer available; remove this line.

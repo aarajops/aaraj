@@ -67,7 +67,7 @@ export class QuoteService {
     const owner = context.owner;
     if (context.cart.lines.some((line) => line.availability !== "available")) {
       throw new UnprocessableEntityException(
-        "Remove unavailable items before requesting a quote.",
+        "Remove unavailable or out-of-stock items before requesting a quote.",
         {
           errorCode: "QUOTE_CART_UNAVAILABLE",
         },

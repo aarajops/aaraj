@@ -1410,14 +1410,20 @@ describe("COD Orders and checkout", () => {
 
   it("rolls back every line and the Order if any variant lacks stock", async () => {
     const availableVariant = await createVariant(1);
-    const shortVariant = await createVariant(0);
+    const shortVariant = await createVariant(1);
     const cart = await newGuestCart([availableVariant, shortVariant]);
     const quote = await createQuote(cart.cookie);
     const key = randomUUID();
     const checkoutCookie = await prepareGuestCheckout(cart.cookie, key);
+
+    await database.db
+      .update(inventoryStockBalance)
+      .set({ quantityReserved: 1 })
+      .where(eq(inventoryStockBalance.variantId, shortVariant));
+
     await placeOrder(checkoutCookie, checkoutBody(quote.id), key).expect(409);
     expect((await stockFor(availableVariant)).quantityReserved).toBe(0);
-    expect((await stockFor(shortVariant)).quantityReserved).toBe(0);
+    expect((await stockFor(shortVariant)).quantityReserved).toBe(1);
     expect(
       await database.db
         .select()

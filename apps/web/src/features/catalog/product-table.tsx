@@ -13,7 +13,7 @@ import {
   AdminDataTable,
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
-import { formatBdtPrice } from "@/lib/currency";
+import { ProductPrice } from "@/features/catalog/product-price";
 import { Pencil } from "lucide-react";
 
 const columnHelper = createDataTableColumnHelper<CatalogProduct>();
@@ -66,15 +66,11 @@ export function ProductTable({
           },
           cell: ({ row }) =>
             row.original.price ? (
-              <div className="grid justify-items-end gap-0.5">
-                <span>{formatBdtPrice(row.original.price)}</span>
-                {row.original.compareAtPrice &&
-                  row.original.compareAtPrice.amountBdt >
-                    row.original.price.amountBdt && (
-                    <del className="text-xs text-muted-foreground">
-                      {formatBdtPrice(row.original.compareAtPrice)}
-                    </del>
-                  )}
+              <div className="flex justify-end">
+                <ProductPrice
+                  compareAtPrice={row.original.compareAtPrice}
+                  price={row.original.price}
+                />
               </div>
             ) : (
               "Price not set"

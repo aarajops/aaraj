@@ -249,7 +249,7 @@ export function OrderReview({
                 : ""}
               COD {humanize(order.collectionStatus)}
               {order.collectedAmountBdt !== null
-                ? ` (${order.collectedAmountBdt} / ${order.codAmountDueBdt} BDT)`
+                ? ` (${formatBdtPrice({ amountBdt: order.collectedAmountBdt })} / ${formatBdtPrice({ amountBdt: order.codAmountDueBdt })})`
                 : ""}
             </p>
           </div>
@@ -261,8 +261,8 @@ export function OrderReview({
             {order.collectionStatus !== "uncollected" && (
               <p className="text-sm text-muted-foreground">
                 {order.collectionStatus === "collected"
-                  ? `AARAJ recorded ${order.collectedAmountBdt} BDT collected.`
-                  : `AARAJ recorded ${order.collectedAmountBdt} BDT; the amount is under reconciliation.`}
+                  ? `AARAJ recorded ${formatBdtPrice({ amountBdt: order.collectedAmountBdt! })} collected.`
+                  : `AARAJ recorded ${formatBdtPrice({ amountBdt: order.collectedAmountBdt! })}; the amount is under reconciliation.`}
               </p>
             )}
           </div>
@@ -484,8 +484,11 @@ export function OrderReview({
             </label>
             {order.collectionStatus !== "uncollected" && (
               <p className="mt-3 text-sm" role="status">
-                {humanize(order.collectionStatus)}: {order.collectedAmountBdt} /{" "}
-                {order.codAmountDueBdt} BDT
+                {humanize(order.collectionStatus)}:{" "}
+                {formatBdtPrice({
+                  amountBdt: order.collectedAmountBdt!,
+                })}{" "}
+                / {formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
               </p>
             )}
             {error && (

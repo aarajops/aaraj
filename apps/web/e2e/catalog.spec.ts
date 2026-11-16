@@ -432,7 +432,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(
     page.getByRole("heading", { name: "Aaraj E2E Tee", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText("৳1,999–৳2,200", { exact: true })).toBeVisible();
+  await expect(page.getByText("From ৳1,999", { exact: true })).toBeVisible();
   await expect(
     page.getByText(
       "A test product used to verify the clothing catalog workflow.",

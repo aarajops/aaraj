@@ -1,7 +1,10 @@
-const bdtNumberFormat = new Intl.NumberFormat("en-BD", {
+const bdtPriceFormat = new Intl.NumberFormat("en-BD", {
+  currency: "BDT",
+  currencyDisplay: "narrowSymbol",
   maximumFractionDigits: 0,
+  style: "currency",
 });
 
 export function formatBdtPrice(price: { amountBdt: number }): string {
-  return `৳${bdtNumberFormat.format(price.amountBdt)}`;
+  return bdtPriceFormat.format(price.amountBdt);
 }

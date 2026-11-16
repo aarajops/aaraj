@@ -339,6 +339,16 @@ function SinglePageCheckout({
         );
         return;
       }
+      if (
+        reason instanceof OrderRequestError &&
+        reason.errorCode === "ORDER_ITEM_STOCK_UNAVAILABLE"
+      ) {
+        await refreshCart();
+        setCheckoutError(
+          "Stock out. Review your cart and remove the item before trying again.",
+        );
+        return;
+      }
       setCheckoutError(
         reason instanceof OrderRequestError || reason instanceof Error
           ? reason.message
@@ -541,7 +551,7 @@ function CheckoutOrderSummary({
   const setCartLine = useCartStore((state) => state.setLine);
   const removeCartLine = useCartStore((state) => state.removeLine);
   const hasUnavailableLines = cart.lines.some(
-    (line) => line.availability === "unavailable",
+    (line) => line.availability !== "available",
   );
   return (
     <aside
@@ -592,6 +602,9 @@ function CheckoutOrderSummary({
                   <p className="mt-1 text-sm text-muted-foreground">
                     {color} · {sizeLabel}
                   </p>
+                  {line.availability === "out_of_stock" && (
+                    <p className="mt-1 text-sm text-destructive">Stock out</p>
+                  )}
                   {line.availability === "unavailable" && (
                     <p className="mt-1 text-sm text-destructive">
                       No longer available
@@ -609,7 +622,7 @@ function CheckoutOrderSummary({
                   disabled={
                     isCartMutating ||
                     isSubmitting ||
-                    line.availability === "unavailable" ||
+                    line.availability !== "available" ||
                     line.quantity <= 1
                   }
                   onClick={() =>
@@ -632,7 +645,7 @@ function CheckoutOrderSummary({
                   disabled={
                     isCartMutating ||
                     isSubmitting ||
-                    line.availability === "unavailable" ||
+                    line.availability !== "available" ||
                     line.quantity >= MAX_CART_QUANTITY_PER_VARIANT
                   }
                   onClick={() =>

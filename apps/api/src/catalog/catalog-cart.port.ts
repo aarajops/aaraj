@@ -9,6 +9,7 @@ export type CatalogCartVariant = {
   name: string;
   color: string;
   sizeLabel: string;
+  inStock: boolean;
   unitPriceBdt: number;
   compareAtPriceBdt: number | null;
   currency: typeof CURRENCY;

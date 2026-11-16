@@ -20,13 +20,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AddToCart } from "@/features/cart/add-to-cart";
-import { formatBdtPrice } from "@/lib/currency";
 import { CURRENCY } from "@aaraj/contracts";
 import { catalogMeasurementLabels } from "@/features/catalog/size-guide-labels";
+import { ProductPrice } from "@/features/catalog/product-price";
 import { CircleHelp } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { sendEcommerceEvent } from "@/features/analytics/gtm-ecommerce";
+import { Badge } from "@/components/ui/badge";
 
 type ProductVariant = CatalogProductDetail["variants"][number];
 
@@ -49,6 +50,7 @@ export function ProductPurchase({
 }) {
   const viewedItemKey = useRef<string | null>(null);
   const searchParams = useSearchParams();
+  const hasAnyStock = variants.some(({ inStock }) => inStock);
   const colors = uniqueOptions(variants.map(({ color }) => color));
   const color =
     findOption(colors, searchParams.get("color") ?? initialColor) ??
@@ -88,13 +90,16 @@ export function ProductPurchase({
   const prices = [
     ...new Set(matchingVariants.map(({ price }) => price.amountBdt)),
   ].sort((left, right) => left - right);
-  const priceLabel = selectedVariant
-    ? formatBdtPrice(selectedVariant.price)
-    : prices.length === 1
-      ? formatBdtPrice({ amountBdt: prices[0]! })
-      : prices.length > 1
-        ? `${formatBdtPrice({ amountBdt: prices[0]! })}–${formatBdtPrice({ amountBdt: prices.at(-1)! })}`
-        : null;
+  const displayedPrice =
+    selectedVariant?.price ??
+    (prices.length > 0 ? { amountBdt: prices[0]! } : null);
+  const priceVaries = !selectedVariant && prices.length > 1;
+  const lowestPriceVariants = matchingVariants.filter(
+    (variant) => variant.price.amountBdt === prices[0],
+  );
+  const displayedCompareAtPrice = selectedVariant
+    ? selectedVariant.compareAtPrice
+    : getCommonCompareAtPrice(lowestPriceVariants);
   const viewItemPriceBdt =
     selectedVariant?.price.amountBdt ??
     (prices.length === 1 ? prices[0]! : null);
@@ -152,7 +157,10 @@ export function ProductPurchase({
   function selectSize(nextSize: string) {
     const matchingColors = uniqueOptions(
       variants
-        .filter((variant) => sameOption(variant.sizeLabel, nextSize))
+        .filter(
+          (variant) =>
+            sameOption(variant.sizeLabel, nextSize) && variant.inStock,
+        )
         .map(({ color: variantColor }) => variantColor),
     );
     const nextColor =
@@ -166,22 +174,14 @@ export function ProductPurchase({
 
   return (
     <div className="space-y-4">
-      {priceLabel && (
-        <div
-          aria-atomic="true"
-          aria-live="polite"
-          className="flex flex-wrap items-baseline gap-x-3"
-        >
-          <span className="text-xl font-semibold tracking-tight">
-            {priceLabel}
-          </span>
-          {selectedVariant?.compareAtPrice &&
-            selectedVariant.compareAtPrice.amountBdt >
-              selectedVariant.price.amountBdt && (
-              <del className="text-sm text-muted-foreground">
-                {formatBdtPrice(selectedVariant.compareAtPrice)}
-              </del>
-            )}
+      {displayedPrice && (
+        <div aria-atomic="true" aria-live="polite">
+          <ProductPrice
+            compareAtPrice={displayedCompareAtPrice}
+            price={displayedPrice}
+            startingAt={priceVaries}
+            size="prominent"
+          />
         </div>
       )}
 
@@ -194,17 +194,27 @@ export function ProductPurchase({
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Color</legend>
             <div className="flex flex-wrap gap-2">
-              {colors.map((option) => (
-                <Button
-                  aria-pressed={sameOption(color, option)}
-                  key={option}
-                  onClick={() => selectColor(option)}
-                  type="button"
-                  variant={sameOption(color, option) ? "default" : "outline"}
-                >
-                  {option}
-                </Button>
-              ))}
+              {colors.map((option) => {
+                const optionInStock = variants.some(
+                  (variant) =>
+                    sameOption(variant.color, option) && variant.inStock,
+                );
+                return (
+                  <Button
+                    aria-pressed={sameOption(color, option)}
+                    disabled={!optionInStock}
+                    key={option}
+                    onClick={() => selectColor(option)}
+                    type="button"
+                    variant={sameOption(color, option) ? "default" : "outline"}
+                  >
+                    {option}
+                    {!optionInStock && (
+                      <span className="ml-1 text-xs">Stock out</span>
+                    )}
+                  </Button>
+                );
+              })}
             </div>
           </fieldset>
         )}
@@ -223,17 +233,29 @@ export function ProductPurchase({
               className="flex flex-wrap gap-2"
               role="group"
             >
-              {sizeOptions.map((option) => (
-                <Button
-                  aria-pressed={sameOption(size, option)}
-                  key={option}
-                  onClick={() => selectSize(option)}
-                  type="button"
-                  variant={sameOption(size, option) ? "default" : "outline"}
-                >
-                  {option}
-                </Button>
-              ))}
+              {sizeOptions.map((option) => {
+                const optionInStock = variants.some(
+                  (variant) =>
+                    (!color || sameOption(variant.color, color)) &&
+                    sameOption(variant.sizeLabel, option) &&
+                    variant.inStock,
+                );
+                return (
+                  <Button
+                    aria-pressed={sameOption(size, option)}
+                    disabled={!optionInStock}
+                    key={option}
+                    onClick={() => selectSize(option)}
+                    type="button"
+                    variant={sameOption(size, option) ? "default" : "outline"}
+                  >
+                    {option}
+                    {!optionInStock && (
+                      <span className="ml-1 text-xs">Stock out</span>
+                    )}
+                  </Button>
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -242,7 +264,12 @@ export function ProductPurchase({
       {selectionPrompt && (
         <p className="text-sm text-muted-foreground">{selectionPrompt}</p>
       )}
-      <AddToCart variantId={selectedVariant?.id ?? null} />
+      {hasAnyStock && selectedVariant && !selectedVariant.inStock && (
+        <Badge variant="destructive">Stock out</Badge>
+      )}
+      <AddToCart
+        variantId={selectedVariant?.inStock ? selectedVariant.id : null}
+      />
       {whatsappHref && (
         <a
           className={buttonVariants({
@@ -386,6 +413,22 @@ function getSizeOptions(
     if (rightOrder !== undefined) return 1;
     return left.localeCompare(right);
   });
+}
+
+function getCommonCompareAtPrice(
+  variants: ProductVariant[],
+): ProductVariant["compareAtPrice"] {
+  const compareAtPrice = variants[0]?.compareAtPrice ?? null;
+  if (
+    !compareAtPrice ||
+    variants.some(
+      (variant) =>
+        variant.compareAtPrice?.amountBdt !== compareAtPrice.amountBdt,
+    )
+  ) {
+    return null;
+  }
+  return compareAtPrice;
 }
 
 function uniqueOptions(values: string[]): string[] {

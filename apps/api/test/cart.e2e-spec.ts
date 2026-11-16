@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { beforeEach, vi } from "vitest";
 import { API_V1_BASE_PATH, MAX_CART_LINES } from "@aaraj/contracts";
 import { auth } from "../src/auth/auth.js";
@@ -19,6 +19,7 @@ import {
   catalogProduct,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
+import { inventoryStockBalance } from "../src/inventory/inventory-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { getRedisClient } from "../src/platform/redis/redis-client.js";
 
@@ -141,9 +142,25 @@ describe("storefront cart", () => {
         })),
       )
       .returning({ id: catalogProductVariant.id });
+    await database.db.insert(inventoryStockBalance).values(
+      variants.map(({ id }) => ({
+        variantId: id,
+        quantityOnHand: 100,
+        quantityReserved: 0,
+      })),
+    );
   });
 
   beforeEach(async () => {
+    await database.db
+      .update(inventoryStockBalance)
+      .set({ quantityOnHand: 100, quantityReserved: 0 })
+      .where(
+        inArray(
+          inventoryStockBalance.variantId,
+          variants.map(({ id }) => id),
+        ),
+      );
     const prefix = process.env.THROTTLER_REDIS_KEY_PREFIX;
     if (!prefix) throw new Error("The E2E throttler prefix is missing.");
     const redis = getRedisClient();
@@ -296,6 +313,21 @@ describe("storefront cart", () => {
         expect(body.errorCode).toBe("CART_REVISION_CONFLICT");
         expect(body.currentRevision).toBe(1);
       });
+  });
+
+  it("marks a cart line out of stock when all units are reserved", async () => {
+    const created = await createGuestCart();
+    const variantId = variants[0]!.id;
+    await database.db
+      .update(inventoryStockBalance)
+      .set({ quantityOnHand: 1, quantityReserved: 1 })
+      .where(eq(inventoryStockBalance.variantId, variantId));
+
+    await cartGet(created.cookie)
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body.lines[0]).toMatchObject({ availability: "out_of_stock" }),
+      );
   });
 
   it("enforces the approved quantity and distinct-line caps without partial writes", async () => {

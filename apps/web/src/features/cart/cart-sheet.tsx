@@ -160,7 +160,7 @@ export function CartSheet() {
                             className="rounded-md"
                             disabled={
                               isMutating ||
-                              line.availability === "unavailable" ||
+                              line.availability !== "available" ||
                               line.quantity <= 1
                             }
                             onClick={() =>
@@ -182,7 +182,7 @@ export function CartSheet() {
                             className="rounded-md"
                             disabled={
                               isMutating ||
-                              line.availability === "unavailable" ||
+                              line.availability !== "available" ||
                               line.quantity >= MAX_CART_QUANTITY_PER_VARIANT
                             }
                             onClick={() =>
@@ -206,6 +206,14 @@ export function CartSheet() {
                           <Trash2 aria-hidden="true" />
                         </Button>
                       </div>
+                      {line.availability === "out_of_stock" && (
+                        <p
+                          className="mt-2 text-sm text-destructive"
+                          role="status"
+                        >
+                          Stock out. Remove this item before checkout.
+                        </p>
+                      )}
                       {line.availability === "unavailable" && (
                         <p
                           className="mt-2 text-sm text-destructive"

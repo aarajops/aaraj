@@ -61,6 +61,7 @@ const CartStoredStateSchema = z.strictObject({
 type CartStoredLine = z.infer<typeof CartStoredLineSchema>;
 type CartStoredState = z.infer<typeof CartStoredStateSchema>;
 type CartAvailabilityVariant = Pick<CatalogCartVariant, "variantId"> &
+  Partial<Pick<CatalogCartVariant, "inStock">> &
   Partial<Pick<CatalogCartVariant, "image">>;
 type CustomerCartHeader = Pick<
   typeof customerCart.$inferSelect,
@@ -1079,7 +1080,11 @@ export class CartService {
         return {
           ...line,
           ...(variant?.image ? { image: variant.image } : {}),
-          availability: variant ? "available" : "unavailable",
+          availability: !variant
+            ? "unavailable"
+            : variant.inStock === false
+              ? "out_of_stock"
+              : "available",
         };
       }),
     });

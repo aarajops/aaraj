@@ -79,6 +79,7 @@ export const CatalogProductVariantSchema = z.strictObject({
   sizeLabel: z.string(),
   price: CatalogPriceSchema,
   compareAtPrice: CatalogPriceSchema.nullable().default(null),
+  inStock: z.boolean(),
 });
 
 export const CatalogManagedProductVariantSchema = z.strictObject({
@@ -115,6 +116,7 @@ export type CatalogProduct = z.infer<typeof CatalogProductSchema>;
 
 export const CatalogPublishedProductSchema = CatalogProductSchema.extend({
   images: CatalogProductImageSchema.array().max(12),
+  inStock: z.boolean(),
 });
 export type CatalogPublishedProduct = z.infer<
   typeof CatalogPublishedProductSchema

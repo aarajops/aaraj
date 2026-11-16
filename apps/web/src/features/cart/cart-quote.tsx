@@ -381,7 +381,7 @@ export function CartQuote({
     upazilaId,
   ]);
   const hasUnavailableLines = cart.lines.some(
-    (line) => line.availability === "unavailable",
+    (line) => line.availability !== "available",
   );
 
   const deliveryLocation = (
@@ -401,7 +401,8 @@ export function CartQuote({
       </h2>
       {hasUnavailableLines && (
         <p className="mt-4 text-sm text-destructive" role="status">
-          Remove unavailable items from your cart before continuing.
+          Remove unavailable or out-of-stock items from your cart before
+          continuing.
         </p>
       )}
       {error && (

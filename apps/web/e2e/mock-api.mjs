@@ -292,6 +292,7 @@ const mediaFixtureProduct = {
   careInstructions: null,
   sizeGuideId: null,
   price: null,
+  inStock: false,
   isPublished: true,
   createdAt: "2026-10-07T00:00:00.000Z",
   updatedAt: "2026-10-07T00:00:00.000Z",
@@ -1608,6 +1609,10 @@ function productDetail(product, management = false) {
     ...(management
       ? {}
       : {
+          inStock: product.variants.some(
+            ({ isActive, price, inStock }) =>
+              isActive && price !== null && inStock !== false,
+          ),
           images: (product.images ?? []).map((image) => ({
             ...image,
             variantId: image.variantId ?? null,
@@ -1623,6 +1628,7 @@ function productDetail(product, management = false) {
               color: variant.color,
               sizeLabel: variant.sizeLabel,
               price: variant.price,
+              inStock: variant.inStock !== false,
             },
       ),
     sizeGuide: guide ?? null,
@@ -1779,6 +1785,7 @@ function sendPublishedProductPage(response, source, url) {
       return {
         ...summary(product),
         images: product.images ?? [],
+        inStock: purchasableVariants.some(({ inStock }) => inStock !== false),
         priceVaries:
           new Set(purchasableVariants.map(({ price }) => price.amountBdt))
             .size > 1,

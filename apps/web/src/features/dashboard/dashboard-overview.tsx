@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import CountUp from "@/components/ui/count-up";
+import { formatBdtPrice } from "@/lib/currency";
 import { DashboardActivityChart } from "./dashboard-activity-chart";
 import { MetricCard } from "./dashboard-metric-card";
 
@@ -218,13 +219,7 @@ export function DashboardOverviewView({
 }
 
 function CurrencyValue({ value }: { value: number }) {
-  return (
-    <>
-      <sup className="align-super text-xs text-primary">BDT</sup>
-      {"\u00a0"}
-      <CountUp duration={0.8} separator="," to={value} />
-    </>
-  );
+  return formatBdtPrice({ amountBdt: value });
 }
 
 function OperationRow({ label, value }: { label: string; value: number }) {

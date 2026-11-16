@@ -1234,7 +1234,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/\/admin\/inventory$/);
   await expect(smallVariantRow).toContainText("12");
   await page.goto(`/shop/products/${slug}`);
-  await expect(page.getByText("৳2,450–৳2,490", { exact: true })).toBeVisible();
+  await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
   await expect(
     page.getByText("A product configured in a real browser and database flow."),
   ).toBeVisible();
@@ -1246,9 +1246,12 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("button", { name: "S", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "M", exact: true }),
-  ).toBeVisible();
+  const outOfStockMedium = page.getByRole("button", {
+    name: "M Stock out",
+    exact: true,
+  });
+  await expect(outOfStockMedium).toBeVisible();
+  await expect(outOfStockMedium).toBeDisabled();
   await page.getByRole("button", { name: "Black", exact: true }).click();
   await expect
     .poll(() => ecommerceEventCount(page, "view_item", productName))
@@ -1987,6 +1990,7 @@ test("catalog operator configures a product through to storefront visibility", a
   );
   expect(deliveredOrderResponse.status()).toBe(200);
   const codAmountDueBdt = (await deliveredOrderResponse.json()).codAmountDueBdt;
+  const formattedCodAmount = `৳${Number(codAmountDueBdt).toLocaleString("en-BD")}`;
   await page.getByLabel("Amount collected (BDT)").fill(String(codAmountDueBdt));
   await page
     .getByLabel("Verification note")
@@ -1994,7 +1998,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Save COD reconciliation" }).click();
   await expect(
     page.getByRole("status").filter({
-      hasText: `Collected: ${codAmountDueBdt} / ${codAmountDueBdt} BDT`,
+      hasText: `Collected: ${formattedCodAmount} / ${formattedCodAmount}`,
     }),
   ).toBeVisible();
 
