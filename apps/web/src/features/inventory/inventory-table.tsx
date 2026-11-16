@@ -48,6 +48,11 @@ export function InventoryTable({
               <p className="text-sm text-muted-foreground">
                 {row.original.color} · {row.original.sizeLabel}
               </p>
+              {!row.original.isActive && (
+                <Badge className="mt-1" variant="outline">
+                  Retired variant
+                </Badge>
+              )}
             </div>
           ),
         }),
@@ -124,7 +129,7 @@ export function InventoryTable({
       )}
       pathname="/admin/inventory"
       query={query}
-      itemName="active variants"
+      itemName="product variants"
       searchPlaceholder="Product, SKU, color, or size"
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}

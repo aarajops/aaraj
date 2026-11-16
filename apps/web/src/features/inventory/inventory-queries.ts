@@ -4,7 +4,10 @@ import { headers } from "next/headers";
 import { getApiInternalUrl } from "@/lib/api-internal-url.mjs";
 import {
   API_V1_BASE_PATH,
+  InventoryAdjustmentHistoryPageSchema,
   InventoryListQuerySchema,
+  type InventoryAdjustmentHistoryPage,
+  type InventoryAdjustmentHistoryQuery,
   InventoryVariantPageSchema,
   InventoryVariantSchema,
   type InventoryListQuery,
@@ -95,6 +98,30 @@ export async function getManagedInventoryVariant(
 
     const result = InventoryVariantSchema.safeParse(await response.json());
     return result.success ? { variant: result.data } : { kind: "unavailable" };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
+export async function getManagedInventoryAdjustmentHistory(
+  variantId: string,
+  query: InventoryAdjustmentHistoryQuery,
+): Promise<{ page: InventoryAdjustmentHistoryPage } | { kind: "unavailable" }> {
+  try {
+    const search = new URLSearchParams({
+      limit: String(query.limit),
+      offset: String(query.offset),
+    });
+    const response = await fetch(
+      `${apiBaseUrl()}${API_V1_BASE_PATH}/inventory/manage/${encodeURIComponent(variantId)}/adjustments?${search}`,
+      { headers: await requestHeaders(), cache: "no-store" },
+    );
+    if (!response.ok) return { kind: "unavailable" };
+
+    const result = InventoryAdjustmentHistoryPageSchema.safeParse(
+      await response.json(),
+    );
+    return result.success ? { page: result.data } : { kind: "unavailable" };
   } catch {
     return { kind: "unavailable" };
   }

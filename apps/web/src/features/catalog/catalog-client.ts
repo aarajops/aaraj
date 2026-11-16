@@ -137,6 +137,7 @@ export function suggestCatalogProductSlug(name: string): Promise<Response> {
 
 export function updateCatalogProduct(
   productId: string,
+  editRevision: number,
   input: CatalogProductUpdateInput,
 ): Promise<Response> {
   return fetch(
@@ -144,10 +145,17 @@ export function updateCatalogProduct(
     {
       method: "PATCH",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": catalogProductEditEtag(productId, editRevision),
+      },
       body: JSON.stringify(input),
     },
   );
+}
+
+function catalogProductEditEtag(productId: string, revision: number): string {
+  return `"catalog-product:${productId}:r${revision}"`;
 }
 
 export function fetchManagedProductMedia(productId: string): Promise<Response> {
@@ -201,6 +209,16 @@ export function uploadCatalogProductMedia(
       credentials: "same-origin",
       body,
     },
+  );
+}
+
+export function retryCatalogProductMedia(
+  productId: string,
+  mediaId: string,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/products/manage/${encodeURIComponent(productId)}/media/${encodeURIComponent(mediaId)}/retry`,
+    { method: "POST", credentials: "same-origin" },
   );
 }
 

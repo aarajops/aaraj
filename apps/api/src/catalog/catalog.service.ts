@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  PreconditionFailedException,
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
 import type {
@@ -53,6 +54,7 @@ import {
   not,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
@@ -239,58 +241,34 @@ export class CatalogService {
       );
     }
 
-    if (
-      query.color?.length ||
-      query.size?.length ||
-      query.minPriceBdt !== undefined ||
-      query.maxPriceBdt !== undefined
-    ) {
-      const variantConditions = [
-        eq(catalogProductVariant.productId, catalogProduct.id),
-        eq(catalogProductVariant.isActive, true),
-      ];
-      if (query.color?.length) {
-        variantConditions.push(
-          inArray(
-            sql<string>`lower(btrim(${catalogProductVariant.color}))`,
-            query.color.map(normalize),
-          ),
-        );
-      }
-      if (query.size?.length) {
-        variantConditions.push(
-          inArray(
-            sql<string>`lower(btrim(${catalogProductVariant.sizeLabel}))`,
-            query.size.map(normalize),
-          ),
-        );
-      }
-      if (query.minPriceBdt !== undefined) {
-        variantConditions.push(
-          gte(catalogProductVariant.priceBdt, query.minPriceBdt),
-        );
-      }
-      if (query.maxPriceBdt !== undefined) {
-        variantConditions.push(
-          lte(catalogProductVariant.priceBdt, query.maxPriceBdt),
-        );
-      }
+    if (hasVariantFilters(query)) {
       conditions.push(
         exists(
           this.database.db
             .select({ id: catalogProductVariant.id })
             .from(catalogProductVariant)
-            .where(and(...variantConditions)),
+            .where(
+              and(
+                eq(catalogProductVariant.productId, catalogProduct.id),
+                ...publishedVariantFilterConditions(query),
+              ),
+            ),
         ),
       );
     }
 
-    const lowestVariantPrice = sql<number>`(
-      select min(${catalogProductVariant.priceBdt})
-      from ${catalogProductVariant}
-      where ${catalogProductVariant.productId} = ${catalogProduct.id}
-        and ${catalogProductVariant.isActive} = true
-    )`;
+    const matchingLowestVariantPrice = this.database.db
+      .select({
+        amountBdt: sql<number>`min(${catalogProductVariant.priceBdt})`,
+      })
+      .from(catalogProductVariant)
+      .where(
+        and(
+          eq(catalogProductVariant.productId, catalogProduct.id),
+          ...publishedVariantFilterConditions(query),
+        ),
+      );
+    const lowestVariantPrice = sql<number>`(${matchingLowestVariantPrice})`;
     const productOrder =
       query.sort === "price-ascending"
         ? [
@@ -330,7 +308,7 @@ export class CatalogService {
     const productIds = selectedRows.map(({ id }) => id);
     const [imagesByProduct, variantSummariesByProduct] = await Promise.all([
       this.loadPublishedProductImages(productIds),
-      this.loadPublishedProductVariantSummaries(productIds),
+      this.loadPublishedProductVariantSummaries(productIds, query),
     ]);
     const page = toProductPage(
       rows,
@@ -348,6 +326,10 @@ export class CatalogService {
         priceVaries:
           variantSummariesByProduct.get(product.id)?.priceVaries ?? false,
         inStock: variantSummariesByProduct.get(product.id)?.inStock ?? false,
+        matchedVariantPrice:
+          variantSummariesByProduct.get(product.id)?.price ?? null,
+        matchedVariantCompareAtPrice:
+          variantSummariesByProduct.get(product.id)?.compareAtPrice ?? null,
       })),
       filters: filterOptions,
     };
@@ -355,14 +337,26 @@ export class CatalogService {
 
   private async loadPublishedProductVariantSummaries(
     productIds: string[],
-  ): Promise<Map<string, { priceVaries: boolean; inStock: boolean }>> {
+    query: CatalogPublishedProductListQuery,
+  ): Promise<
+    Map<
+      string,
+      {
+        price: CatalogPrice | null;
+        compareAtPrice: CatalogPrice | null;
+        priceVaries: boolean;
+        inStock: boolean;
+      }
+    >
+  > {
     if (!productIds.length) return new Map();
 
     const rows = await this.database.db
       .select({
         productId: catalogProductVariant.productId,
-        priceVaries: sql<boolean>`count(distinct ${catalogProductVariant.priceBdt}) > 1`,
-        inStock: sql<boolean>`bool_or(coalesce(${inventoryStockBalance.quantityOnHand}, 0) > coalesce(${inventoryStockBalance.quantityReserved}, 0))`,
+        priceBdt: catalogProductVariant.priceBdt,
+        compareAtPriceBdt: catalogProductVariant.compareAtPriceBdt,
+        inStock: sql<boolean>`coalesce(${inventoryStockBalance.quantityOnHand}, 0) > coalesce(${inventoryStockBalance.quantityReserved}, 0)`,
       })
       .from(catalogProductVariant)
       .leftJoin(
@@ -372,17 +366,37 @@ export class CatalogService {
       .where(
         and(
           inArray(catalogProductVariant.productId, productIds),
-          eq(catalogProductVariant.isActive, true),
-          isNotNull(catalogProductVariant.priceBdt),
+          ...publishedVariantFilterConditions(query),
         ),
       )
-      .groupBy(catalogProductVariant.productId);
+      .orderBy(asc(catalogProductVariant.productId));
 
+    const byProduct = new Map<
+      string,
+      Array<{
+        priceBdt: number | null;
+        compareAtPriceBdt: number | null;
+        inStock: boolean;
+      }>
+    >();
+    for (const { productId, priceBdt, compareAtPriceBdt, inStock } of rows) {
+      const variants = byProduct.get(productId) ?? [];
+      variants.push({ priceBdt, compareAtPriceBdt, inStock });
+      byProduct.set(productId, variants);
+    }
     return new Map(
-      rows.map(
-        ({ productId, priceVaries, inStock }) =>
-          [productId, { priceVaries, inStock }] as const,
-      ),
+      [...byProduct].map(([productId, variants]) => {
+        const pricing = lowestVariantPricing(variants);
+        return [
+          productId,
+          {
+            ...pricing,
+            priceVaries:
+              new Set(variants.map(({ priceBdt }) => priceBdt)).size > 1,
+            inStock: variants.some(({ inStock }) => inStock),
+          },
+        ];
+      }),
     );
   }
 
@@ -766,7 +780,10 @@ export class CatalogService {
         .where(eq(catalogProduct.id, productId))
         .limit(1);
       if (!product) throw new NotFoundException("Product not found");
-      return loadProductDetail(transaction, product);
+      return {
+        ...(await loadProductDetail(transaction, product)),
+        editRevision: product.editRevision,
+      };
     });
   }
 
@@ -878,6 +895,7 @@ export class CatalogService {
     actor: AccessPrincipal,
     productId: string,
     input: CatalogProductUpdateInput,
+    expectedRevision: number,
   ) {
     const updated = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
@@ -893,6 +911,11 @@ export class CatalogService {
         .for("update")
         .limit(1);
       if (!current) throw new NotFoundException("Product not found");
+      if (current.editRevision !== expectedRevision) {
+        throw new PreconditionFailedException(
+          "This product changed after you opened it. Reload the latest version before saving.",
+        );
+      }
 
       const currentVariants = await transaction
         .select()
@@ -1007,6 +1030,7 @@ export class CatalogService {
           ...(input.isPublished !== undefined
             ? { isPublished: input.isPublished }
             : {}),
+          editRevision: current.editRevision + 1,
           updatedAt: new Date(),
         };
         const [product] = await transaction
@@ -1036,14 +1060,10 @@ export class CatalogService {
               : {}),
           },
         });
-        const category = product.categoryId
-          ? await loadCategoryReference(transaction, product.categoryId)
-          : null;
-        const lowestVariantPricing = await loadProductVariantPricing(
-          transaction,
-          product.id,
-        );
-        return toCatalogProduct(product, category, lowestVariantPricing);
+        return {
+          ...(await loadProductDetail(transaction, product)),
+          editRevision: product.editRevision,
+        };
       } catch (error) {
         if (isUniqueViolation(error)) throw uniqueConflict(error);
         throw error;
@@ -1066,6 +1086,47 @@ function filterOptionsForCategory(
     sizes: facets?.sizes ?? [],
     priceRange: facets?.priceRange ?? null,
   };
+}
+
+function hasVariantFilters(query: CatalogPublishedProductListQuery): boolean {
+  return Boolean(
+    query.color?.length ||
+    query.size?.length ||
+    query.minPriceBdt !== undefined ||
+    query.maxPriceBdt !== undefined,
+  );
+}
+
+function publishedVariantFilterConditions(
+  query: CatalogPublishedProductListQuery,
+): SQL[] {
+  const conditions: SQL[] = [
+    eq(catalogProductVariant.isActive, true),
+    isNotNull(catalogProductVariant.priceBdt),
+  ];
+  if (query.color?.length) {
+    conditions.push(
+      inArray(
+        sql<string>`lower(btrim(${catalogProductVariant.color}))`,
+        query.color.map(normalize),
+      ),
+    );
+  }
+  if (query.size?.length) {
+    conditions.push(
+      inArray(
+        sql<string>`lower(btrim(${catalogProductVariant.sizeLabel}))`,
+        query.size.map(normalize),
+      ),
+    );
+  }
+  if (query.minPriceBdt !== undefined) {
+    conditions.push(gte(catalogProductVariant.priceBdt, query.minPriceBdt));
+  }
+  if (query.maxPriceBdt !== undefined) {
+    conditions.push(lte(catalogProductVariant.priceBdt, query.maxPriceBdt));
+  }
+  return conditions;
 }
 
 function mergePriceRanges(
@@ -1314,7 +1375,7 @@ async function reconcileVariants(
 async function loadProductDetail(
   transaction: AuditTransaction,
   product: typeof catalogProduct.$inferSelect,
-): Promise<CatalogManagedProductDetail> {
+): Promise<Omit<CatalogManagedProductDetail, "editRevision">> {
   const loadedVariantRows = await transaction
     .select({ variant: catalogProductVariant })
     .from(catalogProductVariant)

@@ -14,9 +14,11 @@ import { Session, type UserSession } from "@thallesp/nestjs-better-auth";
 import { ApiCookieAuth } from "@nestjs/swagger";
 import {
   InventoryAdjustmentInputSchema,
+  InventoryAdjustmentHistoryQuerySchema,
   InventoryListQuerySchema,
   InventoryVariantIdSchema,
   type InventoryAdjustmentInput,
+  type InventoryAdjustmentHistoryQuery,
   type InventoryListQuery,
 } from "@aaraj/contracts";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
@@ -45,6 +47,17 @@ export class InventoryController {
     @Param("variantId", { schema: InventoryVariantIdSchema }) variantId: string,
   ) {
     return this.inventory.findForManagement(session.user, variantId);
+  }
+
+  @Get("manage/:variantId/adjustments")
+  @Header("Cache-Control", "no-store")
+  listAdjustmentHistory(
+    @Session() session: UserSession,
+    @Param("variantId", { schema: InventoryVariantIdSchema }) variantId: string,
+    @Query({ schema: InventoryAdjustmentHistoryQuerySchema })
+    query: InventoryAdjustmentHistoryQuery,
+  ) {
+    return this.inventory.listAdjustmentHistory(session.user, variantId, query);
   }
 
   @Post("manage/:variantId/adjustments")

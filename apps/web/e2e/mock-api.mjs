@@ -242,6 +242,7 @@ const managedInventory = [
     productName: "Aaraj Classic Tee",
     color: "Black",
     sizeLabel: "S",
+    isActive: true,
     quantityOnHand: 24,
     quantityReserved: 3,
     quantityAvailable: 21,
@@ -253,6 +254,7 @@ const managedInventory = [
     productName: "Aaraj Classic Tee",
     color: "Black",
     sizeLabel: "M",
+    isActive: true,
     quantityOnHand: 18,
     quantityReserved: 2,
     quantityAvailable: 16,
@@ -264,6 +266,7 @@ const managedInventory = [
     productName: "Aaraj Essential Hoodie",
     color: "Grey",
     sizeLabel: "M",
+    isActive: true,
     quantityOnHand: 0,
     quantityReserved: 0,
     quantityAvailable: 0,
@@ -324,9 +327,16 @@ const mediaFixtureProduct = {
   sizeGuide: null,
 };
 
-function send(response, status, body) {
-  response.writeHead(status, { "Content-Type": "application/json" });
+function send(response, status, body, headers = {}) {
+  response.writeHead(status, {
+    "Content-Type": "application/json",
+    ...headers,
+  });
   response.end(JSON.stringify(body));
+}
+
+function productEditEtag(product) {
+  return `"catalog-product:${product.id}:r${product.editRevision}"`;
 }
 
 function roleFromCookie(cookie = "") {
@@ -1211,7 +1221,10 @@ const server = createServer(async (request, response) => {
       send(response, 404, { statusCode: 404, message: "Product not found" });
       return;
     }
-    send(response, 200, productDetail(product, true));
+    send(response, 200, productDetail(product, true), {
+      ETag: productEditEtag(product),
+      "Cache-Control": "no-store",
+    });
     return;
   }
 
@@ -1304,6 +1317,7 @@ const server = createServer(async (request, response) => {
       careInstructions: body.careInstructions ?? null,
       sizeGuideId: body.sizeGuideId ?? null,
       isPublished: body.isPublished ?? false,
+      editRevision: 1,
       createdAt: now,
       updatedAt: now,
       variants: (body.variants ?? []).map((variant) => ({
@@ -1355,6 +1369,21 @@ const server = createServer(async (request, response) => {
     const product = products.find(({ id }) => id === productPath[1]);
     if (!product) {
       send(response, 404, { statusCode: 404, message: "Product not found" });
+      return;
+    }
+    if (!request.headers["if-match"]) {
+      send(response, 428, {
+        statusCode: 428,
+        message: "If-Match is required. Reload the product before saving.",
+      });
+      return;
+    }
+    if (request.headers["if-match"] !== productEditEtag(product)) {
+      send(response, 412, {
+        statusCode: 412,
+        message:
+          "This product changed after you opened it. Reload the latest version before saving.",
+      });
       return;
     }
     const parsed = CatalogProductUpdateSchema.safeParse(
@@ -1428,6 +1457,7 @@ const server = createServer(async (request, response) => {
       sizeGuideId:
         body.sizeGuideId !== undefined ? body.sizeGuideId : product.sizeGuideId,
       isPublished: body.isPublished ?? product.isPublished,
+      editRevision: product.editRevision + 1,
       variants,
       updatedAt: new Date().toISOString(),
     };
@@ -1447,7 +1477,9 @@ const server = createServer(async (request, response) => {
       return;
     }
     Object.assign(product, candidate);
-    send(response, 200, summary(product));
+    send(response, 200, productDetail(product, true), {
+      ETag: productEditEtag(product),
+    });
     return;
   }
 
@@ -1606,6 +1638,7 @@ function productDetail(product, management = false) {
   const guide = sizeGuides.find(({ id }) => id === product.sizeGuideId);
   return {
     ...summary(product),
+    ...(management ? { editRevision: product.editRevision } : {}),
     ...(management
       ? {}
       : {
@@ -1638,6 +1671,7 @@ function productDetail(product, management = false) {
 function summary(product) {
   const fields = { ...product };
   delete fields.variants;
+  delete fields.editRevision;
   const price = startingPrice(product);
   return {
     ...fields,
@@ -1779,16 +1813,39 @@ function sendPublishedProductPage(response, source, url) {
   const candidateNextOffset = query.offset + pageRows.length;
   send(response, 200, {
     products: pageRows.map((product) => {
-      const purchasableVariants = product.variants.filter(
-        ({ isActive, price }) => isActive && price !== null,
+      const purchasableVariants = product.variants.filter((variant) =>
+        matchesPublishedVariant(variant, query),
       );
+      const matchedPrices = purchasableVariants.map(
+        ({ price }) => price.amountBdt,
+      );
+      const matchedPrice = matchedPrices.length
+        ? Math.min(...matchedPrices)
+        : null;
+      const lowestVariants = purchasableVariants.filter(
+        ({ price }) => price.amountBdt === matchedPrice,
+      );
+      const matchedCompareAtPrices = new Set(
+        lowestVariants.map(
+          ({ compareAtPrice }) => compareAtPrice?.amountBdt ?? null,
+        ),
+      );
+      const matchedCompareAtPrice =
+        matchedCompareAtPrices.size === 1
+          ? [...matchedCompareAtPrices][0]
+          : null;
       return {
         ...summary(product),
         images: product.images ?? [],
         inStock: purchasableVariants.some(({ inStock }) => inStock !== false),
-        priceVaries:
-          new Set(purchasableVariants.map(({ price }) => price.amountBdt))
-            .size > 1,
+        priceVaries: new Set(matchedPrices).size > 1,
+        matchedVariantPrice:
+          matchedPrice === null ? null : { amountBdt: matchedPrice },
+        matchedVariantCompareAtPrice:
+          matchedCompareAtPrice === null ||
+          matchedCompareAtPrice <= matchedPrice
+            ? null
+            : { amountBdt: matchedCompareAtPrice },
       };
     }),
     limit: query.limit,
@@ -1817,6 +1874,20 @@ function sendPublishedProductPage(response, source, url) {
       priceRange: getPublishedPriceRange(facetSource),
     },
   });
+}
+
+function matchesPublishedVariant(variant, query) {
+  if (!variant.isActive || variant.price === null) return false;
+  const colors = (query.color ?? []).map(normalize);
+  const sizes = (query.size ?? []).map(normalize);
+  return (
+    (!colors.length || colors.includes(normalize(variant.color))) &&
+    (!sizes.length || sizes.includes(normalize(variant.sizeLabel))) &&
+    (query.minPriceBdt === undefined ||
+      variant.price.amountBdt >= query.minPriceBdt) &&
+    (query.maxPriceBdt === undefined ||
+      variant.price.amountBdt <= query.maxPriceBdt)
+  );
 }
 
 function publicCategoryFilters(source) {

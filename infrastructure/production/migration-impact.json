@@ -38,5 +38,6 @@
   "0062_order_query_indexes_and_address_snapshot.sql": "maintenance",
   "0063_order_manual_discount.sql": "maintenance",
   "0064_confirmed_order_return_to_pending.sql": "compatible",
-  "0065_encrypt_order_address_snapshots.sql": "maintenance"
+  "0065_encrypt_order_address_snapshots.sql": "maintenance",
+  "0066_catalog_product_edit_revision.sql": "compatible"
 }

@@ -8,11 +8,12 @@ export type InventoryCatalogVariant = {
   productName: string;
   color: string;
   sizeLabel: string;
+  isActive: boolean;
 };
 
 export interface CatalogInventoryPort {
-  listActiveVariants(
+  listVariants(
     query: Pick<InventoryListQuery, "limit" | "offset" | "search">,
   ): Promise<{ variants: InventoryCatalogVariant[]; hasMore: boolean }>;
-  findActiveVariant(variantId: string): Promise<InventoryCatalogVariant | null>;
+  findVariant(variantId: string): Promise<InventoryCatalogVariant | null>;
 }

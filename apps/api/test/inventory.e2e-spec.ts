@@ -235,6 +235,7 @@ describe("variant inventory adjustments", () => {
           id: variantId,
           productName: "Inventory E2E product",
           sku: expect.stringContaining("INV-"),
+          isActive: true,
           quantityOnHand: 0,
           quantityReserved: 0,
           quantityAvailable: 0,
@@ -309,6 +310,43 @@ describe("variant inventory adjustments", () => {
     ]);
     expect(movements).toHaveLength(2);
     expect(audit).toHaveLength(2);
+
+    const latestAdjustment = await request(app.getHttpServer())
+      .get(`/api/v1/inventory/manage/${variantId}/adjustments?limit=1`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(latestAdjustment.body).toMatchObject({
+      limit: 1,
+      offset: 0,
+      hasMore: true,
+      nextOffset: 1,
+    });
+    expect(latestAdjustment.body.movements).toHaveLength(1);
+    expect(latestAdjustment.body.movements[0]).toMatchObject({
+      variantId,
+      actorId: staff.id,
+      actorName: expect.any(String),
+      delta: expect.any(Number),
+      quantityOnHand: expect.any(Number),
+      reason: expect.any(String),
+    });
+
+    const earlierAdjustment = await request(app.getHttpServer())
+      .get(`/api/v1/inventory/manage/${variantId}/adjustments?limit=1&offset=1`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(earlierAdjustment.body).toMatchObject({
+      limit: 1,
+      offset: 1,
+      hasMore: false,
+      nextOffset: null,
+    });
+    expect(earlierAdjustment.body.movements).toHaveLength(1);
+    expect(
+      new Date(latestAdjustment.body.movements[0].createdAt).getTime(),
+    ).toBeGreaterThanOrEqual(
+      new Date(earlierAdjustment.body.movements[0].createdAt).getTime(),
+    );
   });
 
   it("rejects integer overflow and safely replays a committed command after deactivation", async () => {
@@ -348,7 +386,28 @@ describe("variant inventory adjustments", () => {
     await request(app.getHttpServer())
       .get(`/api/v1/inventory/manage/${variantId}`)
       .set("Cookie", staff.cookie)
-      .expect(404);
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.isActive).toBe(false);
+        expect(body.quantityOnHand).toBe(2_147_483_646);
+      });
+    const retiredInventory = await request(app.getHttpServer())
+      .get("/api/v1/inventory/manage?search=INV-")
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(retiredInventory.body.variants).toContainEqual(
+      expect.objectContaining({ id: variantId, isActive: false }),
+    );
+    await adjustment(
+      randomUUID(),
+      1,
+      "Reject receipt for retired variant",
+    ).expect(400);
+    await adjustment(
+      randomUUID(),
+      -1,
+      "Reconcile retired variant stock",
+    ).expect(201);
   });
 
   it("reserves single and multiple variants, aggregates duplicates, and replays commands", async () => {

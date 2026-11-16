@@ -1,21 +1,28 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
   Header,
+  HttpException,
+  HttpStatus,
+  Headers,
   HttpCode,
   Param,
   Patch,
   Post,
   Query,
+  Res,
   StandardSchemaValidationPipe,
   StreamableFile,
   UploadedFile,
   UseInterceptors,
   UseGuards,
   UsePipes,
+  PreconditionFailedException,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiCookieAuth } from "@nestjs/swagger";
 import {
@@ -79,8 +86,17 @@ export class CatalogController {
   findForManagement(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogProductIdSchema }) productId: string,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.catalog.findForManagement(session.user, productId);
+    return this.catalog
+      .findForManagement(session.user, productId)
+      .then((product) => {
+        response.setHeader(
+          "ETag",
+          catalogProductEditEtag(product.id, product.editRevision),
+        );
+        return product;
+      });
   }
 
   @Get("manage/:productId/media")
@@ -138,6 +154,21 @@ export class CatalogController {
     @UploadedFile() file: CatalogMediaUploadFile | undefined,
   ) {
     return this.catalogMedia.upload(session.user, productId, input, file);
+  }
+
+  @Post("manage/:productId/media/:mediaId/retry")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  retryMediaUpload(
+    @Session() session: UserSession,
+    @Param("productId", { schema: CatalogProductIdSchema }) productId: string,
+    @Param("mediaId", { schema: CatalogProductIdSchema }) mediaId: string,
+  ) {
+    return this.catalogMedia.retryPendingUpload(
+      session.user,
+      productId,
+      mediaId,
+    );
   }
 
   @Patch("manage/:productId/media/order")
@@ -218,7 +249,46 @@ export class CatalogController {
     @Param("id", { schema: CatalogProductIdSchema }) productId: string,
     @Body({ schema: CatalogProductUpdateSchema })
     input: CatalogProductUpdateInput,
+    @Headers("if-match") ifMatch: string | undefined,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.catalog.update(session.user, productId, input);
+    if (ifMatch === undefined) {
+      throw new HttpException(
+        "If-Match is required. Reload the product before saving.",
+        HttpStatus.PRECONDITION_REQUIRED,
+      );
+    }
+    const match = /^"catalog-product:([0-9a-f-]{36}):r([1-9][0-9]*)"$/i.exec(
+      ifMatch,
+    );
+    if (!match) {
+      throw new BadRequestException(
+        "If-Match must contain this product's current ETag.",
+      );
+    }
+    if (match[1]?.toLowerCase() !== productId.toLowerCase()) {
+      throw new PreconditionFailedException(
+        "If-Match does not match this product.",
+      );
+    }
+    const expectedRevision = Number(match[2]);
+    if (!Number.isSafeInteger(expectedRevision)) {
+      throw new PreconditionFailedException(
+        "If-Match does not match the current product revision.",
+      );
+    }
+    return this.catalog
+      .update(session.user, productId, input, expectedRevision)
+      .then((product) => {
+        response.setHeader(
+          "ETag",
+          catalogProductEditEtag(product.id, product.editRevision),
+        );
+        return product;
+      });
   }
+}
+
+function catalogProductEditEtag(productId: string, revision: number): string {
+  return `"catalog-product:${productId}:r${revision}"`;
 }

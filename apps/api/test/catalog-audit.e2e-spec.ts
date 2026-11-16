@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
@@ -27,6 +28,8 @@ import { getPublishedFilterOptionsCacheKey } from "../src/catalog/published-filt
 type Account = { id: string; email: string; cookie: string };
 const origin = "http://localhost:3000";
 const password = "aaraj-e2e-password-123";
+const productEtag = (productId: string, revision: number) =>
+  `"catalog-product:${productId}:r${revision}"`;
 
 describe("catalog and security audit", () => {
   let app: NestExpressApplication;
@@ -83,6 +86,70 @@ describe("catalog and security audit", () => {
 
   afterAll(async () => {
     await app?.close();
+  });
+
+  it("requires a current product ETag and rejects stale product edits", async () => {
+    const created = await request(app.getHttpServer())
+      .post("/api/v1/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: "revision-checked-product",
+        name: "Revision checked product",
+        audience: "unisex",
+        reason: "Create edit revision test product",
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({ name: "No precondition", reason: "Check required ETag" })
+      .expect(428);
+
+    const initial = await request(app.getHttpServer())
+      .get(`/api/v1/catalog/products/manage/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(initial.body.editRevision).toBe(1);
+    expect(initial.headers.etag).toBe(productEtag(created.body.id, 1));
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", productEtag(randomUUID(), 1))
+      .send({ name: "Wrong resource", reason: "Check ETag resource scope" })
+      .expect(412);
+
+    const saved = await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", initial.headers.etag!)
+      .send({ description: "Saved by editor one", reason: "Test revision" })
+      .expect(200);
+    expect(saved.headers.etag).toBe(productEtag(created.body.id, 2));
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", initial.headers.etag!)
+      .send({ name: "Stale overwrite", reason: "Test stale revision" })
+      .expect(412);
+
+    const latest = await request(app.getHttpServer())
+      .get(`/api/v1/catalog/products/manage/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(latest.body.name).toBe("Revision checked product");
+    expect(latest.body.description).toBe("Saved by editor one");
+    expect(latest.body.editRevision).toBe(2);
+    await database.db
+      .delete(catalogProduct)
+      .where(eq(catalogProduct.id, created.body.id as string));
   });
 
   it("protects drafts, audits catalog changes, and exposes audit only to superadmins", async () => {
@@ -541,6 +608,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
+      .set("If-Match", productEtag(created.body.id, 1))
       .send({ isPublished: true, reason: "Reject a missing variant price" })
       .expect(400);
 
@@ -548,6 +616,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
+      .set("If-Match", productEtag(created.body.id, 1))
       .send({
         variants: [
           {
@@ -592,12 +661,14 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
+      .set("If-Match", productEtag(created.body.id, 1))
       .send({ isPublished: true, reason: "Approved for storefront" })
       .expect(400);
-    await request(app.getHttpServer())
+    const published = await request(app.getHttpServer())
       .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
+      .set("If-Match", productEtag(created.body.id, 1))
       .send({
         variants: [
           {
@@ -612,10 +683,12 @@ describe("catalog and security audit", () => {
         reason: "Set price and publish product",
       })
       .expect(200);
+    expect(published.headers.etag).toBe(productEtag(created.body.id, 2));
     await request(app.getHttpServer())
       .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
+      .set("If-Match", productEtag(created.body.id, 2))
       .send({
         name: "Aaraj City Tee",
         fabricComposition: "100% cotton",
@@ -821,6 +894,10 @@ describe("catalog and security audit", () => {
         (product: { slug: string }) => product.slug,
       ),
     ).toEqual(["variant-filter-probe"]);
+    expect(matchingPriceVariants.body.products[0]).toMatchObject({
+      price: { amountBdt: 1999 },
+      matchedVariantPrice: { amountBdt: 2299 },
+    });
 
     const ascendingPrices = await request(app.getHttpServer())
       .get("/api/v1/catalog/products?category=t-shirts&sort=price-ascending")
@@ -902,6 +979,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/products/${variantFilterProbe.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
+      .set("If-Match", productEtag(variantFilterProbe.body.id, 1))
       .send({
         variants: [
           {
@@ -1185,6 +1263,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/products/${legacyProduct.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
+      .set("If-Match", productEtag(legacyProduct.id, 1))
       .send({ isPublished: false, reason: "Unpublish legacy catalog row" })
       .expect(200);
   });

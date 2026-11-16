@@ -38,6 +38,7 @@ import {
   fetchManagedProductMedia,
   managedProductMediaPreviewUrl,
   reorderCatalogProductMedia,
+  retryCatalogProductMedia,
   uploadCatalogProductMedia,
 } from "@/features/catalog/catalog-client";
 import {
@@ -372,6 +373,38 @@ export function CatalogMediaManager({
     } catch {
       await loadMedia();
       setProblem("Could not reach the API. Retry with the same original file.");
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  async function retryStoredUpload(item: CatalogMedia) {
+    setOperation(`upload:${item.id}`);
+    setProblem(null);
+    try {
+      const response = await retryCatalogProductMedia(productId, item.id);
+      if (!response.ok) {
+        const apiError = await readApiErrorResponse(response);
+        setProblem(
+          getApiErrorMessage(apiError) ??
+            "The saved upload could not be recovered. Choose the original file to retry it.",
+        );
+        await loadMedia();
+        return;
+      }
+      const parsed = CatalogMediaSchema.safeParse(await response.json());
+      if (!parsed.success) {
+        setProblem("The API returned an invalid media response.");
+        await loadMedia();
+        return;
+      }
+      await loadMedia();
+      toast.add({ title: "Image upload recovered", type: "success" });
+    } catch {
+      await loadMedia();
+      setProblem(
+        "Could not reach the API. Retry this saved upload or choose the original file.",
+      );
     } finally {
       setOperation(null);
     }
@@ -749,8 +782,18 @@ export function CatalogMediaManager({
                         item.status === "processing") && (
                         <div className="mt-3 grid gap-2">
                           <p className="text-sm text-muted-foreground">
-                            Select the original file to retry.
+                            Retry from the securely stored source, or choose the
+                            original file if that source is unavailable.
                           </p>
+                          <Button
+                            disabled={operation !== null}
+                            onClick={() => void retryStoredUpload(item)}
+                            type="button"
+                            variant="outline"
+                          >
+                            <RefreshCw aria-hidden="true" />
+                            Retry saved upload
+                          </Button>
                           <Input
                             accept="image/jpeg,image/png,image/webp"
                             aria-label={`Choose original file to retry ${item.altText}`}

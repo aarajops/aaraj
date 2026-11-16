@@ -1,5 +1,6 @@
 import {
   API_V1_BASE_PATH,
+  type InventoryAdjustmentHistoryQuery,
   type InventoryAdjustmentInput,
   type InventoryListQuery,
 } from "@aaraj/contracts";
@@ -29,6 +30,22 @@ export function fetchManagedInventoryVariant(
     cache: "no-store",
     credentials: "same-origin",
   });
+}
+
+export function fetchInventoryAdjustmentHistory(
+  variantId: string,
+  query: InventoryAdjustmentHistoryQuery,
+): Promise<Response> {
+  const search = new URLSearchParams({
+    limit: String(query.limit),
+    offset: String(query.offset),
+  });
+  return fetch(
+    inventoryPath(
+      `/manage/${encodeURIComponent(variantId)}/adjustments?${search}`,
+    ),
+    { cache: "no-store", credentials: "same-origin" },
+  );
 }
 
 export function createInventoryAdjustment(

@@ -6,6 +6,7 @@ import {
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -15,6 +16,16 @@ export type UploadedImageContentType =
   "image/jpeg" | "image/png" | "image/webp";
 export type PublishedImageContentType =
   "image/jpeg" | "image/png" | "image/webp";
+export type CatalogMediaObjectPrefix =
+  | "quarantine/"
+  | "published/"
+  | `quarantine/${string}/`
+  | `published/${string}/`;
+
+export interface CatalogMediaObjectPage {
+  objects: Array<{ key: string; lastModified: Date | undefined }>;
+  nextContinuationToken: string | undefined;
+}
 
 // Bound R2 work for the current 10 MiB upload and 3 MiB rendition limits.
 // These are operation safeguards, not product latency targets.
@@ -152,6 +163,81 @@ export class R2Storage implements OnApplicationShutdown, OnModuleInit {
     }
   }
 
+  async listCatalogMediaObjectsPage(input: {
+    prefix: CatalogMediaObjectPrefix;
+    continuationToken?: string;
+    maxKeys: number;
+  }): Promise<CatalogMediaObjectPage> {
+    if (
+      !isCatalogMediaObjectPrefix(input.prefix) ||
+      !Number.isInteger(input.maxKeys) ||
+      input.maxKeys < 1 ||
+      input.maxKeys > 1000
+    ) {
+      throw new Error("Invalid catalog media object listing request.");
+    }
+
+    const storage = this.getStorage();
+    const response = await storage.client.send(
+      new ListObjectsV2Command({
+        Bucket: storage.bucketName,
+        Prefix: input.prefix,
+        MaxKeys: input.maxKeys,
+        ...(input.continuationToken
+          ? { ContinuationToken: input.continuationToken }
+          : {}),
+      }),
+      requestOptions(),
+    );
+    const nextContinuationToken = response.IsTruncated
+      ? response.NextContinuationToken
+      : undefined;
+    if (response.IsTruncated && !nextContinuationToken) {
+      throw new Error("R2 returned a truncated listing without a cursor.");
+    }
+
+    return {
+      objects: (response.Contents ?? []).flatMap((object) =>
+        typeof object.Key === "string"
+          ? [{ key: object.Key, lastModified: object.LastModified }]
+          : [],
+      ),
+      nextContinuationToken,
+    };
+  }
+
+  async listCatalogMediaObjectsForId(mediaId: string): Promise<string[]> {
+    if (!UUID_PATTERN.test(mediaId)) {
+      throw new Error("Invalid catalog media identifier.");
+    }
+
+    const prefixes: CatalogMediaObjectPrefix[] = [
+      `quarantine/${mediaId}/`,
+      `published/${mediaId}/`,
+    ];
+    const keys = new Set<string>();
+    for (const prefix of prefixes) {
+      let continuationToken: string | undefined;
+      do {
+        const page = await this.listCatalogMediaObjectsPage({
+          prefix,
+          ...(continuationToken ? { continuationToken } : {}),
+          maxKeys: 100,
+        });
+        for (const { key } of page.objects) {
+          if (isCatalogMediaObjectKeyForId(key, mediaId)) keys.add(key);
+        }
+        if (keys.size > 100) {
+          throw new Error(
+            "Catalog media object prefix exceeded its safe limit.",
+          );
+        }
+        continuationToken = page.nextContinuationToken;
+      } while (continuationToken);
+    }
+    return [...keys];
+  }
+
   async getPublishedDerivative(input: {
     key: string;
     sha256: string;
@@ -165,9 +251,22 @@ export class R2Storage implements OnApplicationShutdown, OnModuleInit {
     sha256: string;
     sizeBytes: number;
   }): Promise<Buffer> {
-    return this.readPublishedObject({
+    return this.readObject({
       ...input,
       maxSizeBytes: input.sizeBytes,
+      digestMetadataKey: "content-sha256",
+    });
+  }
+
+  async getQuarantinedObject(input: {
+    key: string;
+    sha256: string;
+    sizeBytes: number;
+  }): Promise<Buffer> {
+    return this.readObject({
+      ...input,
+      maxSizeBytes: input.sizeBytes,
+      digestMetadataKey: "source-sha256",
     });
   }
 
@@ -176,14 +275,15 @@ export class R2Storage implements OnApplicationShutdown, OnModuleInit {
     sha256: string;
     maxSizeBytes: number;
   }): Promise<Buffer> {
-    return this.readPublishedObject(input);
+    return this.readObject({ ...input, digestMetadataKey: "content-sha256" });
   }
 
-  private async readPublishedObject(input: {
+  private async readObject(input: {
     key: string;
     sha256: string;
     sizeBytes?: number;
     maxSizeBytes: number;
+    digestMetadataKey: "content-sha256" | "source-sha256";
   }): Promise<Buffer> {
     const storage = this.getStorage();
     const response = await storage.client.send(
@@ -199,8 +299,7 @@ export class R2Storage implements OnApplicationShutdown, OnModuleInit {
       !sizeBytes ||
       sizeBytes > input.maxSizeBytes ||
       (input.sizeBytes !== undefined && response.ContentLength !== sizeBytes) ||
-      (input.sizeBytes === undefined &&
-        response.Metadata?.["content-sha256"] !== input.sha256)
+      response.Metadata?.[input.digestMetadataKey] !== input.sha256
     ) {
       body.destroy?.();
       throw new Error("R2 media object does not match its content address.");
@@ -246,4 +345,27 @@ function requestOptions(): {
   abortSignal?: AbortSignal;
 } {
   return { abortSignal: AbortSignal.timeout(R2_REQUEST_TIMEOUT_MS) };
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isCatalogMediaObjectPrefix(prefix: CatalogMediaObjectPrefix): boolean {
+  return (
+    prefix === "quarantine/" ||
+    prefix === "published/" ||
+    /^quarantine\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/$/i.test(
+      prefix,
+    ) ||
+    /^published\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/$/i.test(
+      prefix,
+    )
+  );
+}
+
+function isCatalogMediaObjectKeyForId(key: string, mediaId: string): boolean {
+  return (
+    key === `quarantine/${mediaId}/source` ||
+    new RegExp(`^published/${mediaId}/[0-9a-f]{64}\\.webp$`, "i").test(key)
+  );
 }

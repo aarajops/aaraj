@@ -8,8 +8,10 @@ import {
   adminPageLinkClassName,
 } from "@/components/admin/admin-page-header";
 import {
+  InventoryAdjustmentHistoryPageSchema,
   InventoryAdjustmentInputSchema,
   InventoryAdjustmentResultSchema,
+  type InventoryAdjustmentHistoryPage,
   type InventoryAdjustmentInput,
   type InventoryVariant,
 } from "@aaraj/contracts";
@@ -22,25 +24,71 @@ import {
   getApiErrorMessage,
   readApiErrorResponse,
 } from "@/lib/api-error-response";
-import { createInventoryAdjustment } from "./inventory-client";
+import { formatDateTime } from "@/lib/date-time";
+import {
+  createInventoryAdjustment,
+  fetchInventoryAdjustmentHistory,
+} from "./inventory-client";
 
 type Direction = "receive" | "remove";
 
 export function InventoryAdjustment({
   variant,
+  adjustments,
 }: {
   variant: InventoryVariant;
+  adjustments: InventoryAdjustmentHistoryPage | null;
 }) {
   const router = useRouter();
   const [isNavigating, startTransition] = useTransition();
   const submissionLock = useRef(false);
-  const [direction, setDirection] = useState<Direction>("receive");
+  const [direction, setDirection] = useState<Direction>(
+    variant.isActive ? "receive" : "remove",
+  );
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState<InventoryAdjustmentInput | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState(adjustments);
+  const [historyError, setHistoryError] = useState(adjustments === null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const storageKey = `aaraj/inventory-adjustment/${variant.id}`;
+
+  async function loadOlderAdjustments() {
+    if (!history?.nextOffset || isLoadingHistory) return;
+    setHistoryError(false);
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetchInventoryAdjustmentHistory(variant.id, {
+        limit: history.limit,
+        offset: history.nextOffset,
+      });
+      if (!response.ok) {
+        setHistoryError(true);
+        return;
+      }
+      const result = InventoryAdjustmentHistoryPageSchema.safeParse(
+        await response.json(),
+      );
+      if (!result.success) {
+        setHistoryError(true);
+        return;
+      }
+      setHistory((current) =>
+        current
+          ? {
+              ...result.data,
+              movements: [...current.movements, ...result.data.movements],
+            }
+          : result.data,
+      );
+    } catch {
+      setHistoryError(true);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }
 
   async function submitAdjustment(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -171,6 +219,12 @@ export function InventoryAdjustment({
             by an active reservation cannot be removed until that reservation is
             released or consumed.
           </p>
+          {!variant.isActive && (
+            <p className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+              This variant has been retired from the catalog. Its stock remains
+              visible for reconciliation, and new stock cannot be received.
+            </p>
+          )}
 
           {error && (
             <p
@@ -188,12 +242,19 @@ export function InventoryAdjustment({
                 <label className="flex items-center gap-2 rounded-lg border border-input p-3 text-sm">
                   <input
                     checked={direction === "receive"}
+                    disabled={!variant.isActive}
                     name="direction"
                     type="radio"
                     value="receive"
                     onChange={() => setDirection("receive")}
                   />
-                  Receive stock
+                  <span
+                    className={
+                      !variant.isActive ? "text-muted-foreground" : undefined
+                    }
+                  >
+                    Receive stock
+                  </span>
                 </label>
                 <label className="flex items-center gap-2 rounded-lg border border-input p-3 text-sm">
                   <input
@@ -253,6 +314,85 @@ export function InventoryAdjustment({
                     : "Remove stock"}
             </Button>
           </form>
+        </Card>
+
+        <Card className="mt-5 gap-0 rounded-2xl border border-border bg-card/70 p-6 sm:p-7">
+          <div>
+            <h2 className="text-base font-semibold">Adjustment history</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Manual receipts and stock corrections for this exact variant.
+              Order reservations and sales are recorded separately.
+            </p>
+          </div>
+
+          {history?.movements.length ? (
+            <ol className="mt-5 divide-y divide-border">
+              {history.movements.map((movement) => (
+                <li
+                  className="flex flex-col justify-between gap-3 py-4 first:pt-0 sm:flex-row sm:items-center"
+                  key={movement.id}
+                >
+                  <div className="min-w-0">
+                    <time
+                      className="text-sm text-muted-foreground"
+                      dateTime={movement.createdAt}
+                    >
+                      {formatDateTime(movement.createdAt)}
+                    </time>
+                    <p className="mt-1 break-words text-sm">
+                      {movement.reason}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Adjusted by {movement.actorName ?? "Unknown staff member"}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-sm tabular-nums sm:text-right">
+                    <p className="font-semibold">
+                      {movement.delta > 0 ? "+" : ""}
+                      {movement.delta} units
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      On hand after: {movement.quantityOnHand}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : history ? (
+            <p className="mt-5 text-sm text-muted-foreground">
+              No manual stock adjustments have been recorded for this variant.
+            </p>
+          ) : historyError ? (
+            <p
+              className="mt-5 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
+              role="status"
+            >
+              Adjustment history is temporarily unavailable. Stock counts and
+              adjustments still work; reload this page to try again.
+            </p>
+          ) : null}
+
+          {historyError && history && (
+            <p className="mt-4 text-sm text-warning" role="status">
+              Older adjustments could not be loaded. The history above remains
+              available; try loading older adjustments again.
+            </p>
+          )}
+
+          {history?.hasMore && (
+            <div className="mt-4">
+              <Button
+                disabled={isLoadingHistory}
+                onClick={() => void loadOlderAdjustments()}
+                type="button"
+                variant="outline"
+              >
+                {isLoadingHistory
+                  ? "Loading history…"
+                  : "Load older adjustments"}
+              </Button>
+            </div>
+          )}
         </Card>
       </div>
     </>

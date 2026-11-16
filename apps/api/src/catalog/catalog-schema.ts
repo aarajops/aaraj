@@ -168,6 +168,7 @@ export const catalogProduct = catalogSchema.table(
       onDelete: "restrict",
     }),
     isPublished: boolean("is_published").notNull().default(false),
+    editRevision: integer("edit_revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -199,6 +200,7 @@ export const catalogProduct = catalogSchema.table(
       "product_audience_check",
       sql`${table.audience} is null or ${table.audience} in ('men', 'women', 'unisex')`,
     ),
+    check("product_edit_revision_check", sql`${table.editRevision} > 0`),
   ],
 );
 

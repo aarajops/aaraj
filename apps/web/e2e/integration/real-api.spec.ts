@@ -1119,7 +1119,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/audience=unisex/);
   expect(new URL(page.url()).searchParams.get("search")).toBe("100% cotton");
   await expect(page.getByRole("link", { name: productName })).toBeVisible();
-  await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
+  await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
   await expect(
     page.locator("del").getByText("৳2,990", { exact: true }),
   ).toBeVisible();
@@ -1227,12 +1227,40 @@ test("catalog operator configures a product through to storefront visibility", a
     hasText: new RegExp(`${productName}.*Black\\s*·\\s*S`),
   });
   await openRowActions(page, smallVariantRow);
-  await page.getByRole("menuitem", { name: "Adjust stock" }).click();
+  const adjustmentLink = page.getByRole("menuitem", { name: "Adjust stock" });
+  const adjustmentPath = await adjustmentLink.getAttribute("href");
+  expect(adjustmentPath).toBeTruthy();
+  await adjustmentLink.click();
   await page.getByLabel("Units").fill("12");
   await page.getByLabel("Reason").fill("Receive integration test stock");
   await page.getByRole("button", { name: "Receive stock" }).click();
   await expect(page).toHaveURL(/\/admin\/inventory$/);
   await expect(smallVariantRow).toContainText("12");
+  await page.goto(adjustmentPath!);
+  await expect(
+    page.getByRole("heading", { name: "Adjustment history" }),
+  ).toBeVisible();
+  await expect(page.getByText("Receive integration test stock")).toBeVisible();
+  await expect(page.getByText("+12 units", { exact: true })).toBeVisible();
+  const stockSummaryResponse = await page.request.get(
+    `/api/v1/catalog/products?audience=unisex&search=${encodeURIComponent(productName)}`,
+  );
+  expect(stockSummaryResponse.status()).toBe(200);
+  const stockSummary = (await stockSummaryResponse.json()).products.find(
+    (product: { slug: string }) => product.slug === slug,
+  );
+  expect(stockSummary).toMatchObject({ slug, inStock: true });
+  const productInventoryResponse = await page.request.get(
+    `/api/v1/catalog/products/${slug}`,
+  );
+  expect(productInventoryResponse.status()).toBe(200);
+  const productInventory = await productInventoryResponse.json();
+  expect(productInventory.variants).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ sizeLabel: "S", inStock: true }),
+      expect.objectContaining({ sizeLabel: "M", inStock: false }),
+    ]),
+  );
   await page.goto(`/shop/products/${slug}`);
   await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
   await expect(

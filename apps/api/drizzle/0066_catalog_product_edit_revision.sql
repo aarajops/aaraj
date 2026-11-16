@@ -1,0 +1,2 @@
+ALTER TABLE "catalog"."product" ADD COLUMN "edit_revision" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "catalog"."product" ADD CONSTRAINT "product_edit_revision_check" CHECK ("catalog"."product"."edit_revision" > 0);

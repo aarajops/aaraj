@@ -20,6 +20,7 @@ export const InventoryVariantSchema = z.strictObject({
   productName: z.string().min(1).max(160),
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),
+  isActive: z.boolean(),
   quantityOnHand: z.number().int().nonnegative().max(2_147_483_647),
   quantityReserved: z.number().int().nonnegative().max(2_147_483_647),
   quantityAvailable: z.number().int().nonnegative().max(2_147_483_647),
@@ -61,4 +62,36 @@ export const InventoryAdjustmentResultSchema = z.strictObject({
 });
 export type InventoryAdjustmentResult = z.infer<
   typeof InventoryAdjustmentResultSchema
+>;
+
+export const InventoryAdjustmentHistoryQuerySchema =
+  OffsetPaginationQuerySchema;
+export type InventoryAdjustmentHistoryQuery = z.infer<
+  typeof InventoryAdjustmentHistoryQuerySchema
+>;
+
+export const InventoryAdjustmentHistoryItemSchema = z.strictObject({
+  id: z.uuid(),
+  variantId: z.uuid(),
+  commandId: z.uuid(),
+  actorId: z.string().min(1),
+  actorName: z.string().min(1).nullable(),
+  delta: z
+    .number()
+    .int()
+    .refine((value) => value !== 0),
+  quantityOnHand: z.number().int().nonnegative().max(2_147_483_647),
+  reason: z.string().min(3).max(500),
+  createdAt: z.iso.datetime(),
+});
+export type InventoryAdjustmentHistoryItem = z.infer<
+  typeof InventoryAdjustmentHistoryItemSchema
+>;
+
+export const InventoryAdjustmentHistoryPageSchema = z.strictObject({
+  movements: z.array(InventoryAdjustmentHistoryItemSchema),
+  ...OffsetPaginationMetadataSchema.shape,
+});
+export type InventoryAdjustmentHistoryPage = z.infer<
+  typeof InventoryAdjustmentHistoryPageSchema
 >;

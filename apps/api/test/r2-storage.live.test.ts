@@ -13,25 +13,49 @@ describe("live R2 media adapter", () => {
   it("writes, reads, verifies, and deletes an isolated temporary object", async () => {
     const body = Buffer.from(`aaraj-r2-adapter-check:${randomUUID()}`);
     const sha256 = createHash("sha256").update(body).digest("hex");
-    const key = `integration-checks/${randomUUID()}/probe.webp`;
+    const mediaId = randomUUID();
+    const sourceKey = `quarantine/${mediaId}/source`;
+    const derivativeKey = `published/${mediaId}/${sha256}.webp`;
 
     try {
       await storage.putQuarantinedObject({
-        key,
+        key: sourceKey,
         body,
         contentType: "image/webp",
         sha256,
       });
-
       await expect(
-        storage.getPublishedDerivative({
-          key,
+        storage.getQuarantinedObject({
+          key: sourceKey,
           sha256,
           sizeBytes: body.byteLength,
         }),
       ).resolves.toEqual(body);
+
+      await storage.putDerivativeObject({
+        key: derivativeKey,
+        body,
+        sha256,
+      });
+      await expect(
+        storage.getPublishedDerivative({
+          key: derivativeKey,
+          sha256,
+          sizeBytes: body.byteLength,
+        }),
+      ).resolves.toEqual(body);
+
+      const listed = await storage.listCatalogMediaObjectsForId(mediaId);
+      expect(listed.sort()).toEqual([derivativeKey, sourceKey].sort());
+      const page = await storage.listCatalogMediaObjectsPage({
+        prefix: "quarantine/",
+        maxKeys: 100,
+      });
+      expect(
+        page.objects.find(({ key }) => key === sourceKey)?.lastModified,
+      ).toBeInstanceOf(Date);
     } finally {
-      await storage.deleteMediaObjects([key]);
+      await storage.deleteMediaObjects([sourceKey, derivativeKey]);
     }
   });
 });

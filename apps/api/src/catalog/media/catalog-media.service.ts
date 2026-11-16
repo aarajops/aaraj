@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, isNull, not, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, not, or, sql } from "drizzle-orm";
 import {
   CatalogMediaDerivativesSchema,
   CatalogMediaSchema,
@@ -30,7 +30,7 @@ import {
   catalogProductVariant,
 } from "../catalog-schema.js";
 import { CatalogPolicy } from "../catalog.policy.js";
-import { R2Storage } from "./r2-storage.js";
+import { R2Storage, type CatalogMediaObjectPrefix } from "./r2-storage.js";
 import { getCurrentRequestId } from "../../platform/request-context.js";
 import {
   InvalidCatalogImageError,
@@ -61,6 +61,9 @@ interface UploadRecord {
   createdAt: Date;
   updatedAt: Date;
 }
+
+const STALE_UPLOAD_DELETION_REASON =
+  "Expired non-published media upload after 30 days.";
 
 @Injectable()
 export class CatalogMediaService {
@@ -448,6 +451,310 @@ export class CatalogMediaService {
     );
   }
 
+  async retryPendingUpload(
+    actor: AccessPrincipal,
+    productId: string,
+    mediaId: string,
+  ): Promise<CatalogMedia> {
+    const record = await this.database.db.transaction(async (transaction) => {
+      await this.authorization.authorize(
+        CatalogPolicy,
+        "manage",
+        actor,
+        transaction,
+      );
+      const [current] = await transaction
+        .select()
+        .from(catalogProductMedia)
+        .where(
+          and(
+            eq(catalogProductMedia.id, mediaId),
+            eq(catalogProductMedia.productId, productId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!current) throw new NotFoundException("Catalog media not found.");
+      if (current.status === "ready" || current.status === "rejected") {
+        return current;
+      }
+      if (
+        current.status !== "uploading" &&
+        current.status !== "quarantined" &&
+        current.status !== "processing"
+      ) {
+        throw new ConflictException(
+          "This catalog media item cannot be retried in its current state.",
+        );
+      }
+      return current;
+    });
+    if (record.status === "ready" || record.status === "rejected") {
+      return toCatalogMedia(record);
+    }
+
+    let source: Buffer;
+    try {
+      source = await this.storage.getQuarantinedObject({
+        key: record.objectKey,
+        sha256: record.sourceSha256,
+        sizeBytes: record.sizeBytes,
+      });
+    } catch (error: unknown) {
+      this.logStorageFailure("get", record.id, error);
+      throw new ConflictException({
+        message:
+          "The saved upload source is unavailable. Choose the original file to recover this upload.",
+        errorCode: "CATALOG_MEDIA_SOURCE_UNAVAILABLE",
+      });
+    }
+
+    const resumable = await this.database.db.transaction(
+      async (transaction) => {
+        await this.authorization.authorize(
+          CatalogPolicy,
+          "manage",
+          actor,
+          transaction,
+        );
+        const [current] = await transaction
+          .select()
+          .from(catalogProductMedia)
+          .where(eq(catalogProductMedia.id, mediaId))
+          .for("update")
+          .limit(1);
+        if (!current) throw new NotFoundException("Catalog media not found.");
+        if (current.status === "ready" || current.status === "rejected") {
+          return current;
+        }
+        if (current.status === "uploading") {
+          const [updated] = await transaction
+            .update(catalogProductMedia)
+            .set({ status: "quarantined", updatedAt: new Date() })
+            .where(eq(catalogProductMedia.id, current.id))
+            .returning();
+          if (!updated)
+            throw new Error("Catalog media recovery returned no row.");
+          await this.audit.append(transaction, {
+            actorType: "user",
+            actorId: actor.id,
+            eventType: "catalog.media_quarantined",
+            subjectType: "catalog_product_media",
+            subjectId: updated.id,
+            reason: updated.reason ?? undefined,
+            metadata: { productId, recoveredFromStoredSource: true },
+          });
+          return updated;
+        }
+        return current;
+      },
+    );
+    if (resumable.status === "ready" || resumable.status === "rejected") {
+      return toCatalogMedia(resumable);
+    }
+    return toCatalogMedia(
+      await this.processAndPublish(actor, resumable, source),
+    );
+  }
+
+  async cleanupStaleUploads(cutoff: Date, batchSize: number): Promise<number> {
+    const claimed = await this.database.db.transaction(async (transaction) => {
+      const rows = await transaction
+        .select()
+        .from(catalogProductMedia)
+        .where(
+          or(
+            and(
+              inArray(catalogProductMedia.status, [
+                "uploading",
+                "quarantined",
+                "processing",
+                "rejected",
+              ]),
+              lt(catalogProductMedia.updatedAt, cutoff),
+            ),
+            eq(catalogProductMedia.status, "deleting"),
+          ),
+        )
+        .orderBy(asc(catalogProductMedia.updatedAt))
+        .for("update", { skipLocked: true })
+        .limit(batchSize);
+      if (!rows.length) return [];
+      const [newlyClaimed, alreadyClaimed] = [
+        rows.filter(({ status }) => status !== "deleting"),
+        rows.filter(({ status }) => status === "deleting"),
+      ];
+      const marked = newlyClaimed.length
+        ? await transaction
+            .update(catalogProductMedia)
+            .set({
+              status: "deleting",
+              deletionReason: STALE_UPLOAD_DELETION_REASON,
+              updatedAt: new Date(),
+            })
+            .where(
+              inArray(
+                catalogProductMedia.id,
+                newlyClaimed.map(({ id }) => id),
+              ),
+            )
+            .returning()
+        : [];
+      return [...alreadyClaimed, ...marked];
+    });
+
+    let deletedCount = 0;
+    for (const record of claimed) {
+      try {
+        await this.storage.deleteMediaObjects(
+          await this.getMediaObjectKeys(record),
+        );
+      } catch (error: unknown) {
+        this.logStorageFailure("delete", record.id, error);
+        try {
+          await this.database.db
+            .update(catalogProductMedia)
+            .set({ updatedAt: new Date() })
+            .where(
+              and(
+                eq(catalogProductMedia.id, record.id),
+                eq(catalogProductMedia.status, "deleting"),
+              ),
+            );
+        } catch {
+          this.logger.error("Could not reschedule catalog media deletion", {
+            event: "catalog.media_cleanup_retry_schedule_failed",
+            mediaId: record.id,
+          });
+        }
+        continue;
+      }
+
+      await this.database.db.transaction(async (transaction) => {
+        const [current] = await transaction
+          .select()
+          .from(catalogProductMedia)
+          .where(eq(catalogProductMedia.id, record.id))
+          .for("update")
+          .limit(1);
+        if (!current || current.status !== "deleting") return;
+        const [deleted] = await transaction
+          .update(catalogProductMedia)
+          .set({ status: "deleted", updatedAt: new Date() })
+          .where(eq(catalogProductMedia.id, current.id))
+          .returning();
+        if (!deleted) throw new Error("Catalog media cleanup returned no row.");
+        const expired = deleted.deletionReason === STALE_UPLOAD_DELETION_REASON;
+        await this.audit.append(transaction, {
+          actorType: "service",
+          eventType: expired
+            ? "catalog.media_expired"
+            : "catalog.media_deleted",
+          subjectType: "catalog_product_media",
+          subjectId: deleted.id,
+          ...(deleted.deletionReason ? { reason: deleted.deletionReason } : {}),
+          metadata: {
+            productId: deleted.productId,
+            ...(deleted.variantId ? { variantId: deleted.variantId } : {}),
+            completedBy: "catalog_media_cleanup_worker",
+          },
+        });
+        deletedCount += 1;
+      });
+    }
+    return deletedCount;
+  }
+
+  async cleanupOrphanedMediaObjects(input: {
+    cutoff: Date;
+    prefix: CatalogMediaObjectPrefix;
+    continuationToken?: string;
+    batchSize: number;
+  }): Promise<{
+    scanned: number;
+    deleted: number;
+    nextContinuationToken?: string;
+  }> {
+    const page = await this.storage.listCatalogMediaObjectsPage({
+      prefix: input.prefix,
+      ...(input.continuationToken
+        ? { continuationToken: input.continuationToken }
+        : {}),
+      maxKeys: input.batchSize,
+    });
+    const expiredObjects = page.objects.flatMap((object) => {
+      const id = catalogMediaIdFromObjectKey(object.key);
+      return id &&
+        object.lastModified &&
+        object.lastModified.getTime() < input.cutoff.getTime()
+        ? [{ ...object, mediaId: id }]
+        : [];
+    });
+
+    if (!expiredObjects.length) {
+      return {
+        scanned: page.objects.length,
+        deleted: 0,
+        ...(page.nextContinuationToken
+          ? { nextContinuationToken: page.nextContinuationToken }
+          : {}),
+      };
+    }
+
+    const mediaIds = [...new Set(expiredObjects.map(({ mediaId }) => mediaId))];
+    const records = await this.database.db
+      .select({
+        id: catalogProductMedia.id,
+        status: catalogProductMedia.status,
+      })
+      .from(catalogProductMedia)
+      .where(inArray(catalogProductMedia.id, mediaIds));
+    const retainedMediaIds = new Set(
+      records.filter(({ status }) => status !== "deleted").map(({ id }) => id),
+    );
+    const orphanObjects = expiredObjects.filter(
+      ({ mediaId }) => !retainedMediaIds.has(mediaId),
+    );
+    if (orphanObjects.length) {
+      await this.storage.deleteMediaObjects(
+        orphanObjects.map(({ key }) => key),
+      );
+      const objectsByMediaId = new Map<string, number>();
+      for (const { mediaId } of orphanObjects) {
+        objectsByMediaId.set(mediaId, (objectsByMediaId.get(mediaId) ?? 0) + 1);
+      }
+      for (const [mediaId, objectCount] of objectsByMediaId) {
+        try {
+          await this.database.db.transaction((transaction) =>
+            this.audit.append(transaction, {
+              actorType: "service",
+              eventType: "catalog.media_orphan_objects_deleted",
+              subjectType: "catalog_product_media",
+              subjectId: mediaId,
+              reason:
+                "Removed untracked media objects after the 30-day retention period.",
+              metadata: { objectCount, storagePrefix: input.prefix },
+            }),
+          );
+        } catch (error: unknown) {
+          this.logger.error("Could not audit orphaned catalog media cleanup", {
+            event: "catalog.media_orphan_cleanup_audit_failed",
+            mediaId,
+            errorName: error instanceof Error ? error.name : "unknown",
+          });
+        }
+      }
+    }
+
+    return {
+      scanned: page.objects.length,
+      deleted: orphanObjects.length,
+      ...(page.nextContinuationToken
+        ? { nextContinuationToken: page.nextContinuationToken }
+        : {}),
+    };
+  }
+
   async getPublishedDerivative(
     mediaId: string,
     rendition: CatalogMediaRendition,
@@ -811,20 +1118,9 @@ export class CatalogMediaService {
 
     if (record.status === "deleted") return;
     try {
-      const derivatives = CatalogMediaDerivativesSchema.safeParse(
-        record.derivatives,
+      await this.storage.deleteMediaObjects(
+        await this.getMediaObjectKeys(record),
       );
-      if (!derivatives.success) {
-        throw new Error("Catalog media derivative manifest is invalid.");
-      }
-      await this.storage.deleteMediaObjects([
-        ...new Set([
-          record.objectKey,
-          ...derivatives.data.map(({ sha256 }) =>
-            derivativeObjectKey(record.id, sha256),
-          ),
-        ]),
-      ]);
     } catch (error: unknown) {
       this.logStorageFailure("delete", record.id, error);
       throw mediaStorageUnavailable();
@@ -881,6 +1177,27 @@ export class CatalogMediaService {
       ...(requestId ? { requestId } : {}),
     });
   }
+
+  private async getMediaObjectKeys(record: UploadRecord): Promise<string[]> {
+    const derivatives = CatalogMediaDerivativesSchema.safeParse(
+      record.derivatives,
+    );
+    if (!derivatives.success) {
+      this.logger.error("Catalog media has an invalid derivative manifest", {
+        event: "catalog.media_cleanup_manifest_invalid",
+        mediaId: record.id,
+      });
+      return this.storage.listCatalogMediaObjectsForId(record.id);
+    }
+    return [
+      ...new Set([
+        record.objectKey,
+        ...derivatives.data.map(({ sha256 }) =>
+          derivativeObjectKey(record.id, sha256),
+        ),
+      ]),
+    ];
+  }
 }
 
 function assertSameUpload(
@@ -912,6 +1229,14 @@ function assertSameUpload(
 
 function quarantineObjectKey(mediaId: string): string {
   return `quarantine/${mediaId}/source`;
+}
+
+function catalogMediaIdFromObjectKey(key: string): string | undefined {
+  const match =
+    /^(?:quarantine\/|published\/)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:source|[0-9a-f]{64}\.webp)$/i.exec(
+      key,
+    );
+  return match?.[1];
 }
 
 export function derivativeObjectKey(mediaId: string, sha256: string): string {

@@ -95,11 +95,11 @@ export function ProductCard({
               Stock out
             </Badge>
           )}
-          {product.price && (
+          {product.matchedVariantPrice && (
             <p className="mt-1">
               <ProductPrice
-                compareAtPrice={product.compareAtPrice}
-                price={product.price}
+                compareAtPrice={product.matchedVariantCompareAtPrice}
+                price={product.matchedVariantPrice}
                 startingAt={product.priceVaries}
               />
             </p>

@@ -19,6 +19,7 @@ import {
   catalogProductMedia,
 } from "../src/catalog/catalog-schema.js";
 import { R2Storage } from "../src/catalog/media/r2-storage.js";
+import { CatalogMediaService } from "../src/catalog/media/catalog-media.service.js";
 import { MAX_CATALOG_MEDIA_UPLOAD_BYTES } from "@aaraj/contracts";
 
 interface Account {
@@ -48,6 +49,7 @@ interface ReadDerivativeInput {
 
 class MemoryR2Storage {
   readonly objects = new Map<string, Buffer>();
+  readonly lastModified = new Map<string, Date>();
   failNextPut = false;
   failNextDerivativePut = false;
   failNextDelete = false;
@@ -64,6 +66,7 @@ class MemoryR2Storage {
       throw new Error("simulated R2 put failure");
     }
     this.objects.set(input.key, Buffer.from(input.body));
+    this.lastModified.set(input.key, new Date());
   }
 
   async putDerivativeObject(input: PutDerivativeInput): Promise<void> {
@@ -72,6 +75,7 @@ class MemoryR2Storage {
       throw new Error("simulated R2 derivative put failure");
     }
     this.objects.set(input.key, Buffer.from(input.body));
+    this.lastModified.set(input.key, new Date());
   }
 
   async deleteMediaObjects(keys: string[]): Promise<void> {
@@ -79,7 +83,45 @@ class MemoryR2Storage {
       this.failNextDelete = false;
       throw new Error("simulated R2 delete failure");
     }
-    for (const key of keys) this.objects.delete(key);
+    for (const key of keys) {
+      this.objects.delete(key);
+      this.lastModified.delete(key);
+    }
+  }
+
+  async listCatalogMediaObjectsPage(input: {
+    prefix: "quarantine/" | "published/";
+    continuationToken?: string;
+    maxKeys: number;
+  }): Promise<{
+    objects: Array<{ key: string; lastModified: Date | undefined }>;
+    nextContinuationToken: string | undefined;
+  }> {
+    const keys = [...this.objects.keys()]
+      .filter((key) => key.startsWith(input.prefix))
+      .sort();
+    const start = input.continuationToken
+      ? Math.max(0, keys.indexOf(input.continuationToken) + 1)
+      : 0;
+    const pageKeys = keys.slice(start, start + input.maxKeys);
+    const hasMore = start + pageKeys.length < keys.length;
+    return {
+      objects: pageKeys.map((key) => ({
+        key,
+        lastModified: this.lastModified.get(key),
+      })),
+      nextContinuationToken: hasMore
+        ? pageKeys[pageKeys.length - 1]
+        : undefined,
+    };
+  }
+
+  async listCatalogMediaObjectsForId(mediaId: string): Promise<string[]> {
+    return [...this.objects.keys()].filter(
+      (key) =>
+        key === `quarantine/${mediaId}/source` ||
+        key.startsWith(`published/${mediaId}/`),
+    );
   }
 
   async getPublishedDerivative(input: ReadDerivativeInput): Promise<Buffer> {
@@ -90,6 +132,18 @@ class MemoryR2Storage {
       createHash("sha256").update(body).digest("hex") !== input.sha256
     ) {
       throw new Error("simulated missing R2 derivative");
+    }
+    return Buffer.from(body);
+  }
+
+  async getQuarantinedObject(input: ReadDerivativeInput): Promise<Buffer> {
+    const body = this.objects.get(input.key);
+    if (
+      !body ||
+      body.byteLength !== input.sizeBytes ||
+      createHash("sha256").update(body).digest("hex") !== input.sha256
+    ) {
+      throw new Error("simulated missing or invalid R2 upload source");
     }
     return Buffer.from(body);
   }
@@ -372,6 +426,14 @@ describe("catalog media management", () => {
     expect(pending).not.toHaveProperty("objectKey");
     expect(pending).not.toHaveProperty("sourceSha256");
 
+    await request(app.getHttpServer())
+      .post(
+        `/api/v1/catalog/products/manage/${productId}/media/${pending.id}/retry`,
+      )
+      .set("Cookie", recoveryManager.cookie)
+      .set("Origin", origin)
+      .expect(409);
+
     const uploaded = await upload(
       productId,
       input,
@@ -588,11 +650,115 @@ describe("catalog media management", () => {
     const imagePath = `/api/v1/catalog/media/${pending.id}/card/${card.sha256}.webp`;
     await request(app.getHttpServer()).get(imagePath).expect(404);
 
-    const recovered = await upload(productId, input).expect(201);
+    const recovered = await request(app.getHttpServer())
+      .post(
+        `/api/v1/catalog/products/manage/${productId}/media/${pending.id}/retry`,
+      )
+      .set("Cookie", recoveryManager.cookie)
+      .set("Origin", origin)
+      .expect(201);
     expect(recovered.body).toMatchObject({ id: pending.id, status: "ready" });
     expect(
       storage.objects.get(`published/${pending.id}/${card.sha256}.webp`),
     ).toBeDefined();
+  });
+
+  it("expires stale pending uploads and retries object deletion safely", async () => {
+    const uploaded = await upload(productId, {
+      commandId: randomUUID(),
+    }).expect(201);
+    const cutoffTimestamp = new Date(Date.now() - 31 * 24 * 60 * 60_000);
+    await database.db
+      .update(catalogProductMedia)
+      .set({ status: "processing", updatedAt: cutoffTimestamp })
+      .where(eq(catalogProductMedia.id, uploaded.body.id as string));
+
+    storage.failNextDelete = true;
+    const mediaService = app.get(CatalogMediaService);
+    expect(await mediaService.cleanupStaleUploads(new Date(), 10)).toBe(0);
+    const [pending] = await database.db
+      .select({ status: catalogProductMedia.status })
+      .from(catalogProductMedia)
+      .where(eq(catalogProductMedia.id, uploaded.body.id as string));
+    expect(pending?.status).toBe("deleting");
+    expect(storedObjectsFor(uploaded.body.id as string)).toBeGreaterThan(0);
+
+    expect(await mediaService.cleanupStaleUploads(new Date(), 10)).toBe(1);
+    const [deleted] = await database.db
+      .select({ status: catalogProductMedia.status })
+      .from(catalogProductMedia)
+      .where(eq(catalogProductMedia.id, uploaded.body.id as string));
+    expect(deleted?.status).toBe("deleted");
+    expect(storedObjectsFor(uploaded.body.id as string)).toBe(0);
+    expect(await mediaService.cleanupStaleUploads(new Date(), 10)).toBe(0);
+    const expiryEvents = await database.db
+      .select({ eventType: auditEvent.eventType })
+      .from(auditEvent)
+      .where(eq(auditEvent.subjectId, uploaded.body.id as string));
+    expect(expiryEvents.map(({ eventType }) => eventType)).toContain(
+      "catalog.media_expired",
+    );
+  });
+
+  it("recovers stale media with a malformed derivative manifest", async () => {
+    const uploaded = await upload(productId, {
+      commandId: randomUUID(),
+    }).expect(201);
+    await database.db
+      .update(catalogProductMedia)
+      .set({
+        derivatives: [{ invalid: true }] as never,
+        status: "processing",
+        updatedAt: new Date(Date.now() - 31 * 24 * 60 * 60_000),
+      })
+      .where(eq(catalogProductMedia.id, uploaded.body.id as string));
+
+    expect(
+      await app.get(CatalogMediaService).cleanupStaleUploads(new Date(), 10),
+    ).toBeGreaterThanOrEqual(1);
+    expect(storedObjectsFor(uploaded.body.id as string)).toBe(0);
+    const [deleted] = await database.db
+      .select({ status: catalogProductMedia.status })
+      .from(catalogProductMedia)
+      .where(eq(catalogProductMedia.id, uploaded.body.id as string));
+    expect(deleted?.status).toBe("deleted");
+  });
+
+  it("removes old untracked media objects and preserves live or foreign objects", async () => {
+    const live = await upload(productId, {
+      commandId: randomUUID(),
+    }).expect(201);
+    const orphanId = randomUUID();
+    const orphanKey = `quarantine/${orphanId}/source`;
+    storage.objects.set(orphanKey, Buffer.from("orphan"));
+    storage.lastModified.set(
+      orphanKey,
+      new Date(Date.now() - 31 * 24 * 60 * 60_000),
+    );
+    const categoryKey = `published/catalog/categories/${randomUUID()}/${"a".repeat(64)}.webp`;
+    storage.objects.set(categoryKey, Buffer.from("category"));
+    storage.lastModified.set(
+      categoryKey,
+      new Date(Date.now() - 31 * 24 * 60 * 60_000),
+    );
+
+    const result = await app
+      .get(CatalogMediaService)
+      .cleanupOrphanedMediaObjects({
+        cutoff: new Date(Date.now() - 30 * 24 * 60 * 60_000),
+        prefix: "quarantine/",
+        batchSize: 100,
+      });
+    expect(result.deleted).toBe(1);
+    expect(storage.objects.has(orphanKey)).toBe(false);
+    expect(storedObjectsFor(live.body.id as string)).toBe(2);
+
+    await app.get(CatalogMediaService).cleanupOrphanedMediaObjects({
+      cutoff: new Date(Date.now() - 30 * 24 * 60 * 60_000),
+      prefix: "published/",
+      batchSize: 100,
+    });
+    expect(storage.objects.has(categoryKey)).toBe(true);
   });
 
   it("rejects a file with an accepted signature that cannot be decoded", async () => {
@@ -608,6 +774,22 @@ describe("catalog media management", () => {
     expect(
       storage.objects.has(`published/${response.body.id}/invalid.webp`),
     ).toBe(false);
+    const mediaId = response.body.id as string;
+    expect(storedObjectsFor(mediaId)).toBe(1);
+    await database.db
+      .update(catalogProductMedia)
+      .set({ updatedAt: new Date(Date.now() - 31 * 24 * 60 * 60_000) })
+      .where(eq(catalogProductMedia.id, mediaId));
+
+    expect(
+      await app.get(CatalogMediaService).cleanupStaleUploads(new Date(), 10),
+    ).toBe(1);
+    const [expired] = await database.db
+      .select({ status: catalogProductMedia.status })
+      .from(catalogProductMedia)
+      .where(eq(catalogProductMedia.id, mediaId));
+    expect(expired?.status).toBe("deleted");
+    expect(storedObjectsFor(mediaId)).toBe(0);
   });
 
   it("rejects animated WebP instead of publishing only its first frame", async () => {
@@ -680,7 +862,9 @@ describe("catalog media management", () => {
       deletionReason,
     });
 
-    await deleteMedia(uploaded.body.id, deletionReason).expect(204);
+    expect(
+      await app.get(CatalogMediaService).cleanupStaleUploads(new Date(), 10),
+    ).toBeGreaterThanOrEqual(1);
     expect(
       (await listMedia().expect(200)).body.media.some(
         (item: { id: string }) => item.id === uploaded.body.id,
@@ -692,6 +876,17 @@ describe("catalog media management", () => {
       .from(catalogProductMedia)
       .where(eq(catalogProductMedia.id, uploaded.body.id as string));
     expect(deleted?.status).toBe("deleted");
+    const completionEvents = await database.db
+      .select({
+        eventType: auditEvent.eventType,
+        actorType: auditEvent.actorType,
+      })
+      .from(auditEvent)
+      .where(eq(auditEvent.subjectId, uploaded.body.id as string));
+    expect(completionEvents).toContainEqual({
+      eventType: "catalog.media_deleted",
+      actorType: "service",
+    });
   });
 
   it("recovers deletion after object removal succeeds but database completion fails", async () => {

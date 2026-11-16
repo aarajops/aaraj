@@ -5,6 +5,7 @@ import {
   CatalogProductSlugSuggestionSchema,
   CatalogProductPageSchema,
   CatalogProductSchema,
+  CatalogManagedProductDetailSchema,
   CatalogSizeGuidePageSchema,
   type CatalogCategory,
   type CatalogManagedProductDetail,
@@ -142,6 +143,7 @@ export function CatalogManager({
   const hasProductChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const slugError = errors.slug?.message;
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
+  const [productRevisionConflict, setProductRevisionConflict] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [productRefreshError, setProductRefreshError] = useState<string | null>(
     null,
@@ -275,12 +277,19 @@ export function CatalogManager({
         if (!getFieldState("slug").isDirty) delete input.slug;
         response = await createCatalogProduct(input);
       } else {
-        response = await updateCatalogProduct(submission.id, submission.input);
+        response = await updateCatalogProduct(
+          submission.id,
+          initialProduct?.editRevision ?? 0,
+          submission.input,
+        );
       }
 
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
         const message = getApiErrorMessage(problem);
+        if (response.status === 412) {
+          setProductRevisionConflict(true);
+        }
         if (problem?.errorCode === "CATALOG_PRODUCT_SLUG_TAKEN") {
           setError("slug", {
             type: "server",
@@ -294,8 +303,12 @@ export function CatalogManager({
         return;
       }
 
-      const result = CatalogProductSchema.safeParse(await response.json());
-      if (!result.success) {
+      const payload: unknown = await response.json();
+      const validResponse =
+        submission.id === null
+          ? CatalogProductSchema.safeParse(payload).success
+          : CatalogManagedProductDetailSchema.safeParse(payload).success;
+      if (!validResponse) {
         setFormErrorMessage("The server returned an invalid product response.");
         return;
       }
@@ -1068,6 +1081,16 @@ export function CatalogManager({
                   >
                     {formErrorMessage}
                   </p>
+                )}
+                {productRevisionConflict && (
+                  <Button
+                    className="w-full"
+                    onClick={() => window.location.reload()}
+                    type="button"
+                    variant="outline"
+                  >
+                    Reload latest product
+                  </Button>
                 )}
                 <Button
                   className="h-auto w-full px-4 py-3 text-base font-semibold"

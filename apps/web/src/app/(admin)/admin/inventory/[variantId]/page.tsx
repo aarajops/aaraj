@@ -1,13 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { InventoryVariantIdSchema } from "@aaraj/contracts";
+import {
+  InventoryAdjustmentHistoryQuerySchema,
+  InventoryVariantIdSchema,
+} from "@aaraj/contracts";
 import {
   AdminPageHeader,
   adminPageLinkClassName,
 } from "@/components/admin/admin-page-header";
 import { InventoryAdjustment } from "@/features/inventory/inventory-adjustment";
-import { getManagedInventoryVariant } from "@/features/inventory/inventory-queries";
+import {
+  getManagedInventoryAdjustmentHistory,
+  getManagedInventoryVariant,
+} from "@/features/inventory/inventory-queries";
 
 export const metadata: Metadata = {
   title: "Adjust stock",
@@ -55,5 +61,14 @@ export default async function AdminInventoryVariantPage({
     );
   }
 
-  return <InventoryAdjustment variant={result.variant} />;
+  const history = await getManagedInventoryAdjustmentHistory(
+    variantId,
+    InventoryAdjustmentHistoryQuerySchema.parse({}),
+  );
+  return (
+    <InventoryAdjustment
+      adjustments={"kind" in history ? null : history.page}
+      variant={result.variant}
+    />
+  );
 }

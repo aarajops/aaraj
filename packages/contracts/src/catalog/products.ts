@@ -125,6 +125,9 @@ export type CatalogPublishedProduct = z.infer<
 export const CatalogPublishedProductListItemSchema =
   CatalogPublishedProductSchema.extend({
     priceVaries: z.boolean(),
+    /** Lowest active variant price that matched the selected storefront filters. */
+    matchedVariantPrice: CatalogPriceSchema.nullable(),
+    matchedVariantCompareAtPrice: CatalogPriceSchema.nullable(),
   });
 export type CatalogPublishedProductListItem = z.infer<
   typeof CatalogPublishedProductListItemSchema
@@ -138,6 +141,8 @@ export const CatalogProductDetailSchema = CatalogPublishedProductSchema.extend({
 export type CatalogProductDetail = z.infer<typeof CatalogProductDetailSchema>;
 
 export const CatalogManagedProductDetailSchema = CatalogProductSchema.extend({
+  /** Monotonic revision for product fields and variant state used by If-Match. */
+  editRevision: z.number().int().positive(),
   variants: CatalogManagedProductVariantSchema.array(),
   sizeGuide: CatalogSizeGuideSchema.nullable(),
 });

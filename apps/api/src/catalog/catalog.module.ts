@@ -16,6 +16,7 @@ import { SizeGuideService } from "./size-guide.service.js";
 import { CatalogMediaManageGuard } from "./media/catalog-media.guard.js";
 import { CatalogMediaUploadLifecycleInterceptor } from "./media/catalog-media-upload-lifecycle.interceptor.js";
 import { CatalogMediaService } from "./media/catalog-media.service.js";
+import { CatalogMediaCleanupWorker } from "./media/catalog-media-cleanup.worker.js";
 import { CatalogMediaPublicController } from "./media/catalog-media-public.controller.js";
 
 @Module({
@@ -39,6 +40,7 @@ import { CatalogMediaPublicController } from "./media/catalog-media-public.contr
     CatalogMediaManageGuard,
     CatalogMediaUploadLifecycleInterceptor,
     CatalogMediaService,
+    CatalogMediaCleanupWorker,
     CatalogInventoryReader,
     {
       provide: CATALOG_INVENTORY_PORT,

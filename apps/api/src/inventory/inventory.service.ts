@@ -8,17 +8,20 @@ import {
 import { AuthorizationService } from "@nestjs/authorization";
 import type {
   InventoryAdjustmentInput,
+  InventoryAdjustmentHistoryPage,
+  InventoryAdjustmentHistoryQuery,
   InventoryAdjustmentResult,
   InventoryListQuery,
   InventoryVariant,
   InventoryVariantPage,
 } from "@aaraj/contracts";
 import { MAX_LIST_OFFSET } from "@aaraj/contracts";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { AuditService } from "../platform/audit/audit.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import type { AccessPrincipal } from "../platform/authorization/permissions.service.js";
 import { DatabaseService } from "../platform/database/database.service.js";
+import { user } from "../auth/auth-schema.js";
 import { getCurrentRequestId } from "../platform/request-context.js";
 import {
   CATALOG_INVENTORY_PORT,
@@ -47,7 +50,7 @@ export class InventoryService {
     query: InventoryListQuery,
   ): Promise<InventoryVariantPage> {
     await this.authorization.authorize(InventoryPolicy, "manage", actor);
-    const catalogPage = await this.catalog.listActiveVariants(query);
+    const catalogPage = await this.catalog.listVariants(query);
     const variantIds = catalogPage.variants.map(({ id }) => id);
     const balances = variantIds.length
       ? await this.database.db
@@ -89,9 +92,8 @@ export class InventoryService {
     variantId: string,
   ): Promise<InventoryVariant> {
     await this.authorization.authorize(InventoryPolicy, "manage", actor);
-    const variant = await this.catalog.findActiveVariant(variantId);
-    if (!variant)
-      throw new NotFoundException("Active product variant not found.");
+    const variant = await this.catalog.findVariant(variantId);
+    if (!variant) throw new NotFoundException("Product variant not found.");
 
     const [balance] = await this.database.db
       .select()
@@ -109,6 +111,55 @@ export class InventoryService {
     };
   }
 
+  async listAdjustmentHistory(
+    actor: AccessPrincipal,
+    variantId: string,
+    query: InventoryAdjustmentHistoryQuery,
+  ): Promise<InventoryAdjustmentHistoryPage> {
+    await this.authorization.authorize(InventoryPolicy, "manage", actor);
+    const variant = await this.catalog.findVariant(variantId);
+    if (!variant) throw new NotFoundException("Product variant not found.");
+
+    const rows = await this.database.db
+      .select({
+        id: inventoryStockMovement.id,
+        variantId: inventoryStockMovement.variantId,
+        commandId: inventoryStockMovement.commandId,
+        actorId: inventoryStockMovement.actorId,
+        actorName: sql<string | null>`nullif(btrim(${user.name}), '')`,
+        delta: inventoryStockMovement.quantityDelta,
+        quantityOnHand: inventoryStockMovement.quantityAfter,
+        reason: inventoryStockMovement.reason,
+        createdAt: inventoryStockMovement.createdAt,
+      })
+      .from(inventoryStockMovement)
+      .leftJoin(user, eq(user.id, inventoryStockMovement.actorId))
+      .where(eq(inventoryStockMovement.variantId, variantId))
+      .orderBy(
+        desc(inventoryStockMovement.createdAt),
+        desc(inventoryStockMovement.id),
+      )
+      .limit(query.limit + 1)
+      .offset(query.offset);
+
+    const movements = rows.slice(0, query.limit).map((movement) => ({
+      ...movement,
+      createdAt: movement.createdAt.toISOString(),
+    }));
+    const candidateNextOffset = query.offset + movements.length;
+    const hasMore = rows.length > query.limit;
+    return {
+      movements,
+      limit: query.limit,
+      offset: query.offset,
+      hasMore,
+      nextOffset:
+        hasMore && candidateNextOffset <= MAX_LIST_OFFSET
+          ? candidateNextOffset
+          : null,
+    };
+  }
+
   async adjust(
     actor: AccessPrincipal,
     variantId: string,
@@ -117,11 +168,11 @@ export class InventoryService {
     // Authorize before checking catalog identity so a denied caller cannot use
     // this command to probe variant IDs.
     await this.authorization.authorize(InventoryPolicy, "manage", actor);
-    const variant = await this.catalog.findActiveVariant(variantId);
+    const variant = await this.catalog.findVariant(variantId);
     if (!variant) {
       const replay = await this.findPriorAdjustment(actor, variantId, input);
       if (replay) return replay;
-      throw new NotFoundException("Active product variant not found.");
+      throw new NotFoundException("Product variant not found.");
     }
 
     try {
@@ -153,6 +204,11 @@ export class InventoryService {
             );
           }
           return toAdjustmentResult(prior);
+        }
+        if (!variant.isActive && input.delta > 0) {
+          throw new BadRequestException(
+            "Retired variants cannot receive additional stock. Remove or reconcile the remaining stock instead.",
+          );
         }
 
         await transaction

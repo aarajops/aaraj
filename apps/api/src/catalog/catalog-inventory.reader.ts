@@ -12,7 +12,7 @@ import { catalogProduct, catalogProductVariant } from "./catalog-schema.js";
 export class CatalogInventoryReader implements CatalogInventoryPort {
   constructor(private readonly database: DatabaseService) {}
 
-  async listActiveVariants(
+  async listVariants(
     query: Pick<InventoryListQuery, "limit" | "offset" | "search">,
   ): Promise<{ variants: InventoryCatalogVariant[]; hasMore: boolean }> {
     const search = query.search
@@ -25,6 +25,7 @@ export class CatalogInventoryReader implements CatalogInventoryPort {
         productName: catalogProduct.name,
         color: catalogProductVariant.color,
         sizeLabel: catalogProductVariant.sizeLabel,
+        isActive: catalogProductVariant.isActive,
       })
       .from(catalogProductVariant)
       .innerJoin(
@@ -33,7 +34,6 @@ export class CatalogInventoryReader implements CatalogInventoryPort {
       )
       .where(
         and(
-          eq(catalogProductVariant.isActive, true),
           search
             ? or(
                 ilike(catalogProduct.name, search),
@@ -58,7 +58,7 @@ export class CatalogInventoryReader implements CatalogInventoryPort {
     };
   }
 
-  async findActiveVariant(
+  async findVariant(
     variantId: string,
   ): Promise<InventoryCatalogVariant | null> {
     const [variant] = await this.database.db
@@ -68,18 +68,14 @@ export class CatalogInventoryReader implements CatalogInventoryPort {
         productName: catalogProduct.name,
         color: catalogProductVariant.color,
         sizeLabel: catalogProductVariant.sizeLabel,
+        isActive: catalogProductVariant.isActive,
       })
       .from(catalogProductVariant)
       .innerJoin(
         catalogProduct,
         eq(catalogProduct.id, catalogProductVariant.productId),
       )
-      .where(
-        and(
-          eq(catalogProductVariant.id, variantId),
-          eq(catalogProductVariant.isActive, true),
-        ),
-      )
+      .where(eq(catalogProductVariant.id, variantId))
       .limit(1);
     return variant ?? null;
   }
