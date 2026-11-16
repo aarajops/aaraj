@@ -39,5 +39,6 @@
   "0063_order_manual_discount.sql": "maintenance",
   "0064_confirmed_order_return_to_pending.sql": "compatible",
   "0065_encrypt_order_address_snapshots.sql": "maintenance",
-  "0066_catalog_product_edit_revision.sql": "compatible"
+  "0066_catalog_product_edit_revision.sql": "compatible",
+  "0067_remove_product_variant_gtin.sql": "maintenance"
 }
