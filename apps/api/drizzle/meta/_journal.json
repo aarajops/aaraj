@@ -470,6 +470,13 @@
       "when": 1794809405562,
       "tag": "0066_catalog_product_edit_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794824528896,
+      "tag": "0067_remove_product_variant_gtin",
+      "breakpoints": true
     }
   ]
 }

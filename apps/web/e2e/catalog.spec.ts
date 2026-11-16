@@ -242,6 +242,12 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
 
+  await page.goto("/shop/products/aaraj-e2e-tee");
+  await expect(
+    page.getByText("Delivery & returns", { exact: true }),
+  ).toHaveCount(0);
+
+  await page.goto("/admin/catalog");
   const managedProducts = page.getByRole("main");
   await expect(
     managedProducts.getByRole("row", { name: /Aaraj E2E Tee/ }),
@@ -426,13 +432,22 @@ test("staff manages reusable size guides and apparel products safely", async ({
     page.getByText("A product with this slug already exists"),
   ).toBeVisible();
 
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/shop");
   await expect(page.getByRole("link", { name: /Aaraj E2E Tee/ })).toBeVisible();
   await page.getByRole("link", { name: /Aaraj E2E Tee/ }).click();
   await expect(
     page.getByRole("heading", { name: "Aaraj E2E Tee", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText("From ৳1,999", { exact: true })).toBeVisible();
+  const startingPrice = "From ৳1,999";
+  await expect(
+    page.getByText(startingPrice, { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByLabel("Quick purchase actions")
+      .getByText(startingPrice, { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText(
       "A test product used to verify the clothing catalog workflow.",
@@ -446,7 +461,15 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
   await expect(page.getByText("Color: Black")).toBeVisible();
   await page.getByRole("button", { name: "S", exact: true }).click();
-  await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
+  const selectedPrice = "৳1,999";
+  await expect(
+    page.getByText(selectedPrice, { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByLabel("Quick purchase actions")
+      .getByText(selectedPrice, { exact: true }),
+  ).toBeVisible();
   await expect(page).toHaveURL(/color=Black/);
   await expect(page).toHaveURL(/size=S/);
   await expect(page.getByRole("heading", { name: "Size guide" })).toBeVisible();
@@ -464,6 +487,9 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await chooseSelectOption(page, "Product category", "Clothing / T-shirts");
   await page.getByLabel("Fit (optional, for example Regular)").fill("Regular");
   await page.getByRole("button", { name: "Add variant" }).click();
+  await page
+    .getByLabel("Description", { exact: true })
+    .fill("A test product used to verify the clothing catalog workflow.");
   await variantField(page, 1, "SKU").fill("AA-TEE-WHT-M");
   await variantField(page, 1, "Color").fill("White");
   await variantField(page, 1, "Size").fill("M");

@@ -567,6 +567,12 @@ function CheckoutOrderSummary({
           const productName = quotedLine?.productName ?? line.product.name;
           const color = quotedLine?.color ?? line.product.color;
           const sizeLabel = quotedLine?.sizeLabel ?? line.product.sizeLabel;
+          const lineAmountBdt =
+            quotedLine?.grossAmountBdt ??
+            line.product.unitPriceBdt * line.quantity;
+          const compareAtPriceBdt = quotedLine
+            ? quotedLine.compareAtPriceBdt
+            : line.product.compareAtPriceBdt;
 
           return (
             <li
@@ -659,22 +665,15 @@ function CheckoutOrderSummary({
                 </Button>
               </div>
               <div className="col-start-3 row-start-1 grid shrink-0 justify-items-end gap-0.5 text-right tabular-nums sm:col-start-4">
-                <p className="font-medium">
-                  {quotedLine ? (
-                    formatBdtPrice({ amountBdt: quotedLine.grossAmountBdt })
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {quotePending ? "Calculating…" : "—"}
-                    </span>
-                  )}
+                <p className="whitespace-nowrap font-medium">
+                  {formatBdtPrice({ amountBdt: lineAmountBdt })}
                 </p>
-                {quotedLine?.compareAtPriceBdt !== null &&
-                  quotedLine &&
-                  quotedLine.compareAtPriceBdt > quotedLine.unitPriceBdt && (
+                {compareAtPriceBdt !== null &&
+                  compareAtPriceBdt >
+                    (quotedLine?.unitPriceBdt ?? line.product.unitPriceBdt) && (
                     <del className="text-xs text-muted-foreground">
                       {formatBdtPrice({
-                        amountBdt:
-                          quotedLine.compareAtPriceBdt * quotedLine.quantity,
+                        amountBdt: compareAtPriceBdt * line.quantity,
                       })}
                     </del>
                   )}

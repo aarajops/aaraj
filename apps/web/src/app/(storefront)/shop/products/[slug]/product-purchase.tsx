@@ -49,17 +49,33 @@ export function ProductPurchase({
   initialSize?: string;
 }) {
   const viewedItemKey = useRef<string | null>(null);
+  const variantOptionsRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
   const hasAnyStock = variants.some(({ inStock }) => inStock);
+  const inStockVariants = variants.filter(({ inStock }) => inStock);
+  const onlyInStockVariant =
+    inStockVariants.length === 1 ? inStockVariants[0] : undefined;
   const colors = uniqueOptions(variants.map(({ color }) => color));
   const color =
     findOption(colors, searchParams.get("color") ?? initialColor) ??
+    findOption(colors, onlyInStockVariant?.color) ??
     (colors.length === 1 ? colors[0] : undefined) ??
     "";
   const sizeOrder = sizeGuide?.rows.map(({ sizeLabel }) => sizeLabel) ?? [];
   const initialSizeOptions = getSizeOptions(variants, color, sizeOrder);
+  const isSizeInStock = (option: string) =>
+    variants.some(
+      (variant) =>
+        (!color || sameOption(variant.color, color)) &&
+        sameOption(variant.sizeLabel, option) &&
+        variant.inStock,
+    );
+  const availableSizeOptions = color
+    ? initialSizeOptions.filter(isSizeInStock)
+    : [];
   const size =
     findOption(initialSizeOptions, searchParams.get("size") ?? initialSize) ??
+    (availableSizeOptions.length === 1 ? availableSizeOptions[0] : undefined) ??
     (initialSizeOptions.length === 1 ? initialSizeOptions[0] : undefined) ??
     "";
   const matchingVariants = variants.filter(
@@ -170,6 +186,14 @@ export function ProductPurchase({
     updateVariantUrl(nextColor, nextSize);
   }
 
+  function focusVariantOptions() {
+    const options = variantOptionsRef.current;
+    options?.scrollIntoView({ behavior: "smooth", block: "center" });
+    options
+      ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+      ?.focus({ preventScroll: true });
+  }
+
   if (variants.length === 0) return null;
 
   return (
@@ -185,7 +209,7 @@ export function ProductPurchase({
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3" ref={variantOptionsRef}>
         {colors.length === 1 ? (
           <p className="text-sm">
             <span className="font-medium">Color:</span> {colors[0]}
@@ -221,7 +245,14 @@ export function ProductPurchase({
 
         {sizeOptions.length === 1 ? (
           <p className="text-sm">
-            <span className="font-medium">Size:</span> {sizeOptions[0]}
+            <span className="font-medium">Size:</span>{" "}
+            {isSizeInStock(sizeOptions[0]!) ? (
+              sizeOptions[0]
+            ) : (
+              <span className="text-muted-foreground/50 line-through">
+                {sizeOptions[0]}
+              </span>
+            )}
           </p>
         ) : sizeOptions.length > 1 ? (
           <div className="space-y-2">
@@ -234,26 +265,35 @@ export function ProductPurchase({
               role="group"
             >
               {sizeOptions.map((option) => {
-                const optionInStock = variants.some(
-                  (variant) =>
-                    (!color || sameOption(variant.color, color)) &&
-                    sameOption(variant.sizeLabel, option) &&
-                    variant.inStock,
-                );
+                const optionInStock = isSizeInStock(option);
                 return (
-                  <Button
-                    aria-pressed={sameOption(size, option)}
-                    disabled={!optionInStock}
+                  <span
+                    className={
+                      !optionInStock ? "cursor-not-allowed" : undefined
+                    }
                     key={option}
-                    onClick={() => selectSize(option)}
-                    type="button"
-                    variant={sameOption(size, option) ? "default" : "outline"}
                   >
-                    {option}
-                    {!optionInStock && (
-                      <span className="ml-1 text-xs">Stock out</span>
-                    )}
-                  </Button>
+                    <Button
+                      aria-pressed={sameOption(size, option)}
+                      className={
+                        !optionInStock
+                          ? "relative border-border/50 text-muted-foreground/50 disabled:opacity-100"
+                          : undefined
+                      }
+                      disabled={!optionInStock}
+                      onClick={() => selectSize(option)}
+                      type="button"
+                      variant={sameOption(size, option) ? "default" : "outline"}
+                    >
+                      {option}
+                      {!optionInStock && (
+                        <span
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
+                        />
+                      )}
+                    </Button>
+                  </span>
                 );
               })}
             </div>
@@ -268,11 +308,23 @@ export function ProductPurchase({
         <Badge variant="destructive">Stock out</Badge>
       )}
       <AddToCart
+        onVariantRequired={focusVariantOptions}
+        stickyPrice={
+          displayedPrice ? (
+            <ProductPrice
+              compareAtPrice={displayedCompareAtPrice}
+              price={displayedPrice}
+              startingAt={priceVaries}
+              size="prominent"
+            />
+          ) : null
+        }
         variantId={selectedVariant?.inStock ? selectedVariant.id : null}
       />
       {whatsappHref && (
         <a
           className={buttonVariants({
+            size: "lg",
             className:
               "w-full bg-whatsapp text-white hover:bg-whatsapp hover:brightness-90",
           })}

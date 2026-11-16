@@ -21,6 +21,7 @@ import { configureApp } from "../src/configure-app.js";
 import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 import {
   catalogProduct,
+  catalogProductMedia,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
 import { bangladeshBusinessDate } from "../src/delivery/delivery.service.js";
@@ -62,6 +63,7 @@ import {
   encryptOrderAddressSnapshot,
   orderAddressSearchTokens,
 } from "../src/orders/order-address-crypto.js";
+import { readyCatalogImageValues } from "./catalog-test-media.js";
 
 const origin = "http://localhost:3000";
 const password = "aaraj-orders-e2e-password-123";
@@ -130,11 +132,15 @@ describe("COD Orders and checkout", () => {
       .values({
         slug: `order-${randomUUID()}`,
         name: `Order E2E product ${randomUUID().slice(0, 8)}`,
+        description: "Storefront order integration test product.",
         audience: "unisex",
         isPublished: true,
       })
       .returning();
     if (!product) throw new Error("Could not create an Order test product.");
+    await database.db
+      .insert(catalogProductMedia)
+      .values(readyCatalogImageValues(product.id, "orders-e2e"));
     const [variant] = await database.db
       .insert(catalogProductVariant)
       .values({

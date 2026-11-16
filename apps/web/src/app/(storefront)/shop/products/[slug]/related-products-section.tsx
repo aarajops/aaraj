@@ -78,7 +78,7 @@ export async function RelatedProductsSection({
         {relatedProducts.map((relatedProduct, index) => (
           <CarouselItem
             aria-label={`${index + 1} of ${relatedProducts.length}: ${relatedProduct.name}`}
-            className="basis-[78%] pl-3 min-[480px]:basis-1/2 md:basis-1/3 xl:basis-1/4"
+            className="basis-1/2 pl-3 md:basis-1/3 xl:basis-1/4"
             key={relatedProduct.id}
           >
             <ProductCard headingLevel="h3" product={relatedProduct} />

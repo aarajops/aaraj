@@ -193,6 +193,7 @@ describe("catalog media management", () => {
       .send({
         slug,
         name: "Media test product",
+        description: "Catalog media integration test product.",
         audience: "unisex",
         variants: [
           {
@@ -576,6 +577,14 @@ describe("catalog media management", () => {
       .update(catalogProductVariant)
       .set({ priceBdt: 100 })
       .where(eq(catalogProductVariant.id, variantId));
+    const mediaBeforePublish = await listMedia().expect(200);
+    for (const media of mediaBeforePublish.body.media) {
+      if (media.id === uploaded.body.id || media.status !== "ready") continue;
+      await deleteMedia(
+        media.id,
+        "Leave one public image for deletion guard",
+      ).expect(204);
+    }
     await database.db
       .update(catalogProduct)
       .set({ isPublished: true })
@@ -617,6 +626,13 @@ describe("catalog media management", () => {
     await database.db
       .update(catalogProduct)
       .set({ isPublished: true })
+      .where(eq(catalogProduct.id, productId));
+    await deleteMedia(uploaded.body.id, "Remove outdated product photo").expect(
+      409,
+    );
+    await database.db
+      .update(catalogProduct)
+      .set({ isPublished: false })
       .where(eq(catalogProduct.id, productId));
     await deleteMedia(uploaded.body.id, "Remove outdated product photo").expect(
       204,

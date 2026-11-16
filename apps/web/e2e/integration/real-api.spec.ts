@@ -1089,6 +1089,18 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(
     page.getByRole("combobox", { name: "Reusable size guide" }),
   ).toContainText(guideName);
+  await page.locator("#catalog-media-file").setInputFiles({
+    name: "tee-front.png",
+    mimeType: "image/png",
+    buffer: brandPng,
+  });
+  await page
+    .getByLabel("Alt text for tee-front.png")
+    .fill("Front view of the black and red Aaraj E2E tee.");
+  await page.getByRole("button", { name: "Upload images" }).click();
+  await expect(
+    page.getByRole("button", { name: "Delete image 1" }),
+  ).toBeVisible({ timeout: 30_000 });
   await page.getByLabel("Published on the storefront").check();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
@@ -1103,6 +1115,9 @@ test("catalog operator configures a product through to storefront visibility", a
     `${categoryName} / ${subcategoryName}`,
   );
   const productFilters = page.locator('aside[aria-label="Product filters"]');
+  const productCardLink = page
+    .locator(`a[href="/shop/products/${slug}"]`)
+    .filter({ hasText: productName });
   await page
     .getByRole("searchbox", { name: "Search products" })
     .fill("100% cotton");
@@ -1118,18 +1133,20 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(page).toHaveURL(/size=S/);
   await expect(page).toHaveURL(/audience=unisex/);
   expect(new URL(page.url()).searchParams.get("search")).toBe("100% cotton");
-  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+  await expect(productCardLink).toBeVisible();
   await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
   await expect(
     page.locator("del").getByText("৳2,990", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: `${productName}: image unavailable` }),
+    page.getByRole("img", {
+      name: "Front view of the black and red Aaraj E2E tee.",
+    }),
   ).toBeVisible();
   const minimumPrice = productFilters.getByLabel("Minimum (৳)");
   await minimumPrice.fill("2450");
   await expect(page).toHaveURL(/minPriceBdt=2450/);
-  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+  await expect(productCardLink).toBeVisible();
 
   const minimumPriceSlider = productFilters.getByRole("slider", {
     name: "Minimum price",
@@ -1138,11 +1155,11 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.keyboard.press("ArrowRight");
   await expect(minimumPrice).toHaveValue("2451");
   await expect(page).toHaveURL(/minPriceBdt=2451/);
-  await expect(page.getByRole("link", { name: productName })).toHaveCount(0);
+  await expect(productCardLink).toHaveCount(0);
 
   await minimumPrice.fill("2450");
   await expect(page).toHaveURL(/minPriceBdt=2450/);
-  await expect(page.getByRole("link", { name: productName })).toBeVisible();
+  await expect(productCardLink).toBeVisible();
 
   const filteredProducts = await page.request.get(
     `/api/v1/catalog/products?audience=unisex&category=e2e-tees-${suffix}&color=Black&size=S`,
@@ -1159,7 +1176,7 @@ test("catalog operator configures a product through to storefront visibility", a
   expect((await unavailableVariant.json()).products).toEqual([]);
 
   await page.getByRole("link", { name: "Clear filters" }).click();
-  await page.getByRole("link", { name: productName }).click();
+  await productCardLink.click();
   await expect(
     page.getByRole("heading", { name: productName, level: 1 }),
   ).toBeVisible();
@@ -1170,14 +1187,14 @@ test("catalog operator configures a product through to storefront visibility", a
   const storefrontSettings = await page.request
     .get("/api/v1/storefront/settings")
     .then((response) => response.json());
-  const productShareImageSrc =
-    storefrontSettings.socialImage?.src ??
-    storefrontSettings.logo?.src ??
-    "/aaraj-social.png";
-  const productShareImageAlt = storefrontSettings.socialImage
-    ? (storefrontSettings.socialImageAlt ??
-      `${storefrontSettings.siteName} storefront`)
-    : `${storefrontSettings.siteName} logo`;
+  const publicCatalogProduct = await page.request
+    .get(`/api/v1/catalog/products/${slug}`)
+    .then((response) => {
+      expect(response.status()).toBe(200);
+      return response.json();
+    });
+  const productShareImageSrc = publicCatalogProduct.images[0].detail.src;
+  const productShareImageAlt = publicCatalogProduct.images[0].altText;
   const productHead = (await productSeoResponse.text()).match(
     /<head>([\s\S]*?)<\/head>/,
   )?.[1];
@@ -1199,6 +1216,41 @@ test("catalog operator configures a product through to storefront visibility", a
   );
   expect(productHead).toContain(
     `<meta name="twitter:image:alt" content="${productShareImageAlt}"`,
+  );
+
+  const productHtml = await productSeoResponse.text();
+  const jsonLdSource = productHtml.match(
+    /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+  )?.[1];
+  expect(jsonLdSource).toBeTruthy();
+  const productJsonLd = JSON.parse(jsonLdSource!) as {
+    "@type": string;
+    hasVariant: Array<{
+      sku: string;
+      image: string[];
+      offers: { priceCurrency: string; price: number; url: string };
+    }>;
+  };
+  expect(productJsonLd["@type"]).toBe("ProductGroup");
+  expect(productJsonLd.hasVariant).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        sku: skuSmall,
+        image: [new URL(productShareImageSrc, "http://127.0.0.1:3180").href],
+        offers: expect.objectContaining({
+          priceCurrency: "BDT",
+          price: 2450,
+          url: expect.stringContaining("color=Black&size=S"),
+        }),
+      }),
+      expect.objectContaining({
+        sku: skuMedium,
+        offers: expect.objectContaining({
+          priceCurrency: "BDT",
+          price: 2490,
+        }),
+      }),
+    ]),
   );
 
   const robotsResponse = await page.request.get("/robots.txt");
@@ -1262,7 +1314,9 @@ test("catalog operator configures a product through to storefront visibility", a
     ]),
   );
   await page.goto(`/shop/products/${slug}`);
-  await expect(page.getByText("From ৳2,450", { exact: true })).toBeVisible();
+  await expect(page.getByText("Size: S", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Red/ })).toBeDisabled();
+  await expect(page.getByText("৳2,450", { exact: true }).first()).toBeVisible();
   await expect(
     page.getByText("A product configured in a real browser and database flow."),
   ).toBeVisible();
@@ -1271,19 +1325,10 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect
     .poll(() => ecommerceEventCount(page, "view_item", productName))
     .toBe(1);
-  await expect(
-    page.getByRole("button", { name: "S", exact: true }),
-  ).toBeVisible();
-  const outOfStockMedium = page.getByRole("button", {
-    name: "M Stock out",
-    exact: true,
-  });
-  await expect(outOfStockMedium).toBeVisible();
-  await expect(outOfStockMedium).toBeDisabled();
   await page.getByRole("button", { name: "Black", exact: true }).click();
   await expect
     .poll(() => ecommerceEventCount(page, "view_item", productName))
-    .toBe(2);
+    .toBe(1);
   const lastViewItem = await page.evaluate((name) => {
     const dataLayer = (window as Window & { dataLayer?: unknown[] }).dataLayer;
     const events = Array.isArray(dataLayer) ? dataLayer : [];
@@ -1309,9 +1354,9 @@ test("catalog operator configures a product through to storefront visibility", a
     item_variant: "Black / S",
   });
   await expect(page.getByText("Size: S", { exact: true })).toBeVisible();
-  await expect(page.getByText("৳2,450", { exact: true })).toBeVisible();
+  await expect(page.getByText("৳2,450", { exact: true }).first()).toBeVisible();
   await expect(
-    page.locator("del").getByText("৳2,990", { exact: true }),
+    page.locator("del").getByText("৳2,990", { exact: true }).first(),
   ).toBeVisible();
   await expect(page).toHaveURL(/color=Black/);
   await expect(page).toHaveURL(/size=S/);
@@ -2162,20 +2207,19 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(publicProduct.variants).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
+        sku: skuSmall,
         color: "Black",
         sizeLabel: "S",
         price: { amountBdt: 2450 },
       }),
       expect.objectContaining({
+        sku: skuMedium,
         color: "Red",
         sizeLabel: "M",
         price: { amountBdt: 2490 },
       }),
     ]),
   );
-  for (const variant of publicProduct.variants) {
-    expect(variant).not.toHaveProperty("sku");
-  }
 
   await page.goto("/admin/catalog");
   await openRowActions(

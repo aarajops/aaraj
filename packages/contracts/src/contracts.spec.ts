@@ -305,7 +305,7 @@ describe("Contracts Schema Validation", () => {
     expect(CatalogProductSchema.safeParse(validProduct).success).toBe(true);
   });
 
-  it("rejects duplicate or invalid clothing variants", () => {
+  it("rejects duplicate variants and accepts SKU-only variants", () => {
     const product = {
       slug: "aaraj-cotton-tee",
       name: "Aaraj Cotton Tee",
@@ -334,19 +334,6 @@ describe("Contracts Schema Validation", () => {
         variants: [
           {
             ...product.variants[0],
-            gtin: "4006381333932",
-            price: { amountBdt: 1999 },
-          },
-        ],
-      }).success,
-    ).toBe(false);
-    expect(
-      CatalogProductCreateSchema.safeParse({
-        ...product,
-        variants: [
-          {
-            ...product.variants[0],
-            gtin: "4006381333931",
             price: { amountBdt: 1999 },
           },
         ],

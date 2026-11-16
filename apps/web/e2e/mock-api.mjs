@@ -1323,7 +1323,6 @@ const server = createServer(async (request, response) => {
       variants: (body.variants ?? []).map((variant) => ({
         ...variant,
         id: randomUUID(),
-        gtin: variant.gtin ?? null,
         isActive: true,
       })),
     };
@@ -1415,7 +1414,6 @@ const server = createServer(async (request, response) => {
       ? body.variants.map((variant) => ({
           ...variant,
           id: randomUUID(),
-          gtin: variant.gtin ?? null,
           isActive: true,
         }))
       : product.variants;
@@ -1658,6 +1656,7 @@ function productDetail(product, management = false) {
           ? variant
           : {
               id: variant.id,
+              sku: variant.sku,
               color: variant.color,
               sizeLabel: variant.sizeLabel,
               price: variant.price,

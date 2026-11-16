@@ -17,11 +17,13 @@ import {
 } from "../src/cart/cart-schema.js";
 import {
   catalogProduct,
+  catalogProductMedia,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
 import { inventoryStockBalance } from "../src/inventory/inventory-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import { getRedisClient } from "../src/platform/redis/redis-client.js";
+import { readyCatalogImageValues } from "./catalog-test-media.js";
 
 type Account = { id: string; cookie: string };
 const origin = "http://localhost:3000";
@@ -124,10 +126,14 @@ describe("storefront cart", () => {
       .values({
         slug: `cart-product-${randomUUID()}`,
         name: "Cart E2E product",
+        description: "Storefront cart integration test product.",
         isPublished: true,
       })
       .returning();
     if (!product) throw new Error("Could not create the Cart E2E product.");
+    await database.db
+      .insert(catalogProductMedia)
+      .values(readyCatalogImageValues(product.id, "cart-e2e"));
     const skuPrefix = randomUUID().slice(0, 8);
     variants = await database.db
       .insert(catalogProductVariant)

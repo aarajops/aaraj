@@ -5,8 +5,6 @@ import type {
 } from "@aaraj/contracts";
 import { Heading } from "@/components/ui/heading";
 import { ProductCard } from "@/features/catalog/product-card";
-import { CarouselItem } from "@/components/ui/carousel";
-import { NewArrivalsCarousel } from "./new-arrivals-carousel";
 
 const audiences: { value: CatalogAudience; label: string }[] = [
   { value: "unisex", label: "Unisex" },
@@ -63,16 +61,16 @@ export function NewArrivalsSection({
       </nav>
 
       {products.length > 0 ? (
-        <NewArrivalsCarousel>
+        <ul
+          aria-label="New arrivals"
+          className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-4 sm:gap-y-8 lg:grid-cols-4 xl:grid-cols-5"
+        >
           {products.map((product) => (
-            <CarouselItem
-              className="basis-[78%] min-[480px]:basis-1/2 lg:basis-1/3 xl:basis-1/5"
-              key={product.id}
-            >
+            <li className="min-w-0" key={product.id}>
               <ProductCard headingLevel="h3" product={product} />
-            </CarouselItem>
+            </li>
           ))}
-        </NewArrivalsCarousel>
+        </ul>
       ) : (
         <p
           className="py-8 text-center text-sm text-muted-foreground"

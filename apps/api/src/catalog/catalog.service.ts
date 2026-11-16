@@ -482,11 +482,34 @@ export class CatalogService {
           isNull(catalogProductVariant.priceBdt),
         ),
       );
+    const publicImages = this.database.db
+      .select({ id: catalogProductMedia.id })
+      .from(catalogProductMedia)
+      .leftJoin(
+        catalogProductVariant,
+        and(
+          eq(catalogProductVariant.id, catalogProductMedia.variantId),
+          eq(catalogProductVariant.productId, catalogProduct.id),
+          eq(catalogProductVariant.isActive, true),
+        ),
+      )
+      .where(
+        and(
+          eq(catalogProductMedia.productId, catalogProduct.id),
+          eq(catalogProductMedia.status, "ready"),
+          or(
+            isNull(catalogProductMedia.variantId),
+            isNotNull(catalogProductVariant.id),
+          ),
+        ),
+      );
 
     return [
       eq(catalogProduct.isPublished, true),
+      sql`${catalogProduct.description} is not null AND length(btrim(${catalogProduct.description})) > 0`,
       exists(activeVariants),
       not(exists(unpricedVariants)),
+      exists(publicImages),
     ];
   }
 
@@ -681,12 +704,13 @@ export class CatalogService {
         ),
       );
       const variants = detail.variants.map(
-        ({ id, color, sizeLabel, price, compareAtPrice }) => {
+        ({ id, sku, color, sizeLabel, price, compareAtPrice }) => {
           if (!price) {
             throw new Error("Published product variant is missing its price.");
           }
           return {
             id,
+            sku,
             color,
             sizeLabel,
             price,
@@ -927,6 +951,7 @@ export class CatalogService {
           ),
         );
       const nextValues = {
+        id: current.id,
         slug: input.slug ?? current.slug,
         name: input.name ?? current.name,
         description:
@@ -977,7 +1002,6 @@ export class CatalogService {
             sku: variant.sku,
             color: variant.color,
             sizeLabel: variant.sizeLabel,
-            gtin: variant.gtin,
             price:
               variant.priceBdt === null
                 ? null
@@ -1144,6 +1168,8 @@ function mergePriceRanges(
 async function validatePublishability(
   transaction: AuditTransaction,
   product: {
+    id?: string;
+    description: string | null;
     audience: "men" | "women" | "unisex" | null;
     categoryId: string | null;
     fit: string | null;
@@ -1203,6 +1229,60 @@ async function validatePublishability(
       "Every active variant size must appear in the assigned size guide.",
     );
   }
+
+  if (!product.description?.trim()) {
+    throw new BadRequestException(
+      "Add a product-specific description before publishing.",
+    );
+  }
+  if (!product.id) {
+    throw new BadRequestException(
+      "Save the product as a draft, add at least one ready image, then publish it.",
+    );
+  }
+  const retainedVariantKeys = new Set(
+    variants.map(({ color, sizeLabel }) => combinationKey(color, sizeLabel)),
+  );
+  const existingVariants = await transaction
+    .select({
+      id: catalogProductVariant.id,
+      color: catalogProductVariant.color,
+      sizeLabel: catalogProductVariant.sizeLabel,
+    })
+    .from(catalogProductVariant)
+    .where(
+      and(
+        eq(catalogProductVariant.productId, product.id),
+        eq(catalogProductVariant.isActive, true),
+      ),
+    );
+  const retainedVariantIds = existingVariants
+    .filter(({ color, sizeLabel }) =>
+      retainedVariantKeys.has(combinationKey(color, sizeLabel)),
+    )
+    .map(({ id }) => id);
+  const publicMediaCondition = retainedVariantIds.length
+    ? or(
+        isNull(catalogProductMedia.variantId),
+        inArray(catalogProductMedia.variantId, retainedVariantIds),
+      )
+    : isNull(catalogProductMedia.variantId);
+  const [readyImage] = await transaction
+    .select({ id: catalogProductMedia.id })
+    .from(catalogProductMedia)
+    .where(
+      and(
+        eq(catalogProductMedia.productId, product.id),
+        eq(catalogProductMedia.status, "ready"),
+        publicMediaCondition,
+      ),
+    )
+    .limit(1);
+  if (!readyImage) {
+    throw new BadRequestException(
+      "Add at least one ready product image before publishing.",
+    );
+  }
 }
 
 async function requireSizeGuide(
@@ -1236,7 +1316,6 @@ async function insertVariants(
         sizeLabel: variant.sizeLabel,
         priceBdt: variant.price === null ? null : variant.price.amountBdt,
         compareAtPriceBdt: variant.compareAtPrice?.amountBdt ?? null,
-        gtin: variant.gtin ?? null,
         isActive: true,
       })),
     )
@@ -1319,7 +1398,6 @@ async function reconcileVariants(
           sizeLabel: variant.sizeLabel,
           priceBdt: nextPriceBdt,
           compareAtPriceBdt: nextCompareAtPriceBdt,
-          gtin: variant.gtin ?? null,
           isActive: true,
           updatedAt: new Date(),
         })
@@ -1334,7 +1412,6 @@ async function reconcileVariants(
           sizeLabel: variant.sizeLabel,
           priceBdt: nextPriceBdt,
           compareAtPriceBdt: nextCompareAtPriceBdt,
-          gtin: variant.gtin ?? null,
           isActive: true,
         })
         .returning({ id: catalogProductVariant.id });
@@ -1426,7 +1503,6 @@ async function loadProductDetail(
         variant.compareAtPriceBdt === null
           ? null
           : toCatalogPrice(variant.compareAtPriceBdt),
-      gtin: variant.gtin,
       isActive: variant.isActive,
     })),
     sizeGuide,

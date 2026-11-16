@@ -1074,6 +1074,13 @@ export class CatalogMediaService {
         actor,
         transaction,
       );
+      const [product] = await transaction
+        .select({ isPublished: catalogProduct.isPublished })
+        .from(catalogProduct)
+        .where(eq(catalogProduct.id, productId))
+        .for("update")
+        .limit(1);
+      if (!product) throw new NotFoundException("Product not found.");
       const [current] = await transaction
         .select()
         .from(catalogProductMedia)
@@ -1092,6 +1099,47 @@ export class CatalogMediaService {
         throw new ConflictException(
           "Finish or retry image processing before deleting this media item.",
         );
+      }
+
+      if (product.isPublished && current.status === "ready") {
+        const activeVariants = await transaction
+          .select({ id: catalogProductVariant.id })
+          .from(catalogProductVariant)
+          .where(
+            and(
+              eq(catalogProductVariant.productId, productId),
+              eq(catalogProductVariant.isActive, true),
+            ),
+          );
+        const activeVariantIds = activeVariants.map(({ id }) => id);
+        const currentIsPublic =
+          current.variantId === null ||
+          activeVariantIds.includes(current.variantId);
+        if (currentIsPublic) {
+          const retainedMediaCondition = activeVariantIds.length
+            ? or(
+                isNull(catalogProductMedia.variantId),
+                inArray(catalogProductMedia.variantId, activeVariantIds),
+              )
+            : isNull(catalogProductMedia.variantId);
+          const [retainedImage] = await transaction
+            .select({ id: catalogProductMedia.id })
+            .from(catalogProductMedia)
+            .where(
+              and(
+                eq(catalogProductMedia.productId, productId),
+                eq(catalogProductMedia.status, "ready"),
+                not(eq(catalogProductMedia.id, current.id)),
+                retainedMediaCondition,
+              ),
+            )
+            .limit(1);
+          if (!retainedImage) {
+            throw new ConflictException(
+              "A published product must keep at least one ready image. Unpublish it before deleting its last image.",
+            );
+          }
+        }
       }
 
       const [deleting] = await transaction

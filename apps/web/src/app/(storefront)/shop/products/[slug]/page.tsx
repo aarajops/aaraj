@@ -9,6 +9,8 @@ import {
   getStorefrontShareImage,
 } from "@/features/storefront/storefront-metadata";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
+import type { CatalogProductDetail } from "@aaraj/contracts";
+import { getStorefrontOrigin } from "@/lib/storefront-origin";
 import { ProductGallery } from "./product-gallery";
 import { ProductPurchase } from "./product-purchase";
 import { RelatedProductsSection } from "./related-products-section";
@@ -38,7 +40,8 @@ export async function generateMetadata({
     };
   }
 
-  const description = result.product.description || defaults.description;
+  const description =
+    result.product.description?.trim() || defaults.description;
   const productImage = result.product.images[0];
   const images = productImage
     ? [
@@ -119,9 +122,16 @@ export default async function ProductPage({
   const { product } = result;
   const initialColor = singleQueryValue(query.color);
   const initialSize = singleQueryValue(query.size);
+  const jsonLd = createProductGroupJsonLd(product, getStorefrontOrigin());
 
   return (
-    <main className="container mx-auto flex-1 px-5 py-6 text-foreground sm:py-14">
+    <main className="container mx-auto flex-1 px-5 pt-6 pb-16 text-foreground sm:py-14">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
       <article className="space-y-3 sm:space-y-8 lg:space-y-10">
         <nav
           aria-label="Breadcrumb"
@@ -146,15 +156,20 @@ export default async function ProductPage({
                 </li>
               </>
             )}
-            <li aria-hidden="true">/</li>
-            <li aria-current="page" className="text-foreground">
+            <li aria-hidden="true" className="hidden sm:list-item">
+              /
+            </li>
+            <li
+              aria-current="page"
+              className="sr-only text-foreground sm:not-sr-only"
+            >
               {product.name}
             </li>
           </ol>
         </nav>
 
         <div
-          className={`grid items-start gap-5 sm:gap-8 lg:gap-10 ${
+          className={`grid items-start gap-3 sm:gap-8 lg:gap-10 ${
             product.images.length > 0 ? "lg:grid-cols-5" : ""
           }`}
         >
@@ -257,6 +272,105 @@ export default async function ProductPage({
       </article>
     </main>
   );
+}
+
+function createProductGroupJsonLd(
+  product: CatalogProductDetail,
+  origin: string,
+) {
+  const canonicalUrl = new URL(
+    `/shop/products/${product.slug}`,
+    origin,
+  ).toString();
+  const globalImages = product.images.filter(({ variantId }) => !variantId);
+  const colors = new Set(
+    product.variants.map(({ color }) => normalizeVariantValue(color)),
+  );
+  const sizes = new Set(
+    product.variants.map(({ sizeLabel }) => normalizeVariantValue(sizeLabel)),
+  );
+  const variesBy = [
+    ...(colors.size > 1 ? ["https://schema.org/color"] : []),
+    ...(sizes.size > 1 ? ["https://schema.org/size"] : []),
+  ];
+
+  const productImages = product.images.map(({ detail }) =>
+    new URL(detail.src, origin).toString(),
+  );
+  if (product.variants.length <= 1 || variesBy.length === 0) {
+    const variant = product.variants[0];
+
+    return {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: product.name,
+      description: product.description,
+      image: productImages,
+      url: canonicalUrl,
+      ...(variant
+        ? {
+            sku: variant.sku,
+            color: variant.color,
+            size: variant.sizeLabel,
+            offers: {
+              "@type": "Offer",
+              url: canonicalUrl,
+              priceCurrency: "BDT",
+              price: variant.price.amountBdt,
+              availability: `https://schema.org/${variant.inStock ? "InStock" : "OutOfStock"}`,
+            },
+          }
+        : {}),
+    };
+  }
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "ProductGroup",
+    name: product.name,
+    description: product.description,
+    image: productImages,
+    url: canonicalUrl,
+    productGroupID: product.id,
+    variesBy,
+    hasVariant: product.variants.map((variant) => {
+      const variantImages = product.images.filter(
+        ({ variantId }) => variantId === variant.id,
+      );
+      const images =
+        variantImages.length > 0
+          ? variantImages
+          : globalImages.length > 0
+            ? globalImages
+            : product.images;
+      const variantUrl = new URL(canonicalUrl);
+      variantUrl.searchParams.set("color", variant.color);
+      variantUrl.searchParams.set("size", variant.sizeLabel);
+
+      return {
+        "@type": "Product",
+        name: `${product.name} — ${variant.color} — ${variant.sizeLabel}`,
+        description: product.description,
+        image: images.map(({ detail }) =>
+          new URL(detail.src, origin).toString(),
+        ),
+        sku: variant.sku,
+        color: variant.color,
+        size: variant.sizeLabel,
+        offers: {
+          "@type": "Offer",
+          url: variantUrl.toString(),
+          priceCurrency: "BDT",
+          price: variant.price.amountBdt,
+          availability: `https://schema.org/${variant.inStock ? "InStock" : "OutOfStock"}`,
+        },
+      };
+    }),
+  };
+}
+
+function normalizeVariantValue(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US");
 }
 
 function singleQueryValue(

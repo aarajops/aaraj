@@ -18,7 +18,6 @@ type VariantDraft = {
   sizeLabel: string;
   priceBdt: string;
   compareAtPriceBdt: string;
-  gtin: string;
 };
 
 export interface ProductForm {
@@ -79,7 +78,6 @@ function prepareProductSubmission(
         variant.sizeLabel,
         variant.priceBdt,
         variant.compareAtPriceBdt,
-        variant.gtin,
       ].some((value) => value.trim().length > 0),
     );
   const variants = variantDrafts.map(({ variant }) => {
@@ -92,7 +90,6 @@ function prepareProductSubmission(
       price: amountBdt === null ? null : { amountBdt },
       compareAtPrice:
         compareAtAmountBdt === null ? null : { amountBdt: compareAtAmountBdt },
-      gtin: variant.gtin.trim() || null,
     };
   });
   const fields = {
@@ -180,7 +177,6 @@ export const productFormSchema = z
         sizeLabel: z.string(),
         priceBdt: z.string(),
         compareAtPriceBdt: z.string(),
-        gtin: z.string(),
       }),
     ),
     isPublished: z.boolean(),
@@ -232,6 +228,13 @@ export const productFormSchema = z
     }
 
     if (form.isPublished) {
+      if (!form.description.trim()) {
+        context.addIssue({
+          code: "custom",
+          path: ["description"],
+          message: "Add a product-specific description before publishing.",
+        });
+      }
       if (!form.categoryId) {
         context.addIssue({
           code: "custom",
@@ -291,7 +294,6 @@ export function toProductFormState(
       compareAtPriceBdt: formatBdtInput(
         variant.compareAtPrice?.amountBdt ?? null,
       ),
-      gtin: variant.gtin ?? "",
     })),
     isPublished: product.isPublished,
   };

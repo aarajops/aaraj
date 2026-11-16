@@ -426,8 +426,8 @@ export function CatalogManager({
                     {view === "edit" ? "Edit product" : "Create a product"}
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Drafts can be incomplete. Publishing requires sellable
-                    variants and a matching size guide.
+                    Drafts can be incomplete. Publishing requires a description,
+                    ready image, sellable variants, and a matching size guide.
                   </p>
                 </div>
               </div>
@@ -698,7 +698,6 @@ export function CatalogManager({
                           sizeLabel: "",
                           priceBdt: "",
                           compareAtPriceBdt: "",
-                          gtin: "",
                         })
                       }
                     >
@@ -724,7 +723,6 @@ export function CatalogManager({
                             <TableHead scope="col">
                               Regular price (BDT)
                             </TableHead>
-                            <TableHead scope="col">GTIN (optional)</TableHead>
                             <TableHead className="text-right" scope="col">
                               Actions
                             </TableHead>
@@ -895,37 +893,6 @@ export function CatalogManager({
                                   </FieldError>
                                 )}
                               </TableCell>
-                              <TableCell className="align-top">
-                                <label
-                                  className="sr-only"
-                                  htmlFor={`variant-${index}-gtin`}
-                                >
-                                  GTIN (optional)
-                                </label>
-                                <Input
-                                  id={`variant-${index}-gtin`}
-                                  aria-describedby={
-                                    errors.variants?.[index]?.gtin
-                                      ? `variant-${index}-gtin-error`
-                                      : undefined
-                                  }
-                                  aria-invalid={Boolean(
-                                    errors.variants?.[index]?.gtin,
-                                  )}
-                                  inputMode="numeric"
-                                  maxLength={14}
-                                  {...register(
-                                    `variants.${index}.gtin` as const,
-                                  )}
-                                />
-                                {errors.variants?.[index]?.gtin && (
-                                  <FieldError
-                                    id={`variant-${index}-gtin-error`}
-                                  >
-                                    {errors.variants[index].gtin.message}
-                                  </FieldError>
-                                )}
-                              </TableCell>
                               <TableCell className="align-top text-right">
                                 <Button
                                   aria-label={`Remove variant ${index + 1}`}
@@ -1068,8 +1035,8 @@ export function CatalogManager({
                       Published on the storefront
                     </span>
                     <span className="mt-1 block text-muted-foreground">
-                      Only complete products with matching variants and a size
-                      guide can be published.
+                      Add a description, at least one ready image, matching
+                      variants, and a size guide before publishing.
                     </span>
                   </span>
                 </label>

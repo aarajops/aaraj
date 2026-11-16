@@ -61,13 +61,6 @@ export const CatalogProductVariantInputSchema = z.strictObject({
   sizeLabel: z.string().trim().min(1).max(40),
   price: CatalogPriceSchema.nullable(),
   compareAtPrice: CatalogPriceSchema.nullable().optional(),
-  gtin: z
-    .string()
-    .trim()
-    .regex(/^(?:\d{8}|\d{12,14})$/)
-    .refine(isValidGtin, "Enter a valid GS1 GTIN with a correct check digit.")
-    .nullable()
-    .optional(),
 });
 export type CatalogProductVariantInput = z.input<
   typeof CatalogProductVariantInputSchema
@@ -75,6 +68,7 @@ export type CatalogProductVariantInput = z.input<
 
 export const CatalogProductVariantSchema = z.strictObject({
   id: z.uuid(),
+  sku: z.string().min(1).max(100),
   color: z.string(),
   sizeLabel: z.string(),
   price: CatalogPriceSchema,
@@ -89,7 +83,6 @@ export const CatalogManagedProductVariantSchema = z.strictObject({
   price: CatalogPriceSchema.nullable(),
   compareAtPrice: CatalogPriceSchema.nullable().default(null),
   sku: z.string(),
-  gtin: z.string().nullable(),
   isActive: z.boolean(),
 });
 
@@ -373,17 +366,4 @@ function validateVariantInputs(input: {
     }
   }
   return issues;
-}
-
-function isValidGtin(value: string): boolean {
-  const digits = [...value].map(Number);
-  const checkDigit = digits.pop();
-  if (checkDigit === undefined) return false;
-  const sum = digits
-    .reverse()
-    .reduce(
-      (total, digit, index) => total + digit * (index % 2 === 0 ? 3 : 1),
-      0,
-    );
-  return (10 - (sum % 10)) % 10 === checkDigit;
 }

@@ -21,9 +21,11 @@ import { getRedisClient } from "../src/platform/redis/redis-client.js";
 import {
   catalogCategory,
   catalogProduct,
+  catalogProductMedia,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
 import { getPublishedFilterOptionsCacheKey } from "../src/catalog/published-filter-cache.js";
+import { readyCatalogImageValues } from "./catalog-test-media.js";
 
 type Account = { id: string; email: string; cookie: string };
 const origin = "http://localhost:3000";
@@ -664,24 +666,47 @@ describe("catalog and security audit", () => {
       .set("If-Match", productEtag(created.body.id, 1))
       .send({ isPublished: true, reason: "Approved for storefront" })
       .expect(400);
+
+    const publishInput = {
+      variants: [
+        {
+          sku: "AA-TEE-BLK-M",
+          color: "Black",
+          sizeLabel: "M",
+          price: { amountBdt: 1999 },
+          compareAtPrice: { amountBdt: 2499 },
+        },
+      ],
+      isPublished: true,
+      reason: "Set price and publish product",
+    };
+    const missingImage = await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", productEtag(created.body.id, 1))
+      .send(publishInput)
+      .expect(400);
+    expect(missingImage.body.message).toContain(
+      "Add at least one ready product image before publishing.",
+    );
+
+    await database.db
+      .insert(catalogProductMedia)
+      .values(
+        readyCatalogImageValues(
+          created.body.id as string,
+          staff.id,
+          "Front view of Aaraj Draft Tee",
+        ),
+      );
+
     const published = await request(app.getHttpServer())
       .patch(`/api/v1/catalog/products/${created.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .set("If-Match", productEtag(created.body.id, 1))
-      .send({
-        variants: [
-          {
-            sku: "AA-TEE-BLK-M",
-            color: "Black",
-            sizeLabel: "M",
-            price: { amountBdt: 1999 },
-            compareAtPrice: { amountBdt: 2499 },
-          },
-        ],
-        isPublished: true,
-        reason: "Set price and publish product",
-      })
+      .send(publishInput)
       .expect(200);
     expect(published.headers.etag).toBe(productEtag(created.body.id, 2));
     await request(app.getHttpServer())
@@ -707,18 +732,21 @@ describe("catalog and security audit", () => {
     expect(publicProduct.body.variants[0].compareAtPrice).toEqual({
       amountBdt: 2499,
     });
+    expect(publicProduct.body.variants[0]).toMatchObject({
+      sku: "AA-TEE-BLK-M",
+    });
     expect(publicProduct.body.compareAtPrice).toEqual({ amountBdt: 2499 });
-    expect(publicProduct.body.variants[0]).not.toHaveProperty("sku");
     expect(publicProduct.body.sizeGuide.rows).toHaveLength(2);
     expect(publicProduct.body.fabricComposition).toBe("100% cotton");
 
-    await request(app.getHttpServer())
+    const cityShirt = await request(app.getHttpServer())
       .post("/api/v1/catalog/products")
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
       .send({
         slug: "aaraj-city-shirt",
         name: "Aaraj City Shirt",
+        description: "A lightweight city shirt in woven cotton.",
         audience: "men",
         categoryId,
         fit: "Regular",
@@ -731,10 +759,19 @@ describe("catalog and security audit", () => {
             price: { amountBdt: 2499 },
           },
         ],
-        isPublished: true,
         reason: "Second item for pagination coverage",
       })
       .expect(201);
+    await database.db
+      .insert(catalogProductMedia)
+      .values(readyCatalogImageValues(cityShirt.body.id as string, staff.id));
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${cityShirt.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", productEtag(cityShirt.body.id, 1))
+      .send({ isPublished: true, reason: "Publish city shirt fixture" })
+      .expect(200);
 
     const variantFilterProbe = await request(app.getHttpServer())
       .post("/api/v1/catalog/products")
@@ -743,6 +780,7 @@ describe("catalog and security audit", () => {
       .send({
         slug: "variant-filter-probe",
         name: "Variant Filter Probe",
+        description: "Variant filter integration test product.",
         audience: "unisex",
         categoryId,
         fit: "Regular",
@@ -773,10 +811,21 @@ describe("catalog and security audit", () => {
             price: { amountBdt: 2299 },
           },
         ],
-        isPublished: true,
         reason: "Test filters against individual variants",
       })
       .expect(201);
+    await database.db
+      .insert(catalogProductMedia)
+      .values(
+        readyCatalogImageValues(variantFilterProbe.body.id as string, staff.id),
+      );
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${variantFilterProbe.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", productEtag(variantFilterProbe.body.id, 1))
+      .send({ isPublished: true, reason: "Publish variant filter fixture" })
+      .expect(200);
 
     const literalPercentSearch = await request(app.getHttpServer())
       .get("/api/v1/catalog/products")
@@ -979,7 +1028,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/products/${variantFilterProbe.body.id}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
-      .set("If-Match", productEtag(variantFilterProbe.body.id, 1))
+      .set("If-Match", productEtag(variantFilterProbe.body.id, 2))
       .send({
         variants: [
           {

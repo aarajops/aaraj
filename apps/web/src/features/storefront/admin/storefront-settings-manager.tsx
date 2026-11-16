@@ -1284,7 +1284,9 @@ function FooterLinkGroupFields({
           {title}
         </h4>
         <p className="mt-1 text-sm text-muted-foreground">
-          Links are displayed alphabetically.
+          {group === "policies"
+            ? "Links are displayed alphabetically. A link labelled with Returns, Refund, or Exchange also appears on product pages."
+            : "Links are displayed alphabetically."}
         </p>
       </div>
       <div className="grid gap-4">

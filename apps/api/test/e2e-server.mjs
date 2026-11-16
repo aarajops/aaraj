@@ -227,6 +227,63 @@ try {
     for (const key of keys) brandAssetObjects.delete(key);
   };
 
+  const catalogMediaObjects = new Map();
+  const getBrandAsset =
+    brandAssetStorage.getPublishedObject.bind(brandAssetStorage);
+  brandAssetStorage.putQuarantinedObject = async ({ key, body, sha256 }) => {
+    catalogMediaObjects.set(key, {
+      body: Buffer.from(body),
+      sha256,
+    });
+  };
+  brandAssetStorage.putDerivativeObject = async ({ key, body, sha256 }) => {
+    catalogMediaObjects.set(key, {
+      body: Buffer.from(body),
+      sha256,
+    });
+  };
+  brandAssetStorage.getPublishedObject = async (input) => {
+    const stored = catalogMediaObjects.get(input.key);
+    if (stored) {
+      if (
+        stored.sha256 !== input.sha256 ||
+        (input.sizeBytes !== undefined &&
+          stored.body.byteLength !== input.sizeBytes)
+      ) {
+        throw new Error("catalog media fixture checksum mismatch");
+      }
+      return Buffer.from(stored.body);
+    }
+    return getBrandAsset(input);
+  };
+  brandAssetStorage.deleteMediaObjects = async (keys) => {
+    for (const key of keys) catalogMediaObjects.delete(key);
+  };
+  brandAssetStorage.listCatalogMediaObjectsPage = async ({
+    prefix,
+    continuationToken,
+    maxKeys,
+  }) => {
+    const objects = [...catalogMediaObjects.keys()]
+      .filter((key) => key.startsWith(prefix))
+      .sort((left, right) => left.localeCompare(right))
+      .map((key) => ({ key, lastModified: new Date() }));
+    const start = continuationToken ? Number(continuationToken) : 0;
+    const page = objects.slice(start, start + maxKeys);
+    const nextIndex = start + page.length;
+    return {
+      objects: page,
+      nextContinuationToken:
+        nextIndex < objects.length ? String(nextIndex) : undefined,
+    };
+  };
+  brandAssetStorage.listCatalogMediaObjectsForId = async (mediaId) =>
+    [...catalogMediaObjects.keys()].filter(
+      (key) =>
+        key.startsWith(`quarantine/${mediaId}/`) ||
+        key.startsWith(`published/${mediaId}/`),
+    );
+
   const fixtureEmail = "catalog-e2e@example.test";
   const fixturePassword = "CatalogE2E-Only-Password-2026!";
   const fixtureResponse = await auth.api.signUpEmail({

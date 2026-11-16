@@ -21,6 +21,7 @@ import {
 import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 import {
   catalogProduct,
+  catalogProductMedia,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
@@ -28,6 +29,7 @@ import { inventoryStockBalance } from "../src/inventory/inventory-schema.js";
 import { quoteSnapshot } from "../src/quote/quote-schema.js";
 import { QuoteService } from "../src/quote/quote.service.js";
 import { geographySnapshot } from "../src/geography/geography-schema.js";
+import { readyCatalogImageValues } from "./catalog-test-media.js";
 
 const origin = "http://localhost:3000";
 const password = "aaraj-quote-e2e-password-123";
@@ -148,6 +150,7 @@ describe("authoritative Bangladesh quotes", () => {
       .values({
         slug: `quote-product-${randomUUID()}`,
         name: "Quote E2E tee",
+        description: "Delivery quote integration test product.",
         isPublished: true,
       })
       .returning();
@@ -165,6 +168,9 @@ describe("authoritative Bangladesh quotes", () => {
       .returning({ id: catalogProductVariant.id });
     if (!variant) throw new Error("Could not create the quote E2E variant.");
     variantId = variant.id;
+    await database.db
+      .insert(catalogProductMedia)
+      .values(readyCatalogImageValues(product.id, "quote-e2e"));
 
     const response = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/geography`)

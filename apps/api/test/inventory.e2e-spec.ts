@@ -12,6 +12,7 @@ import { AccessService } from "../src/platform/authorization/access.service.js";
 import { DatabaseService } from "../src/platform/database/database.service.js";
 import {
   catalogProduct,
+  catalogProductMedia,
   catalogProductVariant,
 } from "../src/catalog/catalog-schema.js";
 import {
@@ -24,6 +25,7 @@ import {
   INVENTORY_RESERVATION_PORT,
   type InventoryReservationPort,
 } from "../src/inventory/inventory-reservation.port.js";
+import { readyCatalogImageValues } from "./catalog-test-media.js";
 
 type Account = { id: string; email: string; cookie: string };
 const origin = "http://localhost:3000";
@@ -94,12 +96,16 @@ describe("variant inventory adjustments", () => {
       .values({
         slug: `inventory-reservation-${randomUUID()}`,
         name: "Inventory reservation E2E product",
+        description: "Inventory reservation integration test product.",
         audience: "unisex",
         isPublished: true,
       })
       .returning();
     if (!product)
       throw new Error("Could not create the reservation test product.");
+    await database.db
+      .insert(catalogProductMedia)
+      .values(readyCatalogImageValues(product.id, "inventory-e2e"));
 
     const [variant] = await database.db
       .insert(catalogProductVariant)

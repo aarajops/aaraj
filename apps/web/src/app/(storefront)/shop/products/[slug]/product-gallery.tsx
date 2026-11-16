@@ -81,7 +81,6 @@ export function ProductGallery({
     visibleImages.findIndex(({ id }) => id === selectedImage?.id),
     0,
   );
-
   useEffect(() => {
     if (!api) return;
 
@@ -157,7 +156,7 @@ export function ProductGallery({
               key={image.id}
             >
               <AspectRatio
-                className="overflow-hidden rounded-lg bg-muted/30"
+                className="relative overflow-hidden rounded-lg bg-muted/30"
                 ratio="square"
               >
                 <Image

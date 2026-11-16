@@ -216,7 +216,6 @@ export const catalogProductVariant = catalogSchema.table(
     sizeLabel: text("size_label").notNull(),
     priceBdt: integer("price_bdt"),
     compareAtPriceBdt: integer("compare_at_price_bdt"),
-    gtin: text("gtin"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -239,10 +238,6 @@ export const catalogProductVariant = catalogSchema.table(
     check(
       "product_variant_fields_nonempty_check",
       sql`${table.sku} = btrim(${table.sku}) AND length(${table.sku}) > 0 AND ${table.color} = btrim(${table.color}) AND length(${table.color}) > 0 AND ${table.sizeLabel} = btrim(${table.sizeLabel}) AND length(${table.sizeLabel}) > 0`,
-    ),
-    check(
-      "product_variant_gtin_check",
-      sql`${table.gtin} is null OR ${table.gtin} ~ '^([0-9]{8}|[0-9]{12,14})$'`,
     ),
     check(
       "product_variant_price_bdt_check",
