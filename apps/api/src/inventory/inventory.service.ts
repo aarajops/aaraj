@@ -168,12 +168,6 @@ export class InventoryService {
     // Authorize before checking catalog identity so a denied caller cannot use
     // this command to probe variant IDs.
     await this.authorization.authorize(InventoryPolicy, "manage", actor);
-    const variant = await this.catalog.findVariant(variantId);
-    if (!variant) {
-      const replay = await this.findPriorAdjustment(actor, variantId, input);
-      if (replay) return replay;
-      throw new NotFoundException("Product variant not found.");
-    }
 
     try {
       return await this.database.db.transaction(async (transaction) => {
@@ -205,6 +199,12 @@ export class InventoryService {
           }
           return toAdjustmentResult(prior);
         }
+
+        const variant = await this.catalog.findVariantForAdjustment(
+          transaction,
+          variantId,
+        );
+        if (!variant) throw new NotFoundException("Product variant not found.");
         if (!variant.isActive && input.delta > 0) {
           throw new BadRequestException(
             "Retired variants cannot receive additional stock. Remove or reconcile the remaining stock instead.",
@@ -323,39 +323,6 @@ export class InventoryService {
       }
       throw error;
     }
-  }
-
-  private async findPriorAdjustment(
-    actor: AccessPrincipal,
-    variantId: string,
-    input: InventoryAdjustmentInput,
-  ): Promise<InventoryAdjustmentResult | null> {
-    return this.database.db.transaction(async (transaction) => {
-      await this.authorization.authorize(
-        InventoryPolicy,
-        "manage",
-        actor,
-        transaction,
-      );
-      await lockAdjustmentCommand(transaction, input.commandId);
-      const [prior] = await transaction
-        .select()
-        .from(inventoryStockMovement)
-        .where(eq(inventoryStockMovement.commandId, input.commandId))
-        .limit(1);
-      if (!prior) return null;
-      if (
-        prior.actorId !== actor.id ||
-        prior.variantId !== variantId ||
-        prior.quantityDelta !== input.delta ||
-        prior.reason !== input.reason
-      ) {
-        throw new ConflictException(
-          "This command ID was already used for a different adjustment.",
-        );
-      }
-      return toAdjustmentResult(prior);
-    });
   }
 }
 

@@ -5,6 +5,8 @@ import {
   CatalogProductSlugSuggestionQuerySchema,
   CatalogPublishedProductListQuerySchema,
   CatalogProductUpdateSchema,
+  CatalogMediaUploadInputSchema,
+  MAX_CATALOG_MEDIA_UPLOAD_BYTES,
   CatalogSizeGuideCreateSchema,
   CatalogCategoryCreateSchema,
   CatalogCategoryManagementListQuerySchema,
@@ -29,6 +31,7 @@ import {
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3181);
 const products = [];
+const productMedia = new Map();
 const publicStorefrontSettings = {
   siteName: "Aaraj",
   brandColor: "#7b2220",
@@ -339,6 +342,14 @@ function productEditEtag(product) {
   return `"catalog-product:${product.id}:r${product.editRevision}"`;
 }
 
+function categoryEditEtag(category) {
+  return `"catalog-category:${category.id}:r${category.editRevision}"`;
+}
+
+function sizeGuideEditEtag(guide) {
+  return `"catalog-size-guide:${guide.id}:r${guide.editRevision}"`;
+}
+
 function roleFromCookie(cookie = "") {
   const token = cookie
     .split(";")
@@ -375,6 +386,44 @@ async function readBody(request) {
   } catch {
     return null;
   }
+}
+
+async function readRawBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+function parseMultipartBody(request, body) {
+  const contentType = request.headers["content-type"] ?? "";
+  const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
+  const boundary = boundaryMatch?.[1] ?? boundaryMatch?.[2]?.trim();
+  if (!boundary) return null;
+
+  const fields = {};
+  let file = null;
+  for (const part of body.toString("latin1").split(`--${boundary}`)) {
+    const separator = part.indexOf("\r\n\r\n");
+    if (separator < 0) continue;
+    const headers = part.slice(0, separator);
+    let value = part.slice(separator + 4);
+    if (value.endsWith("\r\n")) value = value.slice(0, -2);
+    const name = /(?:^|;)\s*name="([^"]+)"/i.exec(headers)?.[1];
+    if (!name) continue;
+    const filename = /(?:^|;)\s*filename="([^"]*)"/i.exec(headers)?.[1];
+    if (filename !== undefined) {
+      file = {
+        name: filename,
+        contentType:
+          /\r\ncontent-type:\s*([^\r\n]+)/i.exec(headers)?.[1]?.trim() ??
+          "application/octet-stream",
+        sizeBytes: Buffer.byteLength(value, "latin1"),
+      };
+    } else {
+      fields[name] = Buffer.from(value, "latin1").toString("utf8");
+    }
+  }
+  return { fields, file };
 }
 
 const heldApiPaths = new Set();
@@ -955,10 +1004,14 @@ const server = createServer(async (request, response) => {
     }
     const category = makeCategory(input.name, slug, input.parentId ?? null);
     categories.push(category);
+    const managedCategory = refreshCategoryTree().find(
+      ({ id }) => id === category.id,
+    );
     send(
       response,
       201,
-      refreshCategoryTree().find(({ id }) => id === category.id),
+      managedCategory,
+      managedCategory ? { ETag: categoryEditEtag(managedCategory) } : {},
     );
     return;
   }
@@ -969,13 +1022,32 @@ const server = createServer(async (request, response) => {
   if (categoryPath && method === "PATCH") {
     if (!requireCategoryAdmin(request, response)) return;
     const category = categories.find(({ id }) => id === categoryPath[1]);
+    if (!category) {
+      send(response, 404, { statusCode: 404, message: "Category not found" });
+      return;
+    }
+    if (!request.headers["if-match"]) {
+      send(response, 428, {
+        statusCode: 428,
+        message: "If-Match is required. Reload the category before saving.",
+      });
+      return;
+    }
+    if (request.headers["if-match"] !== categoryEditEtag(category)) {
+      send(response, 412, {
+        statusCode: 412,
+        message:
+          "This category changed after you opened it. Reload the latest version before saving.",
+      });
+      return;
+    }
     const parsed = CatalogCategoryUpdateSchema.safeParse(
       await readBody(request),
     );
-    if (!category || !parsed.success) {
-      send(response, category ? 400 : 404, {
-        statusCode: category ? 400 : 404,
-        message: category ? "Invalid category input" : "Category not found",
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid category input",
       });
       return;
     }
@@ -1044,17 +1116,27 @@ const server = createServer(async (request, response) => {
         return;
       }
     }
-    Object.assign(category, {
+    const next = {
       name: input.name ?? category.name,
       slug: input.slug ?? category.slug,
       parentId,
       isActive: input.isActive ?? category.isActive,
-      updatedAt: new Date().toISOString(),
+    };
+    const changed = Object.entries(next).some(
+      ([key, value]) => category[key] !== value,
+    );
+    Object.assign(category, next, {
+      ...(changed ? { editRevision: category.editRevision + 1 } : {}),
+      updatedAt: changed ? new Date().toISOString() : category.updatedAt,
     });
+    const managedCategory = refreshCategoryTree().find(
+      ({ id }) => id === category.id,
+    );
     send(
       response,
       200,
-      refreshCategoryTree().find(({ id }) => id === category.id),
+      managedCategory,
+      managedCategory ? { ETag: categoryEditEtag(managedCategory) } : {},
     );
     return;
   }
@@ -1086,7 +1168,7 @@ const server = createServer(async (request, response) => {
       send(response, 404, { statusCode: 404, message: "Size guide not found" });
       return;
     }
-    send(response, 200, guide);
+    send(response, 200, guide, { ETag: sizeGuideEditEtag(guide) });
     return;
   }
 
@@ -1112,7 +1194,7 @@ const server = createServer(async (request, response) => {
     const now = new Date().toISOString();
     const guide = makeGuide(parsed.data, now);
     sizeGuides.unshift(guide);
-    send(response, 201, guide);
+    send(response, 201, guide, { ETag: sizeGuideEditEtag(guide) });
     return;
   }
 
@@ -1122,13 +1204,32 @@ const server = createServer(async (request, response) => {
   if (guidePath && method === "PATCH") {
     if (!requireStaff(request, response)) return;
     const guide = sizeGuides.find(({ id }) => id === guidePath[1]);
+    if (!guide) {
+      send(response, 404, { statusCode: 404, message: "Size guide not found" });
+      return;
+    }
+    if (!request.headers["if-match"]) {
+      send(response, 428, {
+        statusCode: 428,
+        message: "If-Match is required. Reload the size guide before saving.",
+      });
+      return;
+    }
+    if (request.headers["if-match"] !== sizeGuideEditEtag(guide)) {
+      send(response, 412, {
+        statusCode: 412,
+        message:
+          "This size guide changed after you opened it. Reload the latest version before saving.",
+      });
+      return;
+    }
     const parsed = CatalogSizeGuideCreateSchema.safeParse(
       await readBody(request),
     );
-    if (!guide || !parsed.success) {
-      send(response, guide ? 400 : 404, {
-        statusCode: guide ? 400 : 404,
-        message: guide ? "Invalid size guide input" : "Size guide not found",
+    if (!parsed.success) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid size guide input",
       });
       return;
     }
@@ -1147,7 +1248,12 @@ const server = createServer(async (request, response) => {
         (product) =>
           product.sizeGuideId === guide.id &&
           product.isPublished &&
-          !isPublishable(product, product.variants, candidate),
+          !isPublishable(
+            product,
+            product.variants,
+            candidate,
+            productMedia.get(product.id) ?? [],
+          ),
       )
     ) {
       send(response, 400, {
@@ -1156,8 +1262,9 @@ const server = createServer(async (request, response) => {
       });
       return;
     }
+    candidate.editRevision = guide.editRevision + 1;
     Object.assign(guide, candidate);
-    send(response, 200, guide);
+    send(response, 200, guide, { ETag: sizeGuideEditEtag(guide) });
     return;
   }
 
@@ -1225,6 +1332,90 @@ const server = createServer(async (request, response) => {
       ETag: productEditEtag(product),
       "Cache-Control": "no-store",
     });
+    return;
+  }
+
+  const productMediaPath = url.pathname.match(
+    /^\/api\/v1\/catalog\/products\/manage\/([^/]+)\/media(?:\/([^/]+)\/preview)?$/,
+  );
+  if (productMediaPath) {
+    if (!requireStaff(request, response)) return;
+    const product = products.find(({ id }) => id === productMediaPath[1]);
+    if (!product) {
+      send(response, 404, { statusCode: 404, message: "Product not found." });
+      return;
+    }
+    const media = productMedia.get(product.id) ?? [];
+    const mediaId = productMediaPath[2];
+    const preview = Boolean(productMediaPath[2]);
+
+    if (method === "GET" && !mediaId) {
+      send(response, 200, {
+        media: media.filter(({ status }) => status !== "deleted"),
+      });
+      return;
+    }
+    if (method === "GET" && preview) {
+      const item = media.find(({ id }) => id === mediaId);
+      if (!item || item.status !== "ready") {
+        send(response, 404, {
+          statusCode: 404,
+          message: "Catalog media preview not found.",
+        });
+        return;
+      }
+      response.writeHead(200, {
+        "Content-Type": "image/webp",
+        "Content-Length": String(mediaFixtureBytes.byteLength),
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      });
+      response.end(mediaFixtureBytes);
+      return;
+    }
+    if (method === "POST" && !mediaId) {
+      const multipart = parseMultipartBody(request, await readRawBody(request));
+      const parsed = multipart
+        ? CatalogMediaUploadInputSchema.safeParse(multipart.fields)
+        : null;
+      if (
+        !multipart ||
+        !parsed?.success ||
+        !multipart.file ||
+        !["image/jpeg", "image/png", "image/webp"].includes(
+          multipart.file.contentType,
+        ) ||
+        multipart.file.sizeBytes < 1 ||
+        multipart.file.sizeBytes > MAX_CATALOG_MEDIA_UPLOAD_BYTES
+      ) {
+        send(response, 400, {
+          statusCode: 400,
+          message: "Invalid product image upload.",
+        });
+        return;
+      }
+      const input = parsed.data;
+      const now = new Date().toISOString();
+      const created = {
+        id: randomUUID(),
+        commandId: input.commandId,
+        productId: product.id,
+        variantId: input.variantId ?? null,
+        altText: input.altText,
+        reason: input.reason ?? null,
+        deletionReason: null,
+        contentType: multipart.file.contentType,
+        sizeBytes: multipart.file.sizeBytes,
+        sortOrder: media.length,
+        status: "ready",
+        createdAt: now,
+        updatedAt: now,
+      };
+      productMedia.set(product.id, [...media, created]);
+      send(response, 201, created);
+      return;
+    }
+    send(response, 405, { statusCode: 405, message: "Method not allowed." });
     return;
   }
 
@@ -1326,18 +1517,11 @@ const server = createServer(async (request, response) => {
         isActive: true,
       })),
     };
-    if (
-      product.isPublished &&
-      !isPublishable(
-        product,
-        product.variants,
-        sizeGuides.find(({ id }) => id === product.sizeGuideId),
-      )
-    ) {
+    if (product.isPublished) {
       send(response, 400, {
         statusCode: 400,
         message:
-          "Product needs matching variants and a size guide before publishing.",
+          "Save the product as a draft, add at least one ready image, then publish it.",
       });
       return;
     }
@@ -1459,20 +1643,30 @@ const server = createServer(async (request, response) => {
       variants,
       updatedAt: new Date().toISOString(),
     };
-    if (
-      candidate.isPublished &&
-      !isPublishable(
-        candidate,
-        variants,
-        sizeGuides.find(({ id }) => id === candidate.sizeGuideId),
-      )
-    ) {
-      send(response, 400, {
-        statusCode: 400,
-        message:
-          "Product needs matching variants and a size guide before publishing.",
-      });
-      return;
+    if (candidate.isPublished) {
+      const media = productMedia.get(product.id) ?? [];
+      if (!media.some(({ status }) => status === "ready")) {
+        send(response, 400, {
+          statusCode: 400,
+          message: "Add at least one ready product image before publishing.",
+        });
+        return;
+      }
+      if (
+        !isPublishable(
+          candidate,
+          variants,
+          sizeGuides.find(({ id }) => id === candidate.sizeGuideId),
+          media,
+        )
+      ) {
+        send(response, 400, {
+          statusCode: 400,
+          message:
+            "Product needs matching variants and a size guide before publishing.",
+        });
+        return;
+      }
     }
     Object.assign(product, candidate);
     send(response, 200, productDetail(product, true), {
@@ -1488,6 +1682,7 @@ function makeGuide(input, createdAt) {
   const now = createdAt ?? new Date().toISOString();
   return {
     id: randomUUID(),
+    editRevision: 1,
     name: input.name,
     category: categoryReference(
       input.category ?? categories.find(({ id }) => id === input.categoryId),
@@ -1548,6 +1743,7 @@ function makeCategory(name, slug, parentId = null) {
     slug,
     parentId,
     isActive: true,
+    editRevision: 1,
     createdAt: now,
     updatedAt: now,
     path: name,
@@ -1634,6 +1830,11 @@ function categoryMatches(categoryId, slug) {
 
 function productDetail(product, management = false) {
   const guide = sizeGuides.find(({ id }) => id === product.sizeGuideId);
+  const publicGuide = guide
+    ? Object.fromEntries(
+        Object.entries(guide).filter(([key]) => key !== "editRevision"),
+      )
+    : null;
   return {
     ...summary(product),
     ...(management ? { editRevision: product.editRevision } : {}),
@@ -1644,10 +1845,37 @@ function productDetail(product, management = false) {
             ({ isActive, price, inStock }) =>
               isActive && price !== null && inStock !== false,
           ),
-          images: (product.images ?? []).map((image) => ({
-            ...image,
-            variantId: image.variantId ?? null,
-          })),
+          images: (product.images ?? [])
+            .map((image) => ({
+              ...image,
+              variantId: image.variantId ?? null,
+            }))
+            .concat(
+              (productMedia.get(product.id) ?? [])
+                .filter(
+                  ({ status, variantId }) =>
+                    status === "ready" &&
+                    (variantId === null ||
+                      product.variants.some(
+                        ({ id, isActive }) => id === variantId && isActive,
+                      )),
+                )
+                .map((image) => ({
+                  id: image.id,
+                  variantId: image.variantId,
+                  altText: image.altText,
+                  card: {
+                    src: mediaFixtureCardPath,
+                    width: 1,
+                    height: 1,
+                  },
+                  detail: {
+                    src: mediaFixturePath,
+                    width: 1,
+                    height: 1,
+                  },
+                })),
+            ),
         }),
     variants: product.variants
       .filter(({ isActive }) => isActive)
@@ -1663,7 +1891,7 @@ function productDetail(product, management = false) {
               inStock: variant.inStock !== false,
             },
       ),
-    sizeGuide: guide ?? null,
+    sizeGuide: publicGuide,
   };
 }
 
@@ -1685,11 +1913,18 @@ function startingPrice(product) {
   return prices.length ? Math.min(...prices) : null;
 }
 
-function isPublishable(product, variants, guide) {
+function isPublishable(product, variants, guide, media = []) {
   return Boolean(
+    product.description?.trim() &&
     product.audience &&
     product.category?.id &&
     guide &&
+    media.some(
+      ({ status, variantId }) =>
+        status === "ready" &&
+        (variantId === null ||
+          variants.some(({ id, isActive }) => id === variantId && isActive)),
+    ) &&
     variants.length > 0 &&
     variants.every((variant) => variant.price !== null) &&
     isCategoryOrDescendant(product.category.id, guide.category.id) &&

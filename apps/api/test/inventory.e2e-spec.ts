@@ -25,6 +25,10 @@ import {
   INVENTORY_RESERVATION_PORT,
   type InventoryReservationPort,
 } from "../src/inventory/inventory-reservation.port.js";
+import {
+  CATALOG_INVENTORY_PORT,
+  type CatalogInventoryPort,
+} from "../src/catalog/catalog-inventory.port.js";
 import { readyCatalogImageValues } from "./catalog-test-media.js";
 
 type Account = { id: string; email: string; cookie: string };
@@ -34,6 +38,7 @@ const password = "aaraj-inventory-e2e-password-123";
 describe("variant inventory adjustments", () => {
   let app: NestExpressApplication;
   let database: DatabaseService;
+  let catalogInventory: CatalogInventoryPort;
   let reservations: InventoryReservationPort;
   let owner: Account;
   let staff: Account;
@@ -145,6 +150,7 @@ describe("variant inventory adjustments", () => {
   beforeAll(async () => {
     app = await createApplication();
     database = app.get(DatabaseService);
+    catalogInventory = app.get(CATALOG_INVENTORY_PORT);
     reservations = app.get(INVENTORY_RESERVATION_PORT);
 
     owner = await createAccount("owner");
@@ -414,6 +420,53 @@ describe("variant inventory adjustments", () => {
       -1,
       "Reconcile retired variant stock",
     ).expect(201);
+  });
+
+  it("rejects a receipt when the variant retires before its locked state check", async () => {
+    const targetVariantId = await createPurchasableVariant();
+    const commandId = randomUUID();
+    let releaseVariantLookup!: () => void;
+    let notifyVariantLookupStarted!: () => void;
+    const variantLookupStarted = new Promise<void>((resolve) => {
+      notifyVariantLookupStarted = resolve;
+    });
+    const variantLookupGate = new Promise<void>((resolve) => {
+      releaseVariantLookup = resolve;
+    });
+    const originalFind =
+      catalogInventory.findVariantForAdjustment.bind(catalogInventory);
+    const lookup = vi
+      .spyOn(catalogInventory, "findVariantForAdjustment")
+      .mockImplementation(async (transaction, id) => {
+        notifyVariantLookupStarted();
+        await variantLookupGate;
+        return originalFind(transaction, id);
+      });
+
+    try {
+      const adjustmentPromise = adjustmentFor(
+        targetVariantId,
+        commandId,
+        3,
+        "Receive stock while variant is being retired",
+      ).then((response) => response);
+      await variantLookupStarted;
+      await database.db
+        .update(catalogProductVariant)
+        .set({ isActive: false })
+        .where(eq(catalogProductVariant.id, targetVariantId));
+      releaseVariantLookup();
+
+      const response = await adjustmentPromise;
+      expect(response.status).toBe(400);
+      expect(await readBalance(targetVariantId)).toEqual({
+        quantityOnHand: 0,
+        quantityReserved: 0,
+      });
+    } finally {
+      releaseVariantLookup();
+      lookup.mockRestore();
+    }
   });
 
   it("reserves single and multiple variants, aggregates duplicates, and replays commands", async () => {

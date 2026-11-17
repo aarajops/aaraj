@@ -19,7 +19,7 @@ import {
   CatalogCategoryOptionsSchema,
   CatalogSizeGuideListQuerySchema,
   CatalogSizeGuidePageSchema,
-  CatalogSizeGuideSchema,
+  CatalogManagedSizeGuideSchema,
   type CatalogProductListQuery,
   type CatalogProductPage,
   type CatalogPublishedProductListQuery,
@@ -30,7 +30,7 @@ import {
   type CatalogCategoryOption,
   type CatalogCategoryManagementListQuery,
   type CatalogCategoryPage,
-  type CatalogSizeGuide,
+  type CatalogManagedSizeGuide,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
 } from "@aaraj/contracts";
@@ -476,7 +476,7 @@ export async function getManagedProduct(
 }
 
 export type ManagedSizeGuideResult =
-  | { guide: CatalogSizeGuide }
+  | { guide: CatalogManagedSizeGuide }
   | { kind: "unauthenticated" | "forbidden" | "not-found" | "unavailable" };
 
 export async function getManagedSizeGuide(
@@ -498,7 +498,9 @@ export async function getManagedSizeGuide(
     }
     if (!response.ok) return { kind: "unavailable" };
 
-    const result = CatalogSizeGuideSchema.safeParse(await response.json());
+    const result = CatalogManagedSizeGuideSchema.safeParse(
+      await response.json(),
+    );
     return result.success ? { guide: result.data } : { kind: "unavailable" };
   } catch {
     return { kind: "unavailable" };

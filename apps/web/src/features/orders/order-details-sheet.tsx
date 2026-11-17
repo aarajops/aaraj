@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import Link from "next/link";
 import { FileText, Plus, Trash2 } from "lucide-react";
 import {
@@ -231,7 +231,7 @@ function OrderDetailsSheetContent({
     }
   }
 
-  async function saveDiscount(event: FormEvent<HTMLFormElement>) {
+  async function saveDiscount(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!order || statusPending || orderEditPending) return;
 

@@ -82,7 +82,7 @@ import {
   loadCategoryReferences,
   requireActiveLeafCategory,
 } from "./catalog-category.helpers.js";
-import { loadCatalogSizeGuide } from "./catalog-size-guide.helpers.js";
+import { loadCatalogSizeGuideContent } from "./catalog-size-guide.helpers.js";
 import {
   catalogSlugBase,
   catalogSlugCandidate,
@@ -1655,7 +1655,7 @@ async function loadSizeGuideDetail(
     .where(eq(catalogSizeGuide.id, guideId))
     .limit(1);
   if (!guide) return null;
-  return loadCatalogSizeGuide(transaction, guide);
+  return loadCatalogSizeGuideContent(transaction, guide);
 }
 
 function toProductPage(

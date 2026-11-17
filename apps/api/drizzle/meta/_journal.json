@@ -470,6 +470,13 @@
       "when": 1794809405562,
       "tag": "0066_catalog_product_edit_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794890693710,
+      "tag": "0067_catalog_edit_revision",
+      "breakpoints": true
     }
   ]
 }

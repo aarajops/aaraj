@@ -59,8 +59,15 @@ export const CatalogCategorySchema = CatalogCategoryOptionSchema.extend({
 });
 export type CatalogCategory = z.infer<typeof CatalogCategorySchema>;
 
+export const CatalogManagedCategorySchema = CatalogCategorySchema.extend({
+  editRevision: z.number().int().positive(),
+});
+export type CatalogManagedCategory = z.infer<
+  typeof CatalogManagedCategorySchema
+>;
+
 export const CatalogCategoryListSchema = z.strictObject({
-  categories: CatalogCategorySchema.array(),
+  categories: CatalogManagedCategorySchema.array(),
 });
 export type CatalogCategoryList = z.infer<typeof CatalogCategoryListSchema>;
 
@@ -75,7 +82,7 @@ export type CatalogCategoryManagementListQuery = z.infer<
 >;
 
 export const CatalogCategoryPageSchema = z.strictObject({
-  categories: CatalogCategorySchema.array().max(MAX_LIST_PAGE_SIZE),
+  categories: CatalogManagedCategorySchema.array().max(MAX_LIST_PAGE_SIZE),
   ...OffsetPaginationMetadataSchema.shape,
 });
 export type CatalogCategoryPage = z.infer<typeof CatalogCategoryPageSchema>;

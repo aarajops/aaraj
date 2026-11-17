@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Header,
+  Headers,
   HttpCode,
   Param,
   Patch,
@@ -16,7 +17,12 @@ import {
   Res,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiConsumes, ApiCookieAuth } from "@nestjs/swagger";
+import {
+  ApiConsumes,
+  ApiCookieAuth,
+  ApiHeader,
+  ApiResponse,
+} from "@nestjs/swagger";
 import type { Response } from "express";
 import {
   AllowAnonymous,
@@ -38,6 +44,10 @@ import {
 } from "@aaraj/contracts";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
 import { CategoryService } from "./category.service.js";
+import {
+  catalogEditEtag,
+  requireCatalogEditRevision,
+} from "./catalog-revision.js";
 import { CatalogMediaManageGuard } from "./media/catalog-media.guard.js";
 import { RequireCatalogMediaUploadPermission } from "./media/catalog-media.guard.js";
 import { CatalogMediaUploadLifecycleInterceptor } from "./media/catalog-media-upload-lifecycle.interceptor.js";
@@ -114,23 +124,65 @@ export class CategoryController {
 
   @Post()
   @ApiCookieAuth()
-  create(
+  async create(
     @Session() session: UserSession,
     @Body({ schema: CatalogCategoryCreateSchema })
     input: CatalogCategoryCreateInput,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.categories.create(session.user, input);
+    const category = await this.categories.create(session.user, input);
+    if (category) {
+      response.setHeader(
+        "ETag",
+        catalogEditEtag("category", category.id, category.editRevision),
+      );
+    }
+    return category;
   }
 
   @Patch(":id")
   @ApiCookieAuth()
-  update(
+  @ApiHeader({
+    name: "If-Match",
+    required: true,
+    description:
+      "Use the editRevision in the management payload to construct this ETag.",
+    example: '"catalog-category:00000000-0000-4000-8000-000000000000:r1"',
+  })
+  @ApiResponse({
+    status: 412,
+    description: "The category changed since it was read.",
+  })
+  @ApiResponse({
+    status: 428,
+    description: "The If-Match precondition is required.",
+  })
+  async update(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogCategoryIdSchema }) categoryId: string,
     @Body({ schema: CatalogCategoryUpdateSchema })
     input: CatalogCategoryUpdateInput,
+    @Headers("if-match") ifMatch: string | undefined,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.categories.update(session.user, categoryId, input);
+    const expectedRevision = requireCatalogEditRevision(
+      ifMatch,
+      "category",
+      categoryId,
+    );
+    const category = await this.categories.update(
+      session.user,
+      categoryId,
+      input,
+      expectedRevision,
+    );
+    if (category) {
+      response.setHeader(
+        "ETag",
+        catalogEditEtag("category", category.id, category.editRevision),
+      );
+    }
+    return category;
   }
 
   @Post(":id/image")

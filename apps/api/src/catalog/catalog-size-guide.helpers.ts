@@ -1,4 +1,8 @@
-import type { CatalogMeasurementKey, CatalogSizeGuide } from "@aaraj/contracts";
+import type {
+  CatalogSizeGuide,
+  CatalogManagedSizeGuide,
+  CatalogMeasurementKey,
+} from "@aaraj/contracts";
 import { asc, eq, inArray } from "drizzle-orm";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import {
@@ -9,6 +13,16 @@ import {
 import { loadCategoryReference } from "./catalog-category.helpers.js";
 
 export async function loadCatalogSizeGuide(
+  transaction: AuditTransaction,
+  guide: typeof catalogSizeGuide.$inferSelect,
+): Promise<CatalogManagedSizeGuide> {
+  return {
+    ...(await loadCatalogSizeGuideContent(transaction, guide)),
+    editRevision: guide.editRevision,
+  };
+}
+
+export async function loadCatalogSizeGuideContent(
   transaction: AuditTransaction,
   guide: typeof catalogSizeGuide.$inferSelect,
 ): Promise<CatalogSizeGuide> {

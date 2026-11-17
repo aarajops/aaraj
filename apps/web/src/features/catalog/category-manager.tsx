@@ -2,10 +2,10 @@
 
 import {
   CATALOG_CATEGORY_SLUG_MAX_LENGTH,
-  CatalogCategorySchema,
+  CatalogManagedCategorySchema,
   CatalogCategoryManagementListQuerySchema,
   CatalogCategorySlugSuggestionSchema,
-  type CatalogCategory,
+  type CatalogManagedCategory,
   type CatalogCategoryOption,
   type CatalogCategoryManagementListQuery,
   type CatalogCategoryPage,
@@ -45,7 +45,7 @@ import { CategoryTable } from "@/features/catalog/category-table";
 import { HomepageCategoryManager } from "@/features/catalog/homepage-category-manager";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type SubmitEvent } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import {
   Field,
@@ -80,8 +80,8 @@ export function CategoryManager({
   query = defaultCategoryTableQuery,
 }: {
   view?: "list" | "create" | "edit";
-  initialCategories?: CatalogCategory[];
-  initialCategory?: CatalogCategory;
+  initialCategories?: CatalogManagedCategory[];
+  initialCategory?: CatalogManagedCategory;
   initialPage?: CatalogCategoryPage;
   homepageCategoryOptions?: CatalogCategoryOption[];
   query?: CatalogCategoryManagementListQuery;
@@ -108,13 +108,14 @@ export function CategoryManager({
   const editingId = useWatch({ control, name: "id" });
   const hasCategoryChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [revisionConflict, setRevisionConflict] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [categorySheetMode, setCategorySheetMode] = useState<"create" | "edit">(
     "create",
   );
   const [categorySheetCategory, setCategorySheetCategory] =
-    useState<CatalogCategory | null>(null);
+    useState<CatalogManagedCategory | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const slugSuggestionRequestId = useRef(0);
   const formMode = view === "list" ? categorySheetMode : view;
@@ -129,16 +130,18 @@ export function CategoryManager({
     setCategorySheetMode("create");
     setCategorySheetCategory(null);
     setErrorMessage(null);
+    setRevisionConflict(false);
     if (imageInput.current) imageInput.current.value = "";
     reset(emptyCategoryForm);
     setCategorySheetOpen(true);
   }
 
-  function openEditSheet(category: CatalogCategory) {
+  function openEditSheet(category: CatalogManagedCategory) {
     slugSuggestionRequestId.current += 1;
     setCategorySheetMode("edit");
     setCategorySheetCategory(category);
     setErrorMessage(null);
+    setRevisionConflict(false);
     if (imageInput.current) imageInput.current.value = "";
     reset(toCategoryFormState(category));
     setCategorySheetOpen(true);
@@ -210,6 +213,7 @@ export function CategoryManager({
   async function saveCategory(submission: CategorySubmission) {
     if (submission.id && !hasCategoryChanges) return;
     setErrorMessage(null);
+    setRevisionConflict(false);
 
     try {
       let response: Response;
@@ -218,11 +222,22 @@ export function CategoryManager({
         if (!getFieldState("slug").isDirty) delete input.slug;
         response = await createCatalogCategory(input);
       } else {
-        response = await updateCatalogCategory(submission.id, submission.input);
+        response = await updateCatalogCategory(
+          submission.id,
+          submission.editRevision,
+          submission.input,
+        );
       }
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
         const message = getApiErrorMessage(problem);
+        if (response.status === 412) {
+          setRevisionConflict(true);
+          setErrorMessage(
+            "This category changed after you opened it. Reload the latest version before saving.",
+          );
+          return;
+        }
         if (problem?.errorCode === "CATALOG_CATEGORY_SLUG_TAKEN") {
           setError("slug", {
             type: "server",
@@ -235,7 +250,9 @@ export function CategoryManager({
         );
         return;
       }
-      const result = CatalogCategorySchema.safeParse(await response.json());
+      const result = CatalogManagedCategorySchema.safeParse(
+        await response.json(),
+      );
       if (!result.success) {
         setErrorMessage("The server returned an invalid category.");
         return;
@@ -251,7 +268,7 @@ export function CategoryManager({
     }
   }
 
-  function handleCategoryFormSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleCategoryFormSubmit(event: SubmitEvent<HTMLFormElement>) {
     void handleSubmit(saveCategory)(event);
   }
 
@@ -271,6 +288,24 @@ export function CategoryManager({
         >
           {errorMessage}
         </p>
+      )}
+      {revisionConflict && (
+        <Button
+          className="w-full"
+          onClick={() => {
+            if (
+              window.confirm(
+                "Reload the latest category? Unsaved changes will be lost.",
+              )
+            ) {
+              window.location.reload();
+            }
+          }}
+          type="button"
+          variant="outline"
+        >
+          Reload latest category
+        </Button>
       )}
       <Field>
         <FieldLabel htmlFor="category-name">Name</FieldLabel>

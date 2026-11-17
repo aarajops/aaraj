@@ -2,7 +2,7 @@ import {
   CatalogMeasurementKeySchema,
   CatalogSizeGuideCreateSchema,
   type CatalogMeasurementKey,
-  type CatalogSizeGuide,
+  type CatalogManagedSizeGuide,
   type CatalogSizeGuideCreateInput,
   type CatalogSizeGuideUpdateInput,
 } from "@aaraj/contracts";
@@ -16,6 +16,7 @@ interface GuideRowDraft {
 
 export interface GuideForm {
   id: string | null;
+  editRevision: number | null;
   name: string;
   categoryId: string;
   fit: string;
@@ -26,6 +27,7 @@ export interface GuideForm {
 
 export const blankGuideForm: GuideForm = {
   id: null,
+  editRevision: null,
   name: "",
   categoryId: "",
   fit: "",
@@ -36,7 +38,11 @@ export const blankGuideForm: GuideForm = {
 
 export type GuideSubmission =
   | { id: null; input: CatalogSizeGuideCreateInput }
-  | { id: string; input: CatalogSizeGuideUpdateInput };
+  | {
+      id: string;
+      editRevision: number;
+      input: CatalogSizeGuideUpdateInput;
+    };
 
 export function formatMeasurementInput(value: string): string {
   if (!/^\d+(?:\.\d+)?$/.test(value)) return value;
@@ -67,6 +73,7 @@ function toGuideSubmission(form: GuideForm): GuideSubmission {
   return form.id
     ? {
         id: form.id,
+        editRevision: form.editRevision ?? 0,
         input: input satisfies CatalogSizeGuideUpdateInput,
       }
     : {
@@ -102,6 +109,7 @@ function mapGuideIssuePath(
 export const guideFormSchema = z
   .strictObject({
     id: z.uuid().nullable(),
+    editRevision: z.number().int().positive().nullable(),
     name: z.string(),
     categoryId: z.string(),
     fit: z.string(),
@@ -115,6 +123,13 @@ export const guideFormSchema = z
     ),
   })
   .superRefine((form, context) => {
+    if (form.id && form.editRevision === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["editRevision"],
+        message: "Reload this size guide before saving changes.",
+      });
+    }
     const submission = toGuideSubmission(form);
     const validation = CatalogSizeGuideCreateSchema.safeParse(submission.input);
 
@@ -145,9 +160,12 @@ export const guideFormSchema = z
   })
   .transform(toGuideSubmission);
 
-export function toSizeGuideFormState(guide: CatalogSizeGuide): GuideForm {
+export function toSizeGuideFormState(
+  guide: CatalogManagedSizeGuide,
+): GuideForm {
   return {
     id: guide.id,
+    editRevision: guide.editRevision,
     name: guide.name,
     categoryId: guide.category.id,
     fit: guide.fit ?? "",

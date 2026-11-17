@@ -21,6 +21,22 @@ async function openProductEdit(page: Page, productName: string) {
   await page.getByRole("menuitem", { name: "Edit product" }).click();
 }
 
+const productImageFixture = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
+  "base64",
+);
+
+async function uploadProductImage(page: Page, altText: string): Promise<void> {
+  await page.getByLabel("Choose images").setInputFiles({
+    name: "front.png",
+    mimeType: "image/png",
+    buffer: productImageFixture,
+  });
+  await page.getByLabel("Alt text for front.png").fill(altText);
+  await page.getByRole("button", { name: "Upload images" }).click();
+  await expect(page.getByText(altText, { exact: true })).toBeVisible();
+}
+
 test("admin sidebar follows permissions and closes after mobile navigation", async ({
   page,
   context,
@@ -108,7 +124,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
 
   await page.goto(`/shop?search=${"x".repeat(161)}&audience=unisex`);
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.locator('p[role="alert"]')).toContainText(
     "The search or filters in this URL are invalid.",
   );
   await expect(page.getByRole("link", { name: /Aaraj E2E/ })).toHaveCount(0);
@@ -187,6 +203,37 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
   await expect(page.locator("#size-0-chest_width")).toHaveValue("21");
   await expect(page.locator("#size-0-body_length")).toHaveValue("29");
+  const guideEditId = new URL(page.url()).pathname.split("/").at(-2);
+  if (!guideEditId) throw new Error("Size guide edit URL has no guide ID.");
+  const staleGuidePattern = `**/api/v1/catalog/size-guides/${guideEditId}`;
+  await page.route(staleGuidePattern, async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 412,
+      json: {
+        statusCode: 412,
+        message:
+          "This size guide changed after you opened it. Reload the latest version before saving.",
+      },
+    });
+  });
+  await page.getByLabel("Guide name").fill("Aaraj Classic Tee stale edit");
+  await page.getByRole("button", { name: "Save guide" }).click();
+  await expect(page.locator('p[role="alert"]')).toContainText(
+    "This size guide changed after you opened it.",
+  );
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toBe(
+      "Reload the latest size guide? Unsaved changes will be lost.",
+    );
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Reload latest size guide" }).click();
+  await expect(page.getByLabel("Guide name")).toHaveValue("Aaraj Classic Tee");
+  await page.unroute(staleGuidePattern);
   await page.goto("/admin/catalog");
   await expect(
     page.getByRole("heading", { name: "Products", level: 1 }),
@@ -230,14 +277,52 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await variantField(page, 2, "Size").fill("M");
   await variantField(page, 2, "Selling price (BDT)").fill("2200");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
-  await page.getByLabel("Published on the storefront").check();
   await variantField(page, 2, "Selling price (BDT)").fill("2200.50");
-  await page.getByRole("button", { name: "Create and publish" }).click();
+  await page.getByRole("button", { name: "Create draft" }).click();
   await expect(
     page.getByText("Enter each price as a whole BDT amount, for example 1999."),
   ).toBeVisible();
   await variantField(page, 2, "Selling price (BDT)").fill("2200");
-  await page.getByRole("button", { name: "Create and publish" }).click();
+  await page.getByRole("button", { name: "Create draft" }).click();
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
+
+  await openProductEdit(page, "Aaraj E2E Tee");
+  const staleProductPattern = "**/api/v1/catalog/products/*";
+  await page.route(staleProductPattern, async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 412,
+      json: {
+        statusCode: 412,
+        message:
+          "This product changed after you opened it. Reload the latest version before saving.",
+      },
+    });
+  });
+  await page
+    .getByLabel("Description", { exact: true })
+    .fill("A stale description that must not replace the latest product.");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.locator('p[role="alert"]')).toContainText(
+    "This product changed after you opened it.",
+  );
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toBe(
+      "Reload the latest product? Unsaved changes will be lost.",
+    );
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Reload latest product" }).click();
+  await expect(page.getByLabel("Description", { exact: true })).toHaveValue(
+    "A test product used to verify the clothing catalog workflow.",
+  );
+  await page.unroute(staleProductPattern);
+  await uploadProductImage(page, "Front view of Aaraj E2E Tee");
+  await page.getByLabel("Published on the storefront").check();
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
   await expect(page.getByText("৳1,999", { exact: true })).toBeVisible();
@@ -495,8 +580,13 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await variantField(page, 1, "Size").fill("M");
   await variantField(page, 1, "Selling price (BDT)").fill("1999");
   await chooseSelectOption(page, "Reusable size guide", /Aaraj Classic Tee/);
+  await page.getByRole("button", { name: "Create draft" }).click();
+  await expect(page).toHaveURL(/\/admin\/catalog$/);
+
+  await openProductEdit(page, "Aaraj E2E T-shirt");
+  await uploadProductImage(page, "Front view of Aaraj E2E T-shirt");
   await page.getByLabel("Published on the storefront").check();
-  await page.getByRole("button", { name: "Create and publish" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
 
   await page.goto("/admin/catalog?limit=1&offset=0");
@@ -561,10 +651,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   let mediaRows: CatalogMedia[] = [mediaRow];
   let uploadAttempts = 0;
   let deleteAttempts = 0;
-  const pngBuffer = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWO4I+d2R86NAYUCAFJZB4Fg78ImAAAAAElFTkSuQmCC",
-    "base64",
-  );
+  const pngBuffer = productImageFixture;
   await page.route(
     "**/api/v1/catalog/products/manage/*/media**",
     async (route) => {
@@ -704,6 +791,45 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
   await expect(page.getByRole("row", { name: /Accessories/ })).toBeVisible();
+  const accessoriesRow = page
+    .getByRole("row")
+    .filter({ hasText: "Accessories" });
+  await accessoriesRow
+    .getByRole("button", {
+      name: /^Actions for product categories row \d+$/,
+    })
+    .click();
+  await page.getByRole("menuitem", { name: "Edit category" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Accessories stale edit");
+  await page.route("**/api/v1/catalog/categories/*", async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 412,
+      json: {
+        statusCode: 412,
+        message:
+          "This category changed after you opened it. Reload the latest version before saving.",
+      },
+    });
+  });
+  await page.getByRole("button", { name: "Save category" }).click();
+  await expect(page.locator('p[role="alert"]')).toContainText(
+    "This category changed after you opened it.",
+  );
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toBe(
+      "Reload the latest category? Unsaved changes will be lost.",
+    );
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Reload latest category" }).click();
+  await expect(page.getByRole("row", { name: /Accessories/ })).toBeVisible();
+  await expect(
+    page.getByRole("row", { name: /Accessories stale edit/ }),
+  ).toHaveCount(0);
   await context.addCookies([
     {
       name: "aaraj-e2e-role",

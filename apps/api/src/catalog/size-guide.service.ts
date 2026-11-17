@@ -3,12 +3,13 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  PreconditionFailedException,
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
 import { MAX_LIST_OFFSET } from "@aaraj/contracts";
 import type {
   CatalogMeasurementKey,
-  CatalogSizeGuide,
+  CatalogManagedSizeGuide,
   CatalogSizeGuideCreateInput,
   CatalogSizeGuideListQuery,
   CatalogSizeGuidePage,
@@ -157,7 +158,7 @@ export class SizeGuideService {
   async findForManagement(
     actor: AccessPrincipal,
     guideId: string,
-  ): Promise<CatalogSizeGuide> {
+  ): Promise<CatalogManagedSizeGuide> {
     await this.authorization.authorize(CatalogPolicy, "manage", actor);
     return this.database.db.transaction(async (transaction) => {
       const [guide] = await transaction
@@ -221,6 +222,7 @@ export class SizeGuideService {
     actor: AccessPrincipal,
     guideId: string,
     input: CatalogSizeGuideUpdateInput,
+    expectedRevision: number,
   ) {
     const rows = normalizeMeasurements(input.rows);
     return this.database.db.transaction(async (transaction) => {
@@ -237,6 +239,11 @@ export class SizeGuideService {
         .for("update")
         .limit(1);
       if (!current) throw new NotFoundException("Size guide not found");
+      if (current.editRevision !== expectedRevision) {
+        throw new PreconditionFailedException(
+          "This size guide changed after you opened it. Reload the latest version before saving.",
+        );
+      }
       await requireActiveCategory(transaction, input.categoryId);
 
       const [updated] = await transaction
@@ -246,6 +253,7 @@ export class SizeGuideService {
           categoryId: input.categoryId,
           fit: input.fit ?? null,
           measurementBasis: input.measurementBasis,
+          editRevision: current.editRevision + 1,
           updatedAt: new Date(),
         })
         .where(eq(catalogSizeGuide.id, guideId))

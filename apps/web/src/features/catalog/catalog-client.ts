@@ -36,6 +36,7 @@ export function createCatalogCategory(
 
 export function updateCatalogCategory(
   categoryId: string,
+  editRevision: number,
   input: CatalogCategoryUpdateInput,
 ): Promise<Response> {
   return fetch(
@@ -43,10 +44,17 @@ export function updateCatalogCategory(
     {
       method: "PATCH",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": catalogCategoryEditEtag(categoryId, editRevision),
+      },
       body: JSON.stringify(input),
     },
   );
+}
+
+function catalogCategoryEditEtag(categoryId: string, revision: number): string {
+  return `"catalog-category:${categoryId}:r${revision}"`;
 }
 
 export function uploadCatalogCategoryImage(
@@ -251,6 +259,7 @@ export function createCatalogSizeGuide(
 
 export function updateCatalogSizeGuide(
   guideId: string,
+  editRevision: number,
   input: CatalogSizeGuideUpdateInput,
 ): Promise<Response> {
   return fetch(
@@ -258,8 +267,15 @@ export function updateCatalogSizeGuide(
     {
       method: "PATCH",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": catalogSizeGuideEditEtag(guideId, editRevision),
+      },
       body: JSON.stringify(input),
     },
   );
+}
+
+function catalogSizeGuideEditEtag(guideId: string, revision: number): string {
+  return `"catalog-size-guide:${guideId}:r${revision}"`;
 }

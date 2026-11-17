@@ -41,6 +41,7 @@ export const catalogCategory = catalogSchema.table(
     imageWidth: integer("image_width"),
     imageHeight: integer("image_height"),
     isActive: boolean("is_active").notNull().default(true),
+    editRevision: integer("edit_revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -71,6 +72,7 @@ export const catalogCategory = catalogSchema.table(
       "category_parent_not_self_check",
       sql`${table.parentId} is null or ${table.parentId} <> ${table.id}`,
     ),
+    check("category_edit_revision_check", sql`${table.editRevision} > 0`),
   ],
 );
 
@@ -86,6 +88,7 @@ export const catalogSizeGuide = catalogSchema.table(
     measurementBasis: text("measurement_basis")
       .$type<"garment" | "body">()
       .notNull(),
+    editRevision: integer("edit_revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -103,6 +106,7 @@ export const catalogSizeGuide = catalogSchema.table(
       "size_guide_measurement_basis_check",
       sql`${table.measurementBasis} in ('garment', 'body')`,
     ),
+    check("size_guide_edit_revision_check", sql`${table.editRevision} > 0`),
   ],
 );
 

@@ -6,6 +6,7 @@ import type {
   InventoryCatalogVariant,
 } from "./catalog-inventory.port.js";
 import type { InventoryListQuery } from "@aaraj/contracts";
+import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { catalogProduct, catalogProductVariant } from "./catalog-schema.js";
 
 @Injectable()
@@ -76,6 +77,23 @@ export class CatalogInventoryReader implements CatalogInventoryPort {
         eq(catalogProduct.id, catalogProductVariant.productId),
       )
       .where(eq(catalogProductVariant.id, variantId))
+      .limit(1);
+    return variant ?? null;
+  }
+
+  async findVariantForAdjustment(
+    transaction: AuditTransaction,
+    variantId: string,
+  ): Promise<Pick<InventoryCatalogVariant, "id" | "sku" | "isActive"> | null> {
+    const [variant] = await transaction
+      .select({
+        id: catalogProductVariant.id,
+        sku: catalogProductVariant.sku,
+        isActive: catalogProductVariant.isActive,
+      })
+      .from(catalogProductVariant)
+      .where(eq(catalogProductVariant.id, variantId))
+      .for("share")
       .limit(1);
     return variant ?? null;
   }

@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   CatalogCategoryListSchema,
   CatalogCategoryOptionsSchema,
+  CatalogManagedProductDetailSchema,
   CatalogProductFilterOptionsSchema,
   DEFAULT_PUBLIC_CATALOG_PAGE_SIZE,
 } from "@aaraj/contracts";
@@ -32,6 +33,10 @@ const origin = "http://localhost:3000";
 const password = "aaraj-e2e-password-123";
 const productEtag = (productId: string, revision: number) =>
   `"catalog-product:${productId}:r${revision}"`;
+const categoryEtag = (categoryId: string, revision: number) =>
+  `"catalog-category:${categoryId}:r${revision}"`;
+const sizeGuideEtag = (guideId: string, revision: number) =>
+  `"catalog-size-guide:${guideId}:r${revision}"`;
 
 describe("catalog and security audit", () => {
   let app: NestExpressApplication;
@@ -283,6 +288,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/categories/${unusedCategory.body.id}`)
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
+      .set("If-Match", categoryEtag(unusedCategory.body.id, 1))
       .send({ isActive: false, reason: "Archive unused category" })
       .expect(200);
     const activeCategories = await request(app.getHttpServer())
@@ -297,6 +303,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/categories/${unusedCategory.body.id}`)
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
+      .set("If-Match", categoryEtag(unusedCategory.body.id, 2))
       .send({ isActive: true, reason: "Restore unused category" })
       .expect(200);
     const categoryId = leafCategory.body.id as string;
@@ -339,6 +346,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/categories/${inactiveChild.body.id}`)
       .set("Cookie", admin.cookie)
       .set("Origin", origin)
+      .set("If-Match", categoryEtag(inactiveChild.body.id, 1))
       .send({ isActive: false, reason: "Archive the child category" })
       .expect(200);
     const inactiveChildOptions = await request(app.getHttpServer())
@@ -382,6 +390,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/categories/${parentCategory.body.id}`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
+      .set("If-Match", categoryEtag(parentCategory.body.id, 1))
       .send({
         parentId: leafCategory.body.id,
         reason: "Reject category cycle",
@@ -426,6 +435,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/categories/${parentCategory.body.id}`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
+      .set("If-Match", categoryEtag(parentCategory.body.id, 1))
       .send({ isActive: false, reason: "Reject category still in use" })
       .expect(409);
     await request(app.getHttpServer())
@@ -443,6 +453,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/categories/${unusedCategory.body.id}`)
       .set("Cookie", owner.cookie)
       .set("Origin", origin)
+      .set("If-Match", categoryEtag(unusedCategory.body.id, 3))
       .send({
         parentId: parentCategory.body.id,
         reason: "Move a category beneath a shared size guide",
@@ -572,6 +583,15 @@ describe("catalog and security audit", () => {
       name: "Aaraj Draft Tee",
       isPublished: false,
     });
+
+    const managedProduct = await request(app.getHttpServer())
+      .get(`/api/v1/catalog/products/manage/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(
+      CatalogManagedProductDetailSchema.safeParse(managedProduct.body).success,
+    ).toBe(true);
+    expect(managedProduct.body.sizeGuide).not.toHaveProperty("editRevision");
 
     await request(app.getHttpServer())
       .get("/api/v1/catalog/products")
@@ -1051,6 +1071,7 @@ describe("catalog and security audit", () => {
       .patch(`/api/v1/catalog/size-guides/${guideId}`)
       .set("Cookie", staff.cookie)
       .set("Origin", origin)
+      .set("If-Match", sizeGuideEtag(guideId, 1))
       .send({
         name: "Aaraj incomplete chart",
         categoryId,
@@ -1315,6 +1336,279 @@ describe("catalog and security audit", () => {
       .set("If-Match", productEtag(legacyProduct.id, 1))
       .send({ isPublished: false, reason: "Unpublish legacy catalog row" })
       .expect(200);
+  });
+
+  it("requires saved media before initial publish and rejects stale category and size-guide edits", async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const category = await request(app.getHttpServer())
+      .post("/api/v1/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: `Revision category ${suffix}`,
+        slug: `revision-category-${suffix}`,
+        reason: "Create revision conflict fixture",
+      })
+      .expect(201);
+    expect(category.body.editRevision).toBe(1);
+    expect(category.headers.etag).toBe(categoryEtag(category.body.id, 1));
+
+    const categoryUpdate = {
+      name: `Updated category ${suffix}`,
+      slug: `updated-category-${suffix}`,
+      parentId: null,
+      isActive: true,
+      reason: "Update category with its current revision",
+    };
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/categories/${category.body.id}`)
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send(categoryUpdate)
+      .expect(428);
+
+    const savedCategory = await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/categories/${category.body.id}`)
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .set("If-Match", categoryEtag(category.body.id, 1))
+      .send(categoryUpdate)
+      .expect(200);
+    expect(savedCategory.body.editRevision).toBe(2);
+    expect(savedCategory.headers.etag).toBe(categoryEtag(category.body.id, 2));
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/categories/${category.body.id}`)
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .set("If-Match", categoryEtag(category.body.id, 1))
+      .send({
+        name: `Stale category ${suffix}`,
+        slug: `stale-category-${suffix}`,
+        parentId: null,
+        isActive: true,
+        reason: "Reject a stale category form",
+      })
+      .expect(412);
+
+    const managedCategories = await request(app.getHttpServer())
+      .get("/api/v1/catalog/categories/manage")
+      .set("Cookie", owner.cookie)
+      .expect(200);
+    expect(
+      managedCategories.body.categories.find(
+        ({ id }: { id: string }) => id === category.body.id,
+      ),
+    ).toMatchObject({
+      name: categoryUpdate.name,
+      slug: categoryUpdate.slug,
+      editRevision: 2,
+    });
+
+    const initialGuideInput = {
+      name: `Revision guide ${suffix}`,
+      categoryId: category.body.id as string,
+      fit: "Regular",
+      measurementBasis: "garment" as const,
+      rows: [
+        {
+          sizeLabel: "S",
+          measurements: [
+            { key: "chest_width" as const, value: "20" },
+            { key: "body_length" as const, value: "28" },
+          ],
+        },
+      ],
+      reason: "Create revision conflict fixture",
+    };
+    const createdGuide = await request(app.getHttpServer())
+      .post("/api/v1/catalog/size-guides")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send(initialGuideInput)
+      .expect(201);
+    expect(createdGuide.body.editRevision).toBe(1);
+    expect(createdGuide.headers.etag).toBe(
+      sizeGuideEtag(createdGuide.body.id, 1),
+    );
+
+    const guideUpdate = {
+      ...initialGuideInput,
+      name: `Updated guide ${suffix}`,
+      rows: [
+        {
+          sizeLabel: "S",
+          measurements: [
+            { key: "chest_width" as const, value: "20.5" },
+            { key: "body_length" as const, value: "28" },
+          ],
+        },
+      ],
+      reason: "Update size guide with its current revision",
+    };
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/size-guides/${createdGuide.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send(guideUpdate)
+      .expect(428);
+
+    const savedGuide = await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/size-guides/${createdGuide.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", sizeGuideEtag(createdGuide.body.id, 1))
+      .send(guideUpdate)
+      .expect(200);
+    expect(savedGuide.body.editRevision).toBe(2);
+    expect(savedGuide.headers.etag).toBe(
+      sizeGuideEtag(createdGuide.body.id, 2),
+    );
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/size-guides/${createdGuide.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", sizeGuideEtag(createdGuide.body.id, 1))
+      .send({
+        ...initialGuideInput,
+        reason: "Reject a stale size-guide form",
+      })
+      .expect(412);
+
+    const currentGuide = await request(app.getHttpServer())
+      .get(`/api/v1/catalog/size-guides/manage/${createdGuide.body.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(currentGuide.body).toMatchObject({
+      name: guideUpdate.name,
+      editRevision: 2,
+      rows: [
+        {
+          sizeLabel: "S",
+          measurements: expect.arrayContaining([
+            { key: "chest_width", valueIn: "20.5" },
+            { key: "body_length", valueIn: "28.0" },
+          ]),
+        },
+      ],
+    });
+    expect(currentGuide.headers.etag).toBe(
+      sizeGuideEtag(createdGuide.body.id, 2),
+    );
+
+    const productSlug = `draft-first-${suffix}`;
+    const rejectedPublish = await request(app.getHttpServer())
+      .post("/api/v1/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: productSlug,
+        name: `Draft first product ${suffix}`,
+        description: "A product that must be saved before adding its image.",
+        audience: "unisex",
+        categoryId: category.body.id,
+        fit: "Regular",
+        sizeGuideId: createdGuide.body.id,
+        variants: [
+          {
+            sku: `DRAFT-FIRST-${suffix}`,
+            color: "Black",
+            sizeLabel: "S",
+            price: { amountBdt: 1999 },
+          },
+        ],
+        isPublished: true,
+        reason: "Ensure first publish requires a saved product image",
+      })
+      .expect(400);
+    expect(rejectedPublish.body.message).toContain(
+      "Save the product as a draft, add at least one ready image, then publish it.",
+    );
+    const persistedProduct = await database.db
+      .select({ id: catalogProduct.id })
+      .from(catalogProduct)
+      .where(eq(catalogProduct.slug, productSlug));
+    expect(persistedProduct).toEqual([]);
+  });
+
+  it("serializes concurrent category moves so they cannot create a cycle", async () => {
+    const suffix = randomUUID().slice(0, 8);
+    const first = await request(app.getHttpServer())
+      .post("/api/v1/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: `Concurrent category A ${suffix}`,
+        slug: `concurrent-category-a-${suffix}`,
+        reason: "Create concurrent category move fixture",
+      })
+      .expect(201);
+    const second = await request(app.getHttpServer())
+      .post("/api/v1/catalog/categories")
+      .set("Cookie", owner.cookie)
+      .set("Origin", origin)
+      .send({
+        name: `Concurrent category B ${suffix}`,
+        slug: `concurrent-category-b-${suffix}`,
+        reason: "Create concurrent category move fixture",
+      })
+      .expect(201);
+
+    const categoryIds = [first.body.id as string, second.body.id as string];
+    try {
+      const [moveFirstUnderSecond, moveSecondUnderFirst] = await Promise.all([
+        request(app.getHttpServer())
+          .patch(`/api/v1/catalog/categories/${first.body.id}`)
+          .set("Cookie", owner.cookie)
+          .set("Origin", origin)
+          .set("If-Match", categoryEtag(first.body.id, 1))
+          .send({
+            parentId: second.body.id,
+            reason: "Move first category concurrently",
+          }),
+        request(app.getHttpServer())
+          .patch(`/api/v1/catalog/categories/${second.body.id}`)
+          .set("Cookie", owner.cookie)
+          .set("Origin", origin)
+          .set("If-Match", categoryEtag(second.body.id, 1))
+          .send({
+            parentId: first.body.id,
+            reason: "Move second category concurrently",
+          }),
+      ]);
+
+      expect(
+        [moveFirstUnderSecond.status, moveSecondUnderFirst.status].sort(
+          (left, right) => left - right,
+        ),
+      ).toEqual([200, 400]);
+      const managed = await request(app.getHttpServer())
+        .get("/api/v1/catalog/categories/manage")
+        .set("Cookie", owner.cookie)
+        .expect(200);
+      const savedFirst = managed.body.categories.find(
+        ({ id }: { id: string }) => id === first.body.id,
+      );
+      const savedSecond = managed.body.categories.find(
+        ({ id }: { id: string }) => id === second.body.id,
+      );
+      expect(
+        [savedFirst.parentId, savedSecond.parentId].filter(Boolean),
+      ).toHaveLength(1);
+      expect(
+        savedFirst.parentId === second.body.id ||
+          savedSecond.parentId === first.body.id,
+      ).toBe(true);
+    } finally {
+      await database.db
+        .update(catalogCategory)
+        .set({ parentId: null })
+        .where(inArray(catalogCategory.id, categoryIds));
+      await database.db
+        .delete(catalogCategory)
+        .where(inArray(catalogCategory.id, categoryIds));
+    }
   });
 
   it("enforces the category limit atomically and keeps legacy overflow readable", async () => {

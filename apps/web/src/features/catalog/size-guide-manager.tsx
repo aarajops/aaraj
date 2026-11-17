@@ -2,10 +2,10 @@
 
 import {
   CatalogMeasurementKeySchema,
-  CatalogSizeGuideSchema,
+  CatalogManagedSizeGuideSchema,
   type CatalogMeasurementKey,
   type CatalogCategory,
-  type CatalogSizeGuide,
+  type CatalogManagedSizeGuide,
   type CatalogSizeGuideListQuery,
   type CatalogSizeGuidePage,
 } from "@aaraj/contracts";
@@ -108,7 +108,7 @@ export function SizeGuideManager({
 }: {
   view?: "list" | "create" | "edit";
   initialPage?: CatalogSizeGuidePage;
-  initialGuide?: CatalogSizeGuide;
+  initialGuide?: CatalogManagedSizeGuide;
   query: CatalogSizeGuideListQuery;
   categoryOptions?: CatalogCategory[];
 }) {
@@ -139,6 +139,7 @@ export function SizeGuideManager({
   });
   const hasGuideChanges = hasDirtyFieldsExcept(dirtyFields, ["id"]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [revisionConflict, setRevisionConflict] = useState(false);
 
   function clearKeyValues(key: CatalogMeasurementKey) {
     getValues("rows").forEach((_, index) => {
@@ -149,20 +150,34 @@ export function SizeGuideManager({
   async function saveGuide(submission: GuideSubmission) {
     if (submission.id && !hasGuideChanges) return;
     setErrorMessage(null);
+    setRevisionConflict(false);
 
     try {
       const response = submission.id
-        ? await updateCatalogSizeGuide(submission.id, submission.input)
+        ? await updateCatalogSizeGuide(
+            submission.id,
+            submission.editRevision,
+            submission.input,
+          )
         : await createCatalogSizeGuide(submission.input);
       if (!response.ok) {
         const problem = await readApiErrorResponse(response);
+        if (response.status === 412) {
+          setRevisionConflict(true);
+          setErrorMessage(
+            "This size guide changed after you opened it. Reload the latest version before saving.",
+          );
+          return;
+        }
         setErrorMessage(
           getApiErrorMessage(problem) ??
             "The API returned an unreadable error response.",
         );
         return;
       }
-      const result = CatalogSizeGuideSchema.safeParse(await response.json());
+      const result = CatalogManagedSizeGuideSchema.safeParse(
+        await response.json(),
+      );
       if (!result.success) {
         setErrorMessage("The server returned an invalid size guide.");
         return;
@@ -583,6 +598,24 @@ export function SizeGuideManager({
                   >
                     {errorMessage}
                   </p>
+                )}
+                {revisionConflict && (
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Reload the latest size guide? Unsaved changes will be lost.",
+                        )
+                      ) {
+                        window.location.reload();
+                      }
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    Reload latest size guide
+                  </Button>
                 )}
                 <Button
                   className="h-auto w-full px-4 py-3 text-base font-semibold"

@@ -1023,23 +1023,30 @@ export function CatalogManager({
                   )}
                 </Field>
 
-                <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
-                  <input
-                    aria-label="Published on the storefront"
-                    className="mt-0.5 accent-primary"
-                    type="checkbox"
-                    {...register("isPublished")}
-                  />
-                  <span>
-                    <span className="block font-medium">
-                      Published on the storefront
+                {editingId ? (
+                  <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
+                    <input
+                      aria-label="Published on the storefront"
+                      className="mt-0.5 accent-primary"
+                      type="checkbox"
+                      {...register("isPublished")}
+                    />
+                    <span>
+                      <span className="block font-medium">
+                        Published on the storefront
+                      </span>
+                      <span className="mt-1 block text-muted-foreground">
+                        Add a description, at least one ready image, matching
+                        variants, and a size guide before publishing.
+                      </span>
                     </span>
-                    <span className="mt-1 block text-muted-foreground">
-                      Add a description, at least one ready image, matching
-                      variants, and a size guide before publishing.
-                    </span>
-                  </span>
-                </label>
+                  </label>
+                ) : (
+                  <FieldDescription>
+                    New products start as drafts. After saving, add at least one
+                    ready image, then publish from the edit screen.
+                  </FieldDescription>
+                )}
 
                 {formErrorMessage && (
                   <p
@@ -1052,7 +1059,15 @@ export function CatalogManager({
                 {productRevisionConflict && (
                   <Button
                     className="w-full"
-                    onClick={() => window.location.reload()}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Reload the latest product? Unsaved changes will be lost.",
+                        )
+                      ) {
+                        window.location.reload();
+                      }
+                    }}
                     type="button"
                     variant="outline"
                   >
@@ -1070,9 +1085,7 @@ export function CatalogManager({
                     ? "Saving…"
                     : editingId
                       ? "Save changes"
-                      : isPublished
-                        ? "Create and publish"
-                        : "Create draft"}
+                      : "Create draft"}
                 </Button>
               </form>
             </Card>

@@ -1,7 +1,7 @@
 import {
   CatalogCategoryCreateSchema,
   CatalogCategoryUpdateSchema,
-  type CatalogCategory,
+  type CatalogManagedCategory,
   type CatalogCategoryCreateInput,
   type CatalogCategoryUpdateInput,
 } from "@aaraj/contracts";
@@ -9,6 +9,7 @@ import { z } from "zod";
 
 export interface CategoryFormDraft {
   id: string | null;
+  editRevision: number | null;
   name: string;
   slug: string;
   parentId: string;
@@ -17,6 +18,7 @@ export interface CategoryFormDraft {
 
 export const emptyCategoryForm: CategoryFormDraft = {
   id: null,
+  editRevision: null,
   name: "",
   slug: "",
   parentId: "",
@@ -25,7 +27,11 @@ export const emptyCategoryForm: CategoryFormDraft = {
 
 export type CategorySubmission =
   | { id: null; input: CatalogCategoryCreateInput }
-  | { id: string; input: CatalogCategoryUpdateInput };
+  | {
+      id: string;
+      editRevision: number;
+      input: CatalogCategoryUpdateInput;
+    };
 
 function toCategorySubmission(form: CategoryFormDraft): CategorySubmission {
   const fields = {
@@ -36,6 +42,7 @@ function toCategorySubmission(form: CategoryFormDraft): CategorySubmission {
   if (form.id) {
     return {
       id: form.id,
+      editRevision: form.editRevision ?? 0,
       input: {
         ...fields,
         slug: form.slug.trim(),
@@ -56,12 +63,20 @@ function toCategorySubmission(form: CategoryFormDraft): CategorySubmission {
 export const categoryFormSchema = z
   .strictObject({
     id: z.uuid().nullable(),
+    editRevision: z.number().int().positive().nullable(),
     name: z.string(),
     slug: z.string(),
     parentId: z.string(),
     isActive: z.boolean(),
   })
   .superRefine((form, context) => {
+    if (form.id && form.editRevision === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["editRevision"],
+        message: "Reload this category before saving changes.",
+      });
+    }
     const submission = toCategorySubmission(form);
     const validation = submission.id
       ? CatalogCategoryUpdateSchema.safeParse(submission.input)
@@ -80,10 +95,11 @@ export const categoryFormSchema = z
   .transform(toCategorySubmission);
 
 export function toCategoryFormState(
-  category: CatalogCategory,
+  category: CatalogManagedCategory,
 ): CategoryFormDraft {
   return {
     id: category.id,
+    editRevision: category.editRevision,
     name: category.name,
     slug: category.slug,
     parentId: category.parentId ?? "",

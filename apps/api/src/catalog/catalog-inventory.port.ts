@@ -1,4 +1,5 @@
 import type { InventoryListQuery } from "@aaraj/contracts";
+import type { AuditTransaction } from "../platform/audit/audit.types.js";
 
 export const CATALOG_INVENTORY_PORT = Symbol("CATALOG_INVENTORY_PORT");
 
@@ -16,4 +17,8 @@ export interface CatalogInventoryPort {
     query: Pick<InventoryListQuery, "limit" | "offset" | "search">,
   ): Promise<{ variants: InventoryCatalogVariant[]; hasMore: boolean }>;
   findVariant(variantId: string): Promise<InventoryCatalogVariant | null>;
+  findVariantForAdjustment(
+    transaction: AuditTransaction,
+    variantId: string,
+  ): Promise<Pick<InventoryCatalogVariant, "id" | "sku" | "isActive"> | null>;
 }

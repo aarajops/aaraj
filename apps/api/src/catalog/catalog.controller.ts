@@ -1,12 +1,9 @@
 import {
   Body,
-  BadRequestException,
   Controller,
   Delete,
   Get,
   Header,
-  HttpException,
-  HttpStatus,
   Headers,
   HttpCode,
   Param,
@@ -20,11 +17,10 @@ import {
   UseInterceptors,
   UseGuards,
   UsePipes,
-  PreconditionFailedException,
 } from "@nestjs/common";
 import type { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiCookieAuth } from "@nestjs/swagger";
+import { ApiCookieAuth, ApiHeader, ApiResponse } from "@nestjs/swagger";
 import {
   AllowAnonymous,
   Session,
@@ -53,6 +49,10 @@ import {
 } from "@aaraj/contracts";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
 import { CatalogService } from "./catalog.service.js";
+import {
+  catalogEditEtag,
+  requireCatalogEditRevision,
+} from "./catalog-revision.js";
 import { CatalogMediaManageGuard } from "./media/catalog-media.guard.js";
 import { CatalogMediaUploadLifecycleInterceptor } from "./media/catalog-media-upload-lifecycle.interceptor.js";
 import {
@@ -83,20 +83,20 @@ export class CatalogController {
   @Get("manage/:id")
   @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
-  findForManagement(
+  async findForManagement(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogProductIdSchema }) productId: string,
     @Res({ passthrough: true }) response: Response,
   ) {
-    return this.catalog
-      .findForManagement(session.user, productId)
-      .then((product) => {
-        response.setHeader(
-          "ETag",
-          catalogProductEditEtag(product.id, product.editRevision),
-        );
-        return product;
-      });
+    const product = await this.catalog.findForManagement(
+      session.user,
+      productId,
+    );
+    response.setHeader(
+      "ETag",
+      catalogEditEtag("product", product.id, product.editRevision),
+    );
+    return product;
   }
 
   @Get("manage/:productId/media")
@@ -244,7 +244,22 @@ export class CatalogController {
 
   @Patch(":id")
   @ApiCookieAuth()
-  update(
+  @ApiHeader({
+    name: "If-Match",
+    required: true,
+    description:
+      "Use the editRevision in the management payload to construct this ETag.",
+    example: '"catalog-product:00000000-0000-4000-8000-000000000000:r1"',
+  })
+  @ApiResponse({
+    status: 412,
+    description: "The product changed since it was read.",
+  })
+  @ApiResponse({
+    status: 428,
+    description: "The If-Match precondition is required.",
+  })
+  async update(
     @Session() session: UserSession,
     @Param("id", { schema: CatalogProductIdSchema }) productId: string,
     @Body({ schema: CatalogProductUpdateSchema })
@@ -252,43 +267,21 @@ export class CatalogController {
     @Headers("if-match") ifMatch: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ) {
-    if (ifMatch === undefined) {
-      throw new HttpException(
-        "If-Match is required. Reload the product before saving.",
-        HttpStatus.PRECONDITION_REQUIRED,
-      );
-    }
-    const match = /^"catalog-product:([0-9a-f-]{36}):r([1-9][0-9]*)"$/i.exec(
+    const expectedRevision = requireCatalogEditRevision(
       ifMatch,
+      "product",
+      productId,
     );
-    if (!match) {
-      throw new BadRequestException(
-        "If-Match must contain this product's current ETag.",
-      );
-    }
-    if (match[1]?.toLowerCase() !== productId.toLowerCase()) {
-      throw new PreconditionFailedException(
-        "If-Match does not match this product.",
-      );
-    }
-    const expectedRevision = Number(match[2]);
-    if (!Number.isSafeInteger(expectedRevision)) {
-      throw new PreconditionFailedException(
-        "If-Match does not match the current product revision.",
-      );
-    }
-    return this.catalog
-      .update(session.user, productId, input, expectedRevision)
-      .then((product) => {
-        response.setHeader(
-          "ETag",
-          catalogProductEditEtag(product.id, product.editRevision),
-        );
-        return product;
-      });
+    const product = await this.catalog.update(
+      session.user,
+      productId,
+      input,
+      expectedRevision,
+    );
+    response.setHeader(
+      "ETag",
+      catalogEditEtag("product", product.id, product.editRevision),
+    );
+    return product;
   }
-}
-
-function catalogProductEditEtag(productId: string, revision: number): string {
-  return `"catalog-product:${productId}:r${revision}"`;
 }

@@ -4,12 +4,13 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  PreconditionFailedException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { AuthorizationService } from "@nestjs/authorization";
 import type {
   CatalogCategoryImage,
-  CatalogCategory,
+  CatalogManagedCategory,
   CatalogCategoryCreateInput,
   CatalogCategoryList,
   CatalogCategoryManagementListQuery,
@@ -406,6 +407,7 @@ export class CategoryService {
     actor: AccessPrincipal,
     categoryId: string,
     input: CatalogCategoryUpdateInput,
+    expectedRevision: number,
   ) {
     const updated = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
@@ -414,6 +416,9 @@ export class CategoryService {
         actor,
         transaction,
       );
+      await transaction.execute(
+        sql`LOCK TABLE "catalog"."category" IN SHARE ROW EXCLUSIVE MODE`,
+      );
       const [current] = await transaction
         .select()
         .from(catalogCategory)
@@ -421,6 +426,11 @@ export class CategoryService {
         .for("update")
         .limit(1);
       if (!current) throw new NotFoundException("Category not found");
+      if (current.editRevision !== expectedRevision) {
+        throw new PreconditionFailedException(
+          "This category changed after you opened it. Reload the latest version before saving.",
+        );
+      }
 
       const categories = await transaction.select().from(catalogCategory);
       const parentId =
@@ -462,7 +472,11 @@ export class CategoryService {
       try {
         const [updated] = await transaction
           .update(catalogCategory)
-          .set({ ...next, updatedAt: new Date() })
+          .set({
+            ...next,
+            editRevision: current.editRevision + 1,
+            updatedAt: new Date(),
+          })
           .where(eq(catalogCategory.id, current.id))
           .returning();
         if (!updated) throw new NotFoundException("Category not found");
@@ -504,7 +518,7 @@ export class CategoryService {
 
 type CategoryRow = typeof catalogCategory.$inferSelect;
 
-function toCategories(rows: CategoryRow[]): CatalogCategory[] {
+function toCategories(rows: CategoryRow[]): CatalogManagedCategory[] {
   const options = toOptions(rows);
   const byId = new Map(rows.map((category) => [category.id, category]));
   return options.map((option) => {
@@ -512,6 +526,7 @@ function toCategories(rows: CategoryRow[]): CatalogCategory[] {
     return {
       ...option,
       isActive: row.isActive,
+      editRevision: row.editRevision,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

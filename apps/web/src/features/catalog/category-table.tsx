@@ -1,7 +1,7 @@
 "use client";
 
 import type {
-  CatalogCategory,
+  CatalogManagedCategory,
   CatalogCategoryManagementListQuery,
   CatalogCategoryPage,
 } from "@aaraj/contracts";
@@ -13,7 +13,7 @@ import {
 } from "@/components/admin/admin-data-table";
 import { Pencil } from "lucide-react";
 
-const columnHelper = createDataTableColumnHelper<CatalogCategory>();
+const columnHelper = createDataTableColumnHelper<CatalogManagedCategory>();
 
 export function CategoryTable({
   categories,
@@ -23,14 +23,14 @@ export function CategoryTable({
   onEditCategory,
   isRefreshing,
 }: {
-  categories: CatalogCategory[];
+  categories: CatalogManagedCategory[];
   query: CatalogCategoryManagementListQuery;
   page: Pick<
     CatalogCategoryPage,
     "limit" | "offset" | "hasMore" | "nextOffset"
   >;
   onRefresh: () => void;
-  onEditCategory: (category: CatalogCategory) => void;
+  onEditCategory: (category: CatalogManagedCategory) => void;
   isRefreshing?: boolean;
 }) {
   const columns = columnHelper.columns([
