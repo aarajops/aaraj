@@ -159,6 +159,8 @@ export class CatalogController {
   @Post("manage/:productId/media/:mediaId/retry")
   @ApiCookieAuth()
   @Header("Cache-Control", "no-store")
+  @UseGuards(CatalogMediaManageGuard)
+  @UseInterceptors(CatalogMediaUploadLifecycleInterceptor)
   retryMediaUpload(
     @Session() session: UserSession,
     @Param("productId", { schema: CatalogProductIdSchema }) productId: string,

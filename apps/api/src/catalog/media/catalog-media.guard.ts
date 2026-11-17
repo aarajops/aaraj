@@ -30,11 +30,11 @@ export type CatalogMediaUploadRequest = Request & {
   [CATALOG_MEDIA_UPLOAD_RELEASE]?: () => void;
 };
 
-// Multer buffers uploads in memory. Bound each API process to two 10 MiB
-// sources at once; image decoding itself is serialized by the processor.
+// Uploads and retries can each hold a source image in memory. Bound both
+// through the same per-process limit; image decoding is serialized separately.
 @Injectable()
 export class CatalogMediaManageGuard implements CanActivate {
-  private activeUploads = 0;
+  private activeMediaOperations = 0;
 
   constructor(
     private readonly permissions: PermissionsService,
@@ -54,22 +54,23 @@ export class CatalogMediaManageGuard implements CanActivate {
       throw new ForbiddenException("Catalog management access is required.");
     }
 
-    if (this.activeUploads >= MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY) {
+    if (this.activeMediaOperations >= MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY) {
       throw new HttpException(
         {
-          message: "Catalog media upload capacity is busy. Retry shortly.",
+          message: "Catalog media processing capacity is busy. Retry shortly.",
+          // Retain this code for compatibility with clients handling uploads.
           errorCode: "CATALOG_MEDIA_UPLOAD_BUSY",
         },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    this.activeUploads += 1;
+    this.activeMediaOperations += 1;
     let released = false;
     const release = () => {
       if (released) return;
       released = true;
-      this.activeUploads -= 1;
+      this.activeMediaOperations -= 1;
     };
     request[CATALOG_MEDIA_UPLOAD_RELEASE] = release;
 

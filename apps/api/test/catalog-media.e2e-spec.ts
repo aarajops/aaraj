@@ -20,7 +20,10 @@ import {
 } from "../src/catalog/catalog-schema.js";
 import { R2Storage } from "../src/catalog/media/r2-storage.js";
 import { CatalogMediaService } from "../src/catalog/media/catalog-media.service.js";
-import { MAX_CATALOG_MEDIA_UPLOAD_BYTES } from "@aaraj/contracts";
+import {
+  MAX_CATALOG_MEDIA_UPLOAD_BYTES,
+  MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY,
+} from "@aaraj/contracts";
 
 interface Account {
   id: string;
@@ -54,6 +57,7 @@ class MemoryR2Storage {
   failNextDerivativePut = false;
   failNextDelete = false;
   holdPuts: Array<{ started: () => void; wait: Promise<void> }> = [];
+  holdGets: Array<{ started: () => void; wait: Promise<void> }> = [];
 
   async putQuarantinedObject(input: PutObjectInput): Promise<void> {
     const hold = this.holdPuts.shift();
@@ -137,6 +141,11 @@ class MemoryR2Storage {
   }
 
   async getQuarantinedObject(input: ReadDerivativeInput): Promise<Buffer> {
+    const hold = this.holdGets.shift();
+    if (hold) {
+      hold.started();
+      await hold.wait;
+    }
     const body = this.objects.get(input.key);
     if (
       !body ||
@@ -517,6 +526,72 @@ describe("catalog media management", () => {
       commandId: randomUUID(),
     }).expect(201);
     expect(afterRelease.body.status).toBe("ready");
+  });
+
+  it("bounds concurrent retries and releases media processing capacity", async () => {
+    const pendingIds: string[] = [];
+    for (
+      let index = 0;
+      index <= MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY;
+      index += 1
+    ) {
+      const commandId = randomUUID();
+      storage.failNextDerivativePut = true;
+      await upload(productId, { commandId }).expect(503);
+      const pending = (await listMedia().expect(200)).body.media.find(
+        (media: { commandId: string }) => media.commandId === commandId,
+      );
+      if (!pending) throw new Error("Failed media upload was not retained.");
+      pendingIds.push(pending.id as string);
+    }
+
+    const started: Array<() => void> = [];
+    const gates: Array<() => void> = [];
+    const getStarted = Array.from(
+      { length: MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY },
+      () =>
+        new Promise<void>((resolve) => {
+          started.push(resolve);
+        }),
+    );
+    const getGates = Array.from(
+      { length: MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY },
+      () =>
+        new Promise<void>((resolve) => {
+          gates.push(resolve);
+        }),
+    );
+    storage.holdGets = getStarted.map((_, index) => ({
+      started: started[index]!,
+      wait: getGates[index]!,
+    }));
+
+    const retry = (mediaId: string) =>
+      request(app.getHttpServer())
+        .post(
+          `/api/v1/catalog/products/manage/${productId}/media/${mediaId}/retry`,
+        )
+        .set("Cookie", operator.cookie)
+        .set("Origin", origin);
+    const activeRetries = pendingIds
+      .slice(0, MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY)
+      .map((mediaId) => retry(mediaId).then((response) => response));
+
+    try {
+      await Promise.all(getStarted);
+      const rejected = await retry(
+        pendingIds[MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY]!,
+      ).expect(429);
+      expect(rejected.body.errorCode).toBe("CATALOG_MEDIA_UPLOAD_BUSY");
+    } finally {
+      gates.forEach((release) => release());
+    }
+
+    const recovered = await Promise.all(activeRetries);
+    expect(recovered.map(({ status }) => status)).toEqual(
+      Array(MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY).fill(201),
+    );
+    await retry(pendingIds[MAX_CATALOG_MEDIA_UPLOAD_CONCURRENCY]!).expect(201);
   });
 
   it("recovers after the object write succeeds but the database completion fails", async () => {
