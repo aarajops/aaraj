@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ProductLinkStatus } from "@/features/catalog/product-link-status";
 import { ProductPrice } from "@/features/catalog/product-price";
 
-const PRODUCT_CARD_IMAGE_RATIO = "portrait";
+const PRODUCT_CARD_IMAGE_RATIO = "square";
 
 export function ProductCardSkeleton() {
   return (

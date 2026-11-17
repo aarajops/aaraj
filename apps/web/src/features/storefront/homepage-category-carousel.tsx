@@ -21,7 +21,7 @@ function CategoryImage({ category }: { category: CatalogCategoryOption }) {
   >(category.image ? "loading" : "error");
 
   return (
-    <AspectRatio className="overflow-hidden rounded-xl bg-muted" ratio="square">
+    <AspectRatio className="overflow-hidden bg-muted" ratio="square">
       {category.image && imageStatus !== "error" && (
         <Image
           alt=""
@@ -35,7 +35,10 @@ function CategoryImage({ category }: { category: CatalogCategoryOption }) {
         />
       )}
       {category.image && imageStatus === "loading" && (
-        <Skeleton aria-hidden="true" className="absolute inset-0 rounded-xl" />
+        <Skeleton
+          aria-hidden="true"
+          className="absolute inset-0 rounded-none"
+        />
       )}
       {imageStatus === "error" && (
         <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -68,7 +71,7 @@ export function HomepageCategoryCarousel({
               key={category.id}
             >
               <Link
-                className="group flex flex-col gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="group flex flex-col gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 href={`/shop/categories/${category.slug}`}
               >
                 <CategoryImage category={category} />
