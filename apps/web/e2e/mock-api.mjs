@@ -353,6 +353,7 @@ const comboFixtureProduct = {
   combo: {
     selectionMode: "mix_sizes_and_colors",
     price: { amountBdt: 2000 },
+    itemCount: 2,
     revision: 1,
     components: [
       {
@@ -368,6 +369,7 @@ const comboFixtureProduct = {
             price: { amountBdt: 1400 },
             compareAtPrice: { amountBdt: 2200 },
             inStock: true,
+            availableQuantity: 3,
           },
           {
             variantId: "00000000-0000-4000-8000-000000000312",
@@ -376,6 +378,7 @@ const comboFixtureProduct = {
             price: { amountBdt: 1400 },
             compareAtPrice: { amountBdt: 2200 },
             inStock: true,
+            availableQuantity: 3,
           },
         ],
       },
@@ -392,6 +395,7 @@ const comboFixtureProduct = {
             price: { amountBdt: 1300 },
             compareAtPrice: { amountBdt: 2100 },
             inStock: true,
+            availableQuantity: 3,
           },
           {
             variantId: "00000000-0000-4000-8000-000000000322",
@@ -400,6 +404,7 @@ const comboFixtureProduct = {
             price: { amountBdt: 1300 },
             compareAtPrice: { amountBdt: 2100 },
             inStock: true,
+            availableQuantity: 3,
           },
         ],
       },

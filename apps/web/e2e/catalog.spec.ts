@@ -878,21 +878,27 @@ test("combo option selections stay saved per size and the cart receives the chos
   expect((await cartLoaded).status()).toBe(200);
   await expect(page.getByText("Preparing your cart…")).toHaveCount(0);
   await expect(page.getByText("Loading your cart…")).toHaveCount(0);
+  await page.getByRole("button", { name: "Choose size M" }).click();
   const fullZip = page.getByRole("region", { name: "Full Zip Jacket" });
-  await fullZip.getByRole("button", { name: "M", exact: true }).click();
-  await fullZip.getByRole("button", { name: "Navy", exact: true }).click();
-  await fullZip.getByRole("button", { name: "L", exact: true }).click();
-  await fullZip.getByRole("button", { name: "Red", exact: true }).click();
-  await fullZip.getByRole("button", { name: "M", exact: true }).click();
   const navy = fullZip.getByRole("button", { name: "Navy", exact: true });
+  await navy.click();
+  await expect(navy).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Choose size L" }).click();
+  const halfZip = page.getByRole("region", { name: "Half Zip Jacket" });
+  const olive = halfZip.getByRole("button", { name: "Olive", exact: true });
+  await olive.click();
+  await expect(olive).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("2 of 2 selected")).toBeVisible();
+  await page.getByRole("button", { name: "Choose size M" }).click();
   await expect(navy).toHaveAttribute("aria-pressed", "true");
   await navy.click();
   await expect(navy).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("1 of 2 selected")).toBeVisible();
   await navy.click();
+  await expect(navy).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("2 of 2 selected")).toBeVisible();
+  await page.getByRole("button", { name: "Choose size L" }).click();
 
-  const halfZip = page.getByRole("region", { name: "Half Zip Jacket" });
-  await halfZip.getByRole("button", { name: "M", exact: true }).click();
-  await halfZip.getByRole("button", { name: "Black", exact: true }).click();
   const addRequest = page.waitForRequest(
     (request) =>
       request.method() === "POST" &&
@@ -910,7 +916,7 @@ test("combo option selections stay saved per size and the cart receives the chos
       },
       {
         componentId: "00000000-0000-4000-8000-000000000302",
-        variantId: "00000000-0000-4000-8000-000000000321",
+        variantId: "00000000-0000-4000-8000-000000000322",
       },
     ],
   });
