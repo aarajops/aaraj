@@ -27,13 +27,42 @@ export const CatalogComboConfigurationInputSchema = z
   .strictObject({
     selectionMode: CatalogComboSelectionModeSchema,
     price: ComboPriceSchema,
+    itemCount: z.number().int().min(2).max(MAX_COMBO_COMPONENTS).optional(),
     components: z
       .array(CatalogComboComponentInputSchema)
-      .min(2)
+      .min(1)
       .max(MAX_COMBO_COMPONENTS),
   })
   .check(({ value, issues }) => {
+    const itemCount = value.itemCount ?? value.components.length;
     const productIds = new Set<string>();
+    if (itemCount < 2) {
+      issues.push({
+        code: "custom",
+        path: ["itemCount"],
+        message: "A combo must contain at least two items.",
+        input: value.itemCount,
+      });
+    }
+    if (
+      value.selectionMode === "fixed_combo" &&
+      value.components.length !== itemCount
+    ) {
+      issues.push({
+        code: "custom",
+        path: ["itemCount"],
+        message: "A fixed combo includes every product listed in it.",
+        input: value.itemCount,
+      });
+    }
+    if (value.selectionMode === "fixed_combo" && value.components.length < 2) {
+      issues.push({
+        code: "custom",
+        path: ["components"],
+        message: "A fixed combo must include at least two products.",
+        input: value.components,
+      });
+    }
     value.components.forEach((component, index) => {
       if (productIds.has(component.productId)) {
         issues.push({
@@ -56,7 +85,11 @@ export const CatalogComboConfigurationInputSchema = z
         });
       }
     });
-  });
+  })
+  .transform((value) => ({
+    ...value,
+    itemCount: value.itemCount ?? value.components.length,
+  }));
 export type CatalogComboConfigurationInput = z.infer<
   typeof CatalogComboConfigurationInputSchema
 >;
@@ -68,7 +101,15 @@ export const CatalogComboVariantOptionSchema = z.strictObject({
   price: ComboPriceSchema,
   compareAtPrice: ComboPriceSchema.nullable(),
   inStock: z.boolean(),
+  availableQuantity: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(Number.MAX_SAFE_INTEGER),
 });
+export type CatalogComboVariantOption = z.infer<
+  typeof CatalogComboVariantOptionSchema
+>;
 
 export const CatalogComboComponentSchema = z.strictObject({
   id: z.uuid(),
@@ -77,14 +118,16 @@ export const CatalogComboComponentSchema = z.strictObject({
   fixedColor: z.string().min(1).max(80).nullable(),
   variants: z.array(CatalogComboVariantOptionSchema).min(1).max(200),
 });
+export type CatalogComboComponent = z.infer<typeof CatalogComboComponentSchema>;
 
 export const CatalogComboSchema = z.strictObject({
   selectionMode: CatalogComboSelectionModeSchema,
   price: ComboPriceSchema,
+  itemCount: z.number().int().min(2).max(MAX_COMBO_COMPONENTS),
   revision: z.number().int().positive(),
   components: z
     .array(CatalogComboComponentSchema)
-    .min(2)
+    .min(1)
     .max(MAX_COMBO_COMPONENTS),
 });
 export type CatalogCombo = z.infer<typeof CatalogComboSchema>;

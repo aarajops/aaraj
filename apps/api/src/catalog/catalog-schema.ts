@@ -226,6 +226,7 @@ export const catalogCombo = catalogSchema.table(
     selectionMode: text("selection_mode")
       .$type<"fixed_combo" | "mix_colors_one_size" | "mix_sizes_and_colors">()
       .notNull(),
+    itemCount: integer("item_count").notNull(),
     priceBdt: integer("price_bdt").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -240,6 +241,7 @@ export const catalogCombo = catalogSchema.table(
       "combo_selection_mode_check",
       sql`${table.selectionMode} in ('fixed_combo', 'mix_colors_one_size', 'mix_sizes_and_colors')`,
     ),
+    check("combo_item_count_check", sql`${table.itemCount} between 2 and 10`),
     check("combo_price_check", sql`${table.priceBdt} between 0 and 2147483647`),
   ],
 );

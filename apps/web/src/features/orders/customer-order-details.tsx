@@ -9,7 +9,11 @@ import { fetchOrder, OrderRequestError } from "./orders-client";
 import { getPathaoCustomerTracking } from "./pathao-client";
 import type { PathaoCustomerTracking } from "@aaraj/contracts";
 import { CustomerOrderDetailsSkeleton } from "./order-page-skeleton";
-import { getComboBillableAmount, humanizePathaoStatus } from "./orders-format";
+import {
+  getAcceptedComboSelection,
+  getComboBillableAmount,
+  humanizePathaoStatus,
+} from "./orders-format";
 
 export function CustomerOrderDetails({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<Order | null>(null);
@@ -162,7 +166,11 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                       </p>
                       <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
                         {group.selections.map((selection) => (
-                          <li key={selection.componentId}>
+                          <li
+                            key={
+                              selection.selectionIndex ?? selection.componentId
+                            }
+                          >
                             {selection.productName} · {selection.color} ·{" "}
                             {selection.sizeLabel}
                           </li>
@@ -173,12 +181,12 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                           Received:{" "}
                           {group.acceptedComponents
                             .map((accepted) => {
-                              const selection = group.selections.find(
-                                (item) =>
-                                  item.componentId === accepted.componentId,
+                              const selection = getAcceptedComboSelection(
+                                group,
+                                accepted,
                               );
                               return selection
-                                ? `${selection.productName} × ${accepted.quantity}`
+                                ? `${selection.productName} · ${selection.color} · ${selection.sizeLabel} × ${accepted.quantity}`
                                 : null;
                             })
                             .filter(Boolean)

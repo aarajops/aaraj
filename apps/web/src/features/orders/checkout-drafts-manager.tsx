@@ -398,7 +398,12 @@ function CheckoutDraftSheet({
                         </strong>
                         <ul className="ml-5 list-disc">
                           {item.selections.map((selection) => (
-                            <li key={selection.componentId}>
+                            <li
+                              key={
+                                selection.selectionIndex ??
+                                selection.componentId
+                              }
+                            >
                               {selection.productName} · {selection.color} ·{" "}
                               {selection.sizeLabel}
                             </li>
@@ -573,7 +578,12 @@ function CheckoutDraftSheet({
                         </strong>
                         <ul className="ml-5 list-disc text-muted-foreground">
                           {combo.selections.map((selection) => (
-                            <li key={selection.componentId}>
+                            <li
+                              key={
+                                selection.selectionIndex ??
+                                selection.componentId
+                              }
+                            >
                               {selection.productName} · {selection.color} ·{" "}
                               {selection.sizeLabel}
                             </li>

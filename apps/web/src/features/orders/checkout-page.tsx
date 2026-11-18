@@ -733,7 +733,7 @@ function CheckoutOrderSummary({
                 </p>
                 <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
                   {selections.map((selection) => (
-                    <li key={selection.componentId}>
+                    <li key={selection.selectionIndex ?? selection.componentId}>
                       {selection.productName} · {selection.color} ·{" "}
                       {selection.sizeLabel}
                     </li>

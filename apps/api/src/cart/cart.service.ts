@@ -531,7 +531,11 @@ export class CartService {
         },
       );
     }
-    const selections = assertComboSelections(combo.combo, input.selections);
+    const selections = assertComboSelections(
+      combo.combo,
+      input.selections,
+      input.quantity,
+    );
     const selectionsSnapshot = selections.map((selection) => {
       const component = combo.combo.components.find(
         ({ id }) => id === selection.componentId,
@@ -541,6 +545,7 @@ export class CartService {
       )!;
       return {
         componentId: component.id,
+        selectionIndex: selection.selectionIndex,
         variantId: variant.variantId,
         productName: component.productName,
         color: variant.color,
@@ -718,7 +723,11 @@ export class CartService {
           { errorCode: "CART_COMBO_UNAVAILABLE" },
         );
       }
-      const selections = assertComboSelections(current.combo, line.selections);
+      const selections = assertComboSelections(
+        current.combo,
+        line.selections,
+        line.quantity,
+      );
       return {
         ...line,
         slug: current.slug,
@@ -1528,39 +1537,40 @@ export class CartService {
           return { selection, component, variant };
         });
         let availability: CartComboLine["availability"] = "available";
-        const hasCompleteConfiguration = Boolean(
+        const hasSelectedCatalogData = Boolean(
           current &&
           current.revision === line.comboRevision &&
-          selectedVariants.length === current.combo.components.length &&
-          selectedVariants.every(
-            ({ component, variant }) => component && variant,
-          ) &&
-          new Set(line.selections.map(({ componentId }) => componentId))
-            .size === current.combo.components.length &&
-          current.combo.components.every((component) =>
-            line.selections.some(
-              ({ componentId }) => componentId === component.id,
-            ),
-          ) &&
-          (current.combo.selectionMode === "mix_sizes_and_colors" ||
-            new Set(
-              selectedVariants.map(({ variant }) =>
-                variant?.sizeLabel.trim().toLocaleLowerCase("en-US"),
-              ),
-            ).size === 1) &&
-          selectedVariants.every(
-            ({ component, variant }) =>
-              current.combo.selectionMode !== "fixed_combo" ||
-              (component &&
-                variant &&
-                normalizeOption(component.fixedColor) ===
-                  normalizeOption(variant.color)),
+          selectedVariants.every(({ component, variant }) =>
+            Boolean(component && variant),
           ),
         );
-        if (!hasCompleteConfiguration) {
+        if (!hasSelectedCatalogData || !current) {
           availability = "unavailable";
-        } else if (selectedVariants.some(({ variant }) => !variant?.inStock)) {
-          availability = "out_of_stock";
+        } else {
+          try {
+            assertComboSelections(
+              current.combo,
+              line.selections,
+              line.quantity,
+            );
+          } catch {
+            const demandByVariant = new Map<string, number>();
+            for (const selection of line.selections) {
+              demandByVariant.set(
+                selection.variantId,
+                (demandByVariant.get(selection.variantId) ?? 0) + line.quantity,
+              );
+            }
+            const exceedsStock = [...demandByVariant].some(
+              ([variantId, demand]) => {
+                const variant = selectedVariants.find(
+                  (selected) => selected.variant?.variantId === variantId,
+                )?.variant;
+                return !variant || variant.availableQuantity < demand;
+              },
+            );
+            availability = exceedsStock ? "out_of_stock" : "unavailable";
+          }
         }
         return {
           ...line,
@@ -1570,22 +1580,25 @@ export class CartService {
                 name: current.name,
                 unitPriceBdt: current.priceBdt,
                 image: current.image ?? undefined,
-                selections: selectedVariants.map(({ selection, variant }) => ({
-                  ...selection,
-                  ...(variant
-                    ? {
-                        productName:
-                          current.combo.components.find(
-                            ({ id }) => id === selection.componentId,
-                          )?.productName ?? selection.productName,
-                        color: variant.color,
-                        sizeLabel: variant.sizeLabel,
-                        unitPriceBdt: variant.price.amountBdt,
-                        compareAtPriceBdt:
-                          variant.compareAtPrice?.amountBdt ?? null,
-                      }
-                    : {}),
-                })),
+                selections: selectedVariants.map(
+                  ({ selection, variant }, selectionIndex) => ({
+                    ...selection,
+                    selectionIndex: selection.selectionIndex ?? selectionIndex,
+                    ...(variant
+                      ? {
+                          productName:
+                            current.combo.components.find(
+                              ({ id }) => id === selection.componentId,
+                            )?.productName ?? selection.productName,
+                          color: variant.color,
+                          sizeLabel: variant.sizeLabel,
+                          unitPriceBdt: variant.price.amountBdt,
+                          compareAtPriceBdt:
+                            variant.compareAtPrice?.amountBdt ?? null,
+                        }
+                      : {}),
+                  }),
+                ),
               }
             : {}),
           availability,
@@ -1794,7 +1807,11 @@ function incrementRevision(revision: number): number {
 function comboConfigurationHash(line: CartStoredComboLine): string {
   const selections = [...line.selections]
     .map(({ componentId, variantId }) => ({ componentId, variantId }))
-    .sort((left, right) => left.componentId.localeCompare(right.componentId));
+    .sort(
+      (left, right) =>
+        left.componentId.localeCompare(right.componentId) ||
+        left.variantId.localeCompare(right.variantId),
+    );
   return createHash("sha256")
     .update(
       JSON.stringify({
@@ -1815,10 +1832,6 @@ function cartVariantIds(state: CartStoredState): string[] {
       ),
     ]),
   ];
-}
-
-function normalizeOption(value: string | null): string {
-  return value?.trim().toLocaleLowerCase("en-US") ?? "";
 }
 
 function sameSnapshot(

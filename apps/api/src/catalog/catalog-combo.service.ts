@@ -23,6 +23,7 @@ import {
   catalogProductVariant,
 } from "./catalog-schema.js";
 import {
+  limitComboAvailabilityForStorefront,
   loadCombo,
   validateComboConfiguration,
 } from "./catalog-combo.helpers.js";
@@ -77,9 +78,15 @@ export class CatalogComboService {
       }
       await validateComboConfiguration(transaction, productId, input);
       const currentCombo = await loadCombo(transaction, productId);
+      if (currentCombo && currentCombo.itemCount !== input.itemCount) {
+        throw new BadRequestException(
+          "The number of items in a combo is fixed after it is created.",
+        );
+      }
       if (
         currentCombo &&
         currentCombo.selectionMode === input.selectionMode &&
+        currentCombo.itemCount === input.itemCount &&
         currentCombo.price.amountBdt === input.price.amountBdt &&
         currentCombo.components.length === input.components.length &&
         currentCombo.components.every((component, index) => {
@@ -98,12 +105,14 @@ export class CatalogComboService {
         .values({
           productId,
           selectionMode: input.selectionMode,
+          itemCount: input.itemCount,
           priceBdt: input.price.amountBdt,
         })
         .onConflictDoUpdate({
           target: catalogCombo.productId,
           set: {
             selectionMode: input.selectionMode,
+            itemCount: input.itemCount,
             priceBdt: input.price.amountBdt,
             revision: sql`${catalogCombo.revision} + 1`,
             updatedAt: sql`clock_timestamp()`,
@@ -149,6 +158,7 @@ export class CatalogComboService {
         subjectId: productId,
         metadata: {
           selectionMode: input.selectionMode,
+          itemCount: input.itemCount,
           componentProductIds: input.components.map(({ productId: id }) => id),
           priceBdt: input.price.amountBdt,
           productRevision: updatedProduct.editRevision,
@@ -234,7 +244,7 @@ export class CatalogComboService {
         throw new NotFoundException("Combo not found.");
       const combo = await loadCombo(transaction, productId);
       if (!combo) throw new NotFoundException("Combo not found.");
-      return combo;
+      return limitComboAvailabilityForStorefront(combo);
     });
   }
 

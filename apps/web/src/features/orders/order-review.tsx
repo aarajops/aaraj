@@ -39,6 +39,9 @@ import {
   updateOrderStatus,
 } from "./orders-client";
 import {
+  comboSelectionInputKey,
+  getAcceptedComboQuantity,
+  getAcceptedComboSelection,
   getComboBillableAmount,
   humanize,
   humanizeFulfillmentStatus,
@@ -207,15 +210,26 @@ export function OrderReview({
     );
     const acceptedComponents =
       outcome === "incomplete" || outcome === "declined"
-        ? (group?.selections ?? []).flatMap(({ componentId }) => {
+        ? (group?.selections ?? []).flatMap((selection) => {
+            const key = comboSelectionInputKey(selection);
             const quantity = Number(
-              comboAcceptedQuantities[groupId]?.[componentId] ??
-                group?.acceptedComponents.find(
-                  (accepted) => accepted.componentId === componentId,
-                )?.quantity ??
+              comboAcceptedQuantities[groupId]?.[key] ??
+                (group
+                  ? getAcceptedComboQuantity(group, selection)
+                  : undefined) ??
                 0,
             );
-            return quantity > 0 ? [{ componentId, quantity }] : [];
+            return quantity > 0
+              ? [
+                  {
+                    componentId: selection.componentId,
+                    ...(selection.selectionIndex === undefined
+                      ? {}
+                      : { selectionIndex: selection.selectionIndex }),
+                    quantity,
+                  },
+                ]
+              : [];
           })
         : [];
     setPending(true);
@@ -402,7 +416,9 @@ export function OrderReview({
                   </div>
                   <ul className="ml-3 list-disc text-sm text-muted-foreground">
                     {group.selections.map((selection) => (
-                      <li key={selection.componentId}>
+                      <li
+                        key={selection.selectionIndex ?? selection.componentId}
+                      >
                         {selection.productName} · {selection.color} ·{" "}
                         {selection.sizeLabel}
                       </li>
@@ -421,11 +437,12 @@ export function OrderReview({
                       Received items:{" "}
                       {group.acceptedComponents
                         .map((accepted) => {
-                          const selection = group.selections.find(
-                            (item) => item.componentId === accepted.componentId,
+                          const selection = getAcceptedComboSelection(
+                            group,
+                            accepted,
                           );
                           return selection
-                            ? `${selection.productName} × ${accepted.quantity}`
+                            ? `${selection.productName} · ${selection.color} · ${selection.sizeLabel} × ${accepted.quantity}`
                             : null;
                         })
                         .filter(Boolean)
@@ -461,47 +478,46 @@ export function OrderReview({
                           incomplete sets use their individual prices.
                         </p>
                         <div className="grid gap-2">
-                          {group.selections.map((selection) => (
-                            <label
-                              className="flex items-center justify-between gap-3 text-sm"
-                              key={selection.componentId}
-                            >
-                              <span>
-                                {selection.productName} · {selection.color} ·{" "}
-                                {selection.sizeLabel}
-                              </span>
-                              <Input
-                                aria-label={`Received quantity for ${selection.productName}`}
-                                className="w-24"
-                                inputMode="numeric"
-                                max={group.quantity}
-                                min={0}
-                                onChange={(event) =>
-                                  setComboAcceptedQuantities((current) => ({
-                                    ...current,
-                                    [group.id]: {
-                                      ...current[group.id],
-                                      [selection.componentId]:
-                                        event.target.value,
-                                    },
-                                  }))
-                                }
-                                type="number"
-                                value={
-                                  comboAcceptedQuantities[group.id]?.[
-                                    selection.componentId
-                                  ] ??
-                                  String(
-                                    group.acceptedComponents.find(
-                                      (accepted) =>
-                                        accepted.componentId ===
-                                        selection.componentId,
-                                    )?.quantity ?? 0,
-                                  )
-                                }
-                              />
-                            </label>
-                          ))}
+                          {group.selections.map((selection, index) => {
+                            const key = comboSelectionInputKey(selection);
+                            const itemLabel = `Combo item ${index + 1}`;
+                            const acceptedQuantity = getAcceptedComboQuantity(
+                              group,
+                              selection,
+                            );
+                            return (
+                              <label
+                                className="flex items-center justify-between gap-3 text-sm"
+                                key={key}
+                              >
+                                <span>
+                                  {itemLabel}: {selection.productName} ·{" "}
+                                  {selection.color} · {selection.sizeLabel}
+                                </span>
+                                <Input
+                                  aria-label={`Received quantity for ${itemLabel}: ${selection.productName} ${selection.color} ${selection.sizeLabel}`}
+                                  className="w-24"
+                                  inputMode="numeric"
+                                  max={group.quantity}
+                                  min={0}
+                                  onChange={(event) =>
+                                    setComboAcceptedQuantities((current) => ({
+                                      ...current,
+                                      [group.id]: {
+                                        ...current[group.id],
+                                        [key]: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  type="number"
+                                  value={
+                                    comboAcceptedQuantities[group.id]?.[key] ??
+                                    String(acceptedQuantity)
+                                  }
+                                />
+                              </label>
+                            );
+                          })}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {(group.deliveryOutcome === "pending"

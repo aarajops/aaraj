@@ -317,6 +317,7 @@ export class QuoteService {
       const validatedSelections = assertComboSelections(
         current.combo,
         line.selections,
+        line.quantity,
       );
       const selectedComponents = validatedSelections.map((selection) => {
         const component = current.combo.components.find(
@@ -334,6 +335,7 @@ export class QuoteService {
         }
         return {
           componentId: component.id,
+          selectionIndex: selection.selectionIndex,
           variantId: selection.variantId,
           productName: catalogVariant.name,
           color: catalogVariant.color,
@@ -369,6 +371,7 @@ export class QuoteService {
         allocated += allocation;
         comboComponentLines.push({
           variantId: selected.variantId,
+          selectionIndex: selected.selectionIndex,
           comboGroupId: groupId,
           productName: selected.productName,
           color: selected.color,
@@ -798,12 +801,10 @@ function sameCartLines(
         group.comboRevision === line.comboRevision &&
         group.quantity === line.quantity &&
         group.selections.length === line.selections.length &&
-        group.selections.every((selection) =>
-          line.selections.some(
-            (cartSelection) =>
-              cartSelection.componentId === selection.componentId &&
-              cartSelection.variantId === selection.variantId,
-          ),
+        group.selections.every(
+          (selection, index) =>
+            line.selections[index]?.componentId === selection.componentId &&
+            line.selections[index]?.variantId === selection.variantId,
         )
       );
     })
@@ -853,6 +854,7 @@ function sameCatalogLines(
           componentId,
           variantId,
         })),
+        group.quantity,
       );
     } catch {
       return false;
@@ -863,8 +865,11 @@ function sameCatalogLines(
     if (children.length !== group.selections.length) return false;
     return group.selections.every((selection) => {
       const variant = byId.get(selection.variantId);
-      const child = children.find(
-        ({ variantId }) => variantId === selection.variantId,
+      const child = children.find((line) =>
+        selection.selectionIndex === undefined
+          ? line.selectionIndex === undefined &&
+            line.variantId === selection.variantId
+          : line.selectionIndex === selection.selectionIndex,
       );
       return (
         !!variant &&

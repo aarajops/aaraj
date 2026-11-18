@@ -317,6 +317,9 @@ async function persistOrderSnapshot(
         color: line.color,
         sizeLabel: line.sizeLabel,
         compareAtPriceBdt: line.compareAtPriceBdt,
+        ...(line.selectionIndex === undefined
+          ? {}
+          : { selectionIndex: line.selectionIndex }),
       },
     })),
   );
@@ -919,6 +922,9 @@ export class OrdersService implements OrdersPathaoPort {
               color: line.color,
               sizeLabel: line.sizeLabel,
               compareAtPriceBdt: line.compareAtPriceBdt,
+              ...(line.selectionIndex === undefined
+                ? {}
+                : { selectionIndex: line.selectionIndex }),
             },
           })),
         );
@@ -3465,13 +3471,27 @@ export class OrdersService implements OrdersPathaoPort {
       const requestedAccepted =
         input.acceptedComponents ??
         (input.outcome === "declined" ? group.acceptedComponents : []);
-      const acceptedByComponent = new Map<string, number>();
+      const acceptedBySelection = new Map<number, number>();
+      const acceptedByLegacyComponent = new Map<string, number>();
       for (const accepted of requestedAccepted) {
+        const selection =
+          accepted.selectionIndex === undefined
+            ? comboSelections.find(
+                (candidate) =>
+                  candidate.selectionIndex === undefined &&
+                  candidate.componentId === accepted.componentId,
+              )
+            : comboSelections[accepted.selectionIndex];
+        const duplicate =
+          accepted.selectionIndex === undefined
+            ? acceptedByLegacyComponent.has(accepted.componentId)
+            : acceptedBySelection.has(accepted.selectionIndex);
         if (
-          acceptedByComponent.has(accepted.componentId) ||
-          !comboSelections.some(
-            ({ componentId }) => componentId === accepted.componentId,
-          ) ||
+          duplicate ||
+          !selection ||
+          (accepted.selectionIndex !== undefined &&
+            selection.selectionIndex !== accepted.selectionIndex) ||
+          selection.componentId !== accepted.componentId ||
           accepted.quantity > group.quantity
         ) {
           throw new UnprocessableEntityException(
@@ -3479,13 +3499,33 @@ export class OrdersService implements OrdersPathaoPort {
             { errorCode: "ORDER_COMBO_ACCEPTED_ITEMS_INVALID" },
           );
         }
-        acceptedByComponent.set(accepted.componentId, accepted.quantity);
+        if (accepted.selectionIndex === undefined) {
+          acceptedByLegacyComponent.set(
+            accepted.componentId,
+            accepted.quantity,
+          );
+        } else {
+          acceptedBySelection.set(accepted.selectionIndex, accepted.quantity);
+        }
       }
       const acceptedComponents =
         input.outcome === "incomplete" || input.outcome === "declined"
-          ? comboSelections.flatMap(({ componentId }) => {
-              const quantity = acceptedByComponent.get(componentId) ?? 0;
-              return quantity > 0 ? [{ componentId, quantity }] : [];
+          ? comboSelections.flatMap((selection) => {
+              const quantity =
+                selection.selectionIndex === undefined
+                  ? (acceptedByLegacyComponent.get(selection.componentId) ?? 0)
+                  : (acceptedBySelection.get(selection.selectionIndex) ?? 0);
+              return quantity > 0
+                ? [
+                    {
+                      componentId: selection.componentId,
+                      ...(selection.selectionIndex === undefined
+                        ? {}
+                        : { selectionIndex: selection.selectionIndex }),
+                      quantity,
+                    },
+                  ]
+                : [];
             })
           : [];
       if (input.outcome === "incomplete") {
@@ -4042,12 +4082,28 @@ function sameReservationLines(
   reservationLines: readonly { variantId: string; quantity: number }[],
   orderLines: readonly { variantId: string; quantity: number }[],
 ): boolean {
+  const aggregate = (
+    lines: readonly { variantId: string; quantity: number }[],
+  ) => {
+    const quantities = new Map<string, number>();
+    for (const line of lines) {
+      quantities.set(
+        line.variantId,
+        (quantities.get(line.variantId) ?? 0) + line.quantity,
+      );
+    }
+    return [...quantities]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([variantId, quantity]) => ({ variantId, quantity }));
+  };
+  const expected = aggregate(reservationLines);
+  const actual = aggregate(orderLines);
   return (
-    reservationLines.length === orderLines.length &&
-    orderLines.every(
+    expected.length === actual.length &&
+    actual.every(
       (line, index) =>
-        reservationLines[index]?.variantId === line.variantId &&
-        reservationLines[index]?.quantity === line.quantity,
+        expected[index]?.variantId === line.variantId &&
+        expected[index]?.quantity === line.quantity,
     )
   );
 }
@@ -4254,26 +4310,26 @@ async function calculateComboAwareCodDue(
       OrderComboGroupSchema.shape.acceptedComponents.parse(
         group.acceptedComponents,
       );
-    const acceptedByComponent = new Map(
-      acceptedComponents.map(({ componentId, quantity }) => [
-        componentId,
-        quantity,
-      ]),
-    );
+    const getAcceptedQuantity = (
+      selection: (typeof selections)[number],
+    ): number =>
+      acceptedComponents.find((accepted) =>
+        selection.selectionIndex === undefined
+          ? accepted.selectionIndex === undefined &&
+            accepted.componentId === selection.componentId
+          : accepted.selectionIndex === selection.selectionIndex,
+      )?.quantity ?? 0;
     const completeSetQuantity = Math.min(
-      ...selections.map(
-        ({ componentId }) => acceptedByComponent.get(componentId) ?? 0,
-      ),
+      ...selections.map(getAcceptedQuantity),
     );
     const comboAmount =
       BigInt(completeSetQuantity) * BigInt(group.unitPriceBdt);
     const individuallyPricedRemainder = selections.reduce(
       (total, selection) => {
-        const acceptedQuantity =
-          acceptedByComponent.get(selection.componentId) ?? 0;
+        const selectionQuantity = getAcceptedQuantity(selection);
         return (
           total +
-          BigInt(acceptedQuantity - completeSetQuantity) *
+          BigInt(selectionQuantity - completeSetQuantity) *
             BigInt(selection.unitPriceBdt)
         );
       },

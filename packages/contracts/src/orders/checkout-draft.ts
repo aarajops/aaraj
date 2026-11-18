@@ -59,6 +59,7 @@ const DraftComboItemSchema = z.strictObject({
     .array(
       z.strictObject({
         componentId: z.uuid(),
+        selectionIndex: z.number().int().min(0).max(9).optional(),
         variantId: z.uuid(),
         productName: z.string().min(1).max(160),
         color: z.string().min(1).max(80),

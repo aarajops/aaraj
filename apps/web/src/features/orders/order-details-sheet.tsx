@@ -51,7 +51,10 @@ import {
   OrderStatusBadge,
 } from "./order-status-badges";
 import { PathaoBookingPanel } from "./pathao-booking-panel";
-import { getComboBillableAmount } from "./orders-format";
+import {
+  getAcceptedComboSelection,
+  getComboBillableAmount,
+} from "./orders-format";
 
 type OrderDetailsSheetProps = {
   onFulfillmentUpdated: () => void;
@@ -627,7 +630,11 @@ function OrderDetailsSheetContent({
                     </div>
                     <ul className="ml-4 list-disc text-muted-foreground">
                       {group.selections.map((selection) => (
-                        <li key={selection.componentId}>
+                        <li
+                          key={
+                            selection.selectionIndex ?? selection.componentId
+                          }
+                        >
                           {selection.productName} · {selection.color} ·{" "}
                           {selection.sizeLabel}
                         </li>
@@ -642,12 +649,12 @@ function OrderDetailsSheetContent({
                         Received:{" "}
                         {group.acceptedComponents
                           .map((accepted) => {
-                            const selection = group.selections.find(
-                              (item) =>
-                                item.componentId === accepted.componentId,
+                            const selection = getAcceptedComboSelection(
+                              group,
+                              accepted,
                             );
                             return selection
-                              ? `${selection.productName} × ${accepted.quantity}`
+                              ? `${selection.productName} · ${selection.color} · ${selection.sizeLabel} × ${accepted.quantity}`
                               : null;
                           })
                           .filter(Boolean)

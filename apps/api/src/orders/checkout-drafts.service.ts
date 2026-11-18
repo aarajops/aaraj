@@ -105,8 +105,16 @@ export function checkoutDraftItems(cart: Cart): CheckoutDraftItem[] {
         quantity: line.quantity,
         unitPriceBdt: line.unitPriceBdt,
         selections: line.selections.map(
-          ({ componentId, variantId, productName, color, sizeLabel }) => ({
+          ({
             componentId,
+            selectionIndex,
+            variantId,
+            productName,
+            color,
+            sizeLabel,
+          }) => ({
+            componentId,
+            ...(selectionIndex === undefined ? {} : { selectionIndex }),
             variantId,
             productName,
             color,

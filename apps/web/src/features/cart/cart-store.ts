@@ -176,12 +176,12 @@ export function createCartStore() {
           (combo) =>
             combo.productId === input.productId &&
             combo.comboRevision === input.comboRevision &&
-            combo.selections.every((selection) =>
-              input.selections.some(
-                (chosen) =>
-                  chosen.componentId === selection.componentId &&
-                  chosen.variantId === selection.variantId,
-              ),
+            combo.selections.length === input.selections.length &&
+            combo.selections.every(
+              (selection, index) =>
+                input.selections[index]?.componentId ===
+                  selection.componentId &&
+                input.selections[index]?.variantId === selection.variantId,
             ),
         );
         if (line) {

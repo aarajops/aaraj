@@ -40,6 +40,7 @@ export interface ProductForm {
   variants: VariantDraft[];
   comboSelectionMode: CatalogComboSelectionMode;
   comboPriceBdt: string;
+  comboItemCount: string;
   comboComponents: { productId: string; fixedColor: string }[];
   isPublished: boolean;
 }
@@ -59,6 +60,7 @@ export const blankProductForm: ProductForm = {
   variants: [],
   comboSelectionMode: "fixed_combo",
   comboPriceBdt: "",
+  comboItemCount: "2",
   comboComponents: [],
   isPublished: false,
 };
@@ -127,8 +129,7 @@ function prepareProductSubmission(
     fit: form.fit.trim() || null,
     fabricComposition: form.fabricComposition.trim() || null,
     careInstructions: form.careInstructions.trim() || null,
-    sizeGuideId:
-      form.productType === "single" ? form.sizeGuideId || null : null,
+    sizeGuideId: form.sizeGuideId || null,
     ...(variants ? { variants } : {}),
     isPublished: form.isPublished,
   };
@@ -138,6 +139,10 @@ function prepareProductSubmission(
       ? {
           selectionMode: form.comboSelectionMode,
           price: { amountBdt: comboPriceBdt },
+          itemCount:
+            form.comboSelectionMode === "fixed_combo"
+              ? form.comboComponents.length
+              : (parseBdtPrice(form.comboItemCount) ?? 0),
           components: form.comboComponents.map((component) => ({
             productId: component.productId,
             fixedColor:
@@ -237,6 +242,7 @@ export const productFormSchema = z
     ),
     comboSelectionMode: CatalogComboSelectionModeSchema,
     comboPriceBdt: z.string(),
+    comboItemCount: z.string(),
     comboComponents: z.array(
       z.strictObject({ productId: z.string(), fixedColor: z.string() }),
     ),
@@ -268,11 +274,27 @@ export const productFormSchema = z
           message: "Enter a whole BDT combo price, for example 2999.",
         });
       }
-      if (form.comboComponents.length < 2) {
+      const minimumProducts = form.comboSelectionMode === "fixed_combo" ? 2 : 1;
+      if (form.comboComponents.length < minimumProducts) {
         context.addIssue({
           code: "custom",
           path: ["comboComponents"],
-          message: "Choose at least two existing products for this combo.",
+          message:
+            form.comboSelectionMode === "fixed_combo"
+              ? "Choose at least two products for this fixed combo."
+              : "Choose at least one existing product for customers to choose from.",
+        });
+      }
+      if (
+        form.comboSelectionMode !== "fixed_combo" &&
+        (parseBdtPrice(form.comboItemCount) === null ||
+          parseBdtPrice(form.comboItemCount)! < 2 ||
+          parseBdtPrice(form.comboItemCount)! > MAX_COMBO_COMPONENTS)
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["comboItemCount"],
+          message: `Enter a combo size from 2 to ${MAX_COMBO_COMPONENTS} items.`,
         });
       }
       if (submission.comboConfiguration) {
@@ -302,6 +324,14 @@ export const productFormSchema = z
               });
               continue;
             }
+            if (issue.path[0] === "itemCount") {
+              context.addIssue({
+                code: "custom",
+                path: ["comboItemCount"],
+                message: issue.message,
+              });
+              continue;
+            }
             if (
               issue.path[0] === "components" &&
               typeof componentIndex === "number" &&
@@ -317,7 +347,7 @@ export const productFormSchema = z
             if (
               issue.path[0] === "components" &&
               issue.path.length === 1 &&
-              form.comboComponents.length < 2
+              form.comboComponents.length < minimumProducts
             ) {
               continue;
             }
@@ -446,6 +476,7 @@ export function toProductFormState(
     })),
     comboSelectionMode: product.combo?.selectionMode ?? "fixed_combo",
     comboPriceBdt: formatBdtInput(product.combo?.price.amountBdt ?? null),
+    comboItemCount: String(product.combo?.itemCount ?? 2),
     comboComponents:
       product.combo?.components.map((component) => ({
         productId: component.productId,

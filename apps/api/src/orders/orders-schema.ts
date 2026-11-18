@@ -321,7 +321,13 @@ export const orderComboGroup = ordersSchema.table(
     grossAmountBdt: bigint("gross_amount_bdt", { mode: "number" }).notNull(),
     selections: jsonb("selections").notNull(),
     acceptedComponents: jsonb("accepted_components")
-      .$type<Array<{ componentId: string; quantity: number }>>()
+      .$type<
+        Array<{
+          componentId: string;
+          selectionIndex?: number;
+          quantity: number;
+        }>
+      >()
       .notNull()
       .default([]),
     deliveryOutcome: text("delivery_outcome")
@@ -386,11 +392,9 @@ export const customerOrderLine = ordersSchema.table(
     productSnapshot: jsonb("product_snapshot").notNull(),
   },
   (table) => [
-    uniqueIndex("order_line_order_variant_group_uidx").on(
-      table.orderId,
-      table.variantId,
-      sql`coalesce(${table.comboGroupId}, '00000000-0000-4000-8000-000000000000'::uuid)`,
-    ),
+    uniqueIndex("order_line_order_variant_group_uidx")
+      .on(table.orderId, table.variantId)
+      .where(sql`${table.comboGroupId} is null`),
     index("order_line_variant_idx").on(table.variantId),
     check("order_line_quantity_check", sql`${table.quantity} between 1 and 10`),
     check(

@@ -218,6 +218,7 @@ export default async function ProductPage({
                   productId={product.id}
                   combo={product.combo}
                   inStock={product.inStock}
+                  sizeGuide={product.sizeGuide}
                 />
               ) : (
                 <ProductPurchase

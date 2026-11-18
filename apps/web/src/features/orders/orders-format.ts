@@ -34,15 +34,9 @@ export function getComboBillableRows(
     ];
   }
 
-  const acceptedByComponent = new Map(
-    group.acceptedComponents.map(({ componentId, quantity }) => [
-      componentId,
-      quantity,
-    ]),
-  );
   const completeSets = Math.min(
-    ...group.selections.map(
-      ({ componentId }) => acceptedByComponent.get(componentId) ?? 0,
+    ...group.selections.map((selection) =>
+      getAcceptedComboQuantity(group, selection),
     ),
   );
   const rows: ComboBillableRow[] = [];
@@ -62,11 +56,10 @@ export function getComboBillableRows(
     });
   }
   for (const selection of group.selections) {
-    const quantity =
-      (acceptedByComponent.get(selection.componentId) ?? 0) - completeSets;
+    const quantity = getAcceptedComboQuantity(group, selection) - completeSets;
     if (quantity <= 0) continue;
     rows.push({
-      key: `${group.id}-${selection.componentId}`,
+      key: `${group.id}-${selection.selectionIndex ?? selection.componentId}`,
       productName: selection.productName,
       description: `${selection.color} · ${selection.sizeLabel}`,
       quantity,
@@ -75,6 +68,40 @@ export function getComboBillableRows(
     });
   }
   return rows;
+}
+
+export function getAcceptedComboQuantity(
+  group: Order["comboGroups"][number],
+  selection: Order["comboGroups"][number]["selections"][number],
+): number {
+  return (
+    group.acceptedComponents.find((accepted) =>
+      selection.selectionIndex === undefined
+        ? accepted.selectionIndex === undefined &&
+          accepted.componentId === selection.componentId
+        : accepted.selectionIndex === selection.selectionIndex,
+    )?.quantity ?? 0
+  );
+}
+
+export function getAcceptedComboSelection(
+  group: Order["comboGroups"][number],
+  accepted: Order["comboGroups"][number]["acceptedComponents"][number],
+) {
+  return group.selections.find((selection) =>
+    accepted.selectionIndex === undefined
+      ? selection.selectionIndex === undefined &&
+        selection.componentId === accepted.componentId
+      : selection.selectionIndex === accepted.selectionIndex,
+  );
+}
+
+export function comboSelectionInputKey(
+  selection: Order["comboGroups"][number]["selections"][number],
+): string {
+  return selection.selectionIndex === undefined
+    ? `component:${selection.componentId}`
+    : `selection:${selection.selectionIndex}`;
 }
 
 export function getComboBillableAmount(

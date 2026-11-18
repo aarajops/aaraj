@@ -185,15 +185,18 @@ export function CatalogManager({
     "id",
     "comboSelectionMode",
     "comboPriceBdt",
+    "comboItemCount",
     "comboComponents",
   ]);
   const comboConfigurationChanged = Boolean(
     dirtyFields.comboSelectionMode ||
     dirtyFields.comboPriceBdt ||
+    dirtyFields.comboItemCount ||
     dirtyFields.comboComponents,
   );
   const slugError = errors.slug?.message;
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
+  const comboItemCountIsLocked = Boolean(initialProduct?.combo);
   const [createdProductId, setCreatedProductId] = useState<string | null>(null);
   const [productRevisionConflict, setProductRevisionConflict] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -226,11 +229,10 @@ export function CatalogManager({
     null,
   );
   const [loadingComboCandidates, setLoadingComboCandidates] = useState(false);
-  const normalizedComboCandidateSearch = comboCandidateSearch
-    .trim()
-    .toLocaleLowerCase();
   const matchingComboCandidates = comboCandidates.filter((candidate) =>
-    candidate.name.toLocaleLowerCase().includes(normalizedComboCandidateSearch),
+    candidate.name
+      .toLocaleLowerCase()
+      .includes(comboCandidateSearch.trim().toLocaleLowerCase()),
   );
   const chosenComboProductIds = new Set(
     comboComponentValues.map(({ productId }) => productId).filter(Boolean),
@@ -603,7 +605,8 @@ export function CatalogManager({
   const compatibleGuides = sizeGuides.filter(
     (guide) =>
       applicableCategoryIds.has(guide.category.id) &&
-      (guide.fit ?? "").trim().toLowerCase() === fit.trim().toLowerCase(),
+      ((productType === "combo" && !fit.trim()) ||
+        (guide.fit ?? "").trim().toLowerCase() === fit.trim().toLowerCase()),
   );
 
   return (
@@ -834,9 +837,9 @@ export function CatalogManager({
                         Combo configuration
                       </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Select existing single products. Each customer order
-                        reserves one real variant from every selected product
-                        for each combo.
+                        Choose existing single products that supply the combo.
+                        The selected products’ real variants provide the
+                        available colors, sizes, and stock.
                       </p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -853,7 +856,22 @@ export function CatalogManager({
                           render={({ field }) => (
                             <Select
                               value={field.value}
-                              onValueChange={(value) => field.onChange(value)}
+                              onValueChange={(value) => {
+                                const nextMode = value as typeof field.value;
+                                if (
+                                  field.value === "fixed_combo" &&
+                                  nextMode !== "fixed_combo"
+                                ) {
+                                  setValue(
+                                    "comboItemCount",
+                                    String(
+                                      Math.max(2, comboComponentFields.length),
+                                    ),
+                                    { shouldDirty: true },
+                                  );
+                                }
+                                field.onChange(nextMode);
+                              }}
                             >
                               <SelectTrigger
                                 id="combo-selection-mode"
@@ -879,10 +897,59 @@ export function CatalogManager({
                         />
                         <FieldDescription>
                           {comboSelectionMode === "fixed_combo"
-                            ? "You fix each product color; the customer chooses one shared size."
+                            ? "Every listed product is included. You fix each color; customers choose one shared size."
                             : comboSelectionMode === "mix_colors_one_size"
-                              ? "The customer chooses each product color and one shared size."
-                              : "The customer chooses a size and color independently for every product."}
+                              ? "Customers choose exactly the set size from the listed products; the same product can be picked more than once if stock allows."
+                              : "Customers choose exactly the set size across any listed products, colors, and sizes. Their choices stay selected while they switch sizes."}
+                        </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="combo-item-count">
+                          Items in combo
+                        </FieldLabel>
+                        <Controller
+                          control={control}
+                          name="comboItemCount"
+                          render={({ field }) => (
+                            <Input
+                              id="combo-item-count"
+                              inputMode="numeric"
+                              max={MAX_COMBO_COMPONENTS}
+                              min={2}
+                              type="number"
+                              name={field.name}
+                              ref={field.ref}
+                              onBlur={field.onBlur}
+                              onChange={field.onChange}
+                              value={
+                                comboSelectionMode === "fixed_combo"
+                                  ? comboComponentFields.length
+                                  : (field.value ?? "")
+                              }
+                              disabled={
+                                comboItemCountIsLocked ||
+                                comboSelectionMode === "fixed_combo"
+                              }
+                              aria-invalid={Boolean(errors.comboItemCount)}
+                              aria-describedby={
+                                errors.comboItemCount
+                                  ? "combo-item-count-error"
+                                  : "combo-item-count-description"
+                              }
+                            />
+                          )}
+                        />
+                        {errors.comboItemCount && (
+                          <FieldError id="combo-item-count-error">
+                            {errors.comboItemCount.message}
+                          </FieldError>
+                        )}
+                        <FieldDescription id="combo-item-count-description">
+                          {comboItemCountIsLocked
+                            ? "The item count is fixed after the combo is created."
+                            : comboSelectionMode === "fixed_combo"
+                              ? "The count follows the number of products in this fixed set."
+                              : "Customers must choose exactly this many items from the products below. A product may be chosen more than once, subject to stock."}
                         </FieldDescription>
                       </Field>
                       <Field>
@@ -912,7 +979,7 @@ export function CatalogManager({
 
                     <Field>
                       <FieldLabel htmlFor="combo-product-search">
-                        Find existing products
+                        Search products to add
                       </FieldLabel>
                       <Input
                         id="combo-product-search"
@@ -920,7 +987,7 @@ export function CatalogManager({
                         onChange={(event) =>
                           setComboCandidateSearch(event.currentTarget.value)
                         }
-                        placeholder="Search product name"
+                        placeholder="Search by product name"
                       />
                       {loadingComboCandidates && (
                         <FieldDescription>
@@ -932,7 +999,77 @@ export function CatalogManager({
                       )}
                     </Field>
 
-                    <div className="space-y-3">
+                    {!comboCandidateSearch.trim() && (
+                      <p className="text-sm text-muted-foreground">
+                        Search for a product, then add it to the combo’s product
+                        list.
+                      </p>
+                    )}
+
+                    {comboCandidateSearch.trim() &&
+                      matchingComboCandidates.length > 0 && (
+                        <div
+                          aria-label="Matching products"
+                          className="space-y-2"
+                          role="list"
+                        >
+                          {matchingComboCandidates.map((candidate) => {
+                            const isSelected = chosenComboProductIds.has(
+                              candidate.id,
+                            );
+                            const canAdd =
+                              !isSelected &&
+                              comboComponentFields.length <
+                                MAX_COMBO_COMPONENTS;
+                            return (
+                              <div
+                                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
+                                key={candidate.id}
+                                role="listitem"
+                              >
+                                <div>
+                                  <p className="font-medium">
+                                    {candidate.name}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {describeComboCandidate(candidate)}
+                                  </p>
+                                </div>
+                                <Button
+                                  aria-label={`Add ${candidate.name} to combo`}
+                                  disabled={!canAdd}
+                                  onClick={() =>
+                                    appendComboComponent({
+                                      productId: candidate.id,
+                                      fixedColor: "",
+                                    })
+                                  }
+                                  type="button"
+                                  variant={isSelected ? "outline" : "secondary"}
+                                >
+                                  {isSelected ? "Added" : "Add item"}
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                    <div
+                      aria-label="Combo items"
+                      className="space-y-3"
+                      role="group"
+                    >
+                      <h4 className="text-sm font-semibold">
+                        {comboSelectionMode === "fixed_combo"
+                          ? "Products in this combo"
+                          : "Products customers can choose from"}
+                      </h4>
+                      {comboComponentFields.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          No items added yet.
+                        </p>
+                      )}
                       {comboComponentFields.map((component, index) => {
                         const selectedProductId =
                           comboComponentValues[index]?.productId ?? "";
@@ -953,87 +1090,23 @@ export function CatalogManager({
                             className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
                             key={component.id}
                           >
-                            <Field>
-                              <FieldLabel
-                                id={`combo-component-${index}-label`}
-                                htmlFor={`combo-component-${index}`}
-                              >
+                            <div className="min-w-0">
+                              <p className="text-sm text-muted-foreground">
                                 Product {index + 1}
-                              </FieldLabel>
-                              <Controller
-                                control={control}
-                                name={
-                                  `comboComponents.${index}.productId` as const
-                                }
-                                render={({ field }) => (
-                                  <Select
-                                    value={field.value || null}
-                                    onValueChange={(value) => {
-                                      field.onChange(
-                                        typeof value === "string" ? value : "",
-                                      );
-                                      setValue(
-                                        `comboComponents.${index}.fixedColor`,
-                                        "",
-                                        { shouldDirty: true },
-                                      );
-                                    }}
-                                  >
-                                    <SelectTrigger
-                                      id={`combo-component-${index}`}
-                                      aria-labelledby={`combo-component-${index}-label`}
-                                      aria-invalid={Boolean(productError)}
-                                      aria-describedby={
-                                        productError
-                                          ? `combo-component-${index}-error`
-                                          : undefined
-                                      }
-                                    >
-                                      <SelectValue placeholder="Choose a single product">
-                                        {candidate?.name ??
-                                          (field.value
-                                            ? "Selected product unavailable"
-                                            : null)}
-                                      </SelectValue>
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {comboCandidates
-                                        .filter((option) => {
-                                          const isSelected =
-                                            option.id === field.value;
-                                          const matchesSearch = option.name
-                                            .toLocaleLowerCase()
-                                            .includes(
-                                              normalizedComboCandidateSearch,
-                                            );
-                                          return (
-                                            isSelected ||
-                                            (matchesSearch &&
-                                              !chosenComboProductIds.has(
-                                                option.id,
-                                              ))
-                                          );
-                                        })
-                                        .map((option) => (
-                                          <SelectItem
-                                            key={option.id}
-                                            value={option.id}
-                                          >
-                                            {option.name}
-                                          </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                              />
-                              {productError && (
-                                <FieldError
-                                  id={`combo-component-${index}-error`}
-                                >
-                                  {productError}
-                                </FieldError>
+                              </p>
+                              <p className="font-medium">
+                                {candidate?.name ??
+                                  "Selected product unavailable"}
+                              </p>
+                              {candidate && (
+                                <p className="text-sm text-muted-foreground">
+                                  {describeComboCandidate(candidate)}
+                                </p>
                               )}
-                            </Field>
+                              {productError && (
+                                <FieldError>{productError}</FieldError>
+                              )}
+                            </div>
                             {comboSelectionMode === "fixed_combo" ? (
                               <Field>
                                 <FieldLabel
@@ -1091,13 +1164,13 @@ export function CatalogManager({
                               </Field>
                             ) : (
                               <p className="self-center text-sm text-muted-foreground">
-                                Customer chooses this product’s color.
+                                Customers can choose this product’s available
+                                variants.
                               </p>
                             )}
                             <Button
-                              aria-label={`Remove combo product ${index + 1}`}
+                              aria-label={`Remove combo item ${index + 1}`}
                               className="self-end"
-                              disabled={comboComponentFields.length === 0}
                               onClick={() => removeComboComponent(index)}
                               type="button"
                               variant="ghost"
@@ -1120,7 +1193,7 @@ export function CatalogManager({
                             className="text-sm text-muted-foreground"
                             role="status"
                           >
-                            No single products match this search.
+                            No products match this search.
                           </p>
                         )}
                       {matchingComboCandidates.length > 0 &&
@@ -1129,26 +1202,9 @@ export function CatalogManager({
                             className="text-sm text-muted-foreground"
                             role="status"
                           >
-                            All matching single products are already in this
-                            combo.
+                            All matching products are already in this combo.
                           </p>
                         )}
-                      <Button
-                        disabled={
-                          comboComponentFields.length >= MAX_COMBO_COMPONENTS ||
-                          availableComboCandidateCount === 0
-                        }
-                        onClick={() =>
-                          appendComboComponent({
-                            productId: "",
-                            fixedColor: "",
-                          })
-                        }
-                        type="button"
-                        variant="outline"
-                      >
-                        Add product to combo
-                      </Button>
                     </div>
                   </section>
                 )}
@@ -1580,107 +1636,108 @@ export function CatalogManager({
                         </FieldError>
                       )}
                     </section>
-
-                    <Field>
-                      <FieldLabel
-                        id="product-size-guide-label"
-                        htmlFor="product-size-guide"
-                      >
-                        Reusable size guide
-                      </FieldLabel>
-                      <Controller
-                        control={control}
-                        name="sizeGuideId"
-                        render={({ field, fieldState }) => (
-                          <Select
-                            items={[
-                              { label: "No size guide assigned", value: null },
-                              ...compatibleGuides.map((guide) => ({
-                                label: `${guide.name} · ${guide.measurementBasis} measurements · ${guide.sizeLabels.join(", ")}`,
-                                value: guide.id,
-                              })),
-                            ]}
-                            name={field.name}
-                            value={field.value || null}
-                            onValueChange={(value) =>
-                              field.onChange(
-                                typeof value === "string" ? value : "",
-                              )
-                            }
-                          >
-                            <SelectTrigger
-                              id="product-size-guide"
-                              aria-labelledby="product-size-guide-label"
-                              aria-describedby={
-                                fieldState.error
-                                  ? "product-size-guide-error"
-                                  : undefined
-                              }
-                              aria-invalid={Boolean(fieldState.error)}
-                              ref={field.ref}
-                              onBlur={field.onBlur}
-                            >
-                              <SelectValue placeholder="No size guide assigned" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={null}>
-                                No size guide assigned
-                              </SelectItem>
-                              {compatibleGuides.map((guide) => (
-                                <SelectItem key={guide.id} value={guide.id}>
-                                  {guide.name} · {guide.measurementBasis}{" "}
-                                  measurements · {guide.sizeLabels.join(", ")}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                      {errors.sizeGuideId && (
-                        <FieldError id="product-size-guide-error">
-                          {errors.sizeGuideId.message}
-                        </FieldError>
-                      )}
-                      {categoryId && compatibleGuides.length === 0 && (
-                        <FieldDescription>
-                          No matching size guide is available.{" "}
-                          <Link
-                            className="text-primary underline"
-                            href="/admin/catalog/size-guides"
-                          >
-                            Create one
-                          </Link>
-                          .
-                        </FieldDescription>
-                      )}
-                      {sizeGuideId &&
-                        compatibleGuides.some(
-                          (guide) => guide.id === sizeGuideId,
-                        ) && (
-                          <FieldDescription>
-                            Required for published clothing and used beside the
-                            size selector on product details.
-                          </FieldDescription>
-                        )}
-                      {hasMoreSizeGuides && nextSizeGuideOffset !== null && (
-                        <Button
-                          className="h-auto px-2 py-1 text-sm text-primary"
-                          disabled={isLoadingSizeGuides}
-                          type="button"
-                          variant="ghost"
-                          onClick={() => void loadMoreSizeGuides()}
-                        >
-                          {isLoadingSizeGuides
-                            ? "Loading size guides…"
-                            : "Load 100 more size guides"}
-                        </Button>
-                      )}
-                      {sizeGuideLoadError && (
-                        <FieldError>{sizeGuideLoadError}</FieldError>
-                      )}
-                    </Field>
                   </>
                 )}
+
+                <Field>
+                  <FieldLabel
+                    id="product-size-guide-label"
+                    htmlFor="product-size-guide"
+                  >
+                    {productType === "combo"
+                      ? "Combo size guide (optional)"
+                      : "Reusable size guide"}
+                  </FieldLabel>
+                  <Controller
+                    control={control}
+                    name="sizeGuideId"
+                    render={({ field, fieldState }) => (
+                      <Select
+                        items={[
+                          { label: "No size guide assigned", value: null },
+                          ...compatibleGuides.map((guide) => ({
+                            label: `${guide.name} · ${guide.measurementBasis} measurements · ${guide.sizeLabels.join(", ")}`,
+                            value: guide.id,
+                          })),
+                        ]}
+                        name={field.name}
+                        value={field.value || null}
+                        onValueChange={(value) =>
+                          field.onChange(typeof value === "string" ? value : "")
+                        }
+                      >
+                        <SelectTrigger
+                          id="product-size-guide"
+                          aria-labelledby="product-size-guide-label"
+                          aria-describedby={
+                            fieldState.error
+                              ? "product-size-guide-error"
+                              : undefined
+                          }
+                          aria-invalid={Boolean(fieldState.error)}
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                        >
+                          <SelectValue placeholder="No size guide assigned" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={null}>
+                            No size guide assigned
+                          </SelectItem>
+                          {compatibleGuides.map((guide) => (
+                            <SelectItem key={guide.id} value={guide.id}>
+                              {guide.name} · {guide.measurementBasis}{" "}
+                              measurements · {guide.sizeLabels.join(", ")}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {errors.sizeGuideId && (
+                    <FieldError id="product-size-guide-error">
+                      {errors.sizeGuideId.message}
+                    </FieldError>
+                  )}
+                  {categoryId && compatibleGuides.length === 0 && (
+                    <FieldDescription>
+                      No matching size guide is available.{" "}
+                      <Link
+                        className="text-primary underline"
+                        href="/admin/catalog/size-guides"
+                      >
+                        Create one
+                      </Link>
+                      .
+                    </FieldDescription>
+                  )}
+                  {sizeGuideId &&
+                    compatibleGuides.some(
+                      (guide) => guide.id === sizeGuideId,
+                    ) && (
+                      <FieldDescription>
+                        {productType === "combo"
+                          ? "Shown beside the combo’s size options. Choose a chart that matches the items in this combo."
+                          : "Required for published clothing and shown beside the size selector."}
+                      </FieldDescription>
+                    )}
+                  {hasMoreSizeGuides && nextSizeGuideOffset !== null && (
+                    <Button
+                      className="h-auto px-2 py-1 text-sm text-primary"
+                      disabled={isLoadingSizeGuides}
+                      type="button"
+                      variant="ghost"
+                      onClick={() => void loadMoreSizeGuides()}
+                    >
+                      {isLoadingSizeGuides
+                        ? "Loading size guides…"
+                        : "Load 100 more size guides"}
+                    </Button>
+                  )}
+                  {sizeGuideLoadError && (
+                    <FieldError>{sizeGuideLoadError}</FieldError>
+                  )}
+                </Field>
 
                 {editingId ? (
                   <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm text-foreground">
@@ -1772,6 +1829,19 @@ export function CatalogManager({
   );
 }
 
+function describeComboCandidate(candidate: CatalogComboCandidate): string {
+  const colorCount = new Set(
+    candidate.variants.map(({ color }) => color.trim().toLocaleLowerCase()),
+  ).size;
+  const sizeCount = new Set(
+    candidate.variants.map(({ sizeLabel }) =>
+      sizeLabel.trim().toLocaleLowerCase(),
+    ),
+  ).size;
+  const variantCount = candidate.variants.length;
+  return `${colorCount} ${colorCount === 1 ? "color" : "colors"} · ${sizeCount} ${sizeCount === 1 ? "size" : "sizes"} · ${variantCount} ${variantCount === 1 ? "variant" : "variants"}`;
+}
+
 function comboConfigurationMatches(
   detail: CatalogManagedProductDetail,
   configuration: CatalogComboConfigurationInput,
@@ -1780,6 +1850,7 @@ function comboConfigurationMatches(
   return Boolean(
     combo &&
     combo.selectionMode === configuration.selectionMode &&
+    combo.itemCount === configuration.itemCount &&
     combo.price.amountBdt === configuration.price.amountBdt &&
     combo.components.length === configuration.components.length &&
     combo.components.every((component, index) => {

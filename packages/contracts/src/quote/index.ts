@@ -32,6 +32,7 @@ export type QuoteDestinationInput = QuoteDestinationRef;
 
 const QuoteLineSchema = z.strictObject({
   variantId: z.uuid(),
+  selectionIndex: z.number().int().min(0).max(9).optional(),
   comboGroupId: z.uuid().nullable().default(null),
   productName: z.string().min(1).max(160),
   color: z.string().min(1).max(80),
@@ -61,6 +62,7 @@ const QuoteComboGroupSchema = z.strictObject({
     .array(
       z.strictObject({
         componentId: z.uuid(),
+        selectionIndex: z.number().int().min(0).max(9).optional(),
         variantId: z.uuid(),
         productName: z.string().min(1).max(160),
         color: z.string().min(1).max(80),

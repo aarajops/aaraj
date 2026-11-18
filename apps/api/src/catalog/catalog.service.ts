@@ -92,6 +92,7 @@ import {
 } from "./catalog-slug.js";
 import {
   comboHasAvailableSet,
+  limitComboAvailabilityForStorefront,
   loadCombo,
   loadCombos,
   validateComboConfiguration,
@@ -1472,6 +1473,8 @@ async function validateComboPublishability(
     description: string | null;
     audience: "men" | "women" | "unisex" | null;
     categoryId: string | null;
+    fit: string | null;
+    sizeGuideId: string | null;
   },
 ) {
   if (!product.audience) {
@@ -1498,12 +1501,49 @@ async function validateComboPublishability(
   }
   await validateComboConfiguration(transaction, product.id, {
     selectionMode: combo.selectionMode,
+    itemCount: combo.itemCount,
     price: combo.price,
     components: combo.components.map(({ productId, fixedColor }) => ({
       productId,
       fixedColor,
     })),
   });
+  if (product.sizeGuideId) {
+    const guide = await requireSizeGuide(
+      transaction,
+      product.sizeGuideId,
+      true,
+    );
+    const categoryMatches =
+      product.categoryId === guide.categoryId ||
+      isCategoryOrDescendant(
+        product.categoryId,
+        guide.categoryId,
+        await loadCategoryParentMap(transaction),
+      );
+    const fitMatches =
+      !product.fit?.trim() ||
+      normalizeOptional(product.fit) === normalizeOptional(guide.fit);
+    if (!categoryMatches || !fitMatches) {
+      throw new BadRequestException(
+        "Select a size guide that matches the combo category and fit.",
+      );
+    }
+    const guideRows = await transaction
+      .select({ sizeLabel: catalogSizeGuideRow.sizeLabel })
+      .from(catalogSizeGuideRow)
+      .where(eq(catalogSizeGuideRow.guideId, guide.id));
+    const guideSizes = new Set(
+      guideRows.map(({ sizeLabel }) => normalize(sizeLabel)),
+    );
+    if (
+      [...getComboOfferedSizes(combo)].some((size) => !guideSizes.has(size))
+    ) {
+      throw new BadRequestException(
+        "Every size offered by this combo must appear in its size guide.",
+      );
+    }
+  }
   const componentIds = combo.components.map(({ productId }) => productId);
   const componentProducts = await transaction
     .select({
@@ -1540,6 +1580,40 @@ async function validateComboPublishability(
       "Add at least one ready combo image before publishing.",
     );
   }
+}
+
+function getComboOfferedSizes(
+  combo: NonNullable<Awaited<ReturnType<typeof loadCombo>>>,
+) {
+  if (combo.selectionMode !== "fixed_combo") {
+    return new Set(
+      combo.components.flatMap((component) =>
+        component.variants.map(({ sizeLabel }) => normalize(sizeLabel)),
+      ),
+    );
+  }
+
+  let sharedSizes: Set<string> | null = null;
+  for (const component of combo.components) {
+    const sizes = new Set(
+      component.variants
+        .filter(
+          ({ color }) =>
+            combo.selectionMode !== "fixed_combo" ||
+            normalize(color) === normalize(component.fixedColor ?? ""),
+        )
+        .map(({ sizeLabel }) => normalize(sizeLabel)),
+    );
+    if (sharedSizes === null) {
+      sharedSizes = sizes;
+    } else {
+      const previousSizes: string[] = [...sharedSizes];
+      sharedSizes = new Set<string>(
+        previousSizes.filter((size) => sizes.has(size)),
+      );
+    }
+  }
+  return sharedSizes ?? new Set<string>();
 }
 
 async function requireSizeGuide(
@@ -1769,7 +1843,7 @@ async function loadProductDetail(
       isActive: variant.isActive,
     })),
     sizeGuide,
-    combo,
+    combo: combo ? limitComboAvailabilityForStorefront(combo) : null,
   };
 }
 

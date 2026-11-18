@@ -173,6 +173,7 @@ export type OrderFulfillmentOutcomeInput = z.infer<
 
 export const OrderComboAcceptedComponentSchema = z.strictObject({
   componentId: z.uuid(),
+  selectionIndex: z.number().int().min(0).max(9).optional(),
   quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
 });
 
@@ -209,6 +210,7 @@ const OrderCourierHandoffSchema = z.strictObject({
 
 const OrderLineSchema = z.strictObject({
   variantId: z.uuid(),
+  selectionIndex: z.number().int().min(0).max(9).optional(),
   comboGroupId: z.uuid().nullable().default(null),
   productName: z.string().min(1).max(160),
   color: z.string().min(1).max(80),
@@ -250,6 +252,7 @@ export const OrderComboGroupSchema = z.strictObject({
     .array(
       z.strictObject({
         componentId: z.uuid(),
+        selectionIndex: z.number().int().min(0).max(9).optional(),
         variantId: z.uuid(),
         productName: z.string().min(1).max(160),
         color: z.string().min(1).max(80),

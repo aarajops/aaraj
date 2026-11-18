@@ -164,7 +164,14 @@ describe("COD Orders and checkout", () => {
     return variant.id;
   }
 
-  async function createComboFixture(stock = 4) {
+  async function createComboFixture(
+    stock = 4,
+    itemCount = 3,
+    selectionMode:
+      | "fixed_combo"
+      | "mix_colors_one_size"
+      | "mix_sizes_and_colors" = "mix_colors_one_size",
+  ) {
     const variantIds = await Promise.all(
       [500, 600, 700].map((price) => createVariant(stock, price)),
     );
@@ -243,16 +250,18 @@ describe("COD Orders and checkout", () => {
       .set("Cookie", staff.cookie)
       .set("If-Match", productEtag)
       .send({
-        selectionMode: "mix_colors_one_size",
+        selectionMode,
+        itemCount,
         price: { amountBdt: 1200 },
         components: variants.map(({ productId }) => ({
           productId,
-          fixedColor: null,
+          fixedColor: selectionMode === "fixed_combo" ? "Blue" : null,
         })),
       })
       .expect(200);
     expect(configuration.body).toMatchObject({
-      selectionMode: "mix_colors_one_size",
+      selectionMode,
+      itemCount,
       price: { amountBdt: 1200 },
       revision: 1,
       productRevision: 2,
@@ -264,7 +273,8 @@ describe("COD Orders and checkout", () => {
       .set("Cookie", staff.cookie)
       .set("If-Match", productEtag)
       .send({
-        selectionMode: "mix_colors_one_size",
+        selectionMode,
+        itemCount,
         price: { amountBdt: 1300 },
         components: variants.map(({ productId }) => ({
           productId,
@@ -286,6 +296,8 @@ describe("COD Orders and checkout", () => {
     return {
       productId: product.id,
       priceBdt: 1200,
+      itemCount,
+      components,
       componentProductIds: components.map(({ productId }) => productId),
       componentSelections: comboSelectionsFor(components, variants),
       redSelections: comboSelectionsFor(components, redVariants),
@@ -317,6 +329,7 @@ describe("COD Orders and checkout", () => {
     selectionMode:
       "fixed_combo" | "mix_colors_one_size" | "mix_sizes_and_colors",
     componentProductIds: readonly string[],
+    itemCount = componentProductIds.length,
   ) {
     const current = await request(app.getHttpServer())
       .get(`${API_V1_BASE_PATH}/catalog/combos/manage/${productId}`)
@@ -331,6 +344,7 @@ describe("COD Orders and checkout", () => {
       .set("If-Match", etag)
       .send({
         selectionMode,
+        itemCount,
         price: { amountBdt: 1200 },
         components: componentProductIds.map((productId) => ({
           productId,
@@ -1031,6 +1045,366 @@ describe("COD Orders and checkout", () => {
       .expect(201);
   });
 
+  it("picks the configured count from a product pool and enforces repeated-item stock", async () => {
+    const combo = await createComboFixture(1, 2, "mix_sizes_and_colors");
+    expect(combo.components).toHaveLength(3);
+    expect(combo.itemCount).toBe(2);
+
+    const components = combo.components as Array<{
+      id: string;
+      productId: string;
+    }>;
+    const firstComponent = components[0]!;
+    const secondComponent = components[1]!;
+    const firstVariant = combo.variants.find(
+      ({ productId }) => productId === firstComponent.productId,
+    )!;
+    const secondVariant = combo.variants.find(
+      ({ productId }) => productId === secondComponent.productId,
+    )!;
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/cart/combos`)
+      .set("Origin", origin)
+      .send({
+        revision: 0,
+        productId: combo.productId,
+        comboRevision: 1,
+        selections: [
+          { componentId: firstComponent.id, variantId: firstVariant.id },
+          { componentId: firstComponent.id, variantId: firstVariant.id },
+        ],
+        quantity: 1,
+      })
+      .expect(422);
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/cart/combos`)
+      .set("Origin", origin)
+      .send({
+        revision: 0,
+        productId: combo.productId,
+        comboRevision: 1,
+        selections: [
+          { componentId: firstComponent.id, variantId: firstVariant.id },
+          { componentId: secondComponent.id, variantId: secondVariant.id },
+        ],
+        quantity: 2,
+      })
+      .expect(422);
+
+    const valid = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/cart/combos`)
+      .set("Origin", origin)
+      .send({
+        revision: 0,
+        productId: combo.productId,
+        comboRevision: 1,
+        selections: [
+          { componentId: firstComponent.id, variantId: firstVariant.id },
+          { componentId: secondComponent.id, variantId: secondVariant.id },
+        ],
+        quantity: 1,
+      })
+      .expect(201);
+    expect(valid.body.combos[0]).toMatchObject({
+      productId: combo.productId,
+      selections: [
+        {
+          componentId: firstComponent.id,
+          selectionIndex: 0,
+          variantId: firstVariant.id,
+        },
+        {
+          componentId: secondComponent.id,
+          selectionIndex: 1,
+          variantId: secondVariant.id,
+        },
+      ],
+    });
+  });
+
+  it("orders multiple combo sets with repeated variants and prices partial quantities correctly", async () => {
+    const combo = await createComboFixture(4, 3, "mix_sizes_and_colors");
+    const components = combo.components as Array<{
+      id: string;
+      productId: string;
+    }>;
+    const repeatedComponent = components[0]!;
+    const otherComponent = components[1]!;
+    const repeatedVariant = combo.variants.find(
+      ({ productId }) => productId === repeatedComponent.productId,
+    )!;
+    const otherVariant = combo.variants.find(
+      ({ productId }) => productId === otherComponent.productId,
+    )!;
+    const selections = [
+      { componentId: repeatedComponent.id, variantId: repeatedVariant.id },
+      { componentId: repeatedComponent.id, variantId: repeatedVariant.id },
+      { componentId: otherComponent.id, variantId: otherVariant.id },
+    ];
+    const cartResponse = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/cart/combos`)
+      .set("Origin", origin)
+      .send({
+        revision: 0,
+        productId: combo.productId,
+        comboRevision: 1,
+        selections,
+        quantity: 2,
+      })
+      .expect(201);
+    const cartCookie = setCookieHeaders(cartResponse.headers).find((value) =>
+      value.startsWith(`${cartCookieName}=`),
+    );
+    if (!cartCookie) throw new Error("Combo cart did not issue its cookie.");
+    const cookie = cartCookie.split(";")[0]!;
+    expect(cartResponse.body.combos[0]).toMatchObject({
+      quantity: 2,
+      selections: selections.map((selection, selectionIndex) => ({
+        ...selection,
+        selectionIndex,
+      })),
+    });
+
+    const quoteResponse = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/quotes`)
+      .set("Origin", origin)
+      .set("Cookie", cookie)
+      .send(destinationRef())
+      .expect(201);
+    expect(quoteResponse.body.comboGroups[0]).toMatchObject({
+      productId: combo.productId,
+      quantity: 2,
+      unitPriceBdt: combo.priceBdt,
+      grossAmountBdt: combo.priceBdt * 2,
+    });
+    expect(quoteResponse.body.lines).toHaveLength(3);
+
+    const key = randomUUID();
+    const checkoutCookie = await prepareGuestCheckout(cookie, key);
+    const created = await placeOrder(
+      checkoutCookie,
+      checkoutBody(quoteResponse.body.id),
+      key,
+    ).expect(201);
+    expect((await stockFor(repeatedVariant.id)).quantityReserved).toBe(4);
+    expect((await stockFor(otherVariant.id)).quantityReserved).toBe(2);
+    const [group] = await database.db
+      .select()
+      .from(orderComboGroup)
+      .where(eq(orderComboGroup.orderId, created.body.id as string));
+    if (!group) throw new Error("The combo order group was not saved.");
+
+    await confirmOrder(created.body.id as string);
+    await dispatchOrder(created.body.id as string, staff.cookie).expect(201);
+    await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/${created.body.id}/fulfillment-outcome`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        outcome: "partially_delivered",
+        reason: "Only part of the two-set Combo order was received.",
+      })
+      .expect(201);
+
+    const selectionsInOrder = group.selections as Array<{
+      componentId: string;
+      selectionIndex: number;
+      unitPriceBdt: number;
+    }>;
+    const partial = await request(app.getHttpServer())
+      .post(
+        `${API_V1_BASE_PATH}/orders/manage/${created.body.id}/combo-fulfillment-outcome`,
+      )
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send({
+        groupId: group.id,
+        outcome: "incomplete",
+        reason: "Received one of the first item and both of the second.",
+        acceptedComponents: [
+          {
+            componentId: selectionsInOrder[0]!.componentId,
+            selectionIndex: 0,
+            quantity: 1,
+          },
+          {
+            componentId: selectionsInOrder[1]!.componentId,
+            selectionIndex: 1,
+            quantity: 2,
+          },
+        ],
+      })
+      .expect(201);
+    const acceptedIndividualPrice =
+      selectionsInOrder[0]!.unitPriceBdt +
+      selectionsInOrder[1]!.unitPriceBdt * 2;
+    const savedOrder = await orderById(created.body.id as string);
+    expect(partial.body.comboGroups[0].deliveryOutcome).toBe("incomplete");
+    expect(partial.body.codAmountDueBdt).toBe(
+      acceptedIndividualPrice +
+        savedOrder!.deliveryAmountBdt -
+        savedOrder!.manualDiscountBdt,
+    );
+  });
+
+  it("allows only one competing checkout to reserve the final units of a Combo", async () => {
+    const combo = await createComboFixture(1, 3, "mix_sizes_and_colors");
+    const makeCart = async () => {
+      const response = await request(app.getHttpServer())
+        .post(`${API_V1_BASE_PATH}/cart/combos`)
+        .set("Origin", origin)
+        .send({
+          revision: 0,
+          productId: combo.productId,
+          comboRevision: 1,
+          selections: combo.componentSelections,
+          quantity: 1,
+        })
+        .expect(201);
+      const cartCookie = setCookieHeaders(response.headers).find((value) =>
+        value.startsWith(`${cartCookieName}=`),
+      );
+      if (!cartCookie) throw new Error("Combo cart did not issue its cookie.");
+      return cartCookie.split(";")[0]!;
+    };
+    const [firstCart, secondCart] = await Promise.all([makeCart(), makeCart()]);
+    const [firstQuote, secondQuote] = await Promise.all([
+      createQuote(firstCart),
+      createQuote(secondCart),
+    ]);
+    const firstKey = randomUUID();
+    const secondKey = randomUUID();
+    const [firstCookie, secondCookie] = await Promise.all([
+      prepareGuestCheckout(firstCart, firstKey),
+      prepareGuestCheckout(secondCart, secondKey),
+    ]);
+
+    const [first, second] = await Promise.all([
+      placeOrder(firstCookie, checkoutBody(firstQuote.id), firstKey),
+      placeOrder(secondCookie, checkoutBody(secondQuote.id), secondKey),
+    ]);
+    expect([first.status, second.status].sort((a, b) => a - b)).toEqual([
+      201, 409,
+    ]);
+    for (const variantId of combo.variantIds) {
+      expect((await stockFor(variantId)).quantityReserved).toBe(1);
+    }
+    const savedOrders = await database.db
+      .select()
+      .from(customerOrder)
+      .where(inArray(customerOrder.quoteId, [firstQuote.id, secondQuote.id]));
+    expect(savedOrders).toHaveLength(1);
+  });
+
+  it("rejects checkout when a Combo configuration changes after it entered the cart", async () => {
+    const combo = await createComboFixture(2, 3, "mix_sizes_and_colors");
+    const cartResponse = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/cart/combos`)
+      .set("Origin", origin)
+      .send({
+        revision: 0,
+        productId: combo.productId,
+        comboRevision: 1,
+        selections: combo.componentSelections,
+        quantity: 1,
+      })
+      .expect(201);
+    const cartCookie = setCookieHeaders(cartResponse.headers).find((value) =>
+      value.startsWith(`${cartCookieName}=`),
+    );
+    if (!cartCookie) throw new Error("Combo cart did not issue its cookie.");
+    const cookie = cartCookie.split(";")[0]!;
+    const management = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/catalog/combos/manage/${combo.productId}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    const comboEtag = management.headers.etag;
+    if (!comboEtag)
+      throw new Error("Combo configuration did not return an ETag.");
+    const configuration = management.body;
+    await request(app.getHttpServer())
+      .put(`${API_V1_BASE_PATH}/catalog/combos/manage/${combo.productId}`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("If-Match", comboEtag)
+      .send({
+        selectionMode: configuration.selectionMode,
+        itemCount: configuration.itemCount,
+        price: { amountBdt: configuration.price.amountBdt + 100 },
+        components: configuration.components.map(
+          ({
+            productId,
+            fixedColor,
+          }: {
+            productId: string;
+            fixedColor: string | null;
+          }) => ({
+            productId,
+            fixedColor,
+          }),
+        ),
+      })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/quotes`)
+      .set("Origin", origin)
+      .set("Cookie", cookie)
+      .send(destinationRef())
+      .expect(422);
+    for (const variantId of combo.variantIds) {
+      expect((await stockFor(variantId)).quantityReserved).toBe(0);
+    }
+  });
+
+  it("rejects checkout when a source product is unpublished after a Combo enters the cart", async () => {
+    const combo = await createComboFixture(2, 3, "mix_sizes_and_colors");
+    const cartResponse = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/cart/combos`)
+      .set("Origin", origin)
+      .send({
+        revision: 0,
+        productId: combo.productId,
+        comboRevision: 1,
+        selections: combo.componentSelections,
+        quantity: 1,
+      })
+      .expect(201);
+    const cartCookie = setCookieHeaders(cartResponse.headers).find((value) =>
+      value.startsWith(`${cartCookieName}=`),
+    );
+    if (!cartCookie) throw new Error("Combo cart did not issue its cookie.");
+    const cookie = cartCookie.split(";")[0]!;
+    const sourceProductId = combo.componentProductIds[0]!;
+    const source = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/catalog/products/manage/${sourceProductId}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    const sourceEtag = source.headers.etag;
+    if (!sourceEtag) throw new Error("Source product did not return an ETag.");
+    await request(app.getHttpServer())
+      .patch(`${API_V1_BASE_PATH}/catalog/products/${sourceProductId}`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("If-Match", sourceEtag)
+      .send({ isPublished: false })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/quotes`)
+      .set("Origin", origin)
+      .set("Cookie", cookie)
+      .send(destinationRef())
+      .expect(422);
+    for (const variantId of combo.variantIds) {
+      expect((await stockFor(variantId)).quantityReserved).toBe(0);
+    }
+  });
+
   it("keeps combo groups intact through abandoned checkout preview and staff assisted order creation", async () => {
     const combo = await createComboFixture();
     const cart = await request(app.getHttpServer())
@@ -1237,25 +1611,24 @@ describe("COD Orders and checkout", () => {
         reason: "Customer accepted two items; one item was unavailable.",
         acceptedComponents: combo.componentSelections
           .slice(0, 2)
-          .map(({ componentId }) => ({
+          .map(({ componentId }, selectionIndex) => ({
             componentId,
+            selectionIndex,
             quantity: 1,
           })),
       })
       .expect(201);
     expect(partial.body.comboGroups[0].deliveryOutcome).toBe("incomplete");
-    const acceptedComponentIds = new Set(
-      combo.componentSelections
-        .slice(0, 2)
-        .map(({ componentId }) => componentId),
-    );
+    const acceptedSelectionIndexes = new Set([0, 1]);
     const acceptedIndividualPrice = (
       group.selections as Array<{
-        componentId: string;
+        selectionIndex: number;
         unitPriceBdt: number;
       }>
     )
-      .filter(({ componentId }) => acceptedComponentIds.has(componentId))
+      .filter(({ selectionIndex }) =>
+        acceptedSelectionIndexes.has(selectionIndex),
+      )
       .reduce((total, selection) => total + selection.unitPriceBdt, 0);
     expect(partial.body.codAmountDueBdt).toBe(
       acceptedIndividualPrice +
@@ -1299,7 +1672,11 @@ describe("COD Orders and checkout", () => {
         reason: "Customer kept the received items and declined the remainder",
         acceptedComponents: combo.componentSelections
           .slice(0, 2)
-          .map(({ componentId }) => ({ componentId, quantity: 1 })),
+          .map(({ componentId }, selectionIndex) => ({
+            componentId,
+            selectionIndex,
+            quantity: 1,
+          })),
       })
       .expect(201);
     expect(finalComboOutcome.body.comboGroups[0].deliveryOutcome).toBe(
