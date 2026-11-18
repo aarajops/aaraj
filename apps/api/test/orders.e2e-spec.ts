@@ -179,6 +179,7 @@ describe("COD Orders and checkout", () => {
       .select({
         id: catalogProductVariant.id,
         productId: catalogProductVariant.productId,
+        priceBdt: catalogProductVariant.priceBdt,
       })
       .from(catalogProductVariant)
       .where(inArray(catalogProductVariant.id, variantIds));
@@ -1195,7 +1196,6 @@ describe("COD Orders and checkout", () => {
       .from(orderComboGroup)
       .where(eq(orderComboGroup.orderId, created.body.id as string));
     if (!group) throw new Error("The combo order group was not saved.");
-
     await confirmOrder(created.body.id as string);
     await dispatchOrder(created.body.id as string, staff.cookie).expect(201);
     await request(app.getHttpServer())
@@ -1575,6 +1575,18 @@ describe("COD Orders and checkout", () => {
       .from(orderComboGroup)
       .where(eq(orderComboGroup.orderId, created.body.id as string));
     if (!group) throw new Error("The combo order group was not saved.");
+    const acceptedSelections = combo.componentSelections
+      .map((selection, selectionIndex) => {
+        const variant = combo.variants.find(
+          ({ id }) => id === selection.variantId,
+        );
+        if (!variant || variant.priceBdt === null) {
+          throw new Error("A combo selection needs a saved individual price.");
+        }
+        return { ...selection, selectionIndex, priceBdt: variant.priceBdt };
+      })
+      .sort((left, right) => right.priceBdt - left.priceBdt)
+      .slice(0, 2);
 
     await confirmOrder(created.body.id as string);
     await dispatchOrder(created.body.id as string, staff.cookie).expect(201);
@@ -1609,17 +1621,19 @@ describe("COD Orders and checkout", () => {
         groupId: group.id,
         outcome: "incomplete",
         reason: "Customer accepted two items; one item was unavailable.",
-        acceptedComponents: combo.componentSelections
-          .slice(0, 2)
-          .map(({ componentId }, selectionIndex) => ({
+        acceptedComponents: acceptedSelections.map(
+          ({ componentId, selectionIndex }) => ({
             componentId,
             selectionIndex,
             quantity: 1,
-          })),
+          }),
+        ),
       })
       .expect(201);
     expect(partial.body.comboGroups[0].deliveryOutcome).toBe("incomplete");
-    const acceptedSelectionIndexes = new Set([0, 1]);
+    const acceptedSelectionIndexes = new Set(
+      acceptedSelections.map(({ selectionIndex }) => selectionIndex),
+    );
     const acceptedIndividualPrice = (
       group.selections as Array<{
         selectionIndex: number;
@@ -1636,6 +1650,7 @@ describe("COD Orders and checkout", () => {
         order!.deliveryAmountBdt -
         order!.manualDiscountBdt,
     );
+    expect(partial.body.codAmountDueBdt).toBeGreaterThan(order!.totalBdt);
 
     await request(app.getHttpServer())
       .post(`${API_V1_BASE_PATH}/orders/manage/${created.body.id}/collection`)

@@ -227,7 +227,7 @@ export const customerOrder = ordersSchema.table(
     check("order_cod_method_check", sql`${table.paymentMethod} = 'cod'`),
     check(
       "order_amount_check",
-      sql`${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.manualDiscountBdt} between 0 and ${table.merchandiseGrossBdt} and ${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.codAmountDueBdt} between 0 and ${table.totalBdt} and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt} - ${table.manualDiscountBdt}`,
+      sql`${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.manualDiscountBdt} between 0 and ${table.merchandiseGrossBdt} and ${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.codAmountDueBdt} between 0 and 9007199254740991 and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt} - ${table.manualDiscountBdt}`,
     ),
     check(
       "order_snapshot_object_check",
