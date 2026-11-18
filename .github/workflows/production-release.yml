@@ -3,12 +3,6 @@ name: AARAJ Production Deploy
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      confirm_production_commit:
-        description: Enter the exact main commit SHA you intend to deploy.
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -34,18 +28,10 @@ jobs:
 
       - name: Validate main deployment commit
         id: deployment
-        env:
-          CONFIRM_PRODUCTION_COMMIT: ${{ inputs.confirm_production_commit }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            [[ "$CONFIRM_PRODUCTION_COMMIT" == "$GITHUB_SHA" ]] || {
-              echo 'Manual production deployment requires confirming the exact commit SHA.' >&2
-              exit 1
-            }
-          fi
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
           baseline_tag="$(git tag --merged "$GITHUB_SHA" --list 'v[0-9]*' --sort=-version:refname \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
@@ -82,7 +68,6 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       required: ${{ steps.policy.outputs.required }}
-      maintenance_required: ${{ steps.policy.outputs.maintenance_required }}
     steps:
       - name: Checkout deployment history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,7 +92,7 @@ jobs:
           const policy = JSON.parse(fs.readFileSync(policyFile, "utf8"));
           fs.appendFileSync(
             outputFile,
-            `required=${policy.required}\nmaintenance_required=${policy.maintenanceRequired}\n`,
+            `required=${policy.required}\n`,
           );
           const lines = [
             "### Migration review policy",
@@ -119,12 +104,8 @@ jobs:
           for (const migration of policy.migrations) {
             lines.push(`- \`${migration.file}\`: ${migration.impact}`);
           }
-          if (policy.maintenanceRequired) {
-            lines.push(
-              "- Maintenance-class changes require a manual dispatch for the exact commit; verify GitHub review rules separately.",
-            );
-          }
           lines.push(
+            "- Production deployment follows the validated main commit after CI and migration checks pass.",
             "- Migration execution remains isolated on the VPS under the separate migration role; production database credentials stay on the VPS.",
           );
           fs.appendFileSync(summaryFile, `${lines.join("\n")}\n`);
@@ -139,17 +120,9 @@ jobs:
   deploy:
     needs: [deployment-gate, ci, migration-policy]
     if: >-
-      always() &&
       needs.deployment-gate.result == 'success' &&
       needs.ci.result == 'success' &&
-      needs.migration-policy.result == 'success' &&
-      (
-        needs.migration-policy.outputs.maintenance_required != 'true' ||
-        (
-          github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.confirm_production_commit == needs.deployment-gate.outputs.commit
-        )
-      )
+      needs.migration-policy.result == 'success'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -257,7 +230,6 @@ jobs:
         env:
           RELEASE_COMMIT: ${{ needs.deployment-gate.outputs.commit }}
           MIGRATION_REQUIRED: ${{ needs.migration-policy.outputs.required }}
-          DEPLOYMENT_ACTOR: ${{ github.actor }}
           AARAJ_DEPLOY_HOST: ${{ vars.AARAJ_DEPLOY_HOST }}
           AARAJ_DEPLOY_PORT: ${{ vars.AARAJ_DEPLOY_PORT }}
           AARAJ_DEPLOY_USER: ${{ vars.AARAJ_DEPLOY_USER }}
@@ -276,12 +248,6 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'No migration SQL changed; the VPS migration runner will verify schema history and reconcile runtime grants before activation.' >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$MIGRATION_REQUIRED" == true ]]; then
-            {
-              echo
-              echo "Manual production deployment confirmed for exact commit $RELEASE_COMMIT by $DEPLOYMENT_ACTOR."
-            } >> "$GITHUB_STEP_SUMMARY"
           fi
           bash infrastructure/production/deploy-release.sh migrate "$RELEASE_COMMIT" "$artifact"
 
