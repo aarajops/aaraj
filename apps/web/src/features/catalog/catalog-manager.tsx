@@ -15,6 +15,7 @@ import {
   type CatalogManagedProductDetail,
   type CatalogProductListQuery,
   type CatalogProductPage,
+  MAX_COMBO_COMPONENTS,
 } from "@aaraj/contracts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -81,6 +82,12 @@ import {
 
 const fieldClassName =
   "h-auto w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground md:text-base";
+const comboSelectionModeLabels = {
+  fixed_combo: "Fixed combo",
+  mix_colors_one_size: "Mix colors, one size",
+  mix_sizes_and_colors: "Mix sizes and colors",
+} as const;
+
 export function CatalogManager({
   view = "list",
   initialPage,
@@ -149,6 +156,10 @@ export function CatalogManager({
     append: appendComboComponent,
     remove: removeComboComponent,
   } = useFieldArray({ control, name: "comboComponents" });
+  const comboComponentValues = useWatch({
+    control,
+    name: "comboComponents",
+  });
   const [
     editingId,
     categoryId,
@@ -215,6 +226,18 @@ export function CatalogManager({
     null,
   );
   const [loadingComboCandidates, setLoadingComboCandidates] = useState(false);
+  const normalizedComboCandidateSearch = comboCandidateSearch
+    .trim()
+    .toLocaleLowerCase();
+  const matchingComboCandidates = comboCandidates.filter((candidate) =>
+    candidate.name.toLocaleLowerCase().includes(normalizedComboCandidateSearch),
+  );
+  const chosenComboProductIds = new Set(
+    comboComponentValues.map(({ productId }) => productId).filter(Boolean),
+  );
+  const availableComboCandidateCount = matchingComboCandidates.filter(
+    ({ id }) => !chosenComboProductIds.has(id),
+  ).length;
 
   useEffect(() => {
     if (view === "list" || productType !== "combo") return;
@@ -836,7 +859,9 @@ export function CatalogManager({
                                 id="combo-selection-mode"
                                 aria-labelledby="combo-selection-mode-label"
                               >
-                                <SelectValue />
+                                <SelectValue>
+                                  {comboSelectionModeLabels[comboSelectionMode]}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="fixed_combo">
@@ -909,9 +934,8 @@ export function CatalogManager({
 
                     <div className="space-y-3">
                       {comboComponentFields.map((component, index) => {
-                        const selectedProductId = getValues(
-                          `comboComponents.${index}.productId`,
-                        );
+                        const selectedProductId =
+                          comboComponentValues[index]?.productId ?? "";
                         const candidate = comboCandidates.find(
                           ({ id }) => id === selectedProductId,
                         );
@@ -920,11 +944,10 @@ export function CatalogManager({
                             candidate?.variants.map(({ color }) => color) ?? [],
                           ),
                         ];
-                        const chosenIds = new Set(
-                          getValues("comboComponents").map(
-                            (entry) => entry.productId,
-                          ),
-                        );
+                        const productError =
+                          errors.comboComponents?.[index]?.productId?.message;
+                        const fixedColorError =
+                          errors.comboComponents?.[index]?.fixedColor?.message;
                         return (
                           <div
                             className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
@@ -959,16 +982,38 @@ export function CatalogManager({
                                     <SelectTrigger
                                       id={`combo-component-${index}`}
                                       aria-labelledby={`combo-component-${index}-label`}
+                                      aria-invalid={Boolean(productError)}
+                                      aria-describedby={
+                                        productError
+                                          ? `combo-component-${index}-error`
+                                          : undefined
+                                      }
                                     >
-                                      <SelectValue placeholder="Choose a single product" />
+                                      <SelectValue placeholder="Choose a single product">
+                                        {candidate?.name ??
+                                          (field.value
+                                            ? "Selected product unavailable"
+                                            : null)}
+                                      </SelectValue>
                                     </SelectTrigger>
                                     <SelectContent>
                                       {comboCandidates
-                                        .filter(
-                                          (option) =>
-                                            !chosenIds.has(option.id) ||
-                                            option.id === field.value,
-                                        )
+                                        .filter((option) => {
+                                          const isSelected =
+                                            option.id === field.value;
+                                          const matchesSearch = option.name
+                                            .toLocaleLowerCase()
+                                            .includes(
+                                              normalizedComboCandidateSearch,
+                                            );
+                                          return (
+                                            isSelected ||
+                                            (matchesSearch &&
+                                              !chosenComboProductIds.has(
+                                                option.id,
+                                              ))
+                                          );
+                                        })
                                         .map((option) => (
                                           <SelectItem
                                             key={option.id}
@@ -981,6 +1026,13 @@ export function CatalogManager({
                                   </Select>
                                 )}
                               />
+                              {productError && (
+                                <FieldError
+                                  id={`combo-component-${index}-error`}
+                                >
+                                  {productError}
+                                </FieldError>
+                              )}
                             </Field>
                             {comboSelectionMode === "fixed_combo" ? (
                               <Field>
@@ -1009,6 +1061,12 @@ export function CatalogManager({
                                       <SelectTrigger
                                         id={`combo-component-${index}-color`}
                                         aria-labelledby={`combo-component-${index}-color-label`}
+                                        aria-invalid={Boolean(fixedColorError)}
+                                        aria-describedby={
+                                          fixedColorError
+                                            ? `combo-component-${index}-color-error`
+                                            : undefined
+                                        }
                                         disabled={!candidate}
                                       >
                                         <SelectValue placeholder="Choose color" />
@@ -1023,6 +1081,13 @@ export function CatalogManager({
                                     </Select>
                                   )}
                                 />
+                                {fixedColorError && (
+                                  <FieldError
+                                    id={`combo-component-${index}-color-error`}
+                                  >
+                                    {fixedColorError}
+                                  </FieldError>
+                                )}
                               </Field>
                             ) : (
                               <p className="self-center text-sm text-muted-foreground">
@@ -1047,10 +1112,31 @@ export function CatalogManager({
                           {errors.comboComponents.root.message}
                         </FieldError>
                       )}
+                      {comboCandidateSearch.trim() &&
+                        matchingComboCandidates.length === 0 &&
+                        !loadingComboCandidates &&
+                        !comboCandidateError && (
+                          <p
+                            className="text-sm text-muted-foreground"
+                            role="status"
+                          >
+                            No single products match this search.
+                          </p>
+                        )}
+                      {matchingComboCandidates.length > 0 &&
+                        availableComboCandidateCount === 0 && (
+                          <p
+                            className="text-sm text-muted-foreground"
+                            role="status"
+                          >
+                            All matching single products are already in this
+                            combo.
+                          </p>
+                        )}
                       <Button
                         disabled={
-                          comboComponentFields.length >= 10 ||
-                          comboCandidates.length === 0
+                          comboComponentFields.length >= MAX_COMBO_COMPONENTS ||
+                          availableComboCandidateCount === 0
                         }
                         onClick={() =>
                           appendComboComponent({
@@ -1617,8 +1703,9 @@ export function CatalogManager({
                   </label>
                 ) : (
                   <FieldDescription>
-                    New products start as drafts. After saving, add at least one
-                    ready image, then publish from the edit screen.
+                    {productType === "combo"
+                      ? "New combos start as drafts. After saving, add a ready image, then publish from the edit screen."
+                      : "New products start as drafts. After saving, add at least one ready image, then publish from the edit screen."}
                   </FieldDescription>
                 )}
 
@@ -1663,7 +1750,9 @@ export function CatalogManager({
                     ? "Saving…"
                     : editingId
                       ? "Save changes"
-                      : "Create draft"}
+                      : productType === "combo"
+                        ? "Create combo draft"
+                        : "Create draft"}
                 </Button>
               </form>
             </Card>

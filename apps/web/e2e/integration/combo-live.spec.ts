@@ -217,6 +217,19 @@ test("Combo management to partial COD fulfillment works through the real browser
     }
     await route.continue();
   });
+  await page.route(
+    "**/api/v1/catalog/combos/manage/candidates**",
+    async (route) => {
+      const response = await route.fetch();
+      const candidates = (await response.json()) as Array<{ id: string }>;
+      await route.fulfill({
+        response,
+        json: candidates.filter(({ id }) =>
+          [fullZip.id, halfZip.id].includes(id),
+        ),
+      });
+    },
+  );
   await page.goto("/admin/catalog/create");
   await chooseSelectOption(page, "Product type", "Combo");
   await page.getByLabel("Name", { exact: true }).fill(comboName);
@@ -233,9 +246,41 @@ test("Combo management to partial COD fulfillment works through the real browser
   ).toBeEnabled();
   await page.getByRole("button", { name: "Add product to combo" }).click();
   await page.getByRole("button", { name: "Add product to combo" }).click();
+  await page.getByRole("button", { name: "Add product to combo" }).click();
+  await page.getByLabel("Find existing products").fill(fullZip.name);
   await chooseSelectOption(page, "Product 1", fullZip.name);
+  await expect(page.getByRole("combobox", { name: "Product 1" })).toContainText(
+    fullZip.name,
+  );
+  await expect(
+    page.getByRole("combobox", { name: "Product 1" }),
+  ).not.toContainText(fullZip.id);
+  await page.getByLabel("Find existing products").fill(halfZip.name);
+  await expect(page.getByRole("combobox", { name: "Product 1" })).toContainText(
+    fullZip.name,
+  );
   await chooseSelectOption(page, "Product 2", halfZip.name);
-  await page.getByRole("button", { name: "Create draft" }).click();
+  await expect(page.getByRole("combobox", { name: "Product 2" })).toContainText(
+    halfZip.name,
+  );
+  await expect(
+    page.getByRole("combobox", { name: "Customer selections" }),
+  ).toContainText("Mix sizes and colors");
+  await expect(
+    page.getByRole("combobox", { name: "Customer selections" }),
+  ).not.toContainText("mix_sizes_and_colors");
+  const addComboProduct = page.getByRole("button", {
+    name: "Add product to combo",
+  });
+  await expect(addComboProduct).toBeDisabled();
+  await page.getByRole("button", { name: "Create combo draft" }).click();
+  await expect(page.locator("#combo-component-2-error")).toHaveText(
+    "Choose a single product for this combo item.",
+  );
+  expect(productCreateRequests).toBe(0);
+  expect(comboConfigurationRequests).toBe(0);
+  await page.getByRole("button", { name: "Remove combo product 3" }).click();
+  await page.getByRole("button", { name: "Create combo draft" }).click();
   await expect(page.locator('p[role="alert"]')).toContainText(
     "Temporary Combo configuration failure",
   );

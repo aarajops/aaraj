@@ -4,6 +4,7 @@ import {
   CatalogComboSelectionModeSchema,
   CatalogProductCreateSchema,
   CatalogProductUpdateSchema,
+  MAX_COMBO_COMPONENTS,
   type CatalogManagedProductDetail,
   type CatalogProductCreateInput,
   type CatalogProductUpdateInput,
@@ -280,13 +281,58 @@ export const productFormSchema = z
         );
         if (!comboValidation.success) {
           for (const issue of comboValidation.error.issues) {
+            const componentIndex = issue.path[1];
+            const componentField = issue.path[2];
+            if (
+              issue.path[0] === "components" &&
+              typeof componentIndex === "number" &&
+              componentField === "productId"
+            ) {
+              const hasProductId = Boolean(
+                form.comboComponents[componentIndex]?.productId,
+              );
+              context.addIssue({
+                code: "custom",
+                path: ["comboComponents", componentIndex, "productId"],
+                message: hasProductId
+                  ? issue.message === "Invalid UUID"
+                    ? "Choose a valid existing single product."
+                    : issue.message
+                  : "Choose a single product for this combo item.",
+              });
+              continue;
+            }
+            if (
+              issue.path[0] === "components" &&
+              typeof componentIndex === "number" &&
+              componentField === "fixedColor"
+            ) {
+              context.addIssue({
+                code: "custom",
+                path: ["comboComponents", componentIndex, "fixedColor"],
+                message: "Choose a fixed color for this product.",
+              });
+              continue;
+            }
+            if (
+              issue.path[0] === "components" &&
+              issue.path.length === 1 &&
+              form.comboComponents.length < 2
+            ) {
+              continue;
+            }
             context.addIssue({
               code: "custom",
               path:
                 issue.path[0] === "components"
                   ? ["comboComponents"]
                   : ["comboSelectionMode"],
-              message: issue.message,
+              message:
+                issue.path[0] === "components" &&
+                issue.path.length === 1 &&
+                form.comboComponents.length > MAX_COMBO_COMPONENTS
+                  ? `A combo can include up to ${MAX_COMBO_COMPONENTS} products.`
+                  : issue.message,
             });
           }
         }
