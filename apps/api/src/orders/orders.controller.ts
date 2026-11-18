@@ -34,6 +34,7 @@ import {
   OrderDispatchCommandIdSchema,
   OrderDispatchInputSchema,
   OrderFulfillmentOutcomeInputSchema,
+  OrderComboFulfillmentOutcomeInputSchema,
   OrderIdempotencyKeySchema,
   OrderIdSchema,
   OrderListQuerySchema,
@@ -45,6 +46,7 @@ import {
   type OrderCollectionInput,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
+  type OrderComboFulfillmentOutcomeInput,
   type OrderListQuery,
   type OrderStatusUpdateInput,
 } from "@aaraj/contracts";
@@ -285,6 +287,24 @@ export class OrdersController {
     input: OrderFulfillmentOutcomeInput,
   ) {
     return this.orders.recordFulfillmentOutcome(
+      orderId,
+      session.user.id,
+      input,
+    );
+  }
+
+  @Post("manage/:orderId/combo-fulfillment-outcome")
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  recordComboFulfillmentOutcome(
+    @Session() session: UserSession,
+    @Param("orderId", { schema: OrderIdSchema }) orderId: string,
+    @Body({ schema: OrderComboFulfillmentOutcomeInputSchema })
+    input: OrderComboFulfillmentOutcomeInput,
+  ) {
+    return this.orders.recordComboFulfillmentOutcome(
       orderId,
       session.user.id,
       input,

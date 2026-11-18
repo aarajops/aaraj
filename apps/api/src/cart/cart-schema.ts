@@ -16,8 +16,10 @@ import {
   CART_SCHEMA_VERSION,
   MAX_CART_QUANTITY_PER_VARIANT,
   type CartProductSnapshot,
+  type CartComboLine,
 } from "@aaraj/contracts";
 import { user } from "../auth/auth-schema.js";
+import { catalogCombo } from "../catalog/catalog-schema.js";
 
 export const cartSchema = pgSchema("cart");
 
@@ -79,6 +81,57 @@ export const customerCartLine = cartSchema.table(
     check(
       "customer_cart_line_snapshot_object_check",
       sql`jsonb_typeof(${table.productSnapshot}) = 'object'`,
+    ),
+  ],
+);
+
+export const customerCartComboLine = cartSchema.table(
+  "customer_cart_combo_line",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cartId: uuid("cart_id")
+      .notNull()
+      .references(() => customerCart.id, { onDelete: "cascade" }),
+    comboProductId: uuid("combo_product_id")
+      .notNull()
+      .references(() => catalogCombo.productId, { onDelete: "restrict" }),
+    comboRevision: integer("combo_revision").notNull(),
+    configurationHash: text("configuration_hash").notNull(),
+    quantity: integer("quantity").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    unitPriceBdt: integer("unit_price_bdt").notNull(),
+    selections: jsonb("selections")
+      .$type<CartComboLine["selections"]>()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("customer_cart_combo_line_configuration_uidx").on(
+      table.cartId,
+      table.configurationHash,
+    ),
+    check(
+      "customer_cart_combo_line_revision_check",
+      sql`${table.comboRevision} > 0`,
+    ),
+    check(
+      "customer_cart_combo_line_quantity_check",
+      sql`${table.quantity} between 1 and ${sql.raw(String(MAX_CART_QUANTITY_PER_VARIANT))}`,
+    ),
+    check(
+      "customer_cart_combo_line_hash_check",
+      sql`${table.configurationHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "customer_cart_combo_line_snapshot_check",
+      sql`jsonb_typeof(${table.selections}) = 'array' and jsonb_array_length(${table.selections}) between 2 and 10`,
+    ),
+    check(
+      "customer_cart_combo_line_price_check",
+      sql`${table.unitPriceBdt} between 0 and 2147483647`,
     ),
   ],
 );

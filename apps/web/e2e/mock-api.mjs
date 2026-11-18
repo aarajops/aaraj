@@ -329,6 +329,90 @@ const mediaFixtureProduct = {
   variants: [],
   sizeGuide: null,
 };
+const comboFixtureProduct = {
+  id: "00000000-0000-4000-8000-000000000303",
+  productType: "combo",
+  slug: "e2e-combo",
+  name: "E2E Color and Size Combo",
+  description: "A combo fixture for storefront option preservation.",
+  audience: "unisex",
+  category: null,
+  fit: null,
+  fabricComposition: null,
+  careInstructions: null,
+  sizeGuideId: null,
+  price: { amountBdt: 2000 },
+  compareAtPrice: null,
+  inStock: true,
+  isPublished: true,
+  createdAt: "2026-11-18T00:00:00.000Z",
+  updatedAt: "2026-11-18T00:00:00.000Z",
+  images: [],
+  variants: [],
+  sizeGuide: null,
+  combo: {
+    selectionMode: "mix_sizes_and_colors",
+    price: { amountBdt: 2000 },
+    revision: 1,
+    components: [
+      {
+        id: "00000000-0000-4000-8000-000000000301",
+        productId: "00000000-0000-4000-8000-000000000311",
+        productName: "Full Zip Jacket",
+        fixedColor: null,
+        variants: [
+          {
+            variantId: "00000000-0000-4000-8000-000000000311",
+            color: "Navy",
+            sizeLabel: "M",
+            price: { amountBdt: 1400 },
+            compareAtPrice: { amountBdt: 2200 },
+            inStock: true,
+          },
+          {
+            variantId: "00000000-0000-4000-8000-000000000312",
+            color: "Red",
+            sizeLabel: "L",
+            price: { amountBdt: 1400 },
+            compareAtPrice: { amountBdt: 2200 },
+            inStock: true,
+          },
+        ],
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000302",
+        productId: "00000000-0000-4000-8000-000000000321",
+        productName: "Half Zip Jacket",
+        fixedColor: null,
+        variants: [
+          {
+            variantId: "00000000-0000-4000-8000-000000000321",
+            color: "Black",
+            sizeLabel: "M",
+            price: { amountBdt: 1300 },
+            compareAtPrice: { amountBdt: 2100 },
+            inStock: true,
+          },
+          {
+            variantId: "00000000-0000-4000-8000-000000000322",
+            color: "Olive",
+            sizeLabel: "L",
+            price: { amountBdt: 1300 },
+            compareAtPrice: { amountBdt: 2100 },
+            inStock: true,
+          },
+        ],
+      },
+    ],
+  },
+};
+let storefrontCart = {
+  schemaVersion: 1,
+  currency: "BDT",
+  revision: 0,
+  lines: [],
+  combos: [],
+};
 
 function send(response, status, body, headers = {}) {
   response.writeHead(status, {
@@ -477,6 +561,78 @@ const server = createServer(async (request, response) => {
   }
   if (url.pathname === "/api/auth/get-session") {
     send(response, 200, null);
+    return;
+  }
+  if (url.pathname === "/api/v1/cart" && method === "GET") {
+    send(response, 200, storefrontCart);
+    return;
+  }
+  if (url.pathname === "/api/v1/cart" && method === "DELETE") {
+    storefrontCart = {
+      schemaVersion: 1,
+      currency: "BDT",
+      revision: storefrontCart.revision + 1,
+      lines: [],
+      combos: [],
+    };
+    send(response, 200, storefrontCart);
+    return;
+  }
+  if (url.pathname === "/api/v1/cart/combos" && method === "POST") {
+    const body = await readBody(request);
+    const selectedByComponent = new Map(
+      (Array.isArray(body?.selections) ? body.selections : []).map(
+        (selection) => [selection.componentId, selection.variantId],
+      ),
+    );
+    const selections = comboFixtureProduct.combo.components.map((component) => {
+      const variantId = selectedByComponent.get(component.id);
+      const variant = component.variants.find(
+        (candidate) => candidate.variantId === variantId,
+      );
+      return variant
+        ? {
+            componentId: component.id,
+            variantId: variant.variantId,
+            productName: component.productName,
+            color: variant.color,
+            sizeLabel: variant.sizeLabel,
+            unitPriceBdt: variant.price.amountBdt,
+            compareAtPriceBdt: variant.compareAtPrice.amountBdt,
+          }
+        : null;
+    });
+    if (
+      body?.productId !== comboFixtureProduct.id ||
+      body?.revision !== storefrontCart.revision ||
+      body?.comboRevision !== comboFixtureProduct.combo.revision ||
+      selections.some((selection) => selection === null)
+    ) {
+      send(response, 409, {
+        statusCode: 409,
+        message: "The combo selection changed.",
+        errorCode: "CART_REVISION_CONFLICT",
+      });
+      return;
+    }
+    storefrontCart = {
+      ...storefrontCart,
+      revision: storefrontCart.revision + 1,
+      combos: [
+        {
+          lineId: "00000000-0000-4000-8000-000000000304",
+          productId: comboFixtureProduct.id,
+          comboRevision: comboFixtureProduct.combo.revision,
+          quantity: body.quantity,
+          slug: comboFixtureProduct.slug,
+          name: comboFixtureProduct.name,
+          unitPriceBdt: comboFixtureProduct.combo.price.amountBdt,
+          selections,
+          availability: "available",
+        },
+      ],
+    };
+    send(response, 201, storefrontCart);
     return;
   }
   if (url.pathname === "/api/v1/access/me" && method === "GET") {
@@ -1534,6 +1690,10 @@ const server = createServer(async (request, response) => {
     /^\/api\/v1\/catalog\/products\/([^/]+)$/,
   );
   if (productPath && method === "GET") {
+    if (decodeURIComponent(productPath[1]) === comboFixtureProduct.slug) {
+      send(response, 200, comboFixtureProduct);
+      return;
+    }
     const product = products.find(
       (candidate) =>
         candidate.slug === decodeURIComponent(productPath[1]) &&

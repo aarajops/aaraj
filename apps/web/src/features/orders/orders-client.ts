@@ -5,6 +5,7 @@ import {
   API_V1_BASE_PATH,
   ApiErrorResponseSchema,
   OrderCollectionInputSchema,
+  OrderComboFulfillmentOutcomeInputSchema,
   CreateOrderInputSchema,
   OrderCreatedSchema,
   OrderDispatchInputSchema,
@@ -19,6 +20,7 @@ import {
   CheckoutDraftSaveResultSchema,
   type CreateOrderInput,
   type OrderCollectionInput,
+  type OrderComboFulfillmentOutcomeInput,
   type OrderCreated,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
@@ -228,6 +230,24 @@ export async function recordOrderFulfillmentOutcome(
   const validatedInput = OrderFulfillmentOutcomeInputSchema.parse(input);
   const response = await fetch(
     `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/fulfillment-outcome`,
+    {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validatedInput),
+    },
+  );
+  return readResponse(response, OrderSchema);
+}
+
+export async function recordOrderComboFulfillmentOutcome(
+  orderId: string,
+  input: OrderComboFulfillmentOutcomeInput,
+): Promise<Order> {
+  const validatedInput = OrderComboFulfillmentOutcomeInputSchema.parse(input);
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/${encodeURIComponent(orderId)}/combo-fulfillment-outcome`,
     {
       method: "POST",
       cache: "no-store",

@@ -13,6 +13,7 @@ import {
   OrderManagementDetailSchema,
   OrderManagementListSchema,
   OrderSchema,
+  OrderComboGroupSchema,
   OrderIdSchema,
   OrderReferenceSchema,
   CheckoutDraftPreviewSchema,
@@ -21,6 +22,7 @@ import {
   ManagedCustomerDirectorySchema,
   ManagedCustomerOrdersPageSchema,
   MAX_ORDER_LINES,
+  MAX_ORDER_COMPONENT_LINES,
   MAX_LIST_OFFSET,
   MAX_CART_QUANTITY_PER_VARIANT,
   type CheckoutAddressInput,
@@ -35,6 +37,7 @@ import {
   type OrderDispatchInput,
   type OrderCollectionInput,
   type OrderFulfillmentOutcomeInput,
+  type OrderComboFulfillmentOutcomeInput,
   type OrderListQuery,
   type CustomerDirectoryQuery,
   type CustomerOrdersQuery,
@@ -96,6 +99,7 @@ import type {
 import {
   customerOrder,
   customerOrderLine,
+  orderComboGroup,
   orderIdempotency,
   orderReferenceCounter,
   orderPathaoBookingClaim,
@@ -103,6 +107,7 @@ import {
 } from "./orders-schema.js";
 import {
   CheckoutDraftsService,
+  checkoutDraftMatchesCart,
   draftOwner,
   readDraftGuestCartId,
   readDraftItems,
@@ -280,10 +285,30 @@ async function persistOrderSnapshot(
     .returning();
   if (!row) throw new Error("Order insert returned no row.");
 
+  if (input.quote.comboGroups.length > 0) {
+    await transaction.insert(orderComboGroup).values(
+      input.quote.comboGroups.map((group) => ({
+        id: group.groupId,
+        orderId: input.id,
+        comboProductId: group.productId,
+        comboRevision: group.comboRevision,
+        comboName: group.comboName,
+        selectionMode: group.selectionMode,
+        quantity: group.quantity,
+        unitPriceBdt: group.unitPriceBdt,
+        grossAmountBdt: group.grossAmountBdt,
+        selections: group.selections,
+        acceptedComponents: [],
+        deliveryOutcome: "pending" as const,
+        outcomeReason: null,
+      })),
+    );
+  }
   await transaction.insert(customerOrderLine).values(
     input.quote.lines.map((line) => ({
       orderId: input.id,
       variantId: line.variantId,
+      comboGroupId: line.comboGroupId,
       quantity: line.quantity,
       unitPriceBdt: line.unitPriceBdt,
       grossAmountBdt: line.grossAmountBdt,
@@ -373,8 +398,29 @@ export class OrdersService implements OrdersPathaoPort {
       );
     }
     const address = normalizeCheckoutInput(input.address);
+    const owner = draftOwner(draft);
+    const cartContext = await this.cart.getQuoteContext(
+      owner.kind === "customer" ? owner.customerId : undefined,
+      readDraftGuestCartId(draft),
+    );
     const items = readDraftItems(draft);
-    const priced = await this.quotes.previewAssisted(items, address);
+    if (
+      !cartContext.owner ||
+      cartContext.cart.revision !== draft.cartRevision ||
+      !checkoutDraftMatchesCart(items, cartContext.cart)
+    ) {
+      throw new ConflictException("The cart changed. Review checkout again.", {
+        errorCode: "DRAFT_CART_CHANGED",
+      });
+    }
+    const priced = await this.quotes.previewAssisted(
+      cartContext.cart.lines.map(({ variantId, quantity }) => ({
+        variantId,
+        quantity,
+      })),
+      address,
+      cartContext.cart.combos,
+    );
     const fingerprint = fingerprintDraftPreview(
       id,
       draft.version,
@@ -392,6 +438,7 @@ export class OrdersService implements OrdersPathaoPort {
         unitPriceBdt: line.unitPriceBdt,
         grossAmountBdt: line.grossAmountBdt,
       })),
+      comboGroups: priced.comboGroups,
       merchandiseGrossBdt: priced.merchandiseGrossBdt,
       deliveryAmountBdt: priced.tariff.feeBdt,
       totalBdt: priced.totalBdt,
@@ -438,30 +485,22 @@ export class OrdersService implements OrdersPathaoPort {
             errorCode: "DRAFT_STALE",
           });
         }
-        const selections = readDraftItems(current);
         const guestCartId = readDraftGuestCartId(current);
         const cartContext = await this.cart.getQuoteContext(
           owner.kind === "customer" ? owner.customerId : undefined,
           guestCartId,
         );
         if (
-          cartContext.cart.lines.length > 0 &&
-          (cartContext.cart.revision !== current.cartRevision ||
-            cartContext.cart.lines.length !== selections.length ||
-            selections.some(
-              (line, index) =>
-                line.variantId !== cartContext.cart.lines[index]?.variantId ||
-                line.quantity !== cartContext.cart.lines[index]?.quantity,
-            ))
+          cartContext.cart.revision !== current.cartRevision ||
+          !checkoutDraftMatchesCart(
+            readDraftItems(current),
+            cartContext.cart,
+          ) ||
+          (cartContext.cart.lines.length === 0 &&
+            cartContext.cart.combos.length === 0)
         ) {
           throw new ConflictException(
             "The cart changed. Review the checkout again.",
-            { errorCode: "DRAFT_CART_CHANGED" },
-          );
-        }
-        if (owner.kind === "customer" && cartContext.cart.lines.length === 0) {
-          throw new ConflictException(
-            "The customer cart is no longer available.",
             { errorCode: "DRAFT_CART_CHANGED" },
           );
         }
@@ -477,12 +516,17 @@ export class OrdersService implements OrdersPathaoPort {
           tx,
           owner,
           current.cartRevision,
-          selections,
+          cartContext.cart.lines.map(({ variantId, quantity }) => ({
+            variantId,
+            quantity,
+          })),
           normalizedInput,
+          cartContext.cart.combos,
         );
         const address = this.resolveAddress(normalizedInput, quote.destination);
         const priced = {
           lines: quote.lines,
+          comboGroups: quote.comboGroups,
           merchandiseGrossBdt: quote.merchandiseGrossBdt,
           tariff: {
             feeBdt: quote.delivery.grossAmountBdt,
@@ -631,7 +675,7 @@ export class OrdersService implements OrdersPathaoPort {
     const context = await this.cart.getQuoteContext(customerId, guestCartId);
     if (!context.owner) throw orderNotFound();
 
-    if (context.cart.lines.length === 0) {
+    if (context.cart.lines.length === 0 && context.cart.combos.length === 0) {
       throw new ConflictException("The cart is empty or no longer available.", {
         errorCode: "ORDER_CART_UNAVAILABLE",
       });
@@ -657,21 +701,16 @@ export class OrdersService implements OrdersPathaoPort {
         { errorCode: "QUOTE_STALE" },
       );
     }
-    if (
-      quote.cartRevision !== context.cart.revision ||
-      quote.lines.length !== context.cart.lines.length ||
-      quote.lines.some(
-        (line, index) =>
-          line.variantId !== context.cart.lines[index]?.variantId ||
-          line.quantity !== context.cart.lines[index]?.quantity,
-      )
-    ) {
+    if (quote.cartRevision !== context.cart.revision) {
       throw new ConflictException(
         "The cart or delivery destination changed. Request a fresh quote.",
         { errorCode: "QUOTE_STALE" },
       );
     }
-    if (quote.lines.length === 0 || quote.lines.length > MAX_ORDER_LINES) {
+    if (
+      quote.lines.length === 0 ||
+      quote.lines.length > MAX_ORDER_COMPONENT_LINES
+    ) {
       throw new UnprocessableEntityException(
         "The Order line limit was exceeded.",
       );
@@ -849,10 +888,29 @@ export class OrdersService implements OrdersPathaoPort {
           });
         if (!row) throw new Error("Order insert returned no row.");
 
+        if (quote.comboGroups.length > 0) {
+          await transaction.insert(orderComboGroup).values(
+            quote.comboGroups.map((group) => ({
+              id: group.groupId,
+              orderId,
+              comboProductId: group.productId,
+              comboRevision: group.comboRevision,
+              comboName: group.comboName,
+              selectionMode: group.selectionMode,
+              quantity: group.quantity,
+              unitPriceBdt: group.unitPriceBdt,
+              grossAmountBdt: group.grossAmountBdt,
+              selections: group.selections,
+              deliveryOutcome: "pending" as const,
+              outcomeReason: null,
+            })),
+          );
+        }
         await transaction.insert(customerOrderLine).values(
           quote.lines.map((line) => ({
             orderId,
             variantId: line.variantId,
+            comboGroupId: line.comboGroupId,
             quantity: line.quantity,
             unitPriceBdt: line.unitPriceBdt,
             grossAmountBdt: line.grossAmountBdt,
@@ -1207,6 +1265,7 @@ export class OrdersService implements OrdersPathaoPort {
             .select({
               orderId: customerOrderLine.orderId,
               variantId: customerOrderLine.variantId,
+              comboGroupId: customerOrderLine.comboGroupId,
               quantity: customerOrderLine.quantity,
               productSnapshot: customerOrderLine.productSnapshot,
             })
@@ -1217,11 +1276,29 @@ export class OrdersService implements OrdersPathaoPort {
               asc(customerOrderLine.variantId),
             )
         : [];
+    const comboGroupRows =
+      pageOrderIds.length > 0
+        ? await this.database.db
+            .select({
+              orderId: orderComboGroup.orderId,
+              comboName: orderComboGroup.comboName,
+              quantity: orderComboGroup.quantity,
+            })
+            .from(orderComboGroup)
+            .where(inArray(orderComboGroup.orderId, pageOrderIds))
+            .orderBy(asc(orderComboGroup.orderId), asc(orderComboGroup.id))
+        : [];
     const linesByOrderId = new Map<string, typeof lineRows>();
     for (const line of lineRows) {
       const lines = linesByOrderId.get(line.orderId) ?? [];
       lines.push(line);
       linesByOrderId.set(line.orderId, lines);
+    }
+    const combosByOrderId = new Map<string, typeof comboGroupRows>();
+    for (const combo of comboGroupRows) {
+      const combos = combosByOrderId.get(combo.orderId) ?? [];
+      combos.push(combo);
+      combosByOrderId.set(combo.orderId, combos);
     }
     return OrderManagementListSchema.parse({
       rows: pageRows.map((row) => {
@@ -1232,15 +1309,27 @@ export class OrdersService implements OrdersPathaoPort {
           customerName: address.recipientName,
           customerPhone: address.phone,
           deliveryZone: parseDeliveryZone(row.deliverySnapshot),
-          items: (linesByOrderId.get(row.id) ?? []).map((line) => {
-            const product = parseOrderLineProduct(line.productSnapshot);
-            return {
-              productName: product.productName,
-              color: product.color,
-              sizeLabel: product.sizeLabel,
-              quantity: line.quantity,
-            };
-          }),
+          items: [
+            ...(linesByOrderId.get(row.id) ?? [])
+              .filter((line) => line.comboGroupId === null)
+              .map((line) => {
+                const product = parseOrderLineProduct(line.productSnapshot);
+                return {
+                  kind: "single" as const,
+                  productName: product.productName,
+                  color: product.color,
+                  sizeLabel: product.sizeLabel,
+                  quantity: line.quantity,
+                };
+              }),
+            ...(combosByOrderId.get(row.id) ?? []).map((combo) => ({
+              kind: "combo" as const,
+              productName: combo.comboName,
+              color: null,
+              sizeLabel: null,
+              quantity: combo.quantity,
+            })),
+          ],
           status: row.status,
           fulfillmentStatus: row.fulfillmentStatus,
           collectionStatus: row.collectionStatus,
@@ -1617,8 +1706,8 @@ export class OrdersService implements OrdersPathaoPort {
         row,
         result.pathaoClaimStatus !== null,
       ),
-      canEditItems: canEditPricing,
-      canEditDiscount: canEditPricing,
+      canEditItems: canEditPricing && order.comboGroups.length === 0,
+      canEditDiscount: canEditPricing && order.comboGroups.length === 0,
     });
   }
 
@@ -1647,6 +1736,12 @@ export class OrdersService implements OrdersPathaoPort {
         .for("update")
         .limit(1);
       if (!row) throw orderNotFound();
+      if (await hasOrderComboGroups(transaction, row.id)) {
+        throw new ConflictException(
+          "Order items cannot be edited individually when the Order contains a combo.",
+          { errorCode: "ORDER_COMBO_ITEMS_ARE_FIXED" },
+        );
+      }
 
       const lines = await transaction
         .select({
@@ -1880,6 +1975,12 @@ export class OrdersService implements OrdersPathaoPort {
         .for("update")
         .limit(1);
       if (!row) throw orderNotFound();
+      if (await hasOrderComboGroups(transaction, row.id)) {
+        throw new ConflictException(
+          "Order items cannot be edited individually when the Order contains a combo.",
+          { errorCode: "ORDER_COMBO_ITEMS_ARE_FIXED" },
+        );
+      }
 
       const lines = await transaction
         .select({
@@ -2065,6 +2166,12 @@ export class OrdersService implements OrdersPathaoPort {
         .for("update")
         .limit(1);
       if (!row) throw orderNotFound();
+      if (await hasOrderComboGroups(transaction, row.id)) {
+        throw new ConflictException(
+          "Manual discounts cannot be applied to an Order that contains a combo.",
+          { errorCode: "ORDER_COMBO_DISCOUNT_NOT_ALLOWED" },
+        );
+      }
 
       const [pathaoClaim] = await transaction
         .select({ orderId: orderPathaoBookingClaim.orderId })
@@ -3180,12 +3287,26 @@ export class OrdersService implements OrdersPathaoPort {
           fulfillmentOutcomeReason: customerOrder.fulfillmentOutcomeReason,
           dispatchedAt: customerOrder.dispatchedAt,
           deliveryProvider: customerOrder.deliveryProvider,
+          collectionStatus: customerOrder.collectionStatus,
+          deliveryAmountBdt: customerOrder.deliveryAmountBdt,
+          manualDiscountBdt: customerOrder.manualDiscountBdt,
+          codAmountDueBdt: customerOrder.codAmountDueBdt,
         })
         .from(customerOrder)
         .where(eq(customerOrder.id, orderId))
         .for("update")
         .limit(1);
       if (!row) throw orderNotFound();
+      const comboGroups = await transaction
+        .select({ id: orderComboGroup.id })
+        .from(orderComboGroup)
+        .where(eq(orderComboGroup.orderId, row.id));
+      if (comboGroups.length > 0 && row.collectionStatus !== "uncollected") {
+        throw new ConflictException(
+          "Delivery outcomes cannot change after COD has been reconciled.",
+          { errorCode: "ORDER_COLLECTION_LOCKED" },
+        );
+      }
       if (
         row.fulfillmentStatus === input.outcome &&
         row.fulfillmentOutcomeReason === input.reason
@@ -3240,6 +3361,22 @@ export class OrdersService implements OrdersPathaoPort {
           { errorCode: "ORDER_FULFILLMENT_OUTCOME_CONFLICT" },
         );
       }
+      let codAmountDueBdt: number | null = null;
+      if (comboGroups.length > 0) {
+        codAmountDueBdt = await calculateComboAwareCodDue(
+          transaction,
+          row.id,
+          input.outcome,
+          row.deliveryAmountBdt,
+          row.manualDiscountBdt,
+        );
+        if (codAmountDueBdt !== row.codAmountDueBdt) {
+          await transaction
+            .update(customerOrder)
+            .set({ codAmountDueBdt, updatedAt: updated.occurredAt })
+            .where(eq(customerOrder.id, row.id));
+        }
+      }
       await this.audit.append(transaction, {
         actorType: "user",
         actorId: staffId,
@@ -3252,6 +3389,200 @@ export class OrdersService implements OrdersPathaoPort {
           from: row.fulfillmentStatus,
           to: input.outcome,
           deliveryProvider: row.deliveryProvider,
+          ...(codAmountDueBdt !== null ? { codAmountDueBdt } : {}),
+        },
+      });
+    });
+    return this.getForManagement(orderId);
+  }
+
+  async recordComboFulfillmentOutcome(
+    orderId: string,
+    staffId: string,
+    input: OrderComboFulfillmentOutcomeInput,
+  ): Promise<Order> {
+    await this.database.db.transaction(async (transaction) => {
+      const [order] = await transaction
+        .select({
+          id: customerOrder.id,
+          status: customerOrder.status,
+          fulfillmentStatus: customerOrder.fulfillmentStatus,
+          collectionStatus: customerOrder.collectionStatus,
+          deliveryAmountBdt: customerOrder.deliveryAmountBdt,
+          manualDiscountBdt: customerOrder.manualDiscountBdt,
+          codAmountDueBdt: customerOrder.codAmountDueBdt,
+        })
+        .from(customerOrder)
+        .where(eq(customerOrder.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!order) throw orderNotFound();
+      if (
+        order.status !== "confirmed" ||
+        !order.fulfillmentStatus.match(
+          /^(partially_delivered|delivered|returned)$/,
+        )
+      ) {
+        throw new ConflictException(
+          "Record the Order delivery outcome before the received Combo items.",
+          { errorCode: "ORDER_COMBO_OUTCOME_CONFLICT" },
+        );
+      }
+      if (order.collectionStatus !== "uncollected") {
+        throw new ConflictException(
+          "Combo delivery outcomes cannot change after COD has been reconciled.",
+          { errorCode: "ORDER_COLLECTION_LOCKED" },
+        );
+      }
+      const [group] = await transaction
+        .select()
+        .from(orderComboGroup)
+        .where(
+          and(
+            eq(orderComboGroup.id, input.groupId),
+            eq(orderComboGroup.orderId, order.id),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!group) throw new NotFoundException("Order combo was not found.");
+      const comboSelections = OrderComboGroupSchema.shape.selections.parse(
+        group.selections,
+      );
+      const allowed: Record<string, readonly string[]> = {
+        pending: ["complete", "incomplete", "declined"],
+        incomplete: ["incomplete", "redelivered_complete", "declined"],
+        complete: ["complete"],
+        redelivered_complete: ["redelivered_complete"],
+        declined: ["declined"],
+      };
+      if (!allowed[group.deliveryOutcome]?.includes(input.outcome)) {
+        throw new ConflictException(
+          "This combo outcome cannot follow its current delivery state.",
+          { errorCode: "ORDER_COMBO_OUTCOME_CONFLICT" },
+        );
+      }
+      const requestedAccepted =
+        input.acceptedComponents ??
+        (input.outcome === "declined" ? group.acceptedComponents : []);
+      const acceptedByComponent = new Map<string, number>();
+      for (const accepted of requestedAccepted) {
+        if (
+          acceptedByComponent.has(accepted.componentId) ||
+          !comboSelections.some(
+            ({ componentId }) => componentId === accepted.componentId,
+          ) ||
+          accepted.quantity > group.quantity
+        ) {
+          throw new UnprocessableEntityException(
+            "Record a valid received quantity for each combo item.",
+            { errorCode: "ORDER_COMBO_ACCEPTED_ITEMS_INVALID" },
+          );
+        }
+        acceptedByComponent.set(accepted.componentId, accepted.quantity);
+      }
+      const acceptedComponents =
+        input.outcome === "incomplete" || input.outcome === "declined"
+          ? comboSelections.flatMap(({ componentId }) => {
+              const quantity = acceptedByComponent.get(componentId) ?? 0;
+              return quantity > 0 ? [{ componentId, quantity }] : [];
+            })
+          : [];
+      if (input.outcome === "incomplete") {
+        const acceptedCount = acceptedComponents.reduce(
+          (total, component) => total + component.quantity,
+          0,
+        );
+        if (
+          acceptedCount === 0 ||
+          acceptedCount >= comboSelections.length * group.quantity
+        ) {
+          throw new UnprocessableEntityException(
+            "An incomplete combo must have at least one received item and at least one missing item.",
+            { errorCode: "ORDER_COMBO_ACCEPTED_ITEMS_INVALID" },
+          );
+        }
+      }
+      if (
+        (input.outcome === "complete" ||
+          input.outcome === "redelivered_complete") &&
+        (input.acceptedComponents?.length ?? 0) > 0
+      ) {
+        throw new UnprocessableEntityException(
+          "A complete combo outcome does not take partial item quantities.",
+          { errorCode: "ORDER_COMBO_ACCEPTED_ITEMS_INVALID" },
+        );
+      }
+      if (
+        input.outcome === "declined" &&
+        acceptedComponents.reduce(
+          (total, component) => total + component.quantity,
+          0,
+        ) >=
+          comboSelections.length * group.quantity
+      ) {
+        throw new UnprocessableEntityException(
+          "A fully received combo must be recorded as complete.",
+          { errorCode: "ORDER_COMBO_ACCEPTED_ITEMS_INVALID" },
+        );
+      }
+      if (
+        group.deliveryOutcome === input.outcome &&
+        group.outcomeReason === input.reason &&
+        JSON.stringify(group.acceptedComponents) ===
+          JSON.stringify(acceptedComponents)
+      ) {
+        return;
+      }
+      const [updatedGroup] = await transaction
+        .update(orderComboGroup)
+        .set({
+          deliveryOutcome: input.outcome,
+          outcomeReason: input.reason,
+          acceptedComponents,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(orderComboGroup.id, group.id),
+            eq(orderComboGroup.deliveryOutcome, group.deliveryOutcome),
+          ),
+        )
+        .returning({ occurredAt: orderComboGroup.updatedAt });
+      if (!updatedGroup?.occurredAt) {
+        throw new ConflictException(
+          "The combo changed before its delivery outcome could be saved.",
+          { errorCode: "ORDER_COMBO_OUTCOME_CONFLICT" },
+        );
+      }
+      const codAmountDueBdt = await calculateComboAwareCodDue(
+        transaction,
+        order.id,
+        order.fulfillmentStatus,
+        order.deliveryAmountBdt,
+        order.manualDiscountBdt,
+      );
+      if (codAmountDueBdt !== order.codAmountDueBdt) {
+        await transaction
+          .update(customerOrder)
+          .set({ codAmountDueBdt, updatedAt: updatedGroup.occurredAt })
+          .where(eq(customerOrder.id, order.id));
+      }
+      await this.audit.append(transaction, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.combo_fulfillment_outcome_recorded",
+        subjectType: "order",
+        subjectId: order.id,
+        occurredAt: updatedGroup.occurredAt,
+        reason: input.reason,
+        metadata: {
+          groupId: group.id,
+          comboProductId: group.comboProductId,
+          from: group.deliveryOutcome,
+          to: input.outcome,
+          acceptedComponents,
+          codAmountDueBdt,
         },
       });
     });
@@ -3287,6 +3618,28 @@ export class OrdersService implements OrdersPathaoPort {
       ) {
         throw new ConflictException(
           "COD collection can be recorded after a delivery or return outcome is verified.",
+          { errorCode: "ORDER_COLLECTION_NOT_READY" },
+        );
+      }
+      const [unresolvedCombo] = await transaction
+        .select({ id: orderComboGroup.id })
+        .from(orderComboGroup)
+        .where(
+          and(
+            eq(orderComboGroup.orderId, row.id),
+            inArray(orderComboGroup.deliveryOutcome, ["pending", "incomplete"]),
+          ),
+        )
+        .limit(1);
+      if (unresolvedCombo) {
+        throw new ConflictException(
+          "Record a final delivery outcome for every Combo before reconciling COD.",
+          { errorCode: "ORDER_COMBO_OUTCOME_PENDING" },
+        );
+      }
+      if (row.codAmountDueBdt <= 0) {
+        throw new ConflictException(
+          "There is no accepted merchandise to collect COD for.",
           { errorCode: "ORDER_COLLECTION_NOT_READY" },
         );
       }
@@ -3422,11 +3775,18 @@ export class OrdersService implements OrdersPathaoPort {
   }
 
   private async loadPrivateOrder(row: OrderRow): Promise<Order> {
-    const lines = await this.database.db
-      .select()
-      .from(customerOrderLine)
-      .where(eq(customerOrderLine.orderId, row.id))
-      .orderBy(asc(customerOrderLine.variantId));
+    const [lines, comboGroups] = await Promise.all([
+      this.database.db
+        .select()
+        .from(customerOrderLine)
+        .where(eq(customerOrderLine.orderId, row.id))
+        .orderBy(asc(customerOrderLine.variantId)),
+      this.database.db
+        .select()
+        .from(orderComboGroup)
+        .where(eq(orderComboGroup.orderId, row.id))
+        .orderBy(asc(orderComboGroup.id)),
+    ]);
     const address = parseStoredOrderAddress(row.id, row.addressSnapshot);
     return OrderSchema.parse({
       id: row.id,
@@ -3448,8 +3808,23 @@ export class OrdersService implements OrdersPathaoPort {
               pickedUpAt: row.dispatchedAt.toISOString(),
             }
           : null,
+      comboGroups: comboGroups.map((group) => ({
+        id: group.id,
+        productId: group.comboProductId,
+        comboRevision: group.comboRevision,
+        comboName: group.comboName,
+        selectionMode: group.selectionMode,
+        quantity: group.quantity,
+        unitPriceBdt: group.unitPriceBdt,
+        grossAmountBdt: group.grossAmountBdt,
+        deliveryOutcome: group.deliveryOutcome,
+        outcomeReason: group.outcomeReason,
+        acceptedComponents: group.acceptedComponents,
+        selections: group.selections,
+      })),
       lines: lines.map((line) => ({
         variantId: line.variantId,
+        comboGroupId: line.comboGroupId,
         ...(typeof line.productSnapshot === "object" &&
         line.productSnapshot !== null
           ? line.productSnapshot
@@ -3599,6 +3974,7 @@ function fingerprintDraftPreview(
       unitPriceBdt: number;
       grossAmountBdt: number;
     }[];
+    comboGroups: AuthoritativeQuote["comboGroups"];
     merchandiseGrossBdt: number;
     tariff: {
       feeBdt: number;
@@ -3620,6 +3996,7 @@ function fingerprintDraftPreview(
         line.unitPriceBdt,
         line.grossAmountBdt,
       ]),
+      comboGroups: priced.comboGroups,
       merchandiseGrossBdt: priced.merchandiseGrossBdt,
       tariff: [
         priced.tariff.version,
@@ -3823,6 +4200,111 @@ function parseOrderLineProduct(snapshot: unknown) {
         ? (product.compareAtPriceBdt as number)
         : null,
   };
+}
+
+async function calculateComboAwareCodDue(
+  transaction: AuditTransaction,
+  orderId: string,
+  fulfillmentStatus: string,
+  deliveryAmountBdt: number,
+  manualDiscountBdt: number,
+): Promise<number> {
+  const [standaloneRows, comboRows] = await Promise.all([
+    transaction
+      .select({ grossAmountBdt: customerOrderLine.grossAmountBdt })
+      .from(customerOrderLine)
+      .where(
+        and(
+          eq(customerOrderLine.orderId, orderId),
+          sql`${customerOrderLine.comboGroupId} is null`,
+        ),
+      ),
+    transaction
+      .select({
+        grossAmountBdt: orderComboGroup.grossAmountBdt,
+        deliveryOutcome: orderComboGroup.deliveryOutcome,
+        unitPriceBdt: orderComboGroup.unitPriceBdt,
+        quantity: orderComboGroup.quantity,
+        selections: orderComboGroup.selections,
+        acceptedComponents: orderComboGroup.acceptedComponents,
+      })
+      .from(orderComboGroup)
+      .where(eq(orderComboGroup.orderId, orderId)),
+  ]);
+  const standaloneAccepted =
+    fulfillmentStatus === "partially_delivered" ||
+    fulfillmentStatus === "delivered"
+      ? standaloneRows.reduce(
+          (sum, line) => sum + BigInt(line.grossAmountBdt),
+          0n,
+        )
+      : 0n;
+  const acceptedCombos = comboRows.reduce((sum, group) => {
+    if (
+      group.deliveryOutcome === "complete" ||
+      group.deliveryOutcome === "redelivered_complete"
+    ) {
+      return sum + BigInt(group.grossAmountBdt);
+    }
+    if (group.acceptedComponents.length === 0) return sum;
+    const selections = OrderComboGroupSchema.shape.selections.parse(
+      group.selections,
+    );
+    const acceptedComponents =
+      OrderComboGroupSchema.shape.acceptedComponents.parse(
+        group.acceptedComponents,
+      );
+    const acceptedByComponent = new Map(
+      acceptedComponents.map(({ componentId, quantity }) => [
+        componentId,
+        quantity,
+      ]),
+    );
+    const completeSetQuantity = Math.min(
+      ...selections.map(
+        ({ componentId }) => acceptedByComponent.get(componentId) ?? 0,
+      ),
+    );
+    const comboAmount =
+      BigInt(completeSetQuantity) * BigInt(group.unitPriceBdt);
+    const individuallyPricedRemainder = selections.reduce(
+      (total, selection) => {
+        const acceptedQuantity =
+          acceptedByComponent.get(selection.componentId) ?? 0;
+        return (
+          total +
+          BigInt(acceptedQuantity - completeSetQuantity) *
+            BigInt(selection.unitPriceBdt)
+        );
+      },
+      0n,
+    );
+    return sum + comboAmount + individuallyPricedRemainder;
+  }, 0n);
+  const acceptedMerchandise = standaloneAccepted + acceptedCombos;
+  if (acceptedMerchandise === 0n) return 0;
+  const due =
+    acceptedMerchandise + BigInt(deliveryAmountBdt) - BigInt(manualDiscountBdt);
+  const amount = Number(due);
+  if (due < 0n || !Number.isSafeInteger(amount)) {
+    throw new ConflictException(
+      "The accepted Order amount cannot be reconciled safely.",
+      { errorCode: "ORDER_COLLECTION_AMOUNT_INVALID" },
+    );
+  }
+  return amount;
+}
+
+async function hasOrderComboGroups(
+  transaction: AuditTransaction,
+  orderId: string,
+): Promise<boolean> {
+  const [group] = await transaction
+    .select({ id: orderComboGroup.id })
+    .from(orderComboGroup)
+    .where(eq(orderComboGroup.orderId, orderId))
+    .limit(1);
+  return Boolean(group);
 }
 
 function orderNotFound(): NotFoundException {

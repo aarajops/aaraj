@@ -40,5 +40,6 @@
   "0064_confirmed_order_return_to_pending.sql": "compatible",
   "0065_encrypt_order_address_snapshots.sql": "maintenance",
   "0066_catalog_product_edit_revision.sql": "compatible",
-  "0067_catalog_edit_revision.sql": "compatible"
+  "0067_catalog_edit_revision.sql": "compatible",
+  "0068_combo_management.sql": "maintenance"
 }

@@ -7,11 +7,13 @@ import {
 } from "@nestjs/common";
 import {
   AuthoritativeQuoteSchema,
+  MAX_QUOTE_COMPONENT_LINES,
   QUOTE_CURRENCY,
   QUOTE_SCHEMA_VERSION,
   QUOTE_VALIDITY_POLICY_VERSION,
   QuoteLookupSchema,
   QuoteIdSchema,
+  type CartComboLine,
   type AuthoritativeQuote,
   type QuoteDestinationInput,
   type QuoteDestinationRef,
@@ -29,7 +31,9 @@ import {
   CATALOG_CART_PORT,
   type CatalogCartPort,
   type PurchasableCatalogVariant,
+  type PurchasableCatalogCombo,
 } from "../catalog/catalog-cart.port.js";
+import { assertComboSelections } from "../catalog/catalog-combo.helpers.js";
 import { Inject } from "@nestjs/common";
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
@@ -56,7 +60,10 @@ export class QuoteService {
     input: QuoteDestinationInput,
   ): Promise<AuthoritativeQuote> {
     const context = await this.cart.getQuoteContext(customerId, guestCartId);
-    if (!context.owner || context.cart.lines.length === 0) {
+    if (
+      !context.owner ||
+      (context.cart.lines.length === 0 && context.cart.combos.length === 0)
+    ) {
       throw new UnprocessableEntityException(
         "Add an available item before requesting a quote.",
         {
@@ -73,14 +80,31 @@ export class QuoteService {
         },
       );
     }
-
-    const { destination, tariff, lines, merchandiseGrossBdt, totalBdt } =
-      await this.priceSelection(
-        context.cart.lines,
-        input,
-        undefined,
-        context.catalogVariants,
+    if (context.cart.combos.some((line) => line.availability !== "available")) {
+      throw new UnprocessableEntityException(
+        "Remove unavailable or out-of-stock combos before requesting a quote.",
+        { errorCode: "QUOTE_CART_UNAVAILABLE" },
       );
+    }
+
+    const {
+      destination,
+      tariff,
+      lines,
+      comboGroups,
+      merchandiseGrossBdt,
+      totalBdt,
+    } = await this.priceSelection(
+      context.cart.lines.map(({ variantId, quantity }) => ({
+        variantId,
+        quantity,
+      })),
+      input,
+      undefined,
+      context.catalogVariants,
+      context.cart.combos,
+      context.catalogCombos,
+    );
     const [saved] = await this.database.db.transaction(async (transaction) => {
       await lockCartQuoteOwner(transaction, owner);
       const [latest] = await transaction
@@ -111,6 +135,7 @@ export class QuoteService {
           deliveryZone: tariff.zone,
           deliveryAmountBdt: tariff.feeBdt,
           lines,
+          comboGroups,
           merchandiseGrossBdt,
           totalBdt,
           validityPolicyVersion: QUOTE_VALIDITY_POLICY_VERSION,
@@ -127,8 +152,15 @@ export class QuoteService {
   async previewAssisted(
     lines: readonly { variantId: string; quantity: number }[],
     destination: QuoteDestinationInput,
+    comboLines: readonly CartComboLine[] = [],
   ) {
-    return this.priceSelection(lines, destination);
+    return this.priceSelection(
+      lines,
+      destination,
+      undefined,
+      undefined,
+      comboLines,
+    );
   }
 
   async createAssistedWithinTransaction(
@@ -137,10 +169,23 @@ export class QuoteService {
     cartRevision: number,
     selections: readonly { variantId: string; quantity: number }[],
     input: QuoteDestinationInput,
+    comboLines: readonly CartComboLine[] = [],
   ): Promise<AuthoritativeQuote> {
     await lockCartQuoteOwner(transaction, owner);
-    const { destination, tariff, lines, merchandiseGrossBdt, totalBdt } =
-      await this.priceSelection(selections, input, transaction);
+    const {
+      destination,
+      tariff,
+      lines,
+      comboGroups,
+      merchandiseGrossBdt,
+      totalBdt,
+    } = await this.priceSelection(
+      selections,
+      input,
+      transaction,
+      undefined,
+      comboLines,
+    );
     const [latest] = await transaction
       .select({ createdAt: quoteSnapshot.createdAt })
       .from(quoteSnapshot)
@@ -169,6 +214,7 @@ export class QuoteService {
         deliveryZone: tariff.zone,
         deliveryAmountBdt: tariff.feeBdt,
         lines,
+        comboGroups,
         merchandiseGrossBdt,
         totalBdt,
         validityPolicyVersion: QUOTE_VALIDITY_POLICY_VERSION,
@@ -186,8 +232,10 @@ export class QuoteService {
     input: QuoteDestinationInput,
     transaction?: AuditTransaction,
     knownVariants?: readonly PurchasableCatalogVariant[],
+    comboLines: readonly CartComboLine[] = [],
+    knownCombos?: readonly PurchasableCatalogCombo[],
   ) {
-    if (selections.length === 0) {
+    if (selections.length === 0 && comboLines.length === 0) {
       throw new UnprocessableEntityException(
         "Add an item before requesting a quote.",
       );
@@ -205,20 +253,26 @@ export class QuoteService {
           destination.district.id,
           destination.upazila?.id,
         );
+    const requestedVariantIds = [
+      ...new Set([
+        ...selections.map(({ variantId }) => variantId),
+        ...comboLines.flatMap((line) =>
+          line.selections.map(({ variantId }) => variantId),
+        ),
+      ]),
+    ];
     const variants =
       knownVariants ??
       (transaction
         ? await this.catalog.findPurchasableVariantsWithinTransaction(
             transaction,
-            selections.map(({ variantId }) => variantId),
+            requestedVariantIds,
           )
-        : await this.catalog.findPurchasableVariants(
-            selections.map(({ variantId }) => variantId),
-          ));
+        : await this.catalog.findPurchasableVariants(requestedVariantIds));
     const byId = new Map(
       variants.map((variant) => [variant.variantId, variant]),
     );
-    const lines = selections.map((selection) => {
+    const standaloneLines = selections.map((selection) => {
       const variant = byId.get(selection.variantId);
       if (!variant)
         throw new UnprocessableEntityException(
@@ -230,6 +284,7 @@ export class QuoteService {
       );
       return {
         variantId: variant.variantId,
+        comboGroupId: null,
         productName: variant.name,
         color: variant.color,
         sizeLabel: variant.sizeLabel,
@@ -239,13 +294,118 @@ export class QuoteService {
         grossAmountBdt,
       };
     });
+    const currentCombos =
+      knownCombos ??
+      (comboLines.length
+        ? await this.catalog.findPurchasableCombos(
+            comboLines.map(({ productId }) => productId),
+          )
+        : []);
+    const comboById = new Map(
+      currentCombos.map((combo) => [combo.productId, combo]),
+    );
+    const comboGroups: AuthoritativeQuote["comboGroups"] = [];
+    const comboComponentLines: AuthoritativeQuote["lines"] = [];
+    for (const line of comboLines) {
+      const current = comboById.get(line.productId);
+      if (!current || current.revision !== line.comboRevision) {
+        throw new UnprocessableEntityException(
+          "A combo changed. Review its current options before checkout.",
+          { errorCode: "QUOTE_CATALOG_CHANGED" },
+        );
+      }
+      const validatedSelections = assertComboSelections(
+        current.combo,
+        line.selections,
+      );
+      const selectedComponents = validatedSelections.map((selection) => {
+        const component = current.combo.components.find(
+          ({ id }) => id === selection.componentId,
+        )!;
+        const catalogVariant = byId.get(selection.variantId);
+        const comboVariant = component.variants.find(
+          ({ variantId }) => variantId === selection.variantId,
+        );
+        if (!catalogVariant || !comboVariant) {
+          throw new UnprocessableEntityException(
+            "A selected combo variant is no longer available.",
+            { errorCode: "QUOTE_CATALOG_CHANGED" },
+          );
+        }
+        return {
+          componentId: component.id,
+          variantId: selection.variantId,
+          productName: catalogVariant.name,
+          color: catalogVariant.color,
+          sizeLabel: catalogVariant.sizeLabel,
+          unitPriceBdt: catalogVariant.unitPriceBdt,
+          compareAtPriceBdt: catalogVariant.compareAtPriceBdt,
+        };
+      });
+      const groupGrossAmountBdt = safeAmount(
+        BigInt(current.priceBdt) * BigInt(line.quantity),
+      );
+      const groupId = line.lineId;
+      comboGroups.push({
+        groupId,
+        productId: line.productId,
+        comboRevision: current.revision,
+        comboName: current.name,
+        selectionMode: current.combo.selectionMode,
+        quantity: line.quantity,
+        unitPriceBdt: current.priceBdt,
+        grossAmountBdt: groupGrossAmountBdt,
+        selections: selectedComponents,
+      });
+      const baseAllocation = Math.floor(
+        current.priceBdt / selectedComponents.length,
+      );
+      let allocated = 0;
+      for (const [index, selected] of selectedComponents.entries()) {
+        const allocation =
+          index === selectedComponents.length - 1
+            ? current.priceBdt - allocated
+            : baseAllocation;
+        allocated += allocation;
+        comboComponentLines.push({
+          variantId: selected.variantId,
+          comboGroupId: groupId,
+          productName: selected.productName,
+          color: selected.color,
+          sizeLabel: selected.sizeLabel,
+          quantity: line.quantity,
+          unitPriceBdt: allocation,
+          compareAtPriceBdt: selected.compareAtPriceBdt,
+          grossAmountBdt: safeAmount(
+            BigInt(allocation) * BigInt(line.quantity),
+          ),
+        });
+      }
+    }
+    const lines = [...standaloneLines, ...comboComponentLines];
+    if (lines.length > MAX_QUOTE_COMPONENT_LINES) {
+      throw new UnprocessableEntityException(
+        "This cart has too many physical items to place as one order.",
+        { errorCode: "QUOTE_LINE_LIMIT" },
+      );
+    }
     const merchandiseGrossBdt = safeAmount(
-      lines.reduce((sum, line) => sum + BigInt(line.grossAmountBdt), 0n),
+      [
+        ...standaloneLines.map(({ grossAmountBdt }) => grossAmountBdt),
+        ...comboGroups.map(({ grossAmountBdt }) => grossAmountBdt),
+      ].reduce((sum, amount) => sum + BigInt(amount), 0n),
     );
     const totalBdt = safeAmount(
       BigInt(merchandiseGrossBdt) + BigInt(tariff.feeBdt),
     );
-    return { destination, tariff, lines, merchandiseGrossBdt, totalBdt };
+    return {
+      destination,
+      tariff,
+      lines,
+      comboGroups,
+      merchandiseGrossBdt,
+      totalBdt,
+    };
   }
 
   async get(
@@ -296,14 +456,21 @@ export class QuoteService {
       return stale(row.id, "destination_requoted");
     if (
       context.cart.revision !== row.cartRevision ||
-      !sameCartLines(context.cart, row.lines)
+      !sameCartLines(context.cart, row.lines, row.comboGroups)
     ) {
       return stale(row.id, "cart_changed");
     }
     if (isLatest === false) return stale(row.id, "destination_requoted");
 
     const variants = context.catalogVariants;
-    if (!sameCatalogLines(row.lines, variants))
+    if (
+      !sameCatalogLines(
+        row.lines,
+        row.comboGroups,
+        variants,
+        context.catalogCombos,
+      )
+    )
       return stale(row.id, "catalog_changed");
 
     let currentTariff: Awaited<
@@ -473,11 +640,14 @@ export class QuoteService {
     }
 
     const variants =
-      await this.catalog.findPurchasableVariantsWithinTransaction(
-        transaction,
-        quote.lines.map(({ variantId }) => variantId),
-      );
-    if (!sameCatalogLines(quote.lines, variants)) {
+      await this.catalog.findPurchasableVariantsWithinTransaction(transaction, [
+        ...new Set(quote.lines.map(({ variantId }) => variantId)),
+      ]);
+    const combos = await this.catalog.findPurchasableCombosWithinTransaction(
+      transaction,
+      quote.comboGroups.map(({ productId }) => productId),
+    );
+    if (!sameCatalogLines(quote.lines, quote.comboGroups, variants, combos)) {
       throw new ConflictException(
         "The catalog changed during checkout. Request a fresh quote.",
         { errorCode: "QUOTE_STALE" },
@@ -538,6 +708,7 @@ export class QuoteService {
       currency: QUOTE_CURRENCY,
       cartRevision: row.cartRevision,
       lines: row.lines,
+      comboGroups: row.comboGroups,
       merchandiseGrossBdt: row.merchandiseGrossBdt,
       destination: {
         geographyVersion: row.geographyVersion,
@@ -604,27 +775,52 @@ function sameDestination(
 function sameCartLines(
   cart: Awaited<ReturnType<CartService["getCart"]>>,
   rawLines: unknown,
+  rawComboGroups: unknown,
 ): boolean {
   const lines = parseQuoteLines(rawLines);
+  const comboGroups = parseQuoteComboGroups(rawComboGroups);
+  const standaloneLines = lines.filter(({ comboGroupId }) => !comboGroupId);
   return (
-    cart.lines.length === lines.length &&
+    cart.lines.length === standaloneLines.length &&
     cart.lines.every(
       (line, index) =>
-        line.variantId === lines[index]?.variantId &&
-        line.quantity === lines[index]?.quantity &&
+        line.variantId === standaloneLines[index]?.variantId &&
+        line.quantity === standaloneLines[index]?.quantity &&
         line.availability === "available",
-    )
+    ) &&
+    cart.combos.length === comboGroups.length &&
+    cart.combos.every((line) => {
+      const group = comboGroups.find(({ groupId }) => groupId === line.lineId);
+      return (
+        line.availability === "available" &&
+        !!group &&
+        group.productId === line.productId &&
+        group.comboRevision === line.comboRevision &&
+        group.quantity === line.quantity &&
+        group.selections.length === line.selections.length &&
+        group.selections.every((selection) =>
+          line.selections.some(
+            (cartSelection) =>
+              cartSelection.componentId === selection.componentId &&
+              cartSelection.variantId === selection.variantId,
+          ),
+        )
+      );
+    })
   );
 }
 
 function sameCatalogLines(
   rawLines: unknown,
+  rawComboGroups: unknown,
   variants: readonly PurchasableCatalogVariant[],
+  combos: readonly PurchasableCatalogCombo[],
 ): boolean {
   const lines = parseQuoteLines(rawLines);
-  if (lines.length !== variants.length) return false;
+  const comboGroups = parseQuoteComboGroups(rawComboGroups);
   const byId = new Map(variants.map((variant) => [variant.variantId, variant]));
-  return lines.every((line) => {
+  const standaloneLines = lines.filter(({ comboGroupId }) => !comboGroupId);
+  const standaloneMatches = standaloneLines.every((line) => {
     const variant = byId.get(line.variantId);
     return (
       !!variant &&
@@ -634,6 +830,54 @@ function sameCatalogLines(
       line.unitPriceBdt === variant.unitPriceBdt
     );
   });
+  if (!standaloneMatches) return false;
+  if (comboGroups.length === 0) {
+    return lines.every((line) => !line.comboGroupId);
+  }
+  const comboById = new Map(combos.map((combo) => [combo.productId, combo]));
+  return comboGroups.every((group) => {
+    const combo = comboById.get(group.productId);
+    if (
+      !combo ||
+      combo.revision !== group.comboRevision ||
+      combo.priceBdt !== group.unitPriceBdt ||
+      combo.name !== group.comboName ||
+      combo.combo.selectionMode !== group.selectionMode
+    ) {
+      return false;
+    }
+    try {
+      assertComboSelections(
+        combo.combo,
+        group.selections.map(({ componentId, variantId }) => ({
+          componentId,
+          variantId,
+        })),
+      );
+    } catch {
+      return false;
+    }
+    const children = lines.filter(
+      ({ comboGroupId }) => comboGroupId === group.groupId,
+    );
+    if (children.length !== group.selections.length) return false;
+    return group.selections.every((selection) => {
+      const variant = byId.get(selection.variantId);
+      const child = children.find(
+        ({ variantId }) => variantId === selection.variantId,
+      );
+      return (
+        !!variant &&
+        !!child &&
+        child.quantity === group.quantity &&
+        selection.productName === variant.name &&
+        selection.color === variant.color &&
+        selection.sizeLabel === variant.sizeLabel &&
+        selection.unitPriceBdt === variant.unitPriceBdt &&
+        selection.compareAtPriceBdt === variant.compareAtPriceBdt
+      );
+    });
+  });
 }
 
 function parseQuoteLines(value: unknown): AuthoritativeQuote["lines"] {
@@ -642,6 +886,18 @@ function parseQuoteLines(value: unknown): AuthoritativeQuote["lines"] {
     throw new ServiceUnavailableException(
       "A stored quote snapshot is invalid.",
     );
+  return result.data;
+}
+
+function parseQuoteComboGroups(
+  value: unknown,
+): AuthoritativeQuote["comboGroups"] {
+  const result = AuthoritativeQuoteSchema.shape.comboGroups.safeParse(value);
+  if (!result.success) {
+    throw new ServiceUnavailableException(
+      "A stored quote combo snapshot is invalid.",
+    );
+  }
   return result.data;
 }
 

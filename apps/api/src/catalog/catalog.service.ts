@@ -67,6 +67,8 @@ import {
   catalogCategory,
   catalogSizeGuide,
   catalogSizeGuideRow,
+  catalogCombo,
+  catalogComboComponent,
 } from "./catalog-schema.js";
 import { CatalogPolicy } from "./catalog.policy.js";
 import { inventoryStockBalance } from "../inventory/inventory-schema.js";
@@ -88,6 +90,12 @@ import {
   catalogSlugCandidate,
   findAvailableCatalogSlug,
 } from "./catalog-slug.js";
+import {
+  comboHasAvailableSet,
+  loadCombo,
+  loadCombos,
+  validateComboConfiguration,
+} from "./catalog-combo.helpers.js";
 
 @Injectable()
 export class CatalogService {
@@ -214,6 +222,70 @@ export class CatalogService {
     });
   }
 
+  async findPurchasableCombos(productIds: readonly string[]) {
+    if (productIds.length === 0) return [];
+    return this.database.db.transaction(async (transaction) => {
+      const combos = await this.findPurchasableCombosWithinTransaction(
+        transaction,
+        productIds,
+      );
+      if (combos.length === 0) return [];
+      const imagesByProduct = await this.loadPublishedProductImages(
+        combos.map(({ productId }) => productId),
+      );
+      return combos.map((combo) => {
+        const image = (imagesByProduct.get(combo.productId) ?? []).find(
+          ({ variantId }) => variantId === null,
+        );
+        return {
+          ...combo,
+          image: image ? { ...image.card, altText: image.altText } : null,
+        };
+      });
+    });
+  }
+
+  async findPurchasableCombosWithinTransaction(
+    transaction: AuditTransaction,
+    productIds: readonly string[],
+  ) {
+    if (productIds.length === 0) return [];
+    const products = await transaction
+      .select({
+        id: catalogProduct.id,
+        slug: catalogProduct.slug,
+        name: catalogProduct.name,
+      })
+      .from(catalogProduct)
+      .where(
+        and(
+          inArray(catalogProduct.id, [...new Set(productIds)]),
+          eq(catalogProduct.productType, "combo"),
+          ...this.publishedProductEligibilityConditions(),
+        ),
+      );
+    if (products.length === 0) return [];
+    const combos = await loadCombos(
+      transaction,
+      products.map(({ id }) => id),
+    );
+    return products.flatMap((product) => {
+      const combo = combos.get(product.id);
+      if (!combo) return [];
+      return [
+        {
+          productId: product.id,
+          revision: combo.revision,
+          slug: product.slug,
+          name: product.name,
+          priceBdt: combo.price.amountBdt,
+          image: null,
+          combo,
+        },
+      ];
+    });
+  }
+
   async listPublished(
     query: CatalogPublishedProductListQuery,
   ): Promise<CatalogPublishedProductPage> {
@@ -242,18 +314,55 @@ export class CatalogService {
     }
 
     if (hasVariantFilters(query)) {
+      const matchingSingleVariant = this.database.db
+        .select({ id: catalogProductVariant.id })
+        .from(catalogProductVariant)
+        .where(
+          and(
+            eq(catalogProductVariant.productId, catalogProduct.id),
+            ...publishedVariantFilterConditions(query),
+          ),
+        );
+      const matchingComboComponent = this.database.db
+        .select({ id: catalogProductVariant.id })
+        .from(catalogComboComponent)
+        .innerJoin(
+          catalogCombo,
+          eq(catalogCombo.productId, catalogComboComponent.comboProductId),
+        )
+        .innerJoin(
+          catalogProductVariant,
+          eq(catalogProductVariant.productId, catalogComboComponent.productId),
+        )
+        .where(
+          and(
+            eq(catalogComboComponent.comboProductId, catalogProduct.id),
+            ...publishedVariantFilterConditions({
+              ...query,
+              minPriceBdt: undefined,
+              maxPriceBdt: undefined,
+            }),
+          ),
+        );
+      const matchingCombo = this.database.db
+        .select({ id: catalogCombo.productId })
+        .from(catalogCombo)
+        .where(
+          and(
+            eq(catalogCombo.productId, catalogProduct.id),
+            ...(query.minPriceBdt !== undefined
+              ? [gte(catalogCombo.priceBdt, query.minPriceBdt)]
+              : []),
+            ...(query.maxPriceBdt !== undefined
+              ? [lte(catalogCombo.priceBdt, query.maxPriceBdt)]
+              : []),
+            ...(query.color?.length || query.size?.length
+              ? [exists(matchingComboComponent)]
+              : []),
+          ),
+        );
       conditions.push(
-        exists(
-          this.database.db
-            .select({ id: catalogProductVariant.id })
-            .from(catalogProductVariant)
-            .where(
-              and(
-                eq(catalogProductVariant.productId, catalogProduct.id),
-                ...publishedVariantFilterConditions(query),
-              ),
-            ),
-        ),
+        or(exists(matchingSingleVariant), exists(matchingCombo))!,
       );
     }
 
@@ -268,7 +377,11 @@ export class CatalogService {
           ...publishedVariantFilterConditions(query),
         ),
       );
-    const lowestVariantPrice = sql<number>`(${matchingLowestVariantPrice})`;
+    const comboPrice = this.database.db
+      .select({ amountBdt: catalogCombo.priceBdt })
+      .from(catalogCombo)
+      .where(eq(catalogCombo.productId, catalogProduct.id));
+    const lowestVariantPrice = sql<number>`coalesce((${comboPrice}), (${matchingLowestVariantPrice}))`;
     const productOrder =
       query.sort === "price-ascending"
         ? [
@@ -384,7 +497,7 @@ export class CatalogService {
       variants.push({ priceBdt, compareAtPriceBdt, inStock });
       byProduct.set(productId, variants);
     }
-    return new Map(
+    const summaries = new Map(
       [...byProduct].map(([productId, variants]) => {
         const pricing = lowestVariantPricing(variants);
         return [
@@ -398,6 +511,18 @@ export class CatalogService {
         ];
       }),
     );
+    const comboMap = await this.database.db.transaction((transaction) =>
+      loadCombos(transaction, productIds),
+    );
+    for (const [productId, combo] of comboMap) {
+      summaries.set(productId, {
+        price: combo.price,
+        compareAtPrice: null,
+        priceVaries: false,
+        inStock: comboHasAvailableSet(combo),
+      });
+    }
+    return summaries;
   }
 
   private async loadPublishedProductImages(
@@ -503,12 +628,47 @@ export class CatalogService {
           ),
         ),
       );
+    const comboOffer = this.database.db
+      .select({ id: catalogCombo.productId })
+      .from(catalogCombo)
+      .where(
+        and(
+          eq(catalogCombo.productId, catalogProduct.id),
+          sql`(
+            select count(*) from catalog.combo_component c
+            where c.combo_product_id = ${catalogProduct.id}
+          ) >= 2`,
+          sql`not exists (
+            select 1
+            from catalog.combo_component c
+            join catalog.product component on component.id = c.product_id
+            where c.combo_product_id = ${catalogProduct.id}
+              and (
+                component.product_type <> 'single'
+                or component.is_published = false
+                or not exists (
+                  select 1 from catalog.product_variant v
+                  where v.product_id = component.id
+                    and v.is_active = true and v.price_bdt is not null
+                )
+              )
+          )`,
+        ),
+      );
+    const eligibleSingle = and(
+      eq(catalogProduct.productType, "single"),
+      exists(activeVariants),
+      not(exists(unpricedVariants)),
+    );
+    const eligibleCombo = and(
+      eq(catalogProduct.productType, "combo"),
+      exists(comboOffer),
+    );
 
     return [
       eq(catalogProduct.isPublished, true),
       sql`${catalogProduct.description} is not null AND length(btrim(${catalogProduct.description})) > 0`,
-      exists(activeVariants),
-      not(exists(unpricedVariants)),
+      or(eligibleSingle, eligibleCombo),
       exists(publicImages),
     ];
   }
@@ -721,7 +881,10 @@ export class CatalogService {
       );
       return {
         ...detail,
-        inStock: variants.some(({ inStock }) => inStock),
+        inStock:
+          detail.productType === "combo"
+            ? detail.combo !== null && comboHasAvailableSet(detail.combo)
+            : variants.some(({ inStock }) => inStock),
         variants,
         sizeGuide: detail.sizeGuide,
       };
@@ -841,6 +1004,16 @@ export class CatalogService {
         const values = toProductPersistenceValues(input);
         if (values.categoryId) {
           await requireActiveLeafCategory(transaction, values.categoryId);
+        }
+        if (input.productType === "combo" && variants.length > 0) {
+          throw new BadRequestException(
+            "Combo products use existing component products instead of their own variants.",
+          );
+        }
+        if (input.isPublished && input.productType === "combo") {
+          throw new BadRequestException(
+            "Save the combo as a draft, configure its components, then publish it.",
+          );
         }
         if (input.isPublished) {
           await validatePublishability(transaction, values, variants);
@@ -1025,7 +1198,14 @@ export class CatalogService {
         if (nextValues.categoryId) {
           await requireActiveLeafCategory(transaction, nextValues.categoryId);
         }
-        if (nextIsPublished) {
+        if (current.productType === "combo" && input.variants?.length) {
+          throw new BadRequestException(
+            "Combo products cannot have their own inventory variants.",
+          );
+        }
+        if (nextIsPublished && current.productType === "combo") {
+          await validateComboPublishability(transaction, nextValues);
+        } else if (nextIsPublished) {
           await validatePublishability(transaction, nextValues, variants);
         } else if (nextValues.sizeGuideId) {
           await requireSizeGuide(transaction, nextValues.sizeGuideId, false);
@@ -1285,6 +1465,83 @@ async function validatePublishability(
   }
 }
 
+async function validateComboPublishability(
+  transaction: AuditTransaction,
+  product: {
+    id: string;
+    description: string | null;
+    audience: "men" | "women" | "unisex" | null;
+    categoryId: string | null;
+  },
+) {
+  if (!product.audience) {
+    throw new BadRequestException(
+      "Choose a product audience before publishing.",
+    );
+  }
+  if (!product.categoryId) {
+    throw new BadRequestException(
+      "Choose a product category before publishing.",
+    );
+  }
+  if (!product.description?.trim()) {
+    throw new BadRequestException(
+      "Add a product-specific description before publishing.",
+    );
+  }
+  await requireActiveLeafCategory(transaction, product.categoryId);
+  const combo = await loadCombo(transaction, product.id);
+  if (!combo) {
+    throw new BadRequestException(
+      "Configure at least two combo components before publishing.",
+    );
+  }
+  await validateComboConfiguration(transaction, product.id, {
+    selectionMode: combo.selectionMode,
+    price: combo.price,
+    components: combo.components.map(({ productId, fixedColor }) => ({
+      productId,
+      fixedColor,
+    })),
+  });
+  const componentIds = combo.components.map(({ productId }) => productId);
+  const componentProducts = await transaction
+    .select({
+      id: catalogProduct.id,
+      productType: catalogProduct.productType,
+      isPublished: catalogProduct.isPublished,
+    })
+    .from(catalogProduct)
+    .where(inArray(catalogProduct.id, componentIds));
+  if (
+    componentProducts.length !== componentIds.length ||
+    componentProducts.some(
+      (component) =>
+        component.productType !== "single" || !component.isPublished,
+    )
+  ) {
+    throw new BadRequestException(
+      "Publish every single product used by this combo before publishing the combo.",
+    );
+  }
+  const [readyImage] = await transaction
+    .select({ id: catalogProductMedia.id })
+    .from(catalogProductMedia)
+    .where(
+      and(
+        eq(catalogProductMedia.productId, product.id),
+        eq(catalogProductMedia.status, "ready"),
+        isNull(catalogProductMedia.variantId),
+      ),
+    )
+    .limit(1);
+  if (!readyImage) {
+    throw new BadRequestException(
+      "Add at least one ready combo image before publishing.",
+    );
+  }
+}
+
 async function requireSizeGuide(
   transaction: AuditTransaction,
   guideId: string,
@@ -1482,7 +1739,13 @@ async function loadProductDetail(
     ? await loadSizeGuideDetail(transaction, product.sizeGuideId)
     : null;
   const variants = loadedVariants;
-  const startingPricing = lowestActiveVariantPricing(variants);
+  const combo =
+    product.productType === "combo"
+      ? await loadCombo(transaction, product.id)
+      : null;
+  const startingPricing = combo
+    ? { price: combo.price, compareAtPrice: null }
+    : lowestActiveVariantPricing(variants);
 
   return {
     ...toCatalogProduct(
@@ -1506,6 +1769,7 @@ async function loadProductDetail(
       isActive: variant.isActive,
     })),
     sizeGuide,
+    combo,
   };
 }
 
@@ -1543,12 +1807,26 @@ async function loadLowestVariantPricing(
     variants.push({ priceBdt, compareAtPriceBdt });
     variantsByProduct.set(productId, variants);
   }
-  return new Map(
+  const pricing = new Map(
     productIds.map((productId) => [
       productId,
       lowestVariantPricing(variantsByProduct.get(productId) ?? []),
     ]),
   );
+  const combos = await database
+    .select({
+      productId: catalogCombo.productId,
+      priceBdt: catalogCombo.priceBdt,
+    })
+    .from(catalogCombo)
+    .where(inArray(catalogCombo.productId, productIds));
+  for (const combo of combos) {
+    pricing.set(combo.productId, {
+      price: toCatalogPrice(combo.priceBdt),
+      compareAtPrice: null,
+    });
+  }
+  return pricing;
 }
 
 async function loadProductVariantPricing(
@@ -1695,6 +1973,7 @@ function toCatalogProduct(
 ): CatalogProduct {
   return {
     id: product.id,
+    productType: product.productType,
     slug: product.slug,
     name: product.name,
     description: product.description,
@@ -1712,6 +1991,7 @@ function toCatalogProduct(
 }
 
 function toProductPersistenceValues(input: CatalogProductCreateInput): {
+  productType: "single" | "combo";
   name: string;
   description: string | null;
   audience: "men" | "women" | "unisex";
@@ -1722,6 +2002,7 @@ function toProductPersistenceValues(input: CatalogProductCreateInput): {
   sizeGuideId: string | null;
 } {
   return {
+    productType: input.productType ?? "single",
     name: input.name,
     description: input.description ?? null,
     audience: input.audience,

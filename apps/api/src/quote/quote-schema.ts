@@ -51,6 +51,7 @@ export const quoteSnapshot = quoteSchema.table(
       mode: "number",
     }).notNull(),
     lines: jsonb("lines").notNull(),
+    comboGroups: jsonb("combo_groups").notNull().default([]),
     merchandiseGrossBdt: bigint("merchandise_gross_bdt", {
       mode: "number",
     }).notNull(),
@@ -114,6 +115,10 @@ export const quoteSnapshot = quoteSchema.table(
     check(
       "snapshot_lines_array_check",
       sql`jsonb_typeof(${table.lines}) = 'array'`,
+    ),
+    check(
+      "snapshot_combo_groups_array_check",
+      sql`jsonb_typeof(${table.comboGroups}) = 'array'`,
     ),
   ],
 );

@@ -22,10 +22,12 @@ import {
   type UserSession,
 } from "@thallesp/nestjs-better-auth";
 import {
+  CartAddComboInputSchema,
   CartRevisionQuerySchema,
   CartSetLineInputSchema,
   CartVariantIdSchema,
   type CartRevisionQuery,
+  type CartAddComboInput,
   type CartSetLineInput,
 } from "@aaraj/contracts";
 import { CartService } from "./cart.service.js";
@@ -82,6 +84,67 @@ export class CartController {
     return result.cart;
   }
 
+  @Post("combos")
+  @Header("Cache-Control", "no-store")
+  async addCombo(
+    @Session() session: UserSession | undefined,
+    @SignedCookies(CART_COOKIE_NAME) guestCartId: string | undefined,
+    @Body({ schema: CartAddComboInputSchema }) input: CartAddComboInput,
+    @Res({ passthrough: true }) response: unknown,
+  ) {
+    const result = await this.cart.addCombo(
+      session?.user.id,
+      guestCartId,
+      input,
+    );
+    if (result.guestCartId) {
+      this.setGuestCartCookie(response, result.guestCartId);
+    }
+    return result.cart;
+  }
+
+  @Put("combos/:lineId")
+  @Header("Cache-Control", "no-store")
+  async setComboQuantity(
+    @Session() session: UserSession | undefined,
+    @SignedCookies(CART_COOKIE_NAME) guestCartId: string | undefined,
+    @Param("lineId", { schema: CartVariantIdSchema }) lineId: string,
+    @Body({ schema: CartSetLineInputSchema }) input: CartSetLineInput,
+    @Res({ passthrough: true }) response: unknown,
+  ) {
+    const result = await this.cart.setComboQuantity(
+      session?.user.id,
+      guestCartId,
+      lineId,
+      input,
+    );
+    if (result.guestCartId) {
+      this.setGuestCartCookie(response, result.guestCartId);
+    }
+    return result.cart;
+  }
+
+  @Delete("combos/:lineId")
+  @Header("Cache-Control", "no-store")
+  async removeCombo(
+    @Session() session: UserSession | undefined,
+    @SignedCookies(CART_COOKIE_NAME) guestCartId: string | undefined,
+    @Param("lineId", { schema: CartVariantIdSchema }) lineId: string,
+    @Query({ schema: CartRevisionQuerySchema }) input: CartRevisionQuery,
+    @Res({ passthrough: true }) response: unknown,
+  ) {
+    const result = await this.cart.removeCombo(
+      session?.user.id,
+      guestCartId,
+      lineId,
+      input,
+    );
+    if (result.guestCartId) {
+      this.setGuestCartCookie(response, result.guestCartId);
+    }
+    return result.cart;
+  }
+
   @Delete("lines/:variantId")
   @Header("Cache-Control", "no-store")
   async removeLine(
@@ -134,6 +197,44 @@ export class CartController {
     @SignedCookies(CART_COOKIE_NAME) guestCartId: string | undefined,
   ) {
     return this.cart.clearGuestCartForMergeResolution(guestCartId);
+  }
+
+  @Put("guest/combos/:lineId")
+  @Header("Cache-Control", "no-store")
+  async setGuestComboForMergeResolution(
+    @SignedCookies(CART_COOKIE_NAME) guestCartId: string | undefined,
+    @Param("lineId", { schema: CartVariantIdSchema }) lineId: string,
+    @Body({ schema: CartSetLineInputSchema }) input: CartSetLineInput,
+    @Res({ passthrough: true }) response: unknown,
+  ) {
+    const result = await this.cart.setComboQuantity(
+      undefined,
+      guestCartId,
+      lineId,
+      input,
+    );
+    if (result.guestCartId)
+      this.setGuestCartCookie(response, result.guestCartId);
+    return result.cart;
+  }
+
+  @Delete("guest/combos/:lineId")
+  @Header("Cache-Control", "no-store")
+  async removeGuestComboForMergeResolution(
+    @SignedCookies(CART_COOKIE_NAME) guestCartId: string | undefined,
+    @Param("lineId", { schema: CartVariantIdSchema }) lineId: string,
+    @Query({ schema: CartRevisionQuerySchema }) input: CartRevisionQuery,
+    @Res({ passthrough: true }) response: unknown,
+  ) {
+    const result = await this.cart.removeCombo(
+      undefined,
+      guestCartId,
+      lineId,
+      input,
+    );
+    if (result.guestCartId)
+      this.setGuestCartCookie(response, result.guestCartId);
+    return result.cart;
   }
 
   @Put("guest/lines/:variantId")

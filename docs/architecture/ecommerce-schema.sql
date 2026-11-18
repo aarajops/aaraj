@@ -333,7 +333,7 @@ CREATE TABLE pricing.exchange_rates (
 );
 CREATE TABLE pricing.promotions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), code text NOT NULL, version integer NOT NULL CHECK (version > 0),
-  kind text NOT NULL CHECK (kind IN ('PERCENT','FIXED','BUNDLE','BUY_X_GET_Y','FLASH','SHIPPING')),
+  kind text NOT NULL CHECK (kind IN ('PERCENT','FIXED','COMBO','BUY_X_GET_Y','FLASH','SHIPPING')),
   currency text NOT NULL CHECK (currency ~ '^[A-Z]{3}$'), rules jsonb NOT NULL,
   discount_amount bigint CHECK (discount_amount >= 0), discount_bps integer CHECK (discount_bps BETWEEN 0 AND 10000),
   minimum_spend bigint NOT NULL DEFAULT 0 CHECK (minimum_spend >= 0), priority integer NOT NULL DEFAULT 0,

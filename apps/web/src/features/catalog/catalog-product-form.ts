@@ -1,10 +1,14 @@
 import {
   CatalogAudienceSchema,
+  CatalogComboConfigurationInputSchema,
+  CatalogComboSelectionModeSchema,
   CatalogProductCreateSchema,
   CatalogProductUpdateSchema,
   type CatalogManagedProductDetail,
   type CatalogProductCreateInput,
   type CatalogProductUpdateInput,
+  type CatalogComboConfigurationInput,
+  type CatalogComboSelectionMode,
   type CatalogSizeGuideSummary,
 } from "@aaraj/contracts";
 import { parseBdtPrice, formatBdtInput } from "@/features/catalog/price";
@@ -22,6 +26,7 @@ type VariantDraft = {
 
 export interface ProductForm {
   id: string | null;
+  productType: "single" | "combo";
   slug: string;
   name: string;
   description: string;
@@ -32,11 +37,15 @@ export interface ProductForm {
   careInstructions: string;
   sizeGuideId: string;
   variants: VariantDraft[];
+  comboSelectionMode: CatalogComboSelectionMode;
+  comboPriceBdt: string;
+  comboComponents: { productId: string; fixedColor: string }[];
   isPublished: boolean;
 }
 
 export const blankProductForm: ProductForm = {
   id: null,
+  productType: "single",
   slug: "",
   name: "",
   description: "",
@@ -47,23 +56,36 @@ export const blankProductForm: ProductForm = {
   careInstructions: "",
   sizeGuideId: "",
   variants: [],
+  comboSelectionMode: "fixed_combo",
+  comboPriceBdt: "",
+  comboComponents: [],
   isPublished: false,
 };
 
 export type ProductSubmission =
-  | { id: null; input: CatalogProductCreateInput }
-  | { id: string; input: CatalogProductUpdateInput };
+  | {
+      id: null;
+      input: CatalogProductCreateInput;
+      comboConfiguration: CatalogComboConfigurationInput | null;
+    }
+  | {
+      id: string;
+      input: CatalogProductUpdateInput;
+      comboConfiguration: CatalogComboConfigurationInput | null;
+    };
 
 type PreparedProductSubmission =
   | {
       id: null;
       input: CatalogProductCreateInput;
       variantDraftIndices: number[];
+      comboConfiguration: CatalogComboConfigurationInput | null;
     }
   | {
       id: string;
       input: CatalogProductUpdateInput;
       variantDraftIndices: number[];
+      comboConfiguration: CatalogComboConfigurationInput | null;
     };
 
 function prepareProductSubmission(
@@ -80,18 +102,23 @@ function prepareProductSubmission(
         variant.compareAtPriceBdt,
       ].some((value) => value.trim().length > 0),
     );
-  const variants = variantDrafts.map(({ variant }) => {
-    const amountBdt = parseBdtPrice(variant.priceBdt);
-    const compareAtAmountBdt = parseBdtPrice(variant.compareAtPriceBdt);
-    return {
-      sku: variant.sku.trim(),
-      color: variant.color.trim(),
-      sizeLabel: variant.sizeLabel.trim(),
-      price: amountBdt === null ? null : { amountBdt },
-      compareAtPrice:
-        compareAtAmountBdt === null ? null : { amountBdt: compareAtAmountBdt },
-    };
-  });
+  const variants =
+    form.productType === "single"
+      ? variantDrafts.map(({ variant }) => {
+          const amountBdt = parseBdtPrice(variant.priceBdt);
+          const compareAtAmountBdt = parseBdtPrice(variant.compareAtPriceBdt);
+          return {
+            sku: variant.sku.trim(),
+            color: variant.color.trim(),
+            sizeLabel: variant.sizeLabel.trim(),
+            price: amountBdt === null ? null : { amountBdt },
+            compareAtPrice:
+              compareAtAmountBdt === null
+                ? null
+                : { amountBdt: compareAtAmountBdt },
+          };
+        })
+      : undefined;
   const fields = {
     name: form.name.trim(),
     description: form.description.trim() || null,
@@ -99,10 +126,26 @@ function prepareProductSubmission(
     fit: form.fit.trim() || null,
     fabricComposition: form.fabricComposition.trim() || null,
     careInstructions: form.careInstructions.trim() || null,
-    sizeGuideId: form.sizeGuideId || null,
-    variants,
+    sizeGuideId:
+      form.productType === "single" ? form.sizeGuideId || null : null,
+    ...(variants ? { variants } : {}),
     isPublished: form.isPublished,
   };
+  const comboPriceBdt = parseBdtPrice(form.comboPriceBdt);
+  const comboConfiguration =
+    form.productType === "combo" && comboPriceBdt !== null
+      ? {
+          selectionMode: form.comboSelectionMode,
+          price: { amountBdt: comboPriceBdt },
+          components: form.comboComponents.map((component) => ({
+            productId: component.productId,
+            fixedColor:
+              form.comboSelectionMode === "fixed_combo"
+                ? component.fixedColor.trim() || null
+                : null,
+          })),
+        }
+      : null;
   const variantDraftIndices = variantDrafts.map(({ index }) => index);
 
   if (form.id) {
@@ -114,6 +157,7 @@ function prepareProductSubmission(
         audience: form.audience || null,
       } satisfies CatalogProductUpdateInput,
       variantDraftIndices,
+      comboConfiguration,
     };
   }
 
@@ -121,19 +165,29 @@ function prepareProductSubmission(
     id: null,
     input: {
       ...fields,
+      productType: form.productType,
       ...(form.slug.trim() ? { slug: form.slug.trim() } : {}),
       audience: form.audience as Exclude<Audience, "">,
     } satisfies CatalogProductCreateInput,
     variantDraftIndices,
+    comboConfiguration,
   };
 }
 
 function toProductSubmission(form: ProductForm): ProductSubmission {
   const prepared = prepareProductSubmission(form);
   if (prepared.id === null) {
-    return { id: null, input: prepared.input };
+    return {
+      id: null,
+      input: prepared.input,
+      comboConfiguration: prepared.comboConfiguration,
+    };
   }
-  return { id: prepared.id, input: prepared.input };
+  return {
+    id: prepared.id,
+    input: prepared.input,
+    comboConfiguration: prepared.comboConfiguration,
+  };
 }
 
 function mapProductIssuePath(
@@ -161,6 +215,7 @@ function mapProductIssuePath(
 export const productFormSchema = z
   .strictObject({
     id: z.uuid().nullable(),
+    productType: z.enum(["single", "combo"]),
     slug: z.string(),
     name: z.string(),
     description: z.string(),
@@ -179,6 +234,11 @@ export const productFormSchema = z
         compareAtPriceBdt: z.string(),
       }),
     ),
+    comboSelectionMode: CatalogComboSelectionModeSchema,
+    comboPriceBdt: z.string(),
+    comboComponents: z.array(
+      z.strictObject({ productId: z.string(), fixedColor: z.string() }),
+    ),
     isPublished: z.boolean(),
   })
   .superRefine((form, context) => {
@@ -194,6 +254,48 @@ export const productFormSchema = z
           code: "custom",
           path: mapProductIssuePath(issue.path, submission.variantDraftIndices),
           message: issue.message,
+        });
+      }
+    }
+
+    if (form.productType === "combo") {
+      const amountBdt = parseBdtPrice(form.comboPriceBdt);
+      if (amountBdt === null) {
+        context.addIssue({
+          code: "custom",
+          path: ["comboPriceBdt"],
+          message: "Enter a whole BDT combo price, for example 2999.",
+        });
+      }
+      if (form.comboComponents.length < 2) {
+        context.addIssue({
+          code: "custom",
+          path: ["comboComponents"],
+          message: "Choose at least two existing products for this combo.",
+        });
+      }
+      if (submission.comboConfiguration) {
+        const comboValidation = CatalogComboConfigurationInputSchema.safeParse(
+          submission.comboConfiguration,
+        );
+        if (!comboValidation.success) {
+          for (const issue of comboValidation.error.issues) {
+            context.addIssue({
+              code: "custom",
+              path:
+                issue.path[0] === "components"
+                  ? ["comboComponents"]
+                  : ["comboSelectionMode"],
+              message: issue.message,
+            });
+          }
+        }
+      }
+      if (form.isPublished && !submission.comboConfiguration) {
+        context.addIssue({
+          code: "custom",
+          path: ["comboComponents"],
+          message: "Configure this combo before publishing it.",
         });
       }
     }
@@ -227,7 +329,7 @@ export const productFormSchema = z
       });
     }
 
-    if (form.isPublished) {
+    if (form.isPublished && form.productType === "single") {
       if (!form.description.trim()) {
         context.addIssue({
           code: "custom",
@@ -277,6 +379,7 @@ export function toProductFormState(
 ): ProductForm {
   return {
     id: product.id,
+    productType: product.productType,
     slug: product.slug,
     name: product.name,
     description: product.description ?? "",
@@ -295,6 +398,13 @@ export function toProductFormState(
         variant.compareAtPrice?.amountBdt ?? null,
       ),
     })),
+    comboSelectionMode: product.combo?.selectionMode ?? "fixed_combo",
+    comboPriceBdt: formatBdtInput(product.combo?.price.amountBdt ?? null),
+    comboComponents:
+      product.combo?.components.map((component) => ({
+        productId: component.productId,
+        fixedColor: component.fixedColor ?? "",
+      })) ?? [],
     isPublished: product.isPublished,
   };
 }

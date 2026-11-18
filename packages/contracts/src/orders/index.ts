@@ -9,12 +9,17 @@ import {
 } from "../common/pagination.js";
 import { OrderReferenceSchema } from "./order-reference.js";
 import { CheckoutAddressInputSchema } from "./checkout-address.js";
+import {
+  CatalogComboSelectionModeSchema,
+  MAX_COMBO_COMPONENTS,
+} from "../catalog/combos.js";
 
 export { OrderReferenceSchema } from "./order-reference.js";
 export { CheckoutAddressInputSchema } from "./checkout-address.js";
 export type { CheckoutAddressInput } from "./checkout-address.js";
 
 export const MAX_ORDER_LINES = 50;
+export const MAX_ORDER_COMPONENT_LINES = MAX_ORDER_LINES * MAX_COMBO_COMPONENTS;
 
 export const CreateOrderInputSchema = z.strictObject({
   quoteId: QuoteIdSchema,
@@ -166,6 +171,29 @@ export type OrderFulfillmentOutcomeInput = z.infer<
   typeof OrderFulfillmentOutcomeInputSchema
 >;
 
+export const OrderComboAcceptedComponentSchema = z.strictObject({
+  componentId: z.uuid(),
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+});
+
+export const OrderComboFulfillmentOutcomeInputSchema = z.strictObject({
+  groupId: z.uuid(),
+  outcome: z.enum([
+    "complete",
+    "incomplete",
+    "redelivered_complete",
+    "declined",
+  ]),
+  reason: z.string().trim().min(3).max(500),
+  acceptedComponents: z
+    .array(OrderComboAcceptedComponentSchema)
+    .max(MAX_COMBO_COMPONENTS)
+    .optional(),
+});
+export type OrderComboFulfillmentOutcomeInput = z.infer<
+  typeof OrderComboFulfillmentOutcomeInputSchema
+>;
+
 export const OrderCollectionInputSchema = z.strictObject({
   collectedAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   reason: z.string().trim().min(3).max(500),
@@ -181,6 +209,7 @@ const OrderCourierHandoffSchema = z.strictObject({
 
 const OrderLineSchema = z.strictObject({
   variantId: z.uuid(),
+  comboGroupId: z.uuid().nullable().default(null),
   productName: z.string().min(1).max(160),
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),
@@ -194,6 +223,52 @@ const OrderLineSchema = z.strictObject({
     .nullable()
     .default(null),
   grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+});
+
+export const OrderComboGroupSchema = z.strictObject({
+  id: z.uuid(),
+  productId: z.uuid(),
+  comboRevision: z.number().int().positive(),
+  comboName: z.string().min(1).max(160),
+  selectionMode: CatalogComboSelectionModeSchema,
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+  unitPriceBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  grossAmountBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  deliveryOutcome: z.enum([
+    "pending",
+    "complete",
+    "incomplete",
+    "redelivered_complete",
+    "declined",
+  ]),
+  outcomeReason: z.string().min(3).max(500).nullable(),
+  acceptedComponents: z
+    .array(OrderComboAcceptedComponentSchema)
+    .max(MAX_COMBO_COMPONENTS)
+    .default([]),
+  selections: z
+    .array(
+      z.strictObject({
+        componentId: z.uuid(),
+        variantId: z.uuid(),
+        productName: z.string().min(1).max(160),
+        color: z.string().min(1).max(80),
+        sizeLabel: z.string().min(1).max(40),
+        unitPriceBdt: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(Number.MAX_SAFE_INTEGER),
+        compareAtPriceBdt: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(Number.MAX_SAFE_INTEGER)
+          .nullable(),
+      }),
+    )
+    .min(2)
+    .max(MAX_COMBO_COMPONENTS),
 });
 
 export const OrderAddressSchema = z.object({
@@ -229,7 +304,7 @@ export const OrderSchema = z.strictObject({
     .nullable(),
   fulfillmentStatus: OrderFulfillmentStatusSchema,
   courierHandoff: OrderCourierHandoffSchema.nullable(),
-  lines: z.array(OrderLineSchema).min(1).max(MAX_ORDER_LINES),
+  lines: z.array(OrderLineSchema).min(1).max(MAX_ORDER_COMPONENT_LINES),
   merchandiseGrossBdt: z
     .number()
     .int()
@@ -248,7 +323,8 @@ export const OrderSchema = z.strictObject({
     grossAmountBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   }),
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  codAmountDueBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  codAmountDueBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  comboGroups: z.array(OrderComboGroupSchema).max(MAX_ORDER_LINES).default([]),
   cancellationReason: z.literal("staff_cancelled").nullable(),
   cancelledAt: z.iso.datetime().nullable(),
   address: OrderAddressSchema,
@@ -268,7 +344,7 @@ export const OrderCreatedSchema = z.strictObject({
   id: OrderIdSchema,
   reference: OrderReferenceSchema,
   totalBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  codAmountDueBdt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  codAmountDueBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   status: OrderStatusSchema,
   paymentMethod: z.literal("cod"),
   collectionStatus: z.enum(["uncollected", "collected", "discrepancy"]),
@@ -299,6 +375,7 @@ export const OrderManagementListSchema = z.strictObject({
       items: z
         .array(
           z.strictObject({
+            kind: z.enum(["single", "combo"]).default("single"),
             productName: z.string().min(1).max(160),
             color: z.string().max(80).nullable(),
             sizeLabel: z.string().max(80).nullable(),
@@ -309,7 +386,7 @@ export const OrderManagementListSchema = z.strictObject({
               .max(MAX_CART_QUANTITY_PER_VARIANT),
           }),
         )
-        .max(MAX_ORDER_LINES),
+        .max(MAX_ORDER_COMPONENT_LINES),
       status: OrderStatusSchema,
       fulfillmentStatus: z.enum([
         "not_started",

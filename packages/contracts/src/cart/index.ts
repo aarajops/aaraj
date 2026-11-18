@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CatalogProductImageVariantSchema } from "../catalog/media.js";
 import { CURRENCY } from "../platform/system-config.js";
+import { CatalogComboSelectionsSchema } from "../catalog/combos.js";
 
 /** Approved AARAJ cart policy; these values are product decisions. */
 export const MAX_CART_LINES = 50;
@@ -42,11 +43,50 @@ export const CartLineSchema = z.strictObject({
 });
 export type CartLine = z.infer<typeof CartLineSchema>;
 
+export const CartComboSelectionSnapshotSchema = z.strictObject({
+  componentId: z.uuid(),
+  variantId: z.uuid(),
+  productName: z.string().min(1).max(160),
+  color: z.string().min(1).max(80),
+  sizeLabel: z.string().min(1).max(40),
+  unitPriceBdt: z.number().int().nonnegative().max(2_147_483_647),
+  compareAtPriceBdt: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(2_147_483_647)
+    .nullable(),
+});
+
+export const CartComboLineSchema = z.strictObject({
+  lineId: z.uuid(),
+  productId: z.uuid(),
+  comboRevision: z.number().int().positive(),
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+  slug: z.string().min(1).max(120),
+  name: z.string().min(1).max(160),
+  unitPriceBdt: z.number().int().nonnegative().max(2_147_483_647),
+  selections: z.array(CartComboSelectionSnapshotSchema).min(2).max(10),
+  availability: z.enum(["available", "unavailable", "out_of_stock"]),
+  image: CartLineImageSchema.nullable().optional(),
+});
+export type CartComboLine = z.infer<typeof CartComboLineSchema>;
+
+export const CartAddComboInputSchema = z.strictObject({
+  revision: CartRevisionSchema,
+  productId: z.uuid(),
+  comboRevision: z.number().int().positive(),
+  selections: CatalogComboSelectionsSchema,
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+});
+export type CartAddComboInput = z.infer<typeof CartAddComboInputSchema>;
+
 export const CartSchema = z.strictObject({
   schemaVersion: z.literal(CART_SCHEMA_VERSION),
   currency: z.literal(CART_CURRENCY),
   revision: CartRevisionSchema,
   lines: z.array(CartLineSchema).max(MAX_CART_LINES),
+  combos: z.array(CartComboLineSchema).max(MAX_CART_LINES).default([]),
 });
 export type Cart = z.infer<typeof CartSchema>;
 

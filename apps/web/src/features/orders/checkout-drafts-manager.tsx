@@ -384,12 +384,29 @@ function CheckoutDraftSheet({
               <div>
                 <strong>Saved items</strong>
                 <ul className="mt-1 list-inside list-disc">
-                  {detail.items.map((item) => (
-                    <li key={item.variantId}>
-                      {item.productName} · {item.color} · {item.sizeLabel} ×{" "}
-                      {item.quantity}
-                    </li>
-                  ))}
+                  {detail.items.map((item) =>
+                    item.kind === "single" ? (
+                      <li key={item.variantId}>
+                        {item.productName} · {item.color} · {item.sizeLabel} ×{" "}
+                        {item.quantity}
+                      </li>
+                    ) : (
+                      <li key={item.lineId}>
+                        <strong>
+                          {item.productName} · Combo × {item.quantity} ·{" "}
+                          {formatBdtPrice({ amountBdt: item.unitPriceBdt })}
+                        </strong>
+                        <ul className="ml-5 list-disc">
+                          {item.selections.map((selection) => (
+                            <li key={selection.componentId}>
+                              {selection.productName} · {selection.color} ·{" "}
+                              {selection.sizeLabel}
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    ),
+                  )}
                 </ul>
               </div>
               <p>
@@ -548,6 +565,22 @@ function CheckoutDraftSheet({
                       · Delivery:{" "}
                       {formatBdtPrice({ amountBdt: preview.deliveryAmountBdt })}
                     </p>
+                    {preview.comboGroups.map((combo) => (
+                      <div className="grid gap-1" key={combo.groupId}>
+                        <strong>
+                          {combo.comboName} · Combo × {combo.quantity}:{" "}
+                          {formatBdtPrice({ amountBdt: combo.grossAmountBdt })}
+                        </strong>
+                        <ul className="ml-5 list-disc text-muted-foreground">
+                          {combo.selections.map((selection) => (
+                            <li key={selection.componentId}>
+                              {selection.productName} · {selection.color} ·{" "}
+                              {selection.sizeLabel}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
                     <p>
                       Confirm the items, address, delivery fee, and final total
                       with the customer before creating the Order.

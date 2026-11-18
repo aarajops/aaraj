@@ -19,7 +19,9 @@ import { formatBdtPrice } from "@/lib/currency";
 import { CartRequestError, clearGuestCart } from "./cart-client";
 import {
   fetchGuestCart,
+  removeCartCombo,
   removeGuestCartLine,
+  setCartCombo,
   setGuestCartLine,
 } from "./cart-client";
 import { useCartStore } from "./cart-provider";
@@ -53,6 +55,8 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
   const merge = useCartStore((state) => state.merge);
   const setLine = useCartStore((state) => state.setLine);
   const removeLine = useCartStore((state) => state.removeLine);
+  const setComboQuantity = useCartStore((state) => state.setComboQuantity);
+  const removeCombo = useCartStore((state) => state.removeCombo);
   const [guestCart, setGuestCart] = useState<Cart | null>(null);
   const [guestError, setGuestError] = useState<string | null>(null);
   const [guestErrorCode, setGuestErrorCode] = useState<string | null>(null);
@@ -60,14 +64,34 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
   const [mergeMessage, setMergeMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!ready || cart.lines.length === 0 || viewCartSent.current) {
+    if (
+      !ready ||
+      (cart.lines.length === 0 && cart.combos.length === 0) ||
+      viewCartSent.current
+    ) {
       return;
     }
 
     const sent = sendEcommerceEvent("view_cart", {
       currency: cart.currency,
-      value: cartValue(cart.lines),
-      items: cart.lines.map((line) => cartItem(line)),
+      value:
+        cartValue(cart.lines) +
+        cart.combos.reduce(
+          (total, combo) => total + combo.unitPriceBdt * combo.quantity,
+          0,
+        ),
+      items: [
+        ...cart.lines.map((line) => cartItem(line)),
+        ...cart.combos.map((combo) => ({
+          item_id: combo.productId,
+          item_name: combo.name,
+          item_variant: combo.selections
+            .map(({ color, sizeLabel }) => `${color} / ${sizeLabel}`)
+            .join(", "),
+          price: combo.unitPriceBdt,
+          quantity: combo.quantity,
+        })),
+      ],
     });
     if (sent) viewCartSent.current = true;
   }, [cart, ready]);
@@ -237,7 +261,7 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
               </Button>
             )}
           </section>
-        ) : cart.lines.length === 0 ? (
+        ) : cart.lines.length === 0 && cart.combos.length === 0 ? (
           <section className="mt-8 rounded-2xl border border-border p-7">
             <p>Your cart is empty.</p>
             <Link
@@ -345,6 +369,90 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                     </div>
                   </li>
                 ))}
+                {cart.combos.map((combo) => (
+                  <li
+                    className="flex flex-col gap-4 py-5 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                    key={combo.lineId}
+                  >
+                    <div>
+                      <Link
+                        className="font-medium hover:underline"
+                        href={`/shop/products/${combo.slug}`}
+                      >
+                        {combo.name}
+                      </Link>
+                      <p className="mt-1 text-sm font-medium">
+                        Sold as a complete set.
+                      </p>
+                      <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                        {combo.selections.map((selection) => (
+                          <li key={selection.componentId}>
+                            {selection.productName} · {selection.color} ·{" "}
+                            {selection.sizeLabel}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-2 text-sm">
+                        {formatBdtPrice({ amountBdt: combo.unitPriceBdt })} each
+                      </p>
+                      {combo.availability === "out_of_stock" && (
+                        <p
+                          className="mt-2 text-sm text-destructive"
+                          role="status"
+                        >
+                          At least one selected product is out of stock. Remove
+                          this combo before checkout.
+                        </p>
+                      )}
+                      {combo.availability === "unavailable" && (
+                        <p
+                          className="mt-2 text-sm text-destructive"
+                          role="status"
+                        >
+                          This combo has changed or is no longer available.
+                          Remove it before checkout.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Select
+                        disabled={
+                          mutating || combo.availability !== "available"
+                        }
+                        items={quantityOptions}
+                        value={String(combo.quantity)}
+                        onValueChange={(value) => {
+                          if (typeof value === "string")
+                            void setComboQuantity(combo.lineId, Number(value));
+                        }}
+                      >
+                        <SelectTrigger
+                          aria-label={`Combo quantity for ${combo.name}`}
+                          className="w-20"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="end">
+                          {quantityOptions.map(({ label, value }) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        aria-label={`Remove ${combo.name} combo`}
+                        disabled={mutating}
+                        onClick={() => void removeCombo(combo.lineId)}
+                        size="icon-sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Trash2 aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
               </ul>
               <p className="mt-6 border-t border-border pt-4 text-sm text-muted-foreground">
                 The prices above are saved display snapshots, not a checkout
@@ -396,7 +504,8 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                   </div>
                 </div>
               )
-            ) : guestCart.lines.length === 0 ? (
+            ) : guestCart.lines.length === 0 &&
+              guestCart.combos.length === 0 ? (
               <p className="mt-4">
                 The guest cart is empty. You can retry the merge.
               </p>
@@ -467,6 +576,87 @@ export function CartPage({ mergeMode }: { mergeMode: MergeMode }) {
                             removeGuestCartLine(
                               line.variantId,
                               guestCart.revision,
+                            ),
+                          )
+                        }
+                        size="icon-sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Trash2 aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+                {guestCart.combos.map((combo) => (
+                  <li
+                    className="flex flex-wrap items-center justify-between gap-3 py-4"
+                    key={combo.lineId}
+                  >
+                    <div>
+                      <p className="font-medium">{combo.name}</p>
+                      <p className="text-sm font-medium">
+                        Sold as a complete set.
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {combo.selections
+                          .map(
+                            ({ productName, color, sizeLabel }) =>
+                              `${productName} · ${color} · ${sizeLabel}`,
+                          )
+                          .join("; ")}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {combo.quantity} combo(s) in guest cart
+                      </p>
+                      {combo.availability !== "available" && (
+                        <p className="mt-1 text-sm text-destructive">
+                          This combo is unavailable; remove it before merging.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {combo.availability === "available" && (
+                        <Select
+                          disabled={isResolving}
+                          items={quantityOptions}
+                          value={String(combo.quantity)}
+                          onValueChange={(value) => {
+                            if (typeof value === "string")
+                              void resolveGuestLine(() =>
+                                setCartCombo(
+                                  combo.lineId,
+                                  Number(value),
+                                  guestCart.revision,
+                                  true,
+                                ),
+                              );
+                          }}
+                        >
+                          <SelectTrigger
+                            aria-label={`Guest combo quantity for ${combo.name}`}
+                            className="w-20"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="end">
+                            {quantityOptions.map(({ label, value }) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Button
+                        aria-label={`Remove guest ${combo.name} combo`}
+                        disabled={isResolving}
+                        onClick={() =>
+                          void resolveGuestLine(() =>
+                            removeCartCombo(
+                              combo.lineId,
+                              guestCart.revision,
+                              true,
                             ),
                           )
                         }

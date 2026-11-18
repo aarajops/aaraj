@@ -10,25 +10,30 @@ import {
 import {
   CART_CURRENCY,
   CART_SCHEMA_VERSION,
+  CartComboLineSchema,
   CartProductSnapshotSchema,
   CartSchema,
   MAX_CART_LINES,
   MAX_CART_QUANTITY_PER_VARIANT,
   type Cart,
+  type CartAddComboInput,
+  type CartComboLine,
   type CartMergeResult,
   type CartProductSnapshot,
   type CartRevisionQuery,
   type CartSetLineInput,
 } from "@aaraj/contracts";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   CATALOG_CART_PORT,
   type CatalogCartPort,
   type CatalogCartVariant,
   type PurchasableCatalogVariant,
+  type PurchasableCatalogCombo,
 } from "../catalog/catalog-cart.port.js";
+import { assertComboSelections } from "../catalog/catalog-combo.helpers.js";
 import { DatabaseService } from "../platform/database/database.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import { getRedisClient } from "../platform/redis/redis-client.js";
@@ -36,6 +41,7 @@ import { lockCartOwner } from "./cart-owner-lock.js";
 import {
   customerCart,
   customerCartLine,
+  customerCartComboLine,
   guestCartRevisionReceipt,
 } from "./cart-schema.js";
 import {
@@ -57,8 +63,17 @@ const CartStoredStateSchema = z.strictObject({
   currency: z.literal(CART_CURRENCY),
   revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   lines: z.array(CartStoredLineSchema).max(MAX_CART_LINES),
+  combos: z
+    .array(CartComboLineSchema.omit({ availability: true, image: true }))
+    .max(MAX_CART_LINES)
+    .default([]),
+});
+const CartStoredComboLineSchema = CartComboLineSchema.omit({
+  availability: true,
+  image: true,
 });
 type CartStoredLine = z.infer<typeof CartStoredLineSchema>;
+type CartStoredComboLine = z.infer<typeof CartStoredComboLineSchema>;
 type CartStoredState = z.infer<typeof CartStoredStateSchema>;
 type CartAvailabilityVariant = Pick<CatalogCartVariant, "variantId"> &
   Partial<Pick<CatalogCartVariant, "inStock">> &
@@ -75,6 +90,7 @@ export type CartQuoteOwner =
 export type CartQuoteContext = {
   cart: Cart;
   catalogVariants: readonly PurchasableCatalogVariant[];
+  catalogCombos: readonly PurchasableCatalogCombo[];
   owner: CartQuoteOwner | null;
 };
 
@@ -83,6 +99,7 @@ const EMPTY_CART: CartStoredState = {
   currency: CART_CURRENCY,
   revision: 0,
   lines: [],
+  combos: [],
 };
 
 const GUEST_CART_MUTATION_SCRIPT = `
@@ -178,12 +195,16 @@ export class CartService {
     const owner = this.identifyQuoteOwner(customerId, guestCartId);
     if (owner?.kind === "customer") {
       const state = await this.getCustomerCartState(owner.customerId);
-      const catalogVariants = await this.catalog.findPurchasableVariants(
-        state.lines.map(({ variantId }) => variantId),
+      const variantIds = cartVariantIds(state);
+      const catalogVariants =
+        await this.catalog.findPurchasableVariants(variantIds);
+      const catalogCombos = await this.catalog.findPurchasableCombos(
+        state.combos.map(({ productId }) => productId),
       );
       return {
-        cart: this.toCartFromVariants(state, catalogVariants),
+        cart: this.toCartFromVariants(state, catalogVariants, catalogCombos),
         catalogVariants,
+        catalogCombos,
         owner,
       };
     }
@@ -193,16 +214,21 @@ export class CartService {
       return {
         cart: this.toCartFromVariants(EMPTY_CART, catalogVariants),
         catalogVariants,
+        catalogCombos: [],
         owner: null,
       };
     }
     const state = (await this.readGuestState(id)) ?? EMPTY_CART;
-    const catalogVariants = await this.catalog.findPurchasableVariants(
-      state.lines.map(({ variantId }) => variantId),
+    const variantIds = cartVariantIds(state);
+    const catalogVariants =
+      await this.catalog.findPurchasableVariants(variantIds);
+    const catalogCombos = await this.catalog.findPurchasableCombos(
+      state.combos.map(({ productId }) => productId),
     );
     return {
-      cart: this.toCartFromVariants(state, catalogVariants),
+      cart: this.toCartFromVariants(state, catalogVariants, catalogCombos),
       catalogVariants,
+      catalogCombos,
       owner,
     };
   }
@@ -384,11 +410,15 @@ export class CartService {
       .for("update")
       .limit(1);
     if (!row || row.revision !== expectedRevision) return false;
-    const removed = await transaction
+    const removedLines = await transaction
       .delete(customerCartLine)
       .where(eq(customerCartLine.cartId, row.id))
       .returning({ id: customerCartLine.id });
-    if (removed.length === 0) return false;
+    const removedCombos = await transaction
+      .delete(customerCartComboLine)
+      .where(eq(customerCartComboLine.cartId, row.id))
+      .returning({ id: customerCartComboLine.id });
+    if (removedLines.length + removedCombos.length === 0) return false;
     await transaction
       .update(customerCart)
       .set({ revision: incrementRevision(row.revision), updatedAt: new Date() })
@@ -486,6 +516,132 @@ export class CartService {
     return { cart: await this.toCart(next), guestCartId: id };
   }
 
+  async addCombo(
+    customerId: string | undefined,
+    guestCartId: string | undefined,
+    input: CartAddComboInput,
+  ): Promise<{ cart: Cart; guestCartId?: string }> {
+    const [combo] = await this.catalog.findPurchasableCombos([input.productId]);
+    if (!combo) throw new NotFoundException("Combo not found.");
+    if (combo.revision !== input.comboRevision) {
+      throw new ConflictException(
+        "This combo changed. Choose its options again.",
+        {
+          errorCode: "COMBO_CHANGED",
+        },
+      );
+    }
+    const selections = assertComboSelections(combo.combo, input.selections);
+    const selectionsSnapshot = selections.map((selection) => {
+      const component = combo.combo.components.find(
+        ({ id }) => id === selection.componentId,
+      )!;
+      const variant = component.variants.find(
+        ({ variantId }) => variantId === selection.variantId,
+      )!;
+      return {
+        componentId: component.id,
+        variantId: variant.variantId,
+        productName: component.productName,
+        color: variant.color,
+        sizeLabel: variant.sizeLabel,
+        unitPriceBdt: variant.price.amountBdt,
+        compareAtPriceBdt: variant.compareAtPrice?.amountBdt ?? null,
+      };
+    });
+    const line: CartStoredComboLine = {
+      lineId: randomUUID(),
+      productId: combo.productId,
+      comboRevision: combo.revision,
+      quantity: input.quantity,
+      slug: combo.slug,
+      name: combo.name,
+      unitPriceBdt: combo.priceBdt,
+      selections: selectionsSnapshot,
+    };
+    const configurationHash = comboConfigurationHash(line);
+    if (customerId) {
+      const state = await this.setCustomerComboLine(
+        customerId,
+        input.revision,
+        line,
+        configurationHash,
+      );
+      return { cart: await this.toCart(state) };
+    }
+    const id =
+      parseGuestCartId(guestCartId) ?? randomBytes(32).toString("base64url");
+    const state = await this.withGuestCartOwnerLock(id, async () => {
+      const current = (await this.readGuestState(id)) ?? EMPTY_CART;
+      const updated = addStoredComboLine(
+        current,
+        input.revision,
+        line,
+        configurationHash,
+      );
+      await this.writeGuestState(id, input.revision, updated);
+      return updated;
+    });
+    return { cart: await this.toCart(state), guestCartId: id };
+  }
+
+  async setComboQuantity(
+    customerId: string | undefined,
+    guestCartId: string | undefined,
+    lineId: string,
+    input: CartSetLineInput,
+  ): Promise<{ cart: Cart; guestCartId?: string }> {
+    if (customerId) {
+      const state = await this.setCustomerComboQuantity(
+        customerId,
+        lineId,
+        input.revision,
+        input.quantity,
+      );
+      return { cart: await this.toCart(state) };
+    }
+    const id = parseGuestCartId(guestCartId);
+    if (!id) throw new NotFoundException("Combo cart line not found.");
+    const state = await this.withGuestCartOwnerLock(id, async () => {
+      const current = await this.readGuestState(id);
+      if (!current) throw new NotFoundException("Combo cart line not found.");
+      const updated = setStoredComboQuantity(
+        current,
+        lineId,
+        input.revision,
+        input.quantity,
+      );
+      await this.writeGuestState(id, input.revision, updated);
+      return updated;
+    });
+    return { cart: await this.toCart(state), guestCartId: id };
+  }
+
+  async removeCombo(
+    customerId: string | undefined,
+    guestCartId: string | undefined,
+    lineId: string,
+    input: CartRevisionQuery,
+  ): Promise<{ cart: Cart; guestCartId?: string }> {
+    if (customerId) {
+      const state = await this.removeCustomerComboLine(
+        customerId,
+        lineId,
+        input.revision,
+      );
+      return { cart: await this.toCart(state) };
+    }
+    const id = parseGuestCartId(guestCartId);
+    if (!id) return { cart: await this.toCart(EMPTY_CART) };
+    const state = await this.withGuestCartOwnerLock(id, async () => {
+      const current = (await this.readGuestState(id)) ?? EMPTY_CART;
+      const updated = removeStoredComboLine(current, lineId, input.revision);
+      await this.writeGuestState(id, input.revision, updated);
+      return updated;
+    });
+    return { cart: await this.toCart(state), guestCartId: id };
+  }
+
   async removeLine(
     customerId: string | undefined,
     guestCartId: string | undefined,
@@ -548,6 +704,44 @@ export class CartService {
       ]),
     );
     const hasUnavailableVariant = currentProducts.size !== guest.lines.length;
+    const guestComboInfo = await this.catalog.findPurchasableCombos(
+      guest.combos.map(({ productId }) => productId),
+    );
+    const guestComboByProductId = new Map(
+      guestComboInfo.map((combo) => [combo.productId, combo]),
+    );
+    const refreshedGuestCombos = guest.combos.map((line) => {
+      const current = guestComboByProductId.get(line.productId);
+      if (!current || current.revision !== line.comboRevision) {
+        throw new ConflictException(
+          "The guest cart contains a combo that changed. Review it before merging.",
+          { errorCode: "CART_COMBO_UNAVAILABLE" },
+        );
+      }
+      const selections = assertComboSelections(current.combo, line.selections);
+      return {
+        ...line,
+        slug: current.slug,
+        name: current.name,
+        unitPriceBdt: current.priceBdt,
+        selections: selections.map((selection) => {
+          const component = current.combo.components.find(
+            ({ id }) => id === selection.componentId,
+          )!;
+          const variant = component.variants.find(
+            ({ variantId }) => variantId === selection.variantId,
+          )!;
+          return {
+            ...selection,
+            productName: component.productName,
+            color: variant.color,
+            sizeLabel: variant.sizeLabel,
+            unitPriceBdt: variant.price.amountBdt,
+            compareAtPriceBdt: variant.compareAtPrice?.amountBdt ?? null,
+          };
+        }),
+      };
+    });
     const guestHash = createHash("sha256").update(id).digest("hex");
     let committed: CartStoredState;
     try {
@@ -600,7 +794,25 @@ export class CartService {
               guestLine.product,
           });
         }
-        if (combined.size > MAX_CART_LINES) {
+        const combinedCombos = new Map(
+          current.combos.map((line) => [comboConfigurationHash(line), line]),
+        );
+        for (const guestLine of refreshedGuestCombos) {
+          const hash = comboConfigurationHash(guestLine);
+          const existing = combinedCombos.get(hash);
+          const quantity = (existing?.quantity ?? 0) + guestLine.quantity;
+          if (quantity > MAX_CART_QUANTITY_PER_VARIANT) {
+            throw cartLimitConflict(
+              "Combining the carts would exceed the quantity limit for a combo configuration.",
+            );
+          }
+          combinedCombos.set(hash, {
+            ...guestLine,
+            lineId: existing?.lineId ?? guestLine.lineId,
+            quantity,
+          });
+        }
+        if (combined.size + combinedCombos.size > MAX_CART_LINES) {
           throw cartLimitConflict(
             "Combining the carts would exceed the cart line limit.",
           );
@@ -672,6 +884,37 @@ export class CartService {
           }
         }
 
+        const oldComboLines = new Map(
+          current.combos.map((line) => [comboConfigurationHash(line), line]),
+        );
+        const comboLinesChanged =
+          combinedCombos.size !== current.combos.length ||
+          [...combinedCombos].some(([hash, line]) => {
+            const prior = oldComboLines.get(hash);
+            return !prior || prior.quantity !== line.quantity;
+          });
+        if (comboLinesChanged) {
+          await transaction
+            .delete(customerCartComboLine)
+            .where(eq(customerCartComboLine.cartId, cart.id));
+          if (combinedCombos.size > 0) {
+            await transaction.insert(customerCartComboLine).values(
+              [...combinedCombos].map(([configurationHash, line]) => ({
+                id: line.lineId,
+                cartId: cart.id,
+                comboProductId: line.productId,
+                comboRevision: line.comboRevision,
+                configurationHash,
+                quantity: line.quantity,
+                slug: line.slug,
+                name: line.name,
+                unitPriceBdt: line.unitPriceBdt,
+                selections: line.selections,
+              })),
+            );
+          }
+        }
+
         const changed =
           combined.size !== current.lines.length ||
           [...combined.values()].some((line) => {
@@ -681,7 +924,8 @@ export class CartService {
               prior.quantity !== line.quantity ||
               !sameSnapshot(prior.product, line.product)
             );
-          });
+          }) ||
+          comboLinesChanged;
         const revision = changed
           ? incrementRevision(current.revision)
           : current.revision;
@@ -701,6 +945,9 @@ export class CartService {
           revision,
           lines: [...combined.values()].sort((left, right) =>
             left.variantId.localeCompare(right.variantId),
+          ),
+          combos: [...combinedCombos.values()].sort((left, right) =>
+            left.lineId.localeCompare(right.lineId),
           ),
         };
       });
@@ -789,40 +1036,48 @@ export class CartService {
   private async getCustomerCartState(
     customerId: string,
   ): Promise<CartStoredState> {
-    const rows = await this.database.db
+    const [row] = await this.database.db
       .select({
+        id: customerCart.id,
         currency: customerCart.currency,
         schemaVersion: customerCart.schemaVersion,
         revision: customerCart.revision,
-        variantId: customerCartLine.variantId,
-        quantity: customerCartLine.quantity,
-        product: customerCartLine.productSnapshot,
       })
       .from(customerCart)
-      .leftJoin(customerCartLine, eq(customerCartLine.cartId, customerCart.id))
       .where(eq(customerCart.customerId, customerId))
-      .orderBy(asc(customerCartLine.variantId));
-    if (rows.length === 0) return EMPTY_CART;
-    const row = rows[0];
+      .limit(1);
     if (!row) return EMPTY_CART;
-    const lines = rows.flatMap((line) => {
-      if (line.variantId === null) return [];
-      if (line.quantity === null || line.product === null) {
-        throw invalidStoredCart();
-      }
-      return [
-        {
-          variantId: line.variantId,
-          quantity: line.quantity,
-          product: line.product,
-        },
-      ];
-    });
+    const [lineRows, comboRows] = await Promise.all([
+      this.database.db
+        .select({
+          variantId: customerCartLine.variantId,
+          quantity: customerCartLine.quantity,
+          product: customerCartLine.productSnapshot,
+        })
+        .from(customerCartLine)
+        .where(eq(customerCartLine.cartId, row.id))
+        .orderBy(asc(customerCartLine.variantId)),
+      this.database.db
+        .select({
+          lineId: customerCartComboLine.id,
+          productId: customerCartComboLine.comboProductId,
+          comboRevision: customerCartComboLine.comboRevision,
+          quantity: customerCartComboLine.quantity,
+          slug: customerCartComboLine.slug,
+          name: customerCartComboLine.name,
+          unitPriceBdt: customerCartComboLine.unitPriceBdt,
+          selections: customerCartComboLine.selections,
+        })
+        .from(customerCartComboLine)
+        .where(eq(customerCartComboLine.cartId, row.id)),
+    ]);
+    const lines = lineRows;
     return parseStoredState({
       schemaVersion: row.schemaVersion,
       currency: row.currency,
       revision: row.revision,
       lines,
+      combos: comboRows,
     });
   }
 
@@ -838,11 +1093,15 @@ export class CartService {
         .limit(1);
       if (!row) return EMPTY_CART;
 
-      const removed = await transaction
+      const removedLines = await transaction
         .delete(customerCartLine)
         .where(eq(customerCartLine.cartId, row.id))
         .returning({ id: customerCartLine.id });
-      if (removed.length === 0)
+      const removedCombos = await transaction
+        .delete(customerCartComboLine)
+        .where(eq(customerCartComboLine.cartId, row.id))
+        .returning({ id: customerCartComboLine.id });
+      if (removedLines.length + removedCombos.length === 0)
         return { ...EMPTY_CART, revision: row.revision };
 
       const revision = incrementRevision(row.revision);
@@ -918,6 +1177,171 @@ export class CartService {
           .where(eq(customerCart.id, cart.id));
       }
       return { ...current, revision, lines: lines.sort(byVariantId) };
+    });
+  }
+
+  private async setCustomerComboLine(
+    customerId: string,
+    expectedRevision: number,
+    line: CartStoredComboLine,
+    configurationHash: string,
+  ): Promise<CartStoredState> {
+    return this.database.db.transaction(async (transaction) => {
+      const cart = await ensureAndLockCustomerCart(transaction, customerId);
+      const current = await readCustomerCartState(transaction, cart);
+      if (current.revision !== expectedRevision) {
+        throw staleRevision(current.revision);
+      }
+      const existing = current.combos.find(
+        (candidate) => comboConfigurationHash(candidate) === configurationHash,
+      );
+      const quantity = (existing?.quantity ?? 0) + line.quantity;
+      if (quantity > MAX_CART_QUANTITY_PER_VARIANT) {
+        throw cartLimitConflict(
+          "The quantity for this combo configuration exceeds the cart limit.",
+        );
+      }
+      if (
+        !existing &&
+        current.lines.length + current.combos.length >= MAX_CART_LINES
+      ) {
+        throw cartLimitConflict("The cart has reached its line limit.");
+      }
+      const savedLine = {
+        ...line,
+        lineId: existing?.lineId ?? line.lineId,
+        quantity,
+      };
+      if (existing) {
+        await transaction
+          .update(customerCartComboLine)
+          .set({
+            quantity,
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(
+            and(
+              eq(customerCartComboLine.cartId, cart.id),
+              eq(customerCartComboLine.id, existing.lineId),
+            ),
+          );
+      } else {
+        await transaction.insert(customerCartComboLine).values({
+          id: savedLine.lineId,
+          cartId: cart.id,
+          comboProductId: savedLine.productId,
+          comboRevision: savedLine.comboRevision,
+          configurationHash,
+          quantity,
+          slug: savedLine.slug,
+          name: savedLine.name,
+          unitPriceBdt: savedLine.unitPriceBdt,
+          selections: savedLine.selections,
+        });
+      }
+      const revision = incrementRevision(current.revision);
+      await transaction
+        .update(customerCart)
+        .set({ revision, updatedAt: sql`clock_timestamp()` })
+        .where(eq(customerCart.id, cart.id));
+      return {
+        ...current,
+        revision,
+        combos: [
+          ...current.combos.filter(
+            (candidate) => candidate.lineId !== savedLine.lineId,
+          ),
+          savedLine,
+        ].sort((left, right) => left.lineId.localeCompare(right.lineId)),
+      };
+    });
+  }
+
+  private async setCustomerComboQuantity(
+    customerId: string,
+    lineId: string,
+    expectedRevision: number,
+    quantity: number,
+  ): Promise<CartStoredState> {
+    return this.database.db.transaction(async (transaction) => {
+      const cart = await ensureAndLockCustomerCart(transaction, customerId);
+      const current = await readCustomerCartState(transaction, cart);
+      if (current.revision !== expectedRevision) {
+        throw staleRevision(current.revision);
+      }
+      const line = current.combos.find(({ lineId: id }) => id === lineId);
+      if (!line) throw new NotFoundException("Combo cart line not found.");
+      if (line.quantity === quantity) return current;
+      await transaction
+        .update(customerCartComboLine)
+        .set({ quantity, updatedAt: sql`clock_timestamp()` })
+        .where(
+          and(
+            eq(customerCartComboLine.cartId, cart.id),
+            eq(customerCartComboLine.id, lineId),
+          ),
+        );
+      const revision = incrementRevision(current.revision);
+      await transaction
+        .update(customerCart)
+        .set({ revision, updatedAt: sql`clock_timestamp()` })
+        .where(eq(customerCart.id, cart.id));
+      return {
+        ...current,
+        revision,
+        combos: current.combos.map((candidate) =>
+          candidate.lineId === lineId ? { ...candidate, quantity } : candidate,
+        ),
+      };
+    });
+  }
+
+  private async removeCustomerComboLine(
+    customerId: string,
+    lineId: string,
+    expectedRevision: number,
+  ): Promise<CartStoredState> {
+    return this.database.db.transaction(async (transaction) => {
+      const [cart] = await transaction
+        .select({
+          id: customerCart.id,
+          currency: customerCart.currency,
+          schemaVersion: customerCart.schemaVersion,
+          revision: customerCart.revision,
+        })
+        .from(customerCart)
+        .where(eq(customerCart.customerId, customerId))
+        .for("update")
+        .limit(1);
+      if (!cart) {
+        if (expectedRevision !== 0) throw staleRevision(0);
+        return EMPTY_CART;
+      }
+      const current = await readCustomerCartState(transaction, cart);
+      if (current.revision !== expectedRevision) {
+        throw staleRevision(current.revision);
+      }
+      if (!current.combos.some(({ lineId: id }) => id === lineId)) {
+        return current;
+      }
+      await transaction
+        .delete(customerCartComboLine)
+        .where(
+          and(
+            eq(customerCartComboLine.cartId, cart.id),
+            eq(customerCartComboLine.id, lineId),
+          ),
+        );
+      const revision = incrementRevision(current.revision);
+      await transaction
+        .update(customerCart)
+        .set({ revision, updatedAt: sql`clock_timestamp()` })
+        .where(eq(customerCart.id, cart.id));
+      return {
+        ...current,
+        revision,
+        combos: current.combos.filter(({ lineId: id }) => id !== lineId),
+      };
     });
   }
 
@@ -1060,19 +1484,24 @@ export class CartService {
     includeImages = true,
   ): Promise<Cart> {
     const variants = await this.catalog.findPurchasableVariants(
-      state.lines.map(({ variantId }) => variantId),
+      cartVariantIds(state),
       { includeImages },
     );
-    return this.toCartFromVariants(state, variants);
+    const combos = await this.catalog.findPurchasableCombos(
+      state.combos.map(({ productId }) => productId),
+    );
+    return this.toCartFromVariants(state, variants, combos);
   }
 
   private toCartFromVariants(
     state: CartStoredState,
     variants: readonly CartAvailabilityVariant[],
+    combos: readonly PurchasableCatalogCombo[] = [],
   ): Cart {
     const variantsById = new Map(
       variants.map((variant) => [variant.variantId, variant]),
     );
+    const combosById = new Map(combos.map((combo) => [combo.productId, combo]));
     return CartSchema.parse({
       ...state,
       lines: state.lines.map((line) => {
@@ -1085,6 +1514,81 @@ export class CartService {
             : variant.inStock === false
               ? "out_of_stock"
               : "available",
+        };
+      }),
+      combos: state.combos.map((line) => {
+        const current = combosById.get(line.productId);
+        const selectedVariants = line.selections.map((selection) => {
+          const component = current?.combo.components.find(
+            ({ id }) => id === selection.componentId,
+          );
+          const variant = component?.variants.find(
+            ({ variantId }) => variantId === selection.variantId,
+          );
+          return { selection, component, variant };
+        });
+        let availability: CartComboLine["availability"] = "available";
+        const hasCompleteConfiguration = Boolean(
+          current &&
+          current.revision === line.comboRevision &&
+          selectedVariants.length === current.combo.components.length &&
+          selectedVariants.every(
+            ({ component, variant }) => component && variant,
+          ) &&
+          new Set(line.selections.map(({ componentId }) => componentId))
+            .size === current.combo.components.length &&
+          current.combo.components.every((component) =>
+            line.selections.some(
+              ({ componentId }) => componentId === component.id,
+            ),
+          ) &&
+          (current.combo.selectionMode === "mix_sizes_and_colors" ||
+            new Set(
+              selectedVariants.map(({ variant }) =>
+                variant?.sizeLabel.trim().toLocaleLowerCase("en-US"),
+              ),
+            ).size === 1) &&
+          selectedVariants.every(
+            ({ component, variant }) =>
+              current.combo.selectionMode !== "fixed_combo" ||
+              (component &&
+                variant &&
+                normalizeOption(component.fixedColor) ===
+                  normalizeOption(variant.color)),
+          ),
+        );
+        if (!hasCompleteConfiguration) {
+          availability = "unavailable";
+        } else if (selectedVariants.some(({ variant }) => !variant?.inStock)) {
+          availability = "out_of_stock";
+        }
+        return {
+          ...line,
+          ...(current
+            ? {
+                slug: current.slug,
+                name: current.name,
+                unitPriceBdt: current.priceBdt,
+                image: current.image ?? undefined,
+                selections: selectedVariants.map(({ selection, variant }) => ({
+                  ...selection,
+                  ...(variant
+                    ? {
+                        productName:
+                          current.combo.components.find(
+                            ({ id }) => id === selection.componentId,
+                          )?.productName ?? selection.productName,
+                        color: variant.color,
+                        sizeLabel: variant.sizeLabel,
+                        unitPriceBdt: variant.price.amountBdt,
+                        compareAtPriceBdt:
+                          variant.compareAtPrice?.amountBdt ?? null,
+                      }
+                    : {}),
+                })),
+              }
+            : {}),
+          availability,
         };
       }),
     });
@@ -1118,20 +1622,36 @@ async function readCustomerCartState(
   transaction: AuditTransaction,
   row: CustomerCartHeader,
 ): Promise<CartStoredState> {
-  const rows = await transaction
-    .select({
-      variantId: customerCartLine.variantId,
-      quantity: customerCartLine.quantity,
-      product: customerCartLine.productSnapshot,
-    })
-    .from(customerCartLine)
-    .where(eq(customerCartLine.cartId, row.id))
-    .orderBy(asc(customerCartLine.variantId));
+  const [rows, combos] = await Promise.all([
+    transaction
+      .select({
+        variantId: customerCartLine.variantId,
+        quantity: customerCartLine.quantity,
+        product: customerCartLine.productSnapshot,
+      })
+      .from(customerCartLine)
+      .where(eq(customerCartLine.cartId, row.id))
+      .orderBy(asc(customerCartLine.variantId)),
+    transaction
+      .select({
+        lineId: customerCartComboLine.id,
+        productId: customerCartComboLine.comboProductId,
+        comboRevision: customerCartComboLine.comboRevision,
+        quantity: customerCartComboLine.quantity,
+        slug: customerCartComboLine.slug,
+        name: customerCartComboLine.name,
+        unitPriceBdt: customerCartComboLine.unitPriceBdt,
+        selections: customerCartComboLine.selections,
+      })
+      .from(customerCartComboLine)
+      .where(eq(customerCartComboLine.cartId, row.id)),
+  ]);
   return parseStoredState({
     schemaVersion: row.schemaVersion,
     currency: row.currency,
     revision: row.revision,
     lines: rows,
+    combos,
   });
 }
 
@@ -1155,7 +1675,7 @@ function setStoredLine(
   const previous = state.lines.find(
     ({ variantId }) => variantId === line.variantId,
   );
-  if (!previous && state.lines.length >= MAX_CART_LINES) {
+  if (!previous && state.lines.length + state.combos.length >= MAX_CART_LINES) {
     throw cartLimitConflict("The cart has reached its line limit.");
   }
   const changed =
@@ -1169,6 +1689,72 @@ function setStoredLine(
       ...state.lines.filter(({ variantId }) => variantId !== line.variantId),
       line,
     ].sort(byVariantId),
+  };
+}
+
+function addStoredComboLine(
+  state: CartStoredState,
+  expectedRevision: number,
+  line: CartStoredComboLine,
+  configurationHash: string,
+): CartStoredState {
+  if (state.revision !== expectedRevision) throw staleRevision(state.revision);
+  const previous = state.combos.find(
+    (candidate) => comboConfigurationHash(candidate) === configurationHash,
+  );
+  if (!previous && state.lines.length + state.combos.length >= MAX_CART_LINES) {
+    throw cartLimitConflict("The cart has reached its line limit.");
+  }
+  const quantity = (previous?.quantity ?? 0) + line.quantity;
+  if (quantity > MAX_CART_QUANTITY_PER_VARIANT) {
+    throw cartLimitConflict(
+      "The quantity for this combo configuration exceeds the cart limit.",
+    );
+  }
+  return {
+    ...state,
+    revision: incrementRevision(state.revision),
+    combos: [
+      ...state.combos.filter(({ lineId }) => lineId !== previous?.lineId),
+      {
+        ...line,
+        lineId: previous?.lineId ?? line.lineId,
+        quantity,
+      },
+    ].sort((left, right) => left.lineId.localeCompare(right.lineId)),
+  };
+}
+
+function setStoredComboQuantity(
+  state: CartStoredState,
+  lineId: string,
+  expectedRevision: number,
+  quantity: number,
+): CartStoredState {
+  if (state.revision !== expectedRevision) throw staleRevision(state.revision);
+  const line = state.combos.find(({ lineId: id }) => id === lineId);
+  if (!line) throw new NotFoundException("Combo cart line not found.");
+  if (line.quantity === quantity) return state;
+  return {
+    ...state,
+    revision: incrementRevision(state.revision),
+    combos: state.combos.map((candidate) =>
+      candidate.lineId === lineId ? { ...candidate, quantity } : candidate,
+    ),
+  };
+}
+
+function removeStoredComboLine(
+  state: CartStoredState,
+  lineId: string,
+  expectedRevision: number,
+): CartStoredState {
+  if (state.revision !== expectedRevision) throw staleRevision(state.revision);
+  if (!state.combos.some((line) => line.lineId === lineId)) return state;
+  return {
+    ...state,
+    revision: incrementRevision(state.revision),
+    combos: state.combos.filter(({ lineId: id }) => id !== lineId),
   };
 }
 
@@ -1203,6 +1789,36 @@ function incrementRevision(revision: number): number {
     throw cartLimitConflict("The cart revision cannot be advanced further.");
   }
   return revision + 1;
+}
+
+function comboConfigurationHash(line: CartStoredComboLine): string {
+  const selections = [...line.selections]
+    .map(({ componentId, variantId }) => ({ componentId, variantId }))
+    .sort((left, right) => left.componentId.localeCompare(right.componentId));
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        productId: line.productId,
+        comboRevision: line.comboRevision,
+        selections,
+      }),
+    )
+    .digest("hex");
+}
+
+function cartVariantIds(state: CartStoredState): string[] {
+  return [
+    ...new Set([
+      ...state.lines.map(({ variantId }) => variantId),
+      ...state.combos.flatMap((line) =>
+        line.selections.map(({ variantId }) => variantId),
+      ),
+    ]),
+  ];
+}
+
+function normalizeOption(value: string | null): string {
+  return value?.trim().toLocaleLowerCase("en-US") ?? "";
 }
 
 function sameSnapshot(

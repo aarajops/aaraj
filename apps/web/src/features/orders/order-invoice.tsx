@@ -4,6 +4,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
 import { OrderInvoicePrintButton } from "./order-invoice-print-button";
+import { getComboBillableRows } from "./orders-format";
 
 export function OrderInvoice({
   order,
@@ -23,6 +24,30 @@ export function OrderInvoice({
   ]
     .filter(Boolean)
     .join(", ");
+  const postDispatch = [
+    "partially_delivered",
+    "delivered",
+    "delivery_failed",
+    "returned",
+  ].includes(order.fulfillmentStatus);
+  const standaloneLines =
+    postDispatch &&
+    !["partially_delivered", "delivered"].includes(order.fulfillmentStatus)
+      ? []
+      : order.lines.filter((line) => line.comboGroupId === null);
+  const comboRows = order.comboGroups.flatMap((group) =>
+    getComboBillableRows(group),
+  );
+  const invoiceSubtotal =
+    standaloneLines.reduce((total, line) => total + line.grossAmountBdt, 0) +
+    comboRows.reduce((total, line) => total + line.grossAmountBdt, 0);
+  const invoiceDelivery =
+    postDispatch && (order.collectedAmountBdt ?? order.codAmountDueBdt) === 0
+      ? 0
+      : order.delivery.grossAmountBdt;
+  const invoiceTotal = postDispatch
+    ? (order.collectedAmountBdt ?? order.codAmountDueBdt)
+    : order.totalBdt;
 
   return (
     <>
@@ -100,7 +125,7 @@ export function OrderInvoice({
               </tr>
             </thead>
             <tbody>
-              {order.lines.map((line) => (
+              {standaloneLines.map((line) => (
                 <tr
                   className="break-inside-avoid border-b border-border print:border-gray-300"
                   key={line.variantId}
@@ -134,6 +159,28 @@ export function OrderInvoice({
                   </td>
                 </tr>
               ))}
+              {comboRows.map((line) => (
+                <tr
+                  className="break-inside-avoid border-b border-border print:border-gray-300"
+                  key={line.key}
+                >
+                  <td className="py-3 pr-3">
+                    <span className="font-medium">{line.productName}</span>
+                    <span className="block text-muted-foreground print:text-gray-700">
+                      {line.description}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-right tabular-nums">
+                    {line.quantity}
+                  </td>
+                  <td className="px-3 py-3 text-right tabular-nums">
+                    {formatBdtPrice({ amountBdt: line.unitPriceBdt })}
+                  </td>
+                  <td className="py-3 pl-3 text-right tabular-nums">
+                    {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -144,7 +191,7 @@ export function OrderInvoice({
               Subtotal
             </dt>
             <dd className="tabular-nums">
-              {formatBdtPrice({ amountBdt: order.merchandiseGrossBdt })}
+              {formatBdtPrice({ amountBdt: invoiceSubtotal })}
             </dd>
           </div>
           {order.manualDiscountBdt > 0 && (
@@ -162,13 +209,13 @@ export function OrderInvoice({
               Delivery
             </dt>
             <dd className="tabular-nums">
-              {formatBdtPrice({ amountBdt: order.delivery.grossAmountBdt })}
+              {formatBdtPrice({ amountBdt: invoiceDelivery })}
             </dd>
           </div>
           <div className="flex justify-between gap-4 border-t border-border pt-3 text-base font-semibold print:border-black">
-            <dt>Order total</dt>
+            <dt>{postDispatch ? "COD amount" : "Order total"}</dt>
             <dd className="tabular-nums">
-              {formatBdtPrice({ amountBdt: order.totalBdt })}
+              {formatBdtPrice({ amountBdt: invoiceTotal })}
             </dd>
           </div>
         </dl>

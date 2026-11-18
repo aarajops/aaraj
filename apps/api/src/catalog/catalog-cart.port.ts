@@ -1,4 +1,8 @@
-import { CURRENCY, type CartLineImage } from "@aaraj/contracts";
+import {
+  CURRENCY,
+  type CartLineImage,
+  type CatalogCombo,
+} from "@aaraj/contracts";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 
 export const CATALOG_CART_PORT = Symbol("CATALOG_CART_PORT");
@@ -26,6 +30,16 @@ export type PurchasableCatalogVariant = Pick<
   | "compareAtPriceBdt"
 >;
 
+export type PurchasableCatalogCombo = {
+  productId: string;
+  revision: number;
+  slug: string;
+  name: string;
+  priceBdt: number;
+  image: CartLineImage | null;
+  combo: CatalogCombo;
+};
+
 export interface CatalogCartPort {
   findPurchasableVariants(
     variantIds: readonly string[],
@@ -35,4 +49,11 @@ export interface CatalogCartPort {
     transaction: AuditTransaction,
     variantIds: readonly string[],
   ): Promise<PurchasableCatalogVariant[]>;
+  findPurchasableCombos(
+    productIds: readonly string[],
+  ): Promise<PurchasableCatalogCombo[]>;
+  findPurchasableCombosWithinTransaction(
+    transaction: AuditTransaction,
+    productIds: readonly string[],
+  ): Promise<PurchasableCatalogCombo[]>;
 }

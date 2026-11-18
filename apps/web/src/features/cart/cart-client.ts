@@ -7,6 +7,7 @@ import {
   CartSchema,
   type Cart,
   type CartMergeResult,
+  type CartAddComboInput,
 } from "@aaraj/contracts";
 
 export class CartRequestError extends Error {
@@ -34,6 +35,55 @@ export async function clearCart(): Promise<Cart> {
     cache: "no-store",
     credentials: "same-origin",
   });
+  return readResponse(response, CartSchema);
+}
+
+export async function addCartCombo(input: CartAddComboInput): Promise<Cart> {
+  const response = await fetch(`${API_V1_BASE_PATH}/cart/combos`, {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readResponse(response, CartSchema);
+}
+
+export async function setCartCombo(
+  lineId: string,
+  quantity: number,
+  revision: number,
+  guest = false,
+): Promise<Cart> {
+  const query = guest ? "guest/" : "";
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/cart/${query}combos/${encodeURIComponent(lineId)}`,
+    {
+      method: "PUT",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity, revision }),
+    },
+  );
+  return readResponse(response, CartSchema);
+}
+
+export async function removeCartCombo(
+  lineId: string,
+  revision: number,
+  guest = false,
+): Promise<Cart> {
+  const query = new URLSearchParams({ revision: String(revision) });
+  const prefix = guest ? "guest/" : "";
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/cart/${prefix}combos/${encodeURIComponent(lineId)}?${query}`,
+    {
+      method: "DELETE",
+      cache: "no-store",
+      credentials: "same-origin",
+    },
+  );
   return readResponse(response, CartSchema);
 }
 

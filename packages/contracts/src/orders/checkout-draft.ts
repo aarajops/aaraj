@@ -4,6 +4,10 @@ import {
   MAX_CART_QUANTITY_PER_VARIANT,
 } from "../cart/index.js";
 import {
+  AuthoritativeQuoteSchema,
+  MAX_QUOTE_COMPONENT_LINES,
+} from "../quote/index.js";
+import {
   OffsetPaginationMetadataSchema,
   OffsetPaginationQuerySchema,
 } from "../common/pagination.js";
@@ -24,13 +28,53 @@ export const CheckoutDraftSaveResultSchema = z.strictObject({
   version: z.number().int().positive(),
 });
 
-const DraftItemSchema = z.strictObject({
+const DraftSingleItemSchema = z.strictObject({
+  kind: z.literal("single"),
   variantId: z.uuid(),
   productName: z.string(),
   color: z.string(),
   sizeLabel: z.string(),
   quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
 });
+
+const LegacyDraftSingleItemSchema = z
+  .strictObject({
+    variantId: z.uuid(),
+    productName: z.string(),
+    color: z.string(),
+    sizeLabel: z.string(),
+    quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+  })
+  .transform((item) => ({ kind: "single" as const, ...item }));
+
+const DraftComboItemSchema = z.strictObject({
+  kind: z.literal("combo"),
+  lineId: z.uuid(),
+  productId: z.uuid(),
+  comboRevision: z.number().int().positive(),
+  productName: z.string().min(1).max(160),
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+  unitPriceBdt: z.number().int().nonnegative().max(2_147_483_647),
+  selections: z
+    .array(
+      z.strictObject({
+        componentId: z.uuid(),
+        variantId: z.uuid(),
+        productName: z.string().min(1).max(160),
+        color: z.string().min(1).max(80),
+        sizeLabel: z.string().min(1).max(40),
+      }),
+    )
+    .min(2)
+    .max(10),
+});
+
+export const CheckoutDraftItemSchema = z.union([
+  DraftSingleItemSchema,
+  DraftComboItemSchema,
+  LegacyDraftSingleItemSchema,
+]);
+export type CheckoutDraftItem = z.infer<typeof CheckoutDraftItemSchema>;
 
 export const CheckoutDraftOutcomeSchema = z.enum([
   "new",
@@ -52,7 +96,7 @@ export const CheckoutDraftListSchema = z.strictObject({
       id: z.uuid(),
       customerName: z.string(),
       maskedPhone: z.string(),
-      items: z.array(DraftItemSchema).max(MAX_CART_LINES),
+      items: z.array(CheckoutDraftItemSchema).max(MAX_CART_LINES),
       estimatedTotalBdt: z.number().int().nonnegative().nullable(),
       deliveryZone: z.string().nullable(),
       outcome: CheckoutDraftOutcomeSchema,
@@ -102,13 +146,19 @@ export const CheckoutDraftPreviewSchema = z.strictObject({
   draftVersion: z.number().int().positive(),
   lines: z
     .array(
-      DraftItemSchema.extend({
+      z.strictObject({
+        variantId: z.uuid(),
+        productName: z.string(),
+        color: z.string(),
+        sizeLabel: z.string(),
+        quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
         unitPriceBdt: z.number().int().nonnegative(),
         grossAmountBdt: z.number().int().nonnegative(),
       }),
     )
     .min(1)
-    .max(MAX_CART_LINES),
+    .max(MAX_QUOTE_COMPONENT_LINES),
+  comboGroups: AuthoritativeQuoteSchema.shape.comboGroups,
   merchandiseGrossBdt: z.number().int().nonnegative(),
   deliveryAmountBdt: z.number().int().positive(),
   totalBdt: z.number().int().positive(),

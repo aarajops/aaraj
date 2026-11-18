@@ -14,6 +14,7 @@ import {
   type OrderStatusUpdateInput,
   type OrderDispatchInput,
   type OrderFulfillmentOutcomeInput,
+  type OrderComboFulfillmentOutcomeInput,
 } from "@aaraj/contracts";
 import {
   AlertDialog,
@@ -33,10 +34,15 @@ import {
   dispatchCodOrder,
   OrderRequestError,
   recordOrderCodCollection,
+  recordOrderComboFulfillmentOutcome,
   recordOrderFulfillmentOutcome,
   updateOrderStatus,
 } from "./orders-client";
-import { humanize, humanizeFulfillmentStatus } from "./orders-format";
+import {
+  getComboBillableAmount,
+  humanize,
+  humanizeFulfillmentStatus,
+} from "./orders-format";
 import { OrderStatusBadge } from "./order-status-badges";
 import { PathaoBookingPanel } from "./pathao-booking-panel";
 import { OrderStatusMenu } from "./order-status-menu";
@@ -55,6 +61,12 @@ export function OrderReview({
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [outcomeReason, setOutcomeReason] = useState("");
+  const [comboOutcomeReasons, setComboOutcomeReasons] = useState<
+    Record<string, string>
+  >({});
+  const [comboAcceptedQuantities, setComboAcceptedQuantities] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const [collectionReason, setCollectionReason] = useState("");
   const [collectionAmount, setCollectionAmount] = useState("");
   const [pending, setPending] = useState(false);
@@ -185,6 +197,49 @@ export function OrderReview({
     }
   }
 
+  async function recordComboOutcome(
+    groupId: string,
+    outcome: OrderComboFulfillmentOutcomeInput["outcome"],
+  ) {
+    const reason = comboOutcomeReasons[groupId] ?? "";
+    const group = order.comboGroups.find(
+      (candidate) => candidate.id === groupId,
+    );
+    const acceptedComponents =
+      outcome === "incomplete" || outcome === "declined"
+        ? (group?.selections ?? []).flatMap(({ componentId }) => {
+            const quantity = Number(
+              comboAcceptedQuantities[groupId]?.[componentId] ??
+                group?.acceptedComponents.find(
+                  (accepted) => accepted.componentId === componentId,
+                )?.quantity ??
+                0,
+            );
+            return quantity > 0 ? [{ componentId, quantity }] : [];
+          })
+        : [];
+    setPending(true);
+    setError(null);
+    try {
+      applyOrderUpdate(
+        await recordOrderComboFulfillmentOutcome(order.id, {
+          groupId,
+          outcome,
+          reason,
+          acceptedComponents,
+        }),
+      );
+    } catch (reasonError) {
+      setError(
+        reasonError instanceof Error
+          ? reasonError.message
+          : "The combo delivery outcome could not be recorded.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   const availableOutcomes: OrderFulfillmentOutcomeInput["outcome"][] =
     order.fulfillmentStatus === "dispatched"
       ? ["partially_delivered", "delivered", "delivery_failed", "returned"]
@@ -199,6 +254,10 @@ export function OrderReview({
   const canCancelBeforeDispatch =
     order.availableStatusActions?.includes("cancelled");
   const canReopenAsPending = order.availableStatusActions?.includes("pending");
+  const hasUnresolvedComboOutcomes = order.comboGroups.some(
+    ({ deliveryOutcome }) =>
+      deliveryOutcome === "pending" || deliveryOutcome === "incomplete",
+  );
   const canManageCustomerDecision =
     canConfirmOrder ||
     canPutOnHold ||
@@ -300,26 +359,186 @@ export function OrderReview({
           <div className="sm:col-span-2">
             <h2 className="font-semibold">Items</h2>
             <ul className="mt-2 divide-y divide-border">
-              {order.lines.map((line) => (
-                <li
-                  className="flex justify-between gap-4 py-2"
-                  key={line.variantId}
-                >
-                  <span>
-                    {line.productName} · {line.color} · {line.sizeLabel} ×{" "}
-                    {line.quantity}
-                  </span>
-                  <span className="grid justify-items-end text-right">
-                    {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
-                    {line.compareAtPriceBdt !== null &&
-                      line.compareAtPriceBdt > line.unitPriceBdt && (
-                        <del className="text-xs text-muted-foreground">
-                          {formatBdtPrice({
-                            amountBdt: line.compareAtPriceBdt * line.quantity,
-                          })}
-                        </del>
-                      )}
-                  </span>
+              {order.lines
+                .filter((line) => line.comboGroupId === null)
+                .map((line) => (
+                  <li
+                    className="flex justify-between gap-4 py-2"
+                    key={line.variantId}
+                  >
+                    <span>
+                      {line.productName} · {line.color} · {line.sizeLabel} ×{" "}
+                      {line.quantity}
+                    </span>
+                    <span className="grid justify-items-end text-right">
+                      {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                      {line.compareAtPriceBdt !== null &&
+                        line.compareAtPriceBdt > line.unitPriceBdt && (
+                          <del className="text-xs text-muted-foreground">
+                            {formatBdtPrice({
+                              amountBdt: line.compareAtPriceBdt * line.quantity,
+                            })}
+                          </del>
+                        )}
+                    </span>
+                  </li>
+                ))}
+              {order.comboGroups.map((group) => (
+                <li className="grid gap-2 py-3" key={group.id}>
+                  <div className="flex justify-between gap-4">
+                    <span>
+                      <span className="block font-medium">
+                        {group.comboName}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        Sold as a complete set. · Qty {group.quantity}
+                      </span>
+                    </span>
+                    <span className="font-medium">
+                      {formatBdtPrice({
+                        amountBdt: getComboBillableAmount(group),
+                      })}
+                    </span>
+                  </div>
+                  <ul className="ml-3 list-disc text-sm text-muted-foreground">
+                    {group.selections.map((selection) => (
+                      <li key={selection.componentId}>
+                        {selection.productName} · {selection.color} ·{" "}
+                        {selection.sizeLabel}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-sm">
+                    Delivery status: {humanize(group.deliveryOutcome)}
+                  </p>
+                  {group.outcomeReason && (
+                    <p className="text-xs text-muted-foreground">
+                      Note: {group.outcomeReason}
+                    </p>
+                  )}
+                  {group.acceptedComponents.length > 0 && (
+                    <p className="text-sm">
+                      Received items:{" "}
+                      {group.acceptedComponents
+                        .map((accepted) => {
+                          const selection = group.selections.find(
+                            (item) => item.componentId === accepted.componentId,
+                          );
+                          return selection
+                            ? `${selection.productName} × ${accepted.quantity}`
+                            : null;
+                        })
+                        .filter(Boolean)
+                        .join(", ")}
+                    </p>
+                  )}
+                  {order.status === "confirmed" &&
+                    ["partially_delivered", "delivered", "returned"].includes(
+                      order.fulfillmentStatus,
+                    ) &&
+                    order.collectionStatus === "uncollected" &&
+                    !["complete", "redelivered_complete", "declined"].includes(
+                      group.deliveryOutcome,
+                    ) && (
+                      <div className="grid gap-2 rounded-md border border-border p-3">
+                        <label className="grid gap-2 text-sm font-medium">
+                          Combo delivery note
+                          <Textarea
+                            maxLength={500}
+                            minLength={3}
+                            value={comboOutcomeReasons[group.id] ?? ""}
+                            onChange={(event) =>
+                              setComboOutcomeReasons((current) => ({
+                                ...current,
+                                [group.id]: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <p className="text-xs text-muted-foreground">
+                          Record the quantity received for each selected item.
+                          Complete sets use the combo price; accepted items from
+                          incomplete sets use their individual prices.
+                        </p>
+                        <div className="grid gap-2">
+                          {group.selections.map((selection) => (
+                            <label
+                              className="flex items-center justify-between gap-3 text-sm"
+                              key={selection.componentId}
+                            >
+                              <span>
+                                {selection.productName} · {selection.color} ·{" "}
+                                {selection.sizeLabel}
+                              </span>
+                              <Input
+                                aria-label={`Received quantity for ${selection.productName}`}
+                                className="w-24"
+                                inputMode="numeric"
+                                max={group.quantity}
+                                min={0}
+                                onChange={(event) =>
+                                  setComboAcceptedQuantities((current) => ({
+                                    ...current,
+                                    [group.id]: {
+                                      ...current[group.id],
+                                      [selection.componentId]:
+                                        event.target.value,
+                                    },
+                                  }))
+                                }
+                                type="number"
+                                value={
+                                  comboAcceptedQuantities[group.id]?.[
+                                    selection.componentId
+                                  ] ??
+                                  String(
+                                    group.acceptedComponents.find(
+                                      (accepted) =>
+                                        accepted.componentId ===
+                                        selection.componentId,
+                                    )?.quantity ?? 0,
+                                  )
+                                }
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(group.deliveryOutcome === "pending"
+                            ? (["complete", "incomplete", "declined"] as const)
+                            : group.deliveryOutcome === "incomplete"
+                              ? ([
+                                  "incomplete",
+                                  "redelivered_complete",
+                                  "declined",
+                                ] as const)
+                              : (["redelivered_complete", "declined"] as const)
+                          ).map((outcome) => (
+                            <Button
+                              key={outcome}
+                              disabled={
+                                pending ||
+                                (comboOutcomeReasons[group.id] ?? "").trim()
+                                  .length < 3
+                              }
+                              onClick={() =>
+                                void recordComboOutcome(group.id, outcome)
+                              }
+                              type="button"
+                              variant={
+                                outcome === "declined"
+                                  ? "destructive"
+                                  : "outline"
+                              }
+                            >
+                              {pending
+                                ? "Saving…"
+                                : `Record ${humanize(outcome)}`}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                 </li>
               ))}
             </ul>
@@ -418,6 +637,13 @@ export function OrderReview({
               Verify the delivery result before saving. This updates the Order
               record but does not mark COD as collected.
             </p>
+            {order.comboGroups.length > 0 &&
+              order.fulfillmentStatus === "dispatched" && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Record the overall delivery outcome first, then record the
+                  received quantities for each Combo.
+                </p>
+              )}
             <label className="mt-4 grid gap-2 text-sm font-medium">
               Verification note
               <span className="text-xs text-muted-foreground">
@@ -449,68 +675,84 @@ export function OrderReview({
             </div>
           </section>
         )}
-        {["partially_delivered", "delivered", "returned"].includes(
-          order.fulfillmentStatus,
-        ) && (
-          <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
-            <h2 className="text-xl font-semibold">Reconcile COD collection</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Enter the amount verified from courier or cash records. A full
-              match records collection; any difference remains flagged for
-              reconciliation. This records customer collection, not merchant
-              remittance.
-            </p>
-            <label className="mt-4 grid gap-2 text-sm font-medium">
-              Amount collected (BDT)
-              <Input
-                inputMode="numeric"
-                min={0}
-                type="number"
-                value={collectionAmount}
-                onChange={(event) => setCollectionAmount(event.target.value)}
-              />
-            </label>
-            <label className="mt-4 grid gap-2 text-sm font-medium">
-              Verification note
-              <span className="text-xs text-muted-foreground">
-                Do not include customer contact or address details.
-              </span>
-              <Textarea
-                maxLength={500}
-                minLength={3}
-                value={collectionReason}
-                onChange={(event) => setCollectionReason(event.target.value)}
-              />
-            </label>
-            {order.collectionStatus !== "uncollected" && (
-              <p className="mt-3 text-sm" role="status">
-                {humanize(order.collectionStatus)}:{" "}
-                {formatBdtPrice({
-                  amountBdt: order.collectedAmountBdt!,
-                })}{" "}
-                / {formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
-              </p>
-            )}
-            {error && (
-              <p className="mt-4 text-sm text-destructive" role="alert">
-                {error}
-              </p>
-            )}
-            <Button
-              className="mt-4"
-              disabled={
-                pending ||
-                collectionAmount === "" ||
-                !Number.isSafeInteger(Number(collectionAmount)) ||
-                Number(collectionAmount) < 0 ||
-                collectionReason.trim().length < 3
-              }
-              onClick={() => void recordCollection()}
+        {hasUnresolvedComboOutcomes &&
+          ["partially_delivered", "delivered", "returned"].includes(
+            order.fulfillmentStatus,
+          ) && (
+            <p
+              className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
+              role="status"
             >
-              {pending ? "Saving…" : "Save COD reconciliation"}
-            </Button>
-          </section>
-        )}
+              Record a final delivery outcome for every Combo before reconciling
+              COD.
+            </p>
+          )}
+        {!hasUnresolvedComboOutcomes &&
+          ["partially_delivered", "delivered", "returned"].includes(
+            order.fulfillmentStatus,
+          ) &&
+          order.codAmountDueBdt > 0 && (
+            <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
+              <h2 className="text-xl font-semibold">
+                Reconcile COD collection
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Enter the amount verified from courier or cash records. A full
+                match records collection; any difference remains flagged for
+                reconciliation. This records customer collection, not merchant
+                remittance.
+              </p>
+              <label className="mt-4 grid gap-2 text-sm font-medium">
+                Amount collected (BDT)
+                <Input
+                  inputMode="numeric"
+                  min={0}
+                  type="number"
+                  value={collectionAmount}
+                  onChange={(event) => setCollectionAmount(event.target.value)}
+                />
+              </label>
+              <label className="mt-4 grid gap-2 text-sm font-medium">
+                Verification note
+                <span className="text-xs text-muted-foreground">
+                  Do not include customer contact or address details.
+                </span>
+                <Textarea
+                  maxLength={500}
+                  minLength={3}
+                  value={collectionReason}
+                  onChange={(event) => setCollectionReason(event.target.value)}
+                />
+              </label>
+              {order.collectionStatus !== "uncollected" && (
+                <p className="mt-3 text-sm" role="status">
+                  {humanize(order.collectionStatus)}:{" "}
+                  {formatBdtPrice({
+                    amountBdt: order.collectedAmountBdt!,
+                  })}{" "}
+                  / {formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
+                </p>
+              )}
+              {error && (
+                <p className="mt-4 text-sm text-destructive" role="alert">
+                  {error}
+                </p>
+              )}
+              <Button
+                className="mt-4"
+                disabled={
+                  pending ||
+                  collectionAmount === "" ||
+                  !Number.isSafeInteger(Number(collectionAmount)) ||
+                  Number(collectionAmount) < 0 ||
+                  collectionReason.trim().length < 3
+                }
+                onClick={() => void recordCollection()}
+              >
+                {pending ? "Saving…" : "Save COD reconciliation"}
+              </Button>
+            </section>
+          )}
       </article>
     </>
   );

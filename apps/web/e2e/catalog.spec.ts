@@ -863,6 +863,61 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
 });
 
+test("combo option selections stay saved per size and the cart receives the chosen variants", async ({
+  page,
+}) => {
+  const cartLoaded = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      response.url().endsWith("/api/v1/cart"),
+  );
+  await page.goto("/shop/products/e2e-combo");
+  await expect(
+    page.getByRole("heading", { name: "E2E Color and Size Combo", level: 1 }),
+  ).toBeVisible();
+  expect((await cartLoaded).status()).toBe(200);
+  await expect(page.getByText("Preparing your cart…")).toHaveCount(0);
+  await expect(page.getByText("Loading your cart…")).toHaveCount(0);
+  const fullZip = page.getByRole("region", { name: "Full Zip Jacket" });
+  await fullZip.getByRole("button", { name: "M", exact: true }).click();
+  await fullZip.getByRole("button", { name: "Navy", exact: true }).click();
+  await fullZip.getByRole("button", { name: "L", exact: true }).click();
+  await fullZip.getByRole("button", { name: "Red", exact: true }).click();
+  await fullZip.getByRole("button", { name: "M", exact: true }).click();
+  const navy = fullZip.getByRole("button", { name: "Navy", exact: true });
+  await expect(navy).toHaveAttribute("aria-pressed", "true");
+  await navy.click();
+  await expect(navy).toHaveAttribute("aria-pressed", "false");
+  await navy.click();
+
+  const halfZip = page.getByRole("region", { name: "Half Zip Jacket" });
+  await halfZip.getByRole("button", { name: "M", exact: true }).click();
+  await halfZip.getByRole("button", { name: "Black", exact: true }).click();
+  const addRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      request.url().endsWith("/api/v1/cart/combos"),
+  );
+  await page.getByRole("button", { name: "Add to cart" }).click();
+  const request = await addRequest;
+  expect(request.postDataJSON()).toMatchObject({
+    productId: "00000000-0000-4000-8000-000000000303",
+    comboRevision: 1,
+    selections: [
+      {
+        componentId: "00000000-0000-4000-8000-000000000301",
+        variantId: "00000000-0000-4000-8000-000000000311",
+      },
+      {
+        componentId: "00000000-0000-4000-8000-000000000302",
+        variantId: "00000000-0000-4000-8000-000000000321",
+      },
+    ],
+  });
+  await expect(page.getByText("Combo added to your cart.")).toBeVisible();
+  await expect(page.getByText("Sold as a complete set.").first()).toBeVisible();
+});
+
 test("customer Order page explains cancellation", async ({ page }) => {
   const orderId = "b7e38a23-2ef7-49f0-a30f-8c25877e631e";
   await page.route(`**/api/v1/orders/${orderId}`, async (route) =>

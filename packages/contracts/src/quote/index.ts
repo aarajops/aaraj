@@ -5,6 +5,12 @@ import {
 } from "../cart/index.js";
 import { DeliveryZoneSchema } from "../delivery/index.js";
 import { CURRENCY } from "../platform/system-config.js";
+import {
+  CatalogComboSelectionModeSchema,
+  MAX_COMBO_COMPONENTS,
+} from "../catalog/combos.js";
+
+export const MAX_QUOTE_COMPONENT_LINES = MAX_CART_LINES * MAX_COMBO_COMPONENTS;
 
 export const QUOTE_SCHEMA_VERSION = 1 as const;
 export const QUOTE_CURRENCY = CURRENCY;
@@ -26,6 +32,7 @@ export type QuoteDestinationInput = QuoteDestinationRef;
 
 const QuoteLineSchema = z.strictObject({
   variantId: z.uuid(),
+  comboGroupId: z.uuid().nullable().default(null),
   productName: z.string().min(1).max(160),
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),
@@ -41,12 +48,47 @@ const QuoteLineSchema = z.strictObject({
   grossAmountBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 });
 
+const QuoteComboGroupSchema = z.strictObject({
+  groupId: z.uuid(),
+  productId: z.uuid(),
+  comboRevision: z.number().int().positive(),
+  comboName: z.string().min(1).max(160),
+  selectionMode: CatalogComboSelectionModeSchema,
+  quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+  unitPriceBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  grossAmountBdt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  selections: z
+    .array(
+      z.strictObject({
+        componentId: z.uuid(),
+        variantId: z.uuid(),
+        productName: z.string().min(1).max(160),
+        color: z.string().min(1).max(80),
+        sizeLabel: z.string().min(1).max(40),
+        unitPriceBdt: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(Number.MAX_SAFE_INTEGER),
+        compareAtPriceBdt: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(Number.MAX_SAFE_INTEGER)
+          .nullable(),
+      }),
+    )
+    .min(2)
+    .max(MAX_COMBO_COMPONENTS),
+});
+
 export const AuthoritativeQuoteSchema = z.strictObject({
   schemaVersion: z.literal(QUOTE_SCHEMA_VERSION),
   id: z.uuid(),
   currency: z.literal(QUOTE_CURRENCY),
   cartRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  lines: z.array(QuoteLineSchema).max(MAX_CART_LINES),
+  lines: z.array(QuoteLineSchema).max(MAX_QUOTE_COMPONENT_LINES),
+  comboGroups: z.array(QuoteComboGroupSchema).max(MAX_CART_LINES).default([]),
   merchandiseGrossBdt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   destination: z.strictObject({
     geographyVersion: z.string().min(1).max(80),

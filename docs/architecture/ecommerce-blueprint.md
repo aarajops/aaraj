@@ -219,11 +219,11 @@ Do not add a search projection, cross-module event consumers, JSONB indexes, or 
 
 Zero-result behavior must preserve all selected filters; never silently relax constraints. Search results are advisory, and checkout revalidates price and stock through their owning modules.
 
-#### 09. Pricing, bundles, flash sales, and cache stampedes
+#### 09. Pricing, multi-item promotions, flash sales, and cache stampedes
 
-Pricing owns effective-dated price books, quantity tiers, bundle rules, schedules, eligibility, caps, and immutable rule versions. Use database/server time in UTC with `Asia/Dhaka` display, never browser time. Quotes contain line prices, promotion versions, fulfillment assumptions, currency, total, and expiry. Once paid/confirmed, later price edits do not change order snapshots.
+Pricing owns effective-dated price books, quantity tiers, multi-item promotion rules, schedules, eligibility, caps, and immutable rule versions. Use database/server time in UTC with `Asia/Dhaka` display, never browser time. Quotes contain line prices, promotion versions, fulfillment assumptions, currency, total, and expiry. Once paid/confirmed, later price edits do not change order snapshots.
 
-Evaluate candidate rules deterministically by explicit priority and combinability group. A bundle allocates its savings back to physical SKU lines for returns. Serialize global/per-customer promotion holds before confirmation, with release/expiry compensation. Flash-sale traffic enters a bounded queue rather than exhausting DB pools.
+Catalog Combos are inventory-backed product offers: a Combo references existing single products, stores one price for the complete set, and reserves the selected component variants from their existing inventory. A `COMBO` promotion is a separate pricing rule. For incomplete delivery, retain the saved Combo price for complete accepted sets and use saved individual component prices for extra accepted items when reconciling COD. Evaluate promotion rules deterministically by explicit priority and combinability group; allocate promotion savings back to physical SKU lines for returns. Serialize global/per-customer promotion holds before confirmation, with release/expiry compensation. Flash-sale traffic enters a bounded queue rather than exhausting DB pools.
 
 Use per-key singleflight leases with a unique owner token, bounded wait, token-checked release, TTL jitter, and stale-while-revalidate for public product data. A losing or expired lock holder cannot delete a successor's lock. Cache invalidation follows committed versioned events; stale catalogs never determine payable totals.
 
@@ -263,7 +263,7 @@ Rule inputs include SKU/category eligibility, customer segment, first-order poli
 
 Allocate an order discount across eligible lines using largest remainders: floor each `discount × eligibleLineBase / totalEligibleBase`, then distribute remaining subunits by descending fractional remainder with stable line-ID tie-breaking. Respect each line's maximum discount and repeat on remaining eligible capacity. For bases `1999, 1000, 1000` and discount `500`, allocations are `250, 125, 125`; net amounts are `1749, 875, 875` and sum to `3499`. Zero eligible base is rejected or yields no discount, never division by zero.
 
-Persist line and per-unit discount and shipping allocations at checkout. A partial refund references remaining original allocations so sequential returns sum exactly to the original paid/refundable amount. Define whether a returned item invalidates a bundle at sale time and show the policy before purchase; never retroactively invent a clawback. Test penny/poisha remainders, overlapping coupons, all-free carts, concurrent redemptions, split shipments, and repeated partial refunds.
+Persist line and per-unit discount and shipping allocations at checkout. A partial refund references remaining original allocations so sequential returns sum exactly to the original paid/refundable amount. Define whether a returned item invalidates a multi-item promotion at sale time and show the policy before purchase; never retroactively invent a clawback. Test penny/poisha remainders, overlapping coupons, all-free carts, concurrent redemptions, split shipments, and repeated partial refunds.
 
 ### IV. Bangladesh and South Asian localization
 

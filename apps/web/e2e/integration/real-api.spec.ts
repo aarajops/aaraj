@@ -1170,7 +1170,7 @@ test("catalog operator configures a product through to storefront visibility", a
   );
 
   const unavailableVariant = await page.request.get(
-    "/api/v1/catalog/products?color=White&size=S",
+    `/api/v1/catalog/products?color=Unavailable-${suffix}&size=S`,
   );
   expect(unavailableVariant.status()).toBe(200);
   expect((await unavailableVariant.json()).products).toEqual([]);

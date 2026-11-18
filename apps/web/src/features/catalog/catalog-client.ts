@@ -10,6 +10,7 @@ import type {
   CatalogProductCreateInput,
   CatalogProductListQuery,
   CatalogProductUpdateInput,
+  CatalogComboConfigurationInput,
   CatalogSizeGuideCreateInput,
   CatalogSizeGuideListQuery,
   CatalogSizeGuideUpdateInput,
@@ -156,6 +157,43 @@ export function updateCatalogProduct(
       headers: {
         "Content-Type": "application/json",
         "If-Match": catalogProductEditEtag(productId, editRevision),
+      },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function fetchComboComponentCandidates(
+  search?: string,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const query = new URLSearchParams();
+  if (search?.trim()) query.set("search", search.trim());
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/combos/manage/candidates${suffix}`,
+    {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal,
+    },
+  );
+}
+
+export function configureCatalogCombo(
+  productId: string,
+  productRevision: number,
+  input: CatalogComboConfigurationInput,
+): Promise<Response> {
+  return fetch(
+    `${API_V1_BASE_PATH}/catalog/combos/manage/${encodeURIComponent(productId)}`,
+    {
+      method: "PUT",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": catalogProductEditEtag(productId, productRevision),
       },
       body: JSON.stringify(input),
     },

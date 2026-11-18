@@ -195,7 +195,7 @@ try {
     ]);
   app = await NestFactory.create(AppModule, {
     bodyParser: false,
-    logger: false,
+    logger: ["error"],
     cookies: {
       secret: createHmac("sha256", process.env.BETTER_AUTH_SECRET)
         .update("aaraj/cart-cookie-signing/v1")

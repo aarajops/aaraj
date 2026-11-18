@@ -137,15 +137,26 @@ export function OrdersManager({
           return (
             <div className="grid gap-1 whitespace-normal">
               {item ? (
-                <span>{item.productName}</span>
+                <span>
+                  {item.kind === "combo"
+                    ? `${item.productName} · Combo`
+                    : item.productName}
+                </span>
               ) : (
                 <span className="text-muted-foreground">No items</span>
               )}
-              {item && (item.color || item.sizeLabel) && (
+              {item?.kind === "combo" && (
                 <span className="text-xs text-muted-foreground">
-                  {[item.color, item.sizeLabel].filter(Boolean).join(" · ")}
+                  Sold as a complete set
                 </span>
               )}
+              {item &&
+                item.kind === "single" &&
+                (item.color || item.sizeLabel) && (
+                  <span className="text-xs text-muted-foreground">
+                    {[item.color, item.sizeLabel].filter(Boolean).join(" · ")}
+                  </span>
+                )}
               {remainingItems.length > 0 && (
                 <span className="text-xs text-muted-foreground">
                   +{remainingItems.length} more item

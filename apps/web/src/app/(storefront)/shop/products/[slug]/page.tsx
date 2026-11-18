@@ -13,6 +13,7 @@ import type { CatalogProductDetail } from "@aaraj/contracts";
 import { getStorefrontOrigin } from "@/lib/storefront-origin";
 import { ProductGallery } from "./product-gallery";
 import { ProductPurchase } from "./product-purchase";
+import { ComboPurchase } from "./combo-purchase";
 import { RelatedProductsSection } from "./related-products-section";
 
 type ProductPageSearchParams = {
@@ -120,6 +121,7 @@ export default async function ProductPage({
   }
 
   const { product } = result;
+  if (product.productType === "combo" && !product.combo) notFound();
   const initialColor = singleQueryValue(query.color);
   const initialSize = singleQueryValue(query.size);
   const jsonLd = createProductGroupJsonLd(product, getStorefrontOrigin());
@@ -195,6 +197,11 @@ export default async function ProductPage({
               >
                 {product.name}
               </h1>
+              {product.productType === "combo" && (
+                <Badge className="mt-2" variant="outline">
+                  Combo
+                </Badge>
+              )}
               {!product.inStock && (
                 <Badge variant="destructive">Stock out</Badge>
               )}
@@ -205,15 +212,24 @@ export default async function ProductPage({
               )}
             </div>
             <div className="mt-5">
-              <ProductPurchase
-                initialColor={initialColor}
-                initialSize={initialSize}
-                productId={product.id}
-                productName={product.name}
-                supportPhone={storefrontSettings.supportPhone}
-                sizeGuide={product.sizeGuide}
-                variants={product.variants}
-              />
+              {product.productType === "combo" && product.combo ? (
+                <ComboPurchase
+                  initialSize={initialSize}
+                  productId={product.id}
+                  combo={product.combo}
+                  inStock={product.inStock}
+                />
+              ) : (
+                <ProductPurchase
+                  initialColor={initialColor}
+                  initialSize={initialSize}
+                  productId={product.id}
+                  productName={product.name}
+                  supportPhone={storefrontSettings.supportPhone}
+                  sizeGuide={product.sizeGuide}
+                  variants={product.variants}
+                />
+              )}
             </div>
           </section>
         </div>
@@ -297,6 +313,24 @@ function createProductGroupJsonLd(
   const productImages = product.images.map(({ detail }) =>
     new URL(detail.src, origin).toString(),
   );
+  if (product.productType === "combo" && product.combo) {
+    return {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: product.name,
+      description: product.description,
+      image: productImages,
+      url: canonicalUrl,
+      productID: product.id,
+      offers: {
+        "@type": "Offer",
+        url: canonicalUrl,
+        priceCurrency: "BDT",
+        price: product.combo.price.amountBdt,
+        availability: `https://schema.org/${product.inStock ? "InStock" : "OutOfStock"}`,
+      },
+    };
+  }
   if (product.variants.length <= 1 || variesBy.length === 0) {
     const variant = product.variants[0];
 

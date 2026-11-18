@@ -90,6 +90,11 @@ export function ProductCard({
           <Heading className="line-clamp-2 text-xs font-medium uppercase leading-5 tracking-wide text-foreground group-hover/link:text-primary">
             {product.name}
           </Heading>
+          {product.productType === "combo" && (
+            <Badge className="mt-2" variant="outline">
+              Combo
+            </Badge>
+          )}
           {!product.inStock && (
             <Badge className="mt-2" variant="destructive">
               Stock out

@@ -46,6 +46,11 @@ export function ProductTable({
           cell: ({ row }) => (
             <div className="whitespace-normal">
               <p className="font-medium text-foreground">{row.original.name}</p>
+              {row.original.productType === "combo" && (
+                <Badge className="mt-1" variant="outline">
+                  Combo
+                </Badge>
+              )}
               <p className="break-all text-sm text-muted-foreground">
                 /{row.original.slug}
               </p>

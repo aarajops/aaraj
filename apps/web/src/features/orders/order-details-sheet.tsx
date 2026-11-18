@@ -51,6 +51,7 @@ import {
   OrderStatusBadge,
 } from "./order-status-badges";
 import { PathaoBookingPanel } from "./pathao-booking-panel";
+import { getComboBillableAmount } from "./orders-format";
 
 type OrderDetailsSheetProps = {
   onFulfillmentUpdated: () => void;
@@ -516,7 +517,10 @@ function OrderDetailsSheetContent({
             >
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-semibold" id="order-items-heading">
-                  Items ({order.lines.length})
+                  Items (
+                  {order.lines.filter((line) => line.comboGroupId === null)
+                    .length + order.comboGroups.length}
+                  )
                 </h3>
                 {order.canEditItems &&
                   !itemEditorOpen &&
@@ -540,60 +544,116 @@ function OrderDetailsSheetContent({
                   )}
               </div>
               <ul className="min-w-0 divide-y divide-border border-y border-border">
-                {order.lines.map((line) => (
-                  <li className="grid gap-2 py-3 text-sm" key={line.variantId}>
-                    <div className="flex min-w-0 items-start justify-between gap-3">
-                      <span className="min-w-0">
-                        <span className="block font-medium">
-                          {line.productName}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {line.color} · {line.sizeLabel} · Qty {line.quantity}
-                        </span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-1">
-                        <span className="grid justify-items-end tabular-nums">
-                          <span>
-                            {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                {order.lines
+                  .filter((line) => line.comboGroupId === null)
+                  .map((line) => (
+                    <li
+                      className="grid gap-2 py-3 text-sm"
+                      key={line.variantId}
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block font-medium">
+                            {line.productName}
                           </span>
-                          {line.compareAtPriceBdt !== null &&
-                            line.compareAtPriceBdt > line.unitPriceBdt && (
-                              <del className="text-xs text-muted-foreground">
-                                {formatBdtPrice({
-                                  amountBdt:
-                                    line.compareAtPriceBdt * line.quantity,
-                                })}
-                              </del>
+                          <span className="text-muted-foreground">
+                            {line.color} · {line.sizeLabel} · Qty{" "}
+                            {line.quantity}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <span className="grid justify-items-end tabular-nums">
+                            <span>
+                              {formatBdtPrice({
+                                amountBdt: line.grossAmountBdt,
+                              })}
+                            </span>
+                            {line.compareAtPriceBdt !== null &&
+                              line.compareAtPriceBdt > line.unitPriceBdt && (
+                                <del className="text-xs text-muted-foreground">
+                                  {formatBdtPrice({
+                                    amountBdt:
+                                      line.compareAtPriceBdt * line.quantity,
+                                  })}
+                                </del>
+                              )}
+                          </span>
+                          {order.canEditItems &&
+                            order.lines.length > 1 &&
+                            !itemEditorOpen &&
+                            !discountEditorOpen &&
+                            !cancelFormOpen && (
+                              <Button
+                                aria-label={`Remove ${line.productName}, ${line.color}, ${line.sizeLabel} from order`}
+                                title={`Remove ${line.productName}, ${line.color}, ${line.sizeLabel} from order`}
+                                className="text-muted-foreground hover:text-destructive"
+                                disabled={
+                                  statusPending ||
+                                  orderEditPending ||
+                                  (removeVariantId !== null &&
+                                    removeVariantId !== line.variantId)
+                                }
+                                onClick={() => {
+                                  setOrderEditError(null);
+                                  setRemoveVariantId(line.variantId);
+                                }}
+                                size="icon-sm"
+                                type="button"
+                                variant="ghost"
+                              >
+                                <Trash2 aria-hidden="true" />
+                              </Button>
                             )}
                         </span>
-                        {order.canEditItems &&
-                          order.lines.length > 1 &&
-                          !itemEditorOpen &&
-                          !discountEditorOpen &&
-                          !cancelFormOpen && (
-                            <Button
-                              aria-label={`Remove ${line.productName}, ${line.color}, ${line.sizeLabel} from order`}
-                              title={`Remove ${line.productName}, ${line.color}, ${line.sizeLabel} from order`}
-                              className="text-muted-foreground hover:text-destructive"
-                              disabled={
-                                statusPending ||
-                                orderEditPending ||
-                                (removeVariantId !== null &&
-                                  removeVariantId !== line.variantId)
-                              }
-                              onClick={() => {
-                                setOrderEditError(null);
-                                setRemoveVariantId(line.variantId);
-                              }}
-                              size="icon-sm"
-                              type="button"
-                              variant="ghost"
-                            >
-                              <Trash2 aria-hidden="true" />
-                            </Button>
-                          )}
+                      </div>
+                    </li>
+                  ))}
+                {order.comboGroups.map((group) => (
+                  <li className="grid gap-2 py-3 text-sm" key={group.id}>
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <span>
+                        <span className="block font-medium">
+                          {group.comboName}
+                        </span>
+                        <span className="text-muted-foreground">
+                          Sold as a complete set. · Qty {group.quantity}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-medium">
+                        {formatBdtPrice({
+                          amountBdt: getComboBillableAmount(group),
+                        })}
                       </span>
                     </div>
+                    <ul className="ml-4 list-disc text-muted-foreground">
+                      {group.selections.map((selection) => (
+                        <li key={selection.componentId}>
+                          {selection.productName} · {selection.color} ·{" "}
+                          {selection.sizeLabel}
+                        </li>
+                      ))}
+                    </ul>
+                    <span className="text-xs text-muted-foreground">
+                      Combo delivery:{" "}
+                      {group.deliveryOutcome.replaceAll("_", " ")}
+                    </span>
+                    {group.acceptedComponents.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        Received:{" "}
+                        {group.acceptedComponents
+                          .map((accepted) => {
+                            const selection = group.selections.find(
+                              (item) =>
+                                item.componentId === accepted.componentId,
+                            );
+                            return selection
+                              ? `${selection.productName} × ${accepted.quantity}`
+                              : null;
+                          })
+                          .filter(Boolean)
+                          .join(", ")}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

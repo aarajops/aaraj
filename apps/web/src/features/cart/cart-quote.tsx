@@ -380,9 +380,9 @@ export function CartQuote({
     quote,
     upazilaId,
   ]);
-  const hasUnavailableLines = cart.lines.some(
-    (line) => line.availability !== "available",
-  );
+  const hasUnavailableLines =
+    cart.lines.some((line) => line.availability !== "available") ||
+    cart.combos.some((combo) => combo.availability !== "available");
 
   const deliveryLocation = (
     <section

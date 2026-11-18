@@ -14,6 +14,7 @@ import {
   CatalogProductDetailImageSchema,
   CatalogProductImageSchema,
 } from "./media.js";
+import { CatalogComboSchema } from "./combos.js";
 import { CatalogSearchQuerySchema } from "./search.js";
 export { MAX_CATALOG_SEARCH_LENGTH } from "./search.js";
 
@@ -88,6 +89,7 @@ export const CatalogManagedProductVariantSchema = z.strictObject({
 
 export const CatalogProductSchema = z.strictObject({
   id: z.uuid(),
+  productType: z.enum(["single", "combo"]).default("single"),
   slug: CatalogProductSlugSchema,
   name: z.string().min(1).max(160),
   description: z.string().max(5000).nullable(),
@@ -130,20 +132,22 @@ export const CatalogProductDetailSchema = CatalogPublishedProductSchema.extend({
   images: CatalogProductDetailImageSchema.array().max(12),
   variants: CatalogProductVariantSchema.array(),
   sizeGuide: CatalogSizeGuideSchema.nullable(),
+  combo: CatalogComboSchema.nullable().default(null),
 });
 export type CatalogProductDetail = z.infer<typeof CatalogProductDetailSchema>;
 
 export const CatalogManagedProductDetailSchema = CatalogProductSchema.extend({
-  /** Monotonic revision for product fields and variant state used by If-Match. */
   editRevision: z.number().int().positive(),
   variants: CatalogManagedProductVariantSchema.array(),
   sizeGuide: CatalogSizeGuideSchema.nullable(),
+  combo: CatalogComboSchema.nullable().default(null),
 });
 export type CatalogManagedProductDetail = z.infer<
   typeof CatalogManagedProductDetailSchema
 >;
 
 const CatalogProductFieldsSchema = z.strictObject({
+  productType: z.enum(["single", "combo"]).optional(),
   slug: CatalogProductSlugSchema.optional(),
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(5000).nullable().optional(),
@@ -181,6 +185,7 @@ export type CatalogProductCreateInput = z.input<
 >;
 
 export const CatalogProductUpdateSchema = CatalogProductFieldsSchema.partial()
+  .omit({ productType: true })
   .extend({
     audience: CatalogAudienceSchema.nullable().optional(),
     categoryId: z.uuid().nullable().optional(),

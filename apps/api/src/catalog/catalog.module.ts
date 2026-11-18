@@ -4,8 +4,10 @@ import { DatabaseModule } from "../platform/database/database.module.js";
 import { PlatformAuthorizationModule } from "../platform/authorization/authorization.module.js";
 import { StorageModule } from "../platform/storage/storage.module.js";
 import { CatalogController } from "./catalog.controller.js";
+import { CatalogComboController } from "./catalog-combo.controller.js";
 import { CatalogPolicy } from "./catalog.policy.js";
 import { CatalogService } from "./catalog.service.js";
+import { CatalogComboService } from "./catalog-combo.service.js";
 import { CATALOG_INVENTORY_PORT } from "./catalog-inventory.port.js";
 import { CATALOG_CART_PORT } from "./catalog-cart.port.js";
 import { CatalogInventoryReader } from "./catalog-inventory.reader.js";
@@ -28,12 +30,14 @@ import { CatalogMediaPublicController } from "./media/catalog-media-public.contr
   ],
   controllers: [
     CatalogController,
+    CatalogComboController,
     CatalogMediaPublicController,
     CategoryController,
     SizeGuideController,
   ],
   providers: [
     CatalogService,
+    CatalogComboService,
     CatalogPolicy,
     CategoryService,
     SizeGuideService,

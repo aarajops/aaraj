@@ -158,6 +158,10 @@ export const catalogProduct = catalogSchema.table(
   "product",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    productType: text("product_type")
+      .$type<"single" | "combo">()
+      .notNull()
+      .default("single"),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
     description: text("description"),
@@ -204,7 +208,74 @@ export const catalogProduct = catalogSchema.table(
       "product_audience_check",
       sql`${table.audience} is null or ${table.audience} in ('men', 'women', 'unisex')`,
     ),
+    check(
+      "product_type_check",
+      sql`${table.productType} in ('single', 'combo')`,
+    ),
     check("product_edit_revision_check", sql`${table.editRevision} > 0`),
+  ],
+);
+
+export const catalogCombo = catalogSchema.table(
+  "combo",
+  {
+    productId: uuid("product_id")
+      .primaryKey()
+      .references(() => catalogProduct.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull().default(1),
+    selectionMode: text("selection_mode")
+      .$type<"fixed_combo" | "mix_colors_one_size" | "mix_sizes_and_colors">()
+      .notNull(),
+    priceBdt: integer("price_bdt").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check("combo_revision_check", sql`${table.revision} > 0`),
+    check(
+      "combo_selection_mode_check",
+      sql`${table.selectionMode} in ('fixed_combo', 'mix_colors_one_size', 'mix_sizes_and_colors')`,
+    ),
+    check("combo_price_check", sql`${table.priceBdt} between 0 and 2147483647`),
+  ],
+);
+
+export const catalogComboComponent = catalogSchema.table(
+  "combo_component",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    comboProductId: uuid("combo_product_id")
+      .notNull()
+      .references(() => catalogCombo.productId, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => catalogProduct.id, { onDelete: "restrict" }),
+    fixedColor: text("fixed_color"),
+    sortOrder: integer("sort_order").notNull(),
+  },
+  (table) => [
+    uniqueIndex("combo_component_product_uidx").on(
+      table.comboProductId,
+      table.productId,
+    ),
+    uniqueIndex("combo_component_order_uidx").on(
+      table.comboProductId,
+      table.sortOrder,
+    ),
+    index("combo_component_product_idx").on(table.productId),
+    check(
+      "combo_component_not_self_check",
+      sql`${table.productId} <> ${table.comboProductId}`,
+    ),
+    check("combo_component_order_check", sql`${table.sortOrder} >= 0`),
+    check(
+      "combo_component_fixed_color_check",
+      sql`${table.fixedColor} is null or (${table.fixedColor} = btrim(${table.fixedColor}) and length(${table.fixedColor}) between 1 and 80)`,
+    ),
   ],
 );
 

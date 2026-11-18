@@ -15,6 +15,7 @@ import type { OrderAddressSnapshotEnvelope } from "./order-address-crypto.js";
 import { user } from "../auth/auth-schema.js";
 import { quoteSnapshot } from "../quote/quote-schema.js";
 import { inventoryStockReservation } from "../inventory/inventory-schema.js";
+import { catalogProduct } from "../catalog/catalog-schema.js";
 
 export const ordersSchema = pgSchema("orders");
 
@@ -226,7 +227,7 @@ export const customerOrder = ordersSchema.table(
     check("order_cod_method_check", sql`${table.paymentMethod} = 'cod'`),
     check(
       "order_amount_check",
-      sql`${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.manualDiscountBdt} between 0 and ${table.merchandiseGrossBdt} and ${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.codAmountDueBdt} = ${table.totalBdt} and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt} - ${table.manualDiscountBdt}`,
+      sql`${table.merchandiseGrossBdt} between 0 and 9007199254740991 and ${table.manualDiscountBdt} between 0 and ${table.merchandiseGrossBdt} and ${table.deliveryAmountBdt} between 1 and 9007199254740991 and ${table.totalBdt} between 1 and 9007199254740991 and ${table.codAmountDueBdt} between 0 and ${table.totalBdt} and ${table.totalBdt} = ${table.merchandiseGrossBdt} + ${table.deliveryAmountBdt} - ${table.manualDiscountBdt}`,
     ),
     check(
       "order_snapshot_object_check",
@@ -302,6 +303,72 @@ export const orderPathaoBookingClaim = ordersSchema.table(
   ],
 );
 
+export const orderComboGroup = ordersSchema.table(
+  "combo_group",
+  {
+    id: uuid("id").primaryKey(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => customerOrder.id, { onDelete: "restrict" }),
+    comboProductId: uuid("combo_product_id")
+      .notNull()
+      .references(() => catalogProduct.id, { onDelete: "restrict" }),
+    comboRevision: integer("combo_revision").notNull(),
+    comboName: text("combo_name").notNull(),
+    selectionMode: text("selection_mode").notNull(),
+    quantity: integer("quantity").notNull(),
+    unitPriceBdt: bigint("unit_price_bdt", { mode: "number" }).notNull(),
+    grossAmountBdt: bigint("gross_amount_bdt", { mode: "number" }).notNull(),
+    selections: jsonb("selections").notNull(),
+    acceptedComponents: jsonb("accepted_components")
+      .$type<Array<{ componentId: string; quantity: number }>>()
+      .notNull()
+      .default([]),
+    deliveryOutcome: text("delivery_outcome")
+      .$type<
+        | "pending"
+        | "complete"
+        | "incomplete"
+        | "redelivered_complete"
+        | "declined"
+      >()
+      .notNull()
+      .default("pending"),
+    outcomeReason: text("outcome_reason"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("order_combo_group_order_idx").on(table.orderId, table.id),
+    check("order_combo_group_revision_check", sql`${table.comboRevision} > 0`),
+    check(
+      "order_combo_group_quantity_check",
+      sql`${table.quantity} between 1 and 10`,
+    ),
+    check(
+      "order_combo_group_selection_mode_check",
+      sql`${table.selectionMode} in ('fixed_combo', 'mix_colors_one_size', 'mix_sizes_and_colors')`,
+    ),
+    check(
+      "order_combo_group_amount_check",
+      sql`${table.unitPriceBdt} between 0 and 9007199254740991 and ${table.grossAmountBdt} between 0 and 9007199254740991 and ${table.grossAmountBdt} = ${table.unitPriceBdt} * ${table.quantity}`,
+    ),
+    check(
+      "order_combo_group_snapshot_check",
+      sql`jsonb_typeof(${table.selections}) = 'array' and jsonb_array_length(${table.selections}) between 2 and 10`,
+    ),
+    check(
+      "order_combo_group_accepted_components_check",
+      sql`jsonb_typeof(${table.acceptedComponents}) = 'array' and jsonb_array_length(${table.acceptedComponents}) <= 10`,
+    ),
+    check(
+      "order_combo_group_outcome_check",
+      sql`(${table.deliveryOutcome} in ('pending', 'complete', 'incomplete', 'redelivered_complete', 'declined') and ((${table.deliveryOutcome} = 'pending' and ${table.outcomeReason} is null) or (${table.deliveryOutcome} <> 'pending' and ${table.outcomeReason} is not null and ${table.outcomeReason} = btrim(${table.outcomeReason}) and length(${table.outcomeReason}) between 3 and 500)))`,
+    ),
+  ],
+);
+
 export const customerOrderLine = ordersSchema.table(
   "order_line",
   {
@@ -309,6 +376,9 @@ export const customerOrderLine = ordersSchema.table(
     orderId: uuid("order_id")
       .notNull()
       .references(() => customerOrder.id, { onDelete: "restrict" }),
+    comboGroupId: uuid("combo_group_id").references(() => orderComboGroup.id, {
+      onDelete: "restrict",
+    }),
     variantId: uuid("variant_id").notNull(),
     quantity: integer("quantity").notNull(),
     unitPriceBdt: bigint("unit_price_bdt", { mode: "number" }).notNull(),
@@ -316,9 +386,10 @@ export const customerOrderLine = ordersSchema.table(
     productSnapshot: jsonb("product_snapshot").notNull(),
   },
   (table) => [
-    uniqueIndex("order_line_order_variant_uidx").on(
+    uniqueIndex("order_line_order_variant_group_uidx").on(
       table.orderId,
       table.variantId,
+      sql`coalesce(${table.comboGroupId}, '00000000-0000-4000-8000-000000000000'::uuid)`,
     ),
     index("order_line_variant_idx").on(table.variantId),
     check("order_line_quantity_check", sql`${table.quantity} between 1 and 10`),

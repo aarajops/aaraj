@@ -7,8 +7,10 @@ import {
 } from "@nestjs/common";
 import {
   CheckoutDraftDetailSchema,
+  CheckoutDraftItemSchema,
   CheckoutDraftListSchema,
   CheckoutDraftSaveResultSchema,
+  type CheckoutDraftItem,
   type CheckoutDraftListQuery,
   type CheckoutDraftOutcomeInput,
   type CheckoutDraftSave,
@@ -16,6 +18,7 @@ import {
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
+import type { Cart } from "@aaraj/contracts";
 import { lockCartOwner } from "../cart/cart-owner-lock.js";
 import { parseGuestCartId } from "../cart/cart-cookie.js";
 import { DatabaseService } from "../platform/database/database.service.js";
@@ -80,6 +83,48 @@ export function readDraftItems(row: DraftRow) {
   return DraftItemsSchema.parse(row.items);
 }
 
+export function checkoutDraftItems(cart: Cart): CheckoutDraftItem[] {
+  return [
+    ...cart.lines.map((line) =>
+      CheckoutDraftItemSchema.parse({
+        kind: "single",
+        variantId: line.variantId,
+        productName: line.product.name,
+        color: line.product.color,
+        sizeLabel: line.product.sizeLabel,
+        quantity: line.quantity,
+      }),
+    ),
+    ...cart.combos.map((line) =>
+      CheckoutDraftItemSchema.parse({
+        kind: "combo",
+        lineId: line.lineId,
+        productId: line.productId,
+        comboRevision: line.comboRevision,
+        productName: line.name,
+        quantity: line.quantity,
+        unitPriceBdt: line.unitPriceBdt,
+        selections: line.selections.map(
+          ({ componentId, variantId, productName, color, sizeLabel }) => ({
+            componentId,
+            variantId,
+            productName,
+            color,
+            sizeLabel,
+          }),
+        ),
+      }),
+    ),
+  ];
+}
+
+export function checkoutDraftMatchesCart(
+  items: readonly CheckoutDraftItem[],
+  cart: Cart,
+): boolean {
+  return JSON.stringify(items) === JSON.stringify(checkoutDraftItems(cart));
+}
+
 export function readDraftDestination(row: DraftRow) {
   return DraftDestinationSchema.parse(row.destination);
 }
@@ -110,7 +155,11 @@ export class CheckoutDraftsService {
     input: CheckoutDraftSave,
   ) {
     const context = await this.cart.getQuoteContext(customerId, guestCartId);
-    if (!context.owner || context.cart.lines.length === 0) return null;
+    if (
+      !context.owner ||
+      (context.cart.lines.length === 0 && context.cart.combos.length === 0)
+    )
+      return null;
     const owner = context.owner;
     const phone = normalizePhone(input.phone);
     const form = DraftFormSchema.parse({
@@ -118,13 +167,7 @@ export class CheckoutDraftsService {
       phone,
       doorstepDetails: input.doorstepDetails.normalize("NFC").trim(),
     });
-    const items = context.cart.lines.map((line) => ({
-      variantId: line.variantId,
-      productName: line.product.name,
-      color: line.product.color,
-      sizeLabel: line.product.sizeLabel,
-      quantity: line.quantity,
-    }));
+    const items = checkoutDraftItems(context.cart);
     let quote = null;
     if (input.quoteId) {
       try {
@@ -152,14 +195,10 @@ export class CheckoutDraftsService {
       );
       if (
         !currentCart.owner ||
-        currentCart.cart.lines.length === 0 ||
+        (currentCart.cart.lines.length === 0 &&
+          currentCart.cart.combos.length === 0) ||
         currentCart.cart.revision !== context.cart.revision ||
-        currentCart.cart.lines.length !== items.length ||
-        items.some(
-          (line, index) =>
-            line.variantId !== currentCart.cart.lines[index]?.variantId ||
-            line.quantity !== currentCart.cart.lines[index]?.quantity,
-        )
+        !checkoutDraftMatchesCart(items, currentCart.cart)
       ) {
         return null;
       }
@@ -228,7 +267,7 @@ export class CheckoutDraftsService {
         !existing ||
         existing.cartRevision !== context.cart.revision ||
         JSON.stringify(readDraftForm(existing)) !== JSON.stringify(form) ||
-        JSON.stringify(existing.items) !== JSON.stringify(items) ||
+        JSON.stringify(readDraftItems(existing)) !== JSON.stringify(items) ||
         JSON.stringify(existing.destination) !== JSON.stringify(destination) ||
         existing.estimatedTotalBdt !== (quote?.totalBdt ?? null) ||
         existing.deliveryZone !== (quote?.delivery.zone ?? null);

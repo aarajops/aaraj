@@ -29,14 +29,20 @@ export function CartSheet() {
   const refresh = useCartStore((state) => state.refresh);
   const setLine = useCartStore((state) => state.setLine);
   const removeLine = useCartStore((state) => state.removeLine);
-  const totalQuantity = cart.lines.reduce(
-    (total, line) => total + line.quantity,
-    0,
-  );
-  const subtotal = cart.lines.reduce(
-    (total, line) => total + line.product.unitPriceBdt * line.quantity,
-    0,
-  );
+  const setComboQuantity = useCartStore((state) => state.setComboQuantity);
+  const removeCombo = useCartStore((state) => state.removeCombo);
+  const totalQuantity =
+    cart.lines.reduce((total, line) => total + line.quantity, 0) +
+    cart.combos.reduce((total, combo) => total + combo.quantity, 0);
+  const subtotal =
+    cart.lines.reduce(
+      (total, line) => total + line.product.unitPriceBdt * line.quantity,
+      0,
+    ) +
+    cart.combos.reduce(
+      (total, combo) => total + combo.unitPriceBdt * combo.quantity,
+      0,
+    );
 
   useEffect(() => {
     void refresh();
@@ -92,7 +98,7 @@ export function CartSheet() {
                 ? "Loading your cart…"
                 : "Your cart could not be loaded."}
             </p>
-          ) : cart.lines.length === 0 ? (
+          ) : cart.lines.length === 0 && cart.combos.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center">
               <ShoppingBag
                 aria-hidden="true"
@@ -252,11 +258,127 @@ export function CartSheet() {
                   </div>
                 </li>
               ))}
+              {cart.combos.map((combo) => (
+                <li className="flex items-start gap-3 py-4" key={combo.lineId}>
+                  {combo.image && (
+                    <div className="size-16 shrink-0 overflow-hidden rounded-md bg-muted">
+                      <Image
+                        alt=""
+                        aria-hidden="true"
+                        className="size-full object-cover"
+                        height={combo.image.height}
+                        src={combo.image.src}
+                        unoptimized
+                        width={combo.image.width}
+                      />
+                    </div>
+                  )}
+                  <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        className="text-sm font-medium leading-5 hover:underline"
+                        href={`/shop/products/${combo.slug}`}
+                        onNavigate={() => setOpen(false)}
+                      >
+                        {combo.name}
+                      </Link>
+                      <p className="mt-1 text-xs font-medium">
+                        Sold as a complete set.
+                      </p>
+                      <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                        {combo.selections.map((selection) => (
+                          <li key={selection.componentId}>
+                            {selection.productName} · {selection.color} ·{" "}
+                            {selection.sizeLabel}
+                          </li>
+                        ))}
+                      </ul>
+                      {combo.availability !== "available" && (
+                        <p className="mt-2 text-xs text-destructive">
+                          This combo is unavailable. Remove it before checkout.
+                        </p>
+                      )}
+                      <div className="mt-2 flex items-center gap-2">
+                        <div
+                          aria-label={`Quantity for ${combo.name} combo`}
+                          className="inline-flex h-9 items-center gap-1 rounded-lg border border-input px-1"
+                          role="group"
+                        >
+                          <Button
+                            aria-label={`Decrease quantity for ${combo.name} combo`}
+                            disabled={
+                              isMutating ||
+                              combo.availability !== "available" ||
+                              combo.quantity <= 1
+                            }
+                            onClick={() =>
+                              void setComboQuantity(
+                                combo.lineId,
+                                combo.quantity - 1,
+                              )
+                            }
+                            size="icon-lg"
+                            variant="ghost"
+                          >
+                            <Minus aria-hidden="true" />
+                          </Button>
+                          <span
+                            aria-live="polite"
+                            className="min-w-5 text-center text-sm tabular-nums"
+                          >
+                            {combo.quantity}
+                          </span>
+                          <Button
+                            aria-label={`Increase quantity for ${combo.name} combo`}
+                            disabled={
+                              isMutating ||
+                              combo.availability !== "available" ||
+                              combo.quantity >= MAX_CART_QUANTITY_PER_VARIANT
+                            }
+                            onClick={() =>
+                              void setComboQuantity(
+                                combo.lineId,
+                                combo.quantity + 1,
+                              )
+                            }
+                            size="icon-lg"
+                            variant="ghost"
+                          >
+                            <Plus aria-hidden="true" />
+                          </Button>
+                        </div>
+                        <Button
+                          aria-label={`Remove ${combo.name} combo`}
+                          disabled={isMutating}
+                          onClick={() => void removeCombo(combo.lineId)}
+                          size="icon-sm"
+                          variant="ghost"
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="whitespace-nowrap text-sm font-medium tabular-nums">
+                        {formatBdtPrice({
+                          amountBdt: combo.unitPriceBdt * combo.quantity,
+                        })}
+                      </p>
+                      {combo.quantity > 1 && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatBdtPrice({ amountBdt: combo.unitPriceBdt })}{" "}
+                          each
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
             </ul>
           )}
         </div>
 
-        {isReady && cart.lines.length > 0 && (
+        {isReady && (cart.lines.length > 0 || cart.combos.length > 0) && (
           <SheetFooter className="w-full border-t border-border sm:p-6">
             <div className="flex items-center justify-between gap-4 py-2 text-base font-semibold">
               <span>Subtotal</span>

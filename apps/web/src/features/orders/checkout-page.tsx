@@ -125,7 +125,7 @@ function SinglePageCheckout({
     if (
       captureStopped.current ||
       !ready ||
-      cart.lines.length === 0 ||
+      (cart.lines.length === 0 && cart.combos.length === 0) ||
       !/^01[3-9]\d{8}$/.test(phone)
     ) {
       draftPayload.current = null;
@@ -170,6 +170,7 @@ function SinglePageCheckout({
     ready,
     cart.revision,
     cart.lines.length,
+    cart.combos.length,
   ]);
 
   useEffect(() => {
@@ -198,13 +199,33 @@ function SinglePageCheckout({
   }, []);
 
   useEffect(() => {
-    if (!ready || cart.lines.length === 0 || checkoutEventSent.current) {
+    if (
+      !ready ||
+      (cart.lines.length === 0 && cart.combos.length === 0) ||
+      checkoutEventSent.current
+    ) {
       return;
     }
     const sent = sendEcommerceEvent("begin_checkout", {
       currency: cart.currency,
-      value: cartValue(cart.lines),
-      items: cart.lines.map((line) => cartItem(line)),
+      value:
+        cartValue(cart.lines) +
+        cart.combos.reduce(
+          (total, combo) => total + combo.unitPriceBdt * combo.quantity,
+          0,
+        ),
+      items: [
+        ...cart.lines.map((line) => cartItem(line)),
+        ...cart.combos.map((combo) => ({
+          item_id: combo.productId,
+          item_name: combo.name,
+          item_variant: combo.selections
+            .map(({ color, sizeLabel }) => `${color} / ${sizeLabel}`)
+            .join(", "),
+          price: combo.unitPriceBdt,
+          quantity: combo.quantity,
+        })),
+      ],
     });
     if (sent) checkoutEventSent.current = true;
   }, [cart, ready]);
@@ -385,7 +406,7 @@ function SinglePageCheckout({
           </div>
         )}
 
-        {ready && cart.lines.length === 0 && (
+        {ready && cart.lines.length === 0 && cart.combos.length === 0 && (
           <section className="mt-8 border-t border-border py-6">
             <h2 className="font-semibold">Your cart is empty</h2>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -400,7 +421,7 @@ function SinglePageCheckout({
           </section>
         )}
 
-        {ready && cart.lines.length > 0 && (
+        {ready && (cart.lines.length > 0 || cart.combos.length > 0) && (
           <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)] lg:gap-12">
             <div className="grid content-start gap-8">
               <CartQuote
@@ -550,9 +571,11 @@ function CheckoutOrderSummary({
   const isCartMutating = useCartStore((state) => state.isMutating);
   const setCartLine = useCartStore((state) => state.setLine);
   const removeCartLine = useCartStore((state) => state.removeLine);
-  const hasUnavailableLines = cart.lines.some(
-    (line) => line.availability !== "available",
-  );
+  const setCartComboQuantity = useCartStore((state) => state.setComboQuantity);
+  const removeCartCombo = useCartStore((state) => state.removeCombo);
+  const hasUnavailableLines =
+    cart.lines.some((line) => line.availability !== "available") ||
+    cart.combos.some((combo) => combo.availability !== "available");
   return (
     <aside
       aria-label="Order summary"
@@ -681,6 +704,99 @@ function CheckoutOrderSummary({
             </li>
           );
         })}
+        {cart.combos.map((combo) => {
+          const quotedCombo = quote?.comboGroups.find(
+            ({ groupId }) => groupId === combo.lineId,
+          );
+          const selections = quotedCombo?.selections ?? combo.selections;
+          const unitPriceBdt = quotedCombo?.unitPriceBdt ?? combo.unitPriceBdt;
+          return (
+            <li
+              className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2 py-4"
+              key={combo.lineId}
+            >
+              <Button
+                aria-label={`Remove ${combo.name} combo`}
+                className="text-muted-foreground hover:text-destructive"
+                disabled={isCartMutating || isSubmitting}
+                onClick={() => void removeCartCombo(combo.lineId)}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
+              <div className="min-w-0">
+                <p className="font-medium">{combo.name}</p>
+                <p className="mt-1 text-sm font-medium">
+                  Sold as a complete set.
+                </p>
+                <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                  {selections.map((selection) => (
+                    <li key={selection.componentId}>
+                      {selection.productName} · {selection.color} ·{" "}
+                      {selection.sizeLabel}
+                    </li>
+                  ))}
+                </ul>
+                {combo.availability !== "available" && (
+                  <p className="mt-1 text-sm text-destructive">
+                    This combo is unavailable. Remove it before checkout.
+                  </p>
+                )}
+              </div>
+              <div
+                aria-label={`Quantity for ${combo.name} combo`}
+                className="inline-flex h-8 items-center justify-self-end rounded-lg border border-input px-0.5"
+                role="group"
+              >
+                <Button
+                  aria-label={`Decrease quantity for ${combo.name} combo`}
+                  disabled={
+                    isCartMutating ||
+                    isSubmitting ||
+                    combo.availability !== "available" ||
+                    combo.quantity <= 1
+                  }
+                  onClick={() =>
+                    void setCartComboQuantity(combo.lineId, combo.quantity - 1)
+                  }
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Minus aria-hidden="true" />
+                </Button>
+                <span
+                  aria-live="polite"
+                  className="min-w-7 text-center text-sm tabular-nums"
+                >
+                  {combo.quantity}
+                </span>
+                <Button
+                  aria-label={`Increase quantity for ${combo.name} combo`}
+                  disabled={
+                    isCartMutating ||
+                    isSubmitting ||
+                    combo.availability !== "available" ||
+                    combo.quantity >= MAX_CART_QUANTITY_PER_VARIANT
+                  }
+                  onClick={() =>
+                    void setCartComboQuantity(combo.lineId, combo.quantity + 1)
+                  }
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Plus aria-hidden="true" />
+                </Button>
+              </div>
+              <p className="whitespace-nowrap text-right font-medium">
+                {formatBdtPrice({ amountBdt: unitPriceBdt * combo.quantity })}
+              </p>
+            </li>
+          );
+        })}
       </ul>
       <dl className="grid gap-3 border-t border-border pt-4 text-sm">
         <div className="flex justify-between gap-4">
@@ -758,16 +874,29 @@ function createCheckoutPurchaseSnapshot(
     currency: quote.currency,
     value: quote.merchandiseGrossBdt,
     shipping: quote.delivery.grossAmountBdt,
-    items: quote.lines.map((line) =>
-      variantEcommerceItem({
-        variantId: line.variantId,
-        itemName: line.productName,
-        color: line.color,
-        sizeLabel: line.sizeLabel,
-        price: line.unitPriceBdt,
-        quantity: line.quantity,
-      }),
-    ),
+    items: [
+      ...quote.lines
+        .filter((line) => line.comboGroupId === null)
+        .map((line) =>
+          variantEcommerceItem({
+            variantId: line.variantId,
+            itemName: line.productName,
+            color: line.color,
+            sizeLabel: line.sizeLabel,
+            price: line.unitPriceBdt,
+            quantity: line.quantity,
+          }),
+        ),
+      ...quote.comboGroups.map((combo) => ({
+        item_id: combo.productId,
+        item_name: combo.comboName,
+        item_variant: combo.selections
+          .map(({ color, sizeLabel }) => `${color} / ${sizeLabel}`)
+          .join(", "),
+        price: combo.unitPriceBdt,
+        quantity: combo.quantity,
+      })),
+    ],
   });
 }
 
