@@ -400,6 +400,15 @@ export function CatalogManager({
         const response = await createCatalogProduct(input);
         if (!response.ok) {
           const problem = await readApiErrorResponse(response);
+          if (problem?.errorCode === "CATALOG_PRODUCT_SLUG_TAKEN") {
+            setError("slug", {
+              type: "server",
+              message:
+                getApiErrorMessage(problem) ??
+                "That product slug is already in use.",
+            });
+            return;
+          }
           setFormErrorMessage(
             getApiErrorMessage(problem) ?? "The product could not be created.",
           );
