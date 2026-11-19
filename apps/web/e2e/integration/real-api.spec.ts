@@ -4,11 +4,14 @@ import type { Locator, Page } from "@playwright/test";
 import { chooseSelectOption } from "../select";
 
 async function openRowActions(page: Page, row: Locator) {
+  await expect(row).toBeVisible();
   const actionsButton = row.getByRole("button", {
     name: /^Actions for .+ row \d+$/,
   });
   await expect(async () => {
-    await actionsButton.click();
+    if ((await actionsButton.getAttribute("aria-expanded")) !== "true") {
+      await actionsButton.click();
+    }
     await expect(actionsButton).toHaveAttribute("aria-expanded", "true", {
       timeout: 500,
     });
@@ -1271,13 +1274,13 @@ test("catalog operator configures a product through to storefront visibility", a
   expect(sitemapBody).not.toContain("/account");
   expect(sitemapBody).not.toContain("/admin");
 
-  await page.goto("/admin/inventory");
+  const inventorySearchUrl = `/admin/inventory?search=${encodeURIComponent(skuSmall)}`;
+  await page.goto(inventorySearchUrl);
   await expect(
     page.getByRole("heading", { name: "Inventory", level: 1 }),
   ).toBeVisible();
-  const smallVariantRow = page.getByRole("row").filter({
-    hasText: new RegExp(`${productName}.*Black\\s*·\\s*S`),
-  });
+  const smallVariantRow = page.getByRole("row").filter({ hasText: skuSmall });
+  await expect(smallVariantRow).toHaveCount(1);
   await openRowActions(page, smallVariantRow);
   const adjustmentLink = page.getByRole("menuitem", { name: "Adjust stock" });
   const adjustmentPath = await adjustmentLink.getAttribute("href");
@@ -1287,6 +1290,7 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByLabel("Reason").fill("Receive integration test stock");
   await page.getByRole("button", { name: "Receive stock" }).click();
   await expect(page).toHaveURL(/\/admin\/inventory$/);
+  await page.goto(inventorySearchUrl);
   await expect(smallVariantRow).toContainText("12");
   await page.goto(adjustmentPath!);
   await expect(
