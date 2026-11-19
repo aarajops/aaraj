@@ -16,6 +16,7 @@ import { HomepageCategorySection } from "@/features/storefront/homepage-category
 import { NewArrivalsSection } from "@/features/storefront/new-arrivals-section";
 import { getPublicStorefrontBanners } from "@/features/storefront/storefront-banners";
 import { StorefrontBanner } from "@/features/storefront/storefront-banner";
+import { HomepageSnowfall } from "@/features/storefront/homepage-snowfall";
 import { getStorefrontMetadataDefaults } from "@/features/storefront/storefront-metadata";
 import { getPublicStorefrontSettings } from "@/features/storefront/storefront-settings";
 
@@ -98,9 +99,11 @@ export default async function Home({
 
   return (
     <>
-      <Suspense fallback={null}>
-        <StorefrontHero />
-      </Suspense>
+      <div className="relative isolate overflow-hidden">
+        <Suspense fallback={null}>
+          <StorefrontHero />
+        </Suspense>
+      </div>
       <main className="bg-background px-5 py-14 text-foreground sm:py-20">
         <div className="container mx-auto">
           <HomepageCategorySection categories={homepageCategories} />
@@ -111,6 +114,7 @@ export default async function Home({
           />
         </div>
       </main>
+      <HomepageSnowfall />
     </>
   );
 }
