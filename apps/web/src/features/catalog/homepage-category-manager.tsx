@@ -3,7 +3,8 @@
 import { useState } from "react";
 import {
   StorefrontSettingsSchema,
-  type CatalogCategoryOption,
+  type CatalogManagedCategory,
+  type CatalogPublishedCategoryOption,
   type StorefrontSettings,
 } from "@aaraj/contracts";
 import { Button } from "@/components/ui/button";
@@ -32,8 +33,10 @@ import {
 
 export function HomepageCategoryManager({
   categories,
+  publishedCategories,
 }: {
-  categories: CatalogCategoryOption[];
+  categories: CatalogManagedCategory[];
+  publishedCategories: CatalogPublishedCategoryOption[] | null;
 }) {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<StorefrontSettings | null>(null);
@@ -54,7 +57,7 @@ export function HomepageCategoryManager({
         const problem = await readApiErrorResponse(response);
         throw new Error(
           getApiErrorMessage(problem) ??
-            "Homepage category settings could not be loaded.",
+            "Featured category settings could not be loaded.",
         );
       }
       const body: unknown = await response.json().catch(() => null);
@@ -69,7 +72,7 @@ export function HomepageCategoryManager({
       setError(
         loadError instanceof Error
           ? loadError.message
-          : "Homepage category settings could not be loaded.",
+          : "Featured category settings could not be loaded.",
       );
     } finally {
       setLoading(false);
@@ -117,7 +120,7 @@ export function HomepageCategoryManager({
         const problem = await readApiErrorResponse(response);
         throw new Error(
           getApiErrorMessage(problem) ??
-            "Homepage categories could not be saved.",
+            "Featured categories could not be saved.",
         );
       }
       const result = StorefrontSettingsSchema.safeParse(await response.json());
@@ -127,12 +130,12 @@ export function HomepageCategoryManager({
       setSettings(result.data);
       setSelectedCategoryIds(result.data.homepageCategoryIds);
       setEnabled(result.data.homepageCategoriesEnabled);
-      setStatus("Homepage categories saved.");
+      setStatus("Featured categories saved.");
     } catch (saveError) {
       setError(
         saveError instanceof Error
           ? saveError.message
-          : "Homepage categories could not be saved.",
+          : "Featured categories could not be saved.",
       );
     } finally {
       setSaving(false);
@@ -142,13 +145,15 @@ export function HomepageCategoryManager({
   return (
     <Sheet onOpenChange={handleOpenChange} open={open}>
       <SheetTrigger render={<Button size="lg" variant="outline" />}>
-        Homepage categories
+        Featured categories
       </SheetTrigger>
       <SheetContent className="gap-0 sm:max-w-lg">
         <SheetHeader className="border-b pr-12">
-          <SheetTitle>Homepage categories</SheetTitle>
+          <SheetTitle>Featured categories</SheetTitle>
           <SheetDescription>
-            Choose which categories appear on the homepage and set their order.
+            Choose active categories for the homepage and set their display
+            order. Categories appear to shoppers when they have published
+            products.
           </SheetDescription>
         </SheetHeader>
 
@@ -161,6 +166,7 @@ export function HomepageCategoryManager({
             <>
               <HomepageCategorySettings
                 categories={categories}
+                publishedCategories={publishedCategories}
                 selectedCategoryIds={selectedCategoryIds}
                 enabled={enabled}
                 disabled={saving}

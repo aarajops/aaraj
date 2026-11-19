@@ -6,7 +6,7 @@ import {
   CatalogCategoryManagementListQuerySchema,
   CatalogCategorySlugSuggestionSchema,
   type CatalogManagedCategory,
-  type CatalogCategoryOption,
+  type CatalogPublishedCategoryOption,
   type CatalogCategoryManagementListQuery,
   type CatalogCategoryPage,
 } from "@aaraj/contracts";
@@ -77,13 +77,15 @@ export function CategoryManager({
   initialCategory,
   initialPage,
   homepageCategoryOptions = [],
+  publishedHomepageCategories = null,
   query = defaultCategoryTableQuery,
 }: {
   view?: "list" | "create" | "edit";
   initialCategories?: CatalogManagedCategory[];
   initialCategory?: CatalogManagedCategory;
   initialPage?: CatalogCategoryPage;
-  homepageCategoryOptions?: CatalogCategoryOption[];
+  homepageCategoryOptions?: CatalogManagedCategory[];
+  publishedHomepageCategories?: CatalogPublishedCategoryOption[] | null;
   query?: CatalogCategoryManagementListQuery;
 }) {
   const router = useRouter();
@@ -274,7 +276,7 @@ export function CategoryManager({
 
   const parentOptions = (
     view === "list"
-      ? homepageCategoryOptions
+      ? homepageCategoryOptions.filter(({ isActive }) => isActive)
       : categories.filter((category) => category.isActive)
   )
     .filter((category) => category.id !== editingId)
@@ -479,7 +481,10 @@ export function CategoryManager({
           actions={
             view === "list" && (
               <>
-                <HomepageCategoryManager categories={homepageCategoryOptions} />
+                <HomepageCategoryManager
+                  categories={homepageCategoryOptions}
+                  publishedCategories={publishedHomepageCategories}
+                />
                 <Button onClick={openCreateSheet} size="lg" type="button">
                   Create category
                 </Button>

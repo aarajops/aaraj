@@ -1,11 +1,11 @@
-import type { CatalogCategoryOption } from "@aaraj/contracts";
+import type { CatalogPublishedCategoryOption } from "@aaraj/contracts";
 import { Heading } from "@/components/ui/heading";
-import { HomepageCategoryCarousel } from "./homepage-category-carousel";
+import { HomepageCategoryGrid } from "./homepage-category-grid";
 
 export function HomepageCategorySection({
   categories,
 }: {
-  categories: CatalogCategoryOption[];
+  categories: CatalogPublishedCategoryOption[];
 }) {
   if (categories.length === 0) return null;
 
@@ -20,9 +20,9 @@ export function HomepageCategorySection({
         id="homepage-categories-title"
         variant="section"
       >
-        Shop by category
+        Featured categories
       </Heading>
-      <HomepageCategoryCarousel categories={categories} />
+      <HomepageCategoryGrid categories={categories} />
     </section>
   );
 }

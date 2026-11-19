@@ -3,8 +3,9 @@ import Link from "next/link";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { CategoryManager } from "@/features/catalog/category-manager";
 import {
-  getPublicCatalogCategories,
+  getManagedCategories,
   getManagedCategoryPage,
+  getPublishedProductFilterOptions,
   parseCatalogCategoryTableQuery,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
@@ -20,9 +21,10 @@ export default async function StaffCatalogCategoriesPage({
   searchParams: Promise<CatalogPageSearchParams>;
 }) {
   const query = parseCatalogCategoryTableQuery(await searchParams);
-  const [result, categoryOptions] = await Promise.all([
+  const [result, managedCategories, productFilters] = await Promise.all([
     getManagedCategoryPage(query),
-    getPublicCatalogCategories(),
+    getManagedCategories(),
+    getPublishedProductFilterOptions(),
   ]);
   if ("kind" in result) {
     const message =
@@ -62,7 +64,10 @@ export default async function StaffCatalogCategoriesPage({
     <CategoryManager
       key={JSON.stringify(query)}
       initialPage={result.page}
-      homepageCategoryOptions={categoryOptions}
+      homepageCategoryOptions={
+        "categories" in managedCategories ? managedCategories.categories : []
+      }
+      publishedHomepageCategories={productFilters?.categories ?? null}
       query={query}
     />
   );

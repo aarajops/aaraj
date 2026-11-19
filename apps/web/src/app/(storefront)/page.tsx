@@ -9,10 +9,11 @@ import {
 } from "@aaraj/contracts";
 import {
   getPublishedProducts,
-  getPublicCatalogCategories,
+  getPublishedProductFilterOptions,
   type CatalogPageSearchParams,
 } from "@/features/catalog/catalog-queries";
 import { HomepageCategorySection } from "@/features/storefront/homepage-category-section";
+import { resolveHomepageCategories } from "@/features/storefront/homepage-categories";
 import { NewArrivalsSection } from "@/features/storefront/new-arrivals-section";
 import { getPublicStorefrontBanners } from "@/features/storefront/storefront-banners";
 import { StorefrontBanner } from "@/features/storefront/storefront-banner";
@@ -70,7 +71,7 @@ export default async function Home({
       : null;
   const audience = audienceResult?.success ? audienceResult.data : "unisex";
   const settingsPromise = getPublicStorefrontSettings();
-  const [settings, newArrivals, categoryOptions] = await Promise.all([
+  const [settings, newArrivals] = await Promise.all([
     settingsPromise,
     getPublishedProducts(
       CatalogPublishedProductListQuerySchema.parse({
@@ -80,22 +81,21 @@ export default async function Home({
         audience,
       }),
     ),
-    settingsPromise.then((storefrontSettings) =>
-      storefrontSettings.homepageCategoriesEnabled &&
-      storefrontSettings.homepageCategoryIds.length > 0
-        ? getPublicCatalogCategories()
-        : [],
-    ),
   ]);
-  const categoriesById = new Map(
-    categoryOptions.map((category) => [category.id, category]),
+  let publishedCategories = newArrivals?.filters.categories ?? null;
+  if (
+    settings.homepageCategoriesEnabled &&
+    settings.homepageCategoryIds.length > 0 &&
+    publishedCategories === null
+  ) {
+    publishedCategories =
+      (await getPublishedProductFilterOptions())?.categories ?? [];
+  }
+  const homepageCategories = resolveHomepageCategories(
+    settings.homepageCategoriesEnabled,
+    settings.homepageCategoryIds,
+    publishedCategories ?? [],
   );
-  const homepageCategories = settings.homepageCategoriesEnabled
-    ? settings.homepageCategoryIds.flatMap((id) => {
-        const category = categoriesById.get(id);
-        return category ? [category] : [];
-      })
-    : [];
 
   return (
     <>

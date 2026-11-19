@@ -996,6 +996,48 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog\/categories$/);
 
+  await page.getByRole("button", { name: "Featured categories" }).click();
+  const featuredCategoriesToggle = page.getByRole("switch", {
+    name: "Show featured categories on homepage",
+  });
+  await featuredCategoriesToggle.click();
+  await expect(featuredCategoriesToggle).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await chooseSelectOption(
+    page,
+    "Add category",
+    `${categoryName} · no published products yet`,
+  );
+  await expect(
+    page.getByText("Not shown until it has published products"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Featured categories saved." }),
+  ).toBeVisible();
+  const configuredCategory = (
+    await page.request
+      .get("/api/v1/catalog/categories")
+      .then((response) => response.json())
+  ).categories.find(
+    (category: { slug: string }) => category.slug === `e2e-clothing-${suffix}`,
+  );
+  expect(configuredCategory).toBeTruthy();
+  expect(
+    await page.request
+      .get("/api/v1/storefront/settings")
+      .then((response) => response.json()),
+  ).toMatchObject({
+    homepageCategoriesEnabled: true,
+    homepageCategoryIds: [configuredCategory.id],
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Featured categories" }),
+  ).toHaveCount(0);
+
   await page.goto("/admin/catalog/size-guides/create");
   await expect(
     page.getByRole("heading", { name: "Create size guide", level: 1 }),
@@ -1107,6 +1149,19 @@ test("catalog operator configures a product through to storefront visibility", a
   await page.getByLabel("Published on the storefront").check();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(/\/admin\/catalog$/);
+
+  await page.goto("/");
+  const featuredCategoryLink = page.locator(
+    `a[href="/shop/categories/e2e-clothing-${suffix}"]`,
+  );
+  await expect(featuredCategoryLink).toBeVisible();
+  await expect(featuredCategoryLink).toContainText(categoryName);
+  await expect(featuredCategoryLink).toContainText("1 product");
+  await featuredCategoryLink.click();
+  await expect(page).toHaveURL(`/shop/categories/e2e-clothing-${suffix}`);
+  await expect(
+    page.locator(`a[href="/shop/products/${slug}"]`).first(),
+  ).toBeVisible();
 
   await page.goto("/shop");
   await expect(
