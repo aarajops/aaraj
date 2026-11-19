@@ -21,10 +21,7 @@ export function HomepageSnowfall() {
   }, []);
 
   useEffect(() => {
-    if (!motionAllowed) {
-      setSnowflakeImage(null);
-      return;
-    }
+    if (!motionAllowed || snowflakeImage) return;
 
     const image = new window.Image();
     image.onload = () => setSnowflakeImage(image);
@@ -33,7 +30,7 @@ export function HomepageSnowfall() {
     return () => {
       image.onload = null;
     };
-  }, [motionAllowed]);
+  }, [motionAllowed, snowflakeImage]);
 
   if (!motionAllowed || !snowflakeImage) return null;
 
