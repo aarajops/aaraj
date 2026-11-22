@@ -220,10 +220,6 @@ export function ComboPurchase({
   async function addSelectedCombo(buyNow = false) {
     if (!complete || !inStock) return;
     setStatus(null);
-    if (!isReady) {
-      await refresh();
-      return;
-    }
     const selections = selectedItems.flatMap(
       ({ component, variant, quantity }) =>
         Array.from({ length: quantity }, () => ({
@@ -708,7 +704,7 @@ export function ComboPurchase({
       <div className="grid grid-cols-2 gap-3">
         <Button
           className="w-full"
-          disabled={blocked || !isReady || Boolean(error)}
+          disabled={blocked || Boolean(error)}
           onClick={() => void addSelectedCombo()}
           size="lg"
           type="button"
@@ -723,7 +719,7 @@ export function ComboPurchase({
         </Button>
         <Button
           className="w-full"
-          disabled={blocked || !isReady || Boolean(error)}
+          disabled={blocked || Boolean(error)}
           onClick={() => void addSelectedCombo(true)}
           size="lg"
           type="button"
@@ -748,7 +744,7 @@ export function ComboPurchase({
           {error}
         </p>
       )}
-      {!isReady && !error && (
+      {!isReady && isLoading && !error && (
         <p
           className="flex items-center gap-2 text-sm text-muted-foreground"
           role="status"
@@ -785,7 +781,7 @@ export function ComboPurchase({
         />
         <Button
           className="w-auto"
-          disabled={blocked || !isReady || Boolean(error)}
+          disabled={blocked || Boolean(error)}
           onClick={() => void addSelectedCombo(true)}
           size="lg"
           type="button"
