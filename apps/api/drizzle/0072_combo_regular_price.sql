@@ -1,0 +1,2 @@
+ALTER TABLE "catalog"."combo" ADD COLUMN "compare_at_price_bdt" integer;--> statement-breakpoint
+ALTER TABLE "catalog"."combo" ADD CONSTRAINT "combo_compare_at_price_check" CHECK ("catalog"."combo"."compare_at_price_bdt" is null or ("catalog"."combo"."compare_at_price_bdt" between 0 and 2147483647 and "catalog"."combo"."compare_at_price_bdt" > "catalog"."combo"."price_bdt"));

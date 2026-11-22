@@ -31,6 +31,7 @@ export const CatalogComboConfigurationInputSchema = z
   .strictObject({
     selectionMode: CatalogComboSelectionModeSchema,
     price: ComboPriceSchema,
+    compareAtPrice: ComboPriceSchema.nullable().optional(),
     itemCount: z.number().int().min(2).max(MAX_COMBO_COMPONENTS).optional(),
     components: z
       .array(CatalogComboComponentInputSchema)
@@ -40,6 +41,17 @@ export const CatalogComboConfigurationInputSchema = z
   .check(({ value, issues }) => {
     const itemCount = value.itemCount ?? value.components.length;
     const productIds = new Set<string>();
+    if (
+      value.compareAtPrice &&
+      value.compareAtPrice.amountBdt <= value.price.amountBdt
+    ) {
+      issues.push({
+        code: "custom",
+        path: ["compareAtPrice"],
+        message: "The regular price must be higher than the combo price.",
+        input: value.compareAtPrice,
+      });
+    }
     if (itemCount < 2) {
       issues.push({
         code: "custom",
@@ -141,6 +153,7 @@ export type CatalogComboComponent = z.infer<typeof CatalogComboComponentSchema>;
 export const CatalogComboSchema = z.strictObject({
   selectionMode: CatalogComboSelectionModeSchema,
   price: ComboPriceSchema,
+  compareAtPrice: ComboPriceSchema.nullable(),
   itemCount: z.number().int().min(2).max(MAX_COMBO_COMPONENTS),
   revision: z.number().int().positive(),
   components: z

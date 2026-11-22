@@ -228,6 +228,7 @@ export const catalogCombo = catalogSchema.table(
       .notNull(),
     itemCount: integer("item_count").notNull(),
     priceBdt: integer("price_bdt").notNull(),
+    compareAtPriceBdt: integer("compare_at_price_bdt"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -243,6 +244,10 @@ export const catalogCombo = catalogSchema.table(
     ),
     check("combo_item_count_check", sql`${table.itemCount} between 2 and 10`),
     check("combo_price_check", sql`${table.priceBdt} between 0 and 2147483647`),
+    check(
+      "combo_compare_at_price_check",
+      sql`${table.compareAtPriceBdt} is null or (${table.compareAtPriceBdt} between 0 and 2147483647 and ${table.compareAtPriceBdt} > ${table.priceBdt})`,
+    ),
   ],
 );
 

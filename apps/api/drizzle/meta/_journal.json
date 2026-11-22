@@ -505,6 +505,13 @@
       "when": 1795085950403,
       "tag": "0071_combo_fixed_source_reuse",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1795345034214,
+      "tag": "0072_combo_regular_price",
+      "breakpoints": true
     }
   ]
 }

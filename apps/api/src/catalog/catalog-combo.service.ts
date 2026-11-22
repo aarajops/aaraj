@@ -78,6 +78,10 @@ export class CatalogComboService {
       }
       await validateComboConfiguration(transaction, productId, input);
       const currentCombo = await loadCombo(transaction, productId);
+      const compareAtPriceBdt =
+        input.compareAtPrice === undefined
+          ? (currentCombo?.compareAtPrice?.amountBdt ?? null)
+          : (input.compareAtPrice?.amountBdt ?? null);
       if (currentCombo && currentCombo.itemCount !== input.itemCount) {
         throw new BadRequestException(
           "The number of items in a combo is fixed after it is created.",
@@ -88,6 +92,7 @@ export class CatalogComboService {
         currentCombo.selectionMode === input.selectionMode &&
         currentCombo.itemCount === input.itemCount &&
         currentCombo.price.amountBdt === input.price.amountBdt &&
+        currentCombo.compareAtPrice?.amountBdt === compareAtPriceBdt &&
         currentCombo.components.length === input.components.length &&
         currentCombo.components.every((component, index) => {
           const next = input.components[index];
@@ -107,6 +112,7 @@ export class CatalogComboService {
           selectionMode: input.selectionMode,
           itemCount: input.itemCount,
           priceBdt: input.price.amountBdt,
+          compareAtPriceBdt,
         })
         .onConflictDoUpdate({
           target: catalogCombo.productId,
@@ -114,6 +120,7 @@ export class CatalogComboService {
             selectionMode: input.selectionMode,
             itemCount: input.itemCount,
             priceBdt: input.price.amountBdt,
+            compareAtPriceBdt,
             revision: sql`${catalogCombo.revision} + 1`,
             updatedAt: sql`clock_timestamp()`,
           },
@@ -161,6 +168,7 @@ export class CatalogComboService {
           itemCount: input.itemCount,
           componentProductIds: input.components.map(({ productId: id }) => id),
           priceBdt: input.price.amountBdt,
+          compareAtPriceBdt,
           productRevision: updatedProduct.editRevision,
         },
       });

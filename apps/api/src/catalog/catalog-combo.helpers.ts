@@ -129,6 +129,7 @@ export async function loadCombos(
       selectionMode: catalogCombo.selectionMode,
       itemCount: catalogCombo.itemCount,
       priceBdt: catalogCombo.priceBdt,
+      compareAtPriceBdt: catalogCombo.compareAtPriceBdt,
     })
     .from(catalogCombo)
     .innerJoin(catalogProduct, eq(catalogProduct.id, catalogCombo.productId))
@@ -177,6 +178,10 @@ export async function loadCombos(
         selectionMode: combo.selectionMode,
         itemCount: combo.itemCount,
         price: { amountBdt: combo.priceBdt },
+        compareAtPrice:
+          combo.compareAtPriceBdt === null
+            ? null
+            : { amountBdt: combo.compareAtPriceBdt },
         revision: combo.revision,
         components: (componentsByCombo.get(combo.productId) ?? []).map(
           (component) => ({

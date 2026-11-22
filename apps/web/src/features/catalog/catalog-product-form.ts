@@ -40,6 +40,7 @@ export interface ProductForm {
   variants: VariantDraft[];
   comboSelectionMode: CatalogComboSelectionMode;
   comboPriceBdt: string;
+  comboCompareAtPriceBdt: string;
   comboItemCount: string;
   comboComponents: { productId: string; fixedColor: string }[];
   isPublished: boolean;
@@ -60,6 +61,7 @@ export const blankProductForm: ProductForm = {
   variants: [],
   comboSelectionMode: "fixed_combo",
   comboPriceBdt: "",
+  comboCompareAtPriceBdt: "",
   comboItemCount: "2",
   comboComponents: [],
   isPublished: false,
@@ -134,11 +136,16 @@ function prepareProductSubmission(
     isPublished: form.isPublished,
   };
   const comboPriceBdt = parseBdtPrice(form.comboPriceBdt);
+  const comboCompareAtPriceBdt = parseBdtPrice(form.comboCompareAtPriceBdt);
   const comboConfiguration =
     form.productType === "combo" && comboPriceBdt !== null
       ? {
           selectionMode: form.comboSelectionMode,
           price: { amountBdt: comboPriceBdt },
+          compareAtPrice:
+            comboCompareAtPriceBdt === null
+              ? null
+              : { amountBdt: comboCompareAtPriceBdt },
           itemCount:
             form.comboSelectionMode === "fixed_combo"
               ? form.comboComponents.length
@@ -242,6 +249,7 @@ export const productFormSchema = z
     ),
     comboSelectionMode: CatalogComboSelectionModeSchema,
     comboPriceBdt: z.string(),
+    comboCompareAtPriceBdt: z.string(),
     comboItemCount: z.string(),
     comboComponents: z.array(
       z.strictObject({ productId: z.string(), fixedColor: z.string() }),
@@ -272,6 +280,15 @@ export const productFormSchema = z
           code: "custom",
           path: ["comboPriceBdt"],
           message: "Enter a whole BDT combo price, for example 2999.",
+        });
+      }
+      const compareAtPriceBdt = parseBdtPrice(form.comboCompareAtPriceBdt);
+      if (form.comboCompareAtPriceBdt.trim() && compareAtPriceBdt === null) {
+        context.addIssue({
+          code: "custom",
+          path: ["comboCompareAtPriceBdt"],
+          message:
+            "Enter the regular price as a whole BDT amount, for example 2499.",
         });
       }
       const minimumProducts = form.comboSelectionMode === "fixed_combo" ? 2 : 1;
@@ -369,7 +386,9 @@ export const productFormSchema = z
               path:
                 issue.path[0] === "components"
                   ? ["comboComponents"]
-                  : ["comboSelectionMode"],
+                  : issue.path[0] === "compareAtPrice"
+                    ? ["comboCompareAtPriceBdt"]
+                    : ["comboSelectionMode"],
               message:
                 issue.path[0] === "components" &&
                 issue.path.length === 1 &&
@@ -489,6 +508,9 @@ export function toProductFormState(
     })),
     comboSelectionMode: product.combo?.selectionMode ?? "fixed_combo",
     comboPriceBdt: formatBdtInput(product.combo?.price.amountBdt ?? null),
+    comboCompareAtPriceBdt: formatBdtInput(
+      product.combo?.compareAtPrice?.amountBdt ?? null,
+    ),
     comboItemCount: String(product.combo?.itemCount ?? 2),
     comboComponents:
       product.combo?.components.map((component) => ({

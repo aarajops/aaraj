@@ -518,7 +518,7 @@ export class CatalogService {
     for (const [productId, combo] of comboMap) {
       summaries.set(productId, {
         price: combo.price,
-        compareAtPrice: null,
+        compareAtPrice: combo.compareAtPrice,
         priceVaries: false,
         inStock: comboHasAvailableSet(combo),
       });
@@ -1500,6 +1500,7 @@ async function validateComboPublishability(
     selectionMode: combo.selectionMode,
     itemCount: combo.itemCount,
     price: combo.price,
+    compareAtPrice: combo.compareAtPrice,
     components: combo.components.map(({ productId, fixedColor }) => ({
       productId,
       fixedColor,
@@ -1795,7 +1796,7 @@ async function loadProductDetail(
       ? await loadCombo(transaction, product.id, true)
       : null;
   const startingPricing = combo
-    ? { price: combo.price, compareAtPrice: null }
+    ? { price: combo.price, compareAtPrice: combo.compareAtPrice }
     : lowestActiveVariantPricing(variants);
 
   return {
@@ -1868,13 +1869,17 @@ async function loadLowestVariantPricing(
     .select({
       productId: catalogCombo.productId,
       priceBdt: catalogCombo.priceBdt,
+      compareAtPriceBdt: catalogCombo.compareAtPriceBdt,
     })
     .from(catalogCombo)
     .where(inArray(catalogCombo.productId, productIds));
   for (const combo of combos) {
     pricing.set(combo.productId, {
       price: toCatalogPrice(combo.priceBdt),
-      compareAtPrice: null,
+      compareAtPrice:
+        combo.compareAtPriceBdt === null
+          ? null
+          : toCatalogPrice(combo.compareAtPriceBdt),
     });
   }
   return pricing;

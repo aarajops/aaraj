@@ -23,6 +23,7 @@ function fixedCombo(availableQuantity: number): CatalogCombo {
   return {
     selectionMode: "fixed_combo",
     price: { amountBdt: 1500 },
+    compareAtPrice: null,
     itemCount: 2,
     revision: 1,
     components: [

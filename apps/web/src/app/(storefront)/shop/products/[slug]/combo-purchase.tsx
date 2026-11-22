@@ -180,16 +180,6 @@ export function ComboPurchase({
       ? selectedItems.length === combo.itemCount && Boolean(sharedSize)
       : selectedTotal === combo.itemCount &&
         (combo.selectionMode !== "mix_colors_one_size" || Boolean(sharedSize));
-  const regularBaseValue = getComboRegularBaseValue(
-    combo,
-    selectedItems,
-    complete,
-    sharedSize,
-    availableSharedSizes,
-  );
-  const regularBasePrice = regularBaseValue
-    ? { amountBdt: regularBaseValue.amountBdt }
-    : null;
   function setVariantQuantity(
     variant: CatalogComboVariantOption,
     value: number,
@@ -278,7 +268,7 @@ export function ComboPurchase({
       <div aria-live="polite" aria-atomic="true">
         <ProductPrice
           price={{ amountBdt: combo.price.amountBdt }}
-          compareAtPrice={regularBasePrice}
+          compareAtPrice={combo.compareAtPrice}
           size="prominent"
         />
       </div>
@@ -776,7 +766,7 @@ export function ComboPurchase({
       >
         <ProductPrice
           price={{ amountBdt: combo.price.amountBdt }}
-          compareAtPrice={regularBasePrice}
+          compareAtPrice={combo.compareAtPrice}
           size="prominent"
         />
         <Button
@@ -791,102 +781,6 @@ export function ComboPurchase({
       </div>
     </div>
   );
-}
-
-function getComboRegularBaseValue(
-  combo: CatalogCombo,
-  selectedItems: Array<{
-    variant: CatalogComboVariantOption;
-    quantity: number;
-  }>,
-  complete: boolean,
-  sharedSize: string,
-  availableSharedSizes: string[],
-): { amountBdt: number } | null {
-  if (complete) {
-    return {
-      amountBdt: selectedItems.reduce(
-        (total, { variant, quantity }) =>
-          total + variant.price.amountBdt * quantity,
-        0,
-      ),
-    };
-  }
-
-  if (combo.selectionMode === "fixed_combo") {
-    const sizes = availableSharedSizes.filter(
-      (size) => !sharedSize || sameOption(size, sharedSize),
-    );
-    const totals = sizes.flatMap((size) => {
-      const variants = combo.components.map((component) =>
-        component.variants.find(
-          (variant) =>
-            variant.availableQuantity > 0 &&
-            sameOption(variant.color, component.fixedColor ?? "") &&
-            sameOption(variant.sizeLabel, size),
-        ),
-      );
-      return variants.every(Boolean)
-        ? [
-            variants.reduce(
-              (total, variant) => total + variant!.price.amountBdt,
-              0,
-            ),
-          ]
-        : [];
-    });
-    if (totals.length === 0) return null;
-    return { amountBdt: Math.min(...totals) };
-  }
-
-  const selectedByVariant = new Map<string, number>();
-  let selectedAmount = 0;
-  let selectedCount = 0;
-  for (const { variant, quantity } of selectedItems) {
-    selectedByVariant.set(
-      variant.variantId,
-      (selectedByVariant.get(variant.variantId) ?? 0) + quantity,
-    );
-    selectedAmount += variant.price.amountBdt * quantity;
-    selectedCount += quantity;
-  }
-
-  const candidates = combo.components.flatMap((component) =>
-    component.variants.flatMap((variant) => {
-      const sizeMatches =
-        combo.selectionMode !== "mix_colors_one_size" ||
-        !sharedSize ||
-        sameOption(variant.sizeLabel, sharedSize);
-      const availableQuantity =
-        variant.availableQuantity -
-        (selectedByVariant.get(variant.variantId) ?? 0);
-      return sizeMatches && availableQuantity > 0
-        ? [{ price: variant.price.amountBdt, availableQuantity }]
-        : [];
-    }),
-  );
-  const missingCount = combo.itemCount - selectedCount;
-  const amountBdt = fillRegularValue(candidates, missingCount, selectedAmount);
-  return amountBdt === null ? null : { amountBdt };
-}
-
-function fillRegularValue(
-  candidates: Array<{ price: number; availableQuantity: number }>,
-  count: number,
-  selectedAmount: number,
-): number | null {
-  const sorted = [...candidates].sort(
-    (left, right) => left.price - right.price,
-  );
-  let remaining = count;
-  let total = selectedAmount;
-  for (const candidate of sorted) {
-    const quantity = Math.min(remaining, candidate.availableQuantity);
-    total += quantity * candidate.price;
-    remaining -= quantity;
-    if (remaining === 0) return total;
-  }
-  return null;
 }
 
 function availableAtSharedSize(combo: CatalogCombo, size: string) {

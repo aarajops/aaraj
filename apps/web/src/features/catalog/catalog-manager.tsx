@@ -186,12 +186,14 @@ export function CatalogManager({
     "id",
     "comboSelectionMode",
     "comboPriceBdt",
+    "comboCompareAtPriceBdt",
     "comboItemCount",
     "comboComponents",
   ]);
   const comboConfigurationChanged = Boolean(
     dirtyFields.comboSelectionMode ||
     dirtyFields.comboPriceBdt ||
+    dirtyFields.comboCompareAtPriceBdt ||
     dirtyFields.comboItemCount ||
     dirtyFields.comboComponents,
   );
@@ -1031,6 +1033,33 @@ export function CatalogManager({
                           <FieldError id="combo-price-error">
                             {errors.comboPriceBdt.message}
                           </FieldError>
+                        )}
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="combo-compare-at-price">
+                          Regular price (BDT, optional)
+                        </FieldLabel>
+                        <Input
+                          id="combo-compare-at-price"
+                          inputMode="numeric"
+                          maxLength={10}
+                          placeholder="3499"
+                          aria-invalid={Boolean(errors.comboCompareAtPriceBdt)}
+                          aria-describedby={
+                            errors.comboCompareAtPriceBdt
+                              ? "combo-compare-at-price-error"
+                              : "combo-compare-at-price-description"
+                          }
+                          {...register("comboCompareAtPriceBdt")}
+                        />
+                        {errors.comboCompareAtPriceBdt ? (
+                          <FieldError id="combo-compare-at-price-error">
+                            {errors.comboCompareAtPriceBdt.message}
+                          </FieldError>
+                        ) : (
+                          <FieldDescription id="combo-compare-at-price-description">
+                            Shown as the crossed-out price on the storefront.
+                          </FieldDescription>
                         )}
                       </Field>
                     </div>
@@ -1922,6 +1951,8 @@ function comboConfigurationMatches(
     combo.selectionMode === configuration.selectionMode &&
     combo.itemCount === configuration.itemCount &&
     combo.price.amountBdt === configuration.price.amountBdt &&
+    combo.compareAtPrice?.amountBdt ===
+      configuration.compareAtPrice?.amountBdt &&
     combo.components.length === configuration.components.length &&
     combo.components.every((component, index) => {
       const expected = configuration.components[index];
