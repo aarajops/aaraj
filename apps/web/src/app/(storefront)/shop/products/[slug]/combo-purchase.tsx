@@ -44,6 +44,7 @@ export function ComboPurchase({
   const refresh = useCartStore((state) => state.refresh);
   const [sharedSize, setSharedSize] = useState(initialSize ?? "");
   const [activeColor, setActiveColor] = useState("");
+  const [prefetchColor, setPrefetchColor] = useState<string | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [status, setStatus] = useState<string | null>(null);
 
@@ -119,6 +120,33 @@ export function ComboPurchase({
       ?.color ??
     mixColorOptions[0]?.color ??
     "";
+
+  const prefetchColorThumbnails = (color: string) => {
+    if (
+      sameOption(color, activeMixColor) ||
+      !mixColorOptions.some(
+        (option) =>
+          sameOption(option.color, color) && option.availableQuantity > 0,
+      )
+    ) {
+      return;
+    }
+
+    setPrefetchColor(color);
+  };
+
+  const thumbnailsToPrefetch =
+    prefetchColor && !sameOption(prefetchColor, activeMixColor)
+      ? combo.components.flatMap((component) => {
+          const hasColorVariants = component.variants.some((variant) =>
+            sameOption(variant.color, prefetchColor),
+          );
+          const thumbnail = hasColorVariants
+            ? getComponentThumbnail(component, prefetchColor)
+            : undefined;
+          return thumbnail ? [thumbnail] : [];
+        })
+      : [];
 
   const selectedItems =
     combo.selectionMode === "fixed_combo"
@@ -230,6 +258,27 @@ export function ComboPurchase({
 
   return (
     <div className="space-y-4">
+      {thumbnailsToPrefetch.length > 0 && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed left-0 top-0 -z-10 size-px overflow-hidden opacity-0"
+        >
+          {thumbnailsToPrefetch.map((thumbnail) => (
+            <Image
+              key={thumbnail.card.src}
+              alt=""
+              className="size-px"
+              decoding="async"
+              fetchPriority="low"
+              height={thumbnail.card.height}
+              loading="eager"
+              sizes="(min-width: 640px) 72px, 64px"
+              src={thumbnail.card.src}
+              width={thumbnail.card.width}
+            />
+          ))}
+        </div>
+      )}
       <div aria-live="polite" aria-atomic="true">
         <ProductPrice
           price={{ amountBdt: combo.price.amountBdt }}
@@ -316,19 +365,27 @@ export function ComboPurchase({
                   return (
                     <Button
                       key={color}
-                      aria-label={`Choose color ${color}${colorSelectedCount > 0 ? `, ${colorSelectedCount} selected` : ""}${!available ? ", sold out" : ""}`}
+                      aria-label={`Choose color ${color}${colorSelectedCount > 0 ? `, ${colorSelectedCount} selected` : ""}${!available ? ", unavailable" : ""}`}
                       aria-pressed={selected}
+                      className={
+                        !available && colorSelectedCount === 0
+                          ? "relative border-border/50 text-muted-foreground/50 disabled:opacity-100"
+                          : undefined
+                      }
                       disabled={!available && colorSelectedCount === 0}
                       onClick={() => setActiveColor(color)}
+                      onFocus={() => prefetchColorThumbnails(color)}
+                      onPointerEnter={() => prefetchColorThumbnails(color)}
                       type="button"
                       variant={selected ? "default" : "outline"}
                     >
                       {color}
                       {colorSelectedCount > 0 ? ` · ${colorSelectedCount}` : ""}
                       {!available && colorSelectedCount === 0 && (
-                        <span className="ml-1 text-xs font-normal opacity-70">
-                          Sold out
-                        </span>
+                        <span
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
+                        ></span>
                       )}
                     </Button>
                   );
@@ -356,11 +413,10 @@ export function ComboPurchase({
                   ),
                 );
                 if (options.length === 0) return null;
-                const thumbnail =
-                  component.thumbnails?.find(
-                    ({ color }) => color && sameOption(color, activeMixColor),
-                  ) ??
-                  component.thumbnails?.find(({ color }) => color === null);
+                const thumbnail = getComponentThumbnail(
+                  component,
+                  activeMixColor,
+                );
 
                 return (
                   <section
@@ -396,12 +452,21 @@ export function ComboPurchase({
                               selectedCount < combo.itemCount;
                             return (
                               <article
-                                aria-label={`${component.productName}, ${activeMixColor}, size ${variant.sizeLabel}`}
+                                aria-label={`${component.productName}, ${activeMixColor}, size ${variant.sizeLabel}${variant.availableQuantity === 0 && quantity === 0 ? ", unavailable" : ""}`}
                                 className={`flex min-h-10 min-w-0 items-center justify-between gap-1 rounded-md border px-1.5 py-1.5 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
                                 key={variant.variantId}
                               >
-                                <span className="text-sm font-medium">
+                                <span
+                                  className={`relative text-sm font-medium ${variant.availableQuantity === 0 && quantity === 0 ? "text-muted-foreground/50" : ""}`}
+                                >
                                   {variant.sizeLabel}
+                                  {variant.availableQuantity === 0 &&
+                                    quantity === 0 && (
+                                      <span
+                                        aria-hidden="true"
+                                        className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
+                                      />
+                                    )}
                                 </span>
                                 {quantity === 0 ? (
                                   variant.availableQuantity > 0 ? (
@@ -417,11 +482,7 @@ export function ComboPurchase({
                                     >
                                       Add
                                     </Button>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground">
-                                      Sold out
-                                    </span>
-                                  )
+                                  ) : null
                                 ) : (
                                   <div className="flex shrink-0 items-center gap-0.5">
                                     <Button
@@ -556,20 +617,23 @@ export function ComboPurchase({
                                 selectedCount < combo.itemCount;
                               return (
                                 <article
-                                  aria-label={`${component.productName}, ${variant.color}, size ${variant.sizeLabel}`}
+                                  aria-label={`${component.productName}, ${variant.color}, size ${variant.sizeLabel}${variant.availableQuantity === 0 && quantity === 0 ? ", unavailable" : ""}`}
                                   className={`flex min-w-0 items-center justify-between gap-3 rounded-md border px-4 py-3 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
                                   key={variant.variantId}
                                 >
                                   <div className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-medium">
+                                    <span
+                                      className={`relative inline-block max-w-full truncate text-sm font-medium ${variant.availableQuantity === 0 && quantity === 0 ? "text-muted-foreground/50" : ""}`}
+                                    >
                                       {variant.color}
+                                      {variant.availableQuantity === 0 &&
+                                        quantity === 0 && (
+                                          <span
+                                            aria-hidden="true"
+                                            className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
+                                          />
+                                        )}
                                     </span>
-                                    {variant.availableQuantity === 0 &&
-                                      quantity === 0 && (
-                                        <span className="block text-xs text-muted-foreground">
-                                          Sold out
-                                        </span>
-                                      )}
                                   </div>
                                   {quantity === 0 &&
                                   variant.availableQuantity > 0 ? (
@@ -864,7 +928,6 @@ function ComboComponentThumbnail({
           onError={() => setFailedSrc(thumbnail.card.src)}
           sizes="(min-width: 640px) 72px, 64px"
           src={thumbnail.card.src}
-          unoptimized
         />
       ) : (
         <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -872,6 +935,21 @@ function ComboComponentThumbnail({
         </div>
       )}
     </AspectRatio>
+  );
+}
+
+function getComponentThumbnail(
+  component: CatalogCombo["components"][number],
+  color: string,
+) {
+  return (
+    component.thumbnails?.find(
+      (thumbnail) =>
+        thumbnail.color !== null && sameOption(thumbnail.color, color),
+    ) ??
+    component.thumbnails?.find(
+      ({ color: thumbnailColor }) => thumbnailColor === null,
+    )
   );
 }
 

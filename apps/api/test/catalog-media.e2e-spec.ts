@@ -681,7 +681,7 @@ describe("catalog media management", () => {
       .expect(200)
       .expect("Content-Type", "image/webp")
       .expect("X-Content-Type-Options", "nosniff")
-      .expect("Cache-Control", "private, no-store");
+      .expect("Cache-Control", "public, max-age=31536000, immutable");
     expect(Buffer.isBuffer(served.body)).toBe(true);
     expect(served.body.subarray(0, 4).toString("hex")).toBe("52494646");
 

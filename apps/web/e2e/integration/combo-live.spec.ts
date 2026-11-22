@@ -875,7 +875,11 @@ test("Combo management to partial COD fulfillment works through the real browser
     const mixFullCard = mixColorsPage.getByRole("region", {
       name: fullZip.name,
     });
-    await expect(mixFullCard.getByText("Sold out")).toBeVisible();
+    const unavailableBlackMedium = mixFullCard.getByRole("article", {
+      name: `${fullZip.name}, Black, size M, unavailable`,
+    });
+    await expect(unavailableBlackMedium).toBeVisible();
+    await expect(mixFullCard.getByText("Sold out")).toHaveCount(0);
     await expect(
       mixFullCard.getByRole("button", {
         name: `Add one ${fullZip.name} Black size M`,
@@ -1007,7 +1011,11 @@ test("Combo management to partial COD fulfillment works through the real browser
     await expect(
       customerPage.getByText("(Choose 3 items across colors and sizes)"),
     ).toBeVisible();
-    await expect(fullZipCard.getByText("Sold out").first()).toBeVisible();
+    const unavailableBlackMedium = fullZipCard.getByRole("article", {
+      name: `${fullZip.name}, Black, size M, unavailable`,
+    });
+    await expect(unavailableBlackMedium).toBeVisible();
+    await expect(fullZipCard.getByText("Sold out")).toHaveCount(0);
     const addNavyColor = mixColors.getByRole("button", {
       name: "Choose color Navy",
     });

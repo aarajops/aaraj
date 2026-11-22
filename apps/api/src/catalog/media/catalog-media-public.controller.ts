@@ -29,12 +29,19 @@ export class CatalogMediaPublicController {
     @Param("sha256", { schema: CatalogMediaSha256Schema }) sha256: string,
     @Res() response: Response,
   ): Promise<void> {
-    response.setHeader("Cache-Control", "private, no-store");
-    const image = await this.catalogMedia.getPublishedDerivative(
-      mediaId,
-      rendition,
-      sha256,
-    );
+    let image: { body: Buffer; sizeBytes: number };
+    try {
+      image = await this.catalogMedia.getPublishedDerivative(
+        mediaId,
+        rendition,
+        sha256,
+      );
+    } catch (error: unknown) {
+      response.setHeader("Cache-Control", "private, no-store");
+      throw error;
+    }
+
+    response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     response.status(200);
     response.setHeader("Content-Type", "image/webp");
     response.setHeader("X-Content-Type-Options", "nosniff");
