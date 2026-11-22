@@ -5,14 +5,21 @@ import {
 import type {
   CatalogCombo,
   CatalogComboConfigurationInput,
+  CatalogComboThumbnail,
 } from "@aaraj/contracts";
-import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import {
+  API_V1_BASE_PATH,
+  CatalogMediaDerivativesSchema,
+  MAX_CART_QUANTITY_PER_VARIANT,
+  MAX_CATALOG_PRODUCT_MEDIA,
+} from "@aaraj/contracts";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import {
   catalogCombo,
   catalogComboComponent,
   catalogProduct,
+  catalogProductMedia,
   catalogProductVariant,
 } from "./catalog-schema.js";
 import { inventoryStockBalance } from "../inventory/inventory-schema.js";
@@ -27,7 +34,7 @@ export async function validateComboConfiguration(
     input.itemCount !== input.components.length
   ) {
     throw new BadRequestException(
-      "A fixed combo must include every product listed in it.",
+      "A fixed combo must include every listed item.",
     );
   }
   const productIds = input.components.map(({ productId }) => productId);
@@ -94,32 +101,25 @@ export async function validateComboConfiguration(
     );
     if (!sharedSizes?.size) {
       throw new BadRequestException(
-        "Every fixed combo product must have at least one shared size.",
+        "Every fixed combo item must have at least one shared size.",
       );
     }
-  } else if (
-    !input.components.some(
-      (component) =>
-        (variantsByProduct.get(component.productId) ?? []).length > 0,
-    )
-  ) {
-    throw new BadRequestException(
-      "Add at least one product with a priced variant to this combo.",
-    );
   }
 }
 
 export async function loadCombo(
   transaction: AuditTransaction,
   productId: string,
+  includeThumbnails = false,
 ): Promise<CatalogCombo | null> {
-  const combos = await loadCombos(transaction, [productId]);
+  const combos = await loadCombos(transaction, [productId], includeThumbnails);
   return combos.get(productId) ?? null;
 }
 
 export async function loadCombos(
   transaction: AuditTransaction,
   productIds: readonly string[],
+  includeThumbnails = false,
 ): Promise<Map<string, CatalogCombo>> {
   if (productIds.length === 0) return new Map();
   const combos = await transaction
@@ -154,9 +154,16 @@ export async function loadCombos(
       asc(catalogComboComponent.comboProductId),
       asc(catalogComboComponent.sortOrder),
     );
-  const variantsByProduct = await loadComponentVariantRows(transaction, [
+  const componentProductIds = [
     ...new Set(componentRows.map(({ productId }) => productId)),
-  ]);
+  ];
+  const variantsByProduct = await loadComponentVariantRows(
+    transaction,
+    componentProductIds,
+  );
+  const thumbnailsByProduct = includeThumbnails
+    ? await loadComponentThumbnails(transaction, componentProductIds)
+    : new Map<string, CatalogComboThumbnail[]>();
   const componentsByCombo = new Map<string, typeof componentRows>();
   for (const component of componentRows) {
     const rows = componentsByCombo.get(component.comboProductId) ?? [];
@@ -177,6 +184,12 @@ export async function loadCombos(
             productId: component.productId,
             productName: component.productName,
             fixedColor: component.fixedColor,
+            ...(includeThumbnails
+              ? {
+                  thumbnails:
+                    thumbnailsByProduct.get(component.productId) ?? [],
+                }
+              : {}),
             variants: (variantsByProduct.get(component.productId) ?? []).map(
               (variant) => ({
                 variantId: variant.id,
@@ -198,6 +211,78 @@ export async function loadCombos(
   );
 }
 
+async function loadComponentThumbnails(
+  transaction: AuditTransaction,
+  productIds: readonly string[],
+): Promise<Map<string, CatalogComboThumbnail[]>> {
+  const thumbnailsByProduct = new Map<string, CatalogComboThumbnail[]>();
+  if (productIds.length === 0) return thumbnailsByProduct;
+
+  const rows = await transaction
+    .select({
+      id: catalogProductMedia.id,
+      productId: catalogProductMedia.productId,
+      variantId: catalogProductMedia.variantId,
+      variantColor: catalogProductVariant.color,
+      altText: catalogProductMedia.altText,
+      derivatives: catalogProductMedia.derivatives,
+    })
+    .from(catalogProductMedia)
+    .innerJoin(
+      catalogProduct,
+      eq(catalogProduct.id, catalogProductMedia.productId),
+    )
+    .leftJoin(
+      catalogProductVariant,
+      eq(catalogProductVariant.id, catalogProductMedia.variantId),
+    )
+    .where(
+      and(
+        inArray(catalogProductMedia.productId, [...productIds]),
+        eq(catalogProductMedia.status, "ready"),
+        eq(catalogProduct.isPublished, true),
+        or(
+          isNull(catalogProductMedia.variantId),
+          eq(catalogProductVariant.isActive, true),
+        ),
+      ),
+    )
+    .orderBy(asc(catalogProductMedia.sortOrder), asc(catalogProductMedia.id));
+
+  const seenColorsByProduct = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const derivatives = CatalogMediaDerivativesSchema.safeParse(
+      row.derivatives,
+    );
+    const card = derivatives.success
+      ? derivatives.data.find(({ rendition }) => rendition === "card")
+      : null;
+    if (!card) continue;
+
+    const color = row.variantId === null ? null : row.variantColor;
+    const colorKey = color === null ? "\u0000" : normalize(color);
+    const seenColors = seenColorsByProduct.get(row.productId) ?? new Set();
+    if (seenColors.has(colorKey)) continue;
+
+    const thumbnails = thumbnailsByProduct.get(row.productId) ?? [];
+    if (thumbnails.length >= MAX_CATALOG_PRODUCT_MEDIA) continue;
+    thumbnails.push({
+      color,
+      altText: row.altText,
+      card: {
+        src: `${API_V1_BASE_PATH}/catalog/media/${row.id}/card/${card.sha256}.webp`,
+        width: card.width,
+        height: card.height,
+      },
+    });
+    seenColors.add(colorKey);
+    seenColorsByProduct.set(row.productId, seenColors);
+    thumbnailsByProduct.set(row.productId, thumbnails);
+  }
+
+  return thumbnailsByProduct;
+}
+
 export function comboHasAvailableSet(combo: CatalogCombo): boolean {
   if (combo.selectionMode === "fixed_combo") {
     const sharedSizes = new Set(
@@ -211,14 +296,7 @@ export function comboHasAvailableSet(combo: CatalogCombo): boolean {
         .map(({ sizeLabel }) => normalize(sizeLabel)) ?? [],
     );
     return [...sharedSizes].some((size) =>
-      combo.components.every((component) =>
-        component.variants.some(
-          (variant) =>
-            variant.availableQuantity > 0 &&
-            normalize(variant.sizeLabel) === size &&
-            normalize(variant.color) === normalize(component.fixedColor!),
-        ),
-      ),
+      hasAvailableFixedSetAtSize(combo, size),
     );
   }
   if (combo.selectionMode === "mix_sizes_and_colors") {
@@ -246,6 +324,32 @@ export function comboHasAvailableSet(combo: CatalogCombo): boolean {
   }
   return [...availableBySize.values()].some(
     (quantity) => quantity >= combo.itemCount,
+  );
+}
+
+function hasAvailableFixedSetAtSize(
+  combo: CatalogCombo,
+  normalizedSize: string,
+): boolean {
+  const demandByVariant = new Map<
+    string,
+    { demand: number; availableQuantity: number }
+  >();
+  for (const component of combo.components) {
+    const variant = component.variants.find(
+      (candidate) =>
+        normalize(candidate.sizeLabel) === normalizedSize &&
+        normalize(candidate.color) === normalize(component.fixedColor ?? ""),
+    );
+    if (!variant) return false;
+    const current = demandByVariant.get(variant.variantId);
+    demandByVariant.set(variant.variantId, {
+      demand: (current?.demand ?? 0) + 1,
+      availableQuantity: variant.availableQuantity,
+    });
+  }
+  return [...demandByVariant.values()].every(
+    ({ demand, availableQuantity }) => demand <= availableQuantity,
   );
 }
 
@@ -289,7 +393,7 @@ export function assertComboSelections(
     const variant = component.variants.find(
       (candidate) => candidate.variantId === selection.variantId,
     );
-    if (!variant || variant.availableQuantity < comboQuantity) {
+    if (!variant) {
       throw new UnprocessableEntityException(
         "A selected combo variant is no longer available.",
         { errorCode: "COMBO_VARIANT_UNAVAILABLE" },
@@ -318,32 +422,33 @@ export function assertComboSelections(
       )
     ) {
       throw new UnprocessableEntityException(
-        "Choose each fixed combo product exactly once.",
+        "Choose each fixed combo item exactly once.",
         { errorCode: "COMBO_SELECTION_INVALID" },
       );
     }
-  } else {
-    const selectedQuantityByVariant = new Map<string, number>();
-    for (const { variant } of selected) {
-      selectedQuantityByVariant.set(
-        variant.variantId,
-        (selectedQuantityByVariant.get(variant.variantId) ?? 0) + 1,
-      );
-    }
-    if (
-      [...selectedQuantityByVariant].some(
-        ([variantId, quantity]) =>
-          quantity * comboQuantity > MAX_CART_QUANTITY_PER_VARIANT ||
-          quantity * comboQuantity >
-            selected.find(({ variant }) => variant.variantId === variantId)!
-              .variant.availableQuantity,
-      )
-    ) {
-      throw new UnprocessableEntityException(
-        "The selected quantities exceed available stock.",
-        { errorCode: "COMBO_VARIANT_UNAVAILABLE" },
-      );
-    }
+  }
+  const selectedQuantityByVariant = new Map<
+    string,
+    { quantity: number; availableQuantity: number }
+  >();
+  for (const { variant } of selected) {
+    const current = selectedQuantityByVariant.get(variant.variantId);
+    selectedQuantityByVariant.set(variant.variantId, {
+      quantity: (current?.quantity ?? 0) + 1,
+      availableQuantity: variant.availableQuantity,
+    });
+  }
+  if (
+    [...selectedQuantityByVariant.values()].some(
+      ({ quantity, availableQuantity }) =>
+        quantity * comboQuantity > MAX_CART_QUANTITY_PER_VARIANT ||
+        quantity * comboQuantity > availableQuantity,
+    )
+  ) {
+    throw new UnprocessableEntityException(
+      "The selected quantities exceed available stock.",
+      { errorCode: "COMBO_VARIANT_UNAVAILABLE" },
+    );
   }
   if (combo.selectionMode !== "mix_sizes_and_colors") {
     const sizes = new Set(

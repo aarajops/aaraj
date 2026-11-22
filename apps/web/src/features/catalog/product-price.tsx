@@ -16,7 +16,6 @@ export function ProductPrice({
     compareAtPrice !== null &&
     compareAtPrice !== undefined &&
     compareAtPrice.amountBdt > price.amountBdt;
-
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-2">
       <span
@@ -30,15 +29,15 @@ export function ProductPrice({
         {formatBdtPrice(price)}
       </span>
       {showCompareAtPrice && (
-        <del
+        <span
           className={
             size === "prominent"
-              ? "text-sm text-muted-foreground"
-              : "text-xs text-muted-foreground"
+              ? "inline-flex items-baseline gap-1 text-sm text-muted-foreground"
+              : "inline-flex items-baseline gap-1 text-xs text-muted-foreground"
           }
         >
-          {formatBdtPrice(compareAtPrice)}
-        </del>
+          <del>{formatBdtPrice(compareAtPrice)}</del>
+        </span>
       )}
     </span>
   );

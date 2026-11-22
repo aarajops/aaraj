@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  CatalogProductImageVariantSchema,
+  MAX_CATALOG_PRODUCT_MEDIA,
+} from "./media.js";
 
 export const MAX_COMBO_COMPONENTS = 10;
 
@@ -51,7 +55,7 @@ export const CatalogComboConfigurationInputSchema = z
       issues.push({
         code: "custom",
         path: ["itemCount"],
-        message: "A fixed combo includes every product listed in it.",
+        message: "A fixed combo includes every listed item.",
         input: value.itemCount,
       });
     }
@@ -59,16 +63,19 @@ export const CatalogComboConfigurationInputSchema = z
       issues.push({
         code: "custom",
         path: ["components"],
-        message: "A fixed combo must include at least two products.",
+        message: "A fixed combo must include at least two items.",
         input: value.components,
       });
     }
     value.components.forEach((component, index) => {
-      if (productIds.has(component.productId)) {
+      if (
+        value.selectionMode !== "fixed_combo" &&
+        productIds.has(component.productId)
+      ) {
         issues.push({
           code: "custom",
           path: ["components", index, "productId"],
-          message: "Choose each component product only once.",
+          message: "A flexible combo can list each source product only once.",
           input: component.productId,
         });
       }
@@ -111,11 +118,22 @@ export type CatalogComboVariantOption = z.infer<
   typeof CatalogComboVariantOptionSchema
 >;
 
+export const CatalogComboThumbnailSchema = z.strictObject({
+  color: z.string().min(1).max(80).nullable(),
+  altText: z.string().min(1).max(500),
+  card: CatalogProductImageVariantSchema,
+});
+export type CatalogComboThumbnail = z.infer<typeof CatalogComboThumbnailSchema>;
+
 export const CatalogComboComponentSchema = z.strictObject({
   id: z.uuid(),
   productId: z.uuid(),
   productName: z.string().min(1).max(160),
   fixedColor: z.string().min(1).max(80).nullable(),
+  thumbnails: z
+    .array(CatalogComboThumbnailSchema)
+    .max(MAX_CATALOG_PRODUCT_MEDIA)
+    .optional(),
   variants: z.array(CatalogComboVariantOptionSchema).min(1).max(200),
 });
 export type CatalogComboComponent = z.infer<typeof CatalogComboComponentSchema>;
@@ -146,7 +164,7 @@ export const CatalogComboCandidateSchema = z.strictObject({
         id: z.uuid(),
         color: z.string().min(1).max(80),
         sizeLabel: z.string().min(1).max(40),
-        price: ComboPriceSchema.nullable(),
+        price: ComboPriceSchema,
       }),
     )
     .max(200),

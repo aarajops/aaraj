@@ -43,5 +43,6 @@
   "0067_catalog_edit_revision.sql": "compatible",
   "0068_combo_management.sql": "maintenance",
   "0069_combo_item_count_and_partial_acceptance_identity.sql": "maintenance",
-  "0070_combo_partial_acceptance_cod.sql": "maintenance"
+  "0070_combo_partial_acceptance_cod.sql": "maintenance",
+  "0071_combo_fixed_source_reuse.sql": "compatible"
 }

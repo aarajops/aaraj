@@ -9,6 +9,7 @@ import {
   CatalogProductListQuerySchema,
   CatalogPublishedProductListQuerySchema,
   CatalogProductUpdateSchema,
+  CatalogComboConfigurationInputSchema,
   CatalogCategoryCreateSchema,
   CatalogSizeGuideCreateSchema,
   DEFAULT_LIST_PAGE_SIZE,
@@ -25,6 +26,39 @@ import {
 } from "./index.js";
 
 describe("Contracts Schema Validation", () => {
+  it("allows repeated fixed pieces and one-source flexible combos without duplicate flexible sources", () => {
+    const productId = "00000000-0000-4000-8000-000000000101";
+    const fixed = CatalogComboConfigurationInputSchema.safeParse({
+      selectionMode: "fixed_combo",
+      price: { amountBdt: 1500 },
+      components: [
+        { productId, fixedColor: "Black" },
+        { productId, fixedColor: "White" },
+      ],
+    });
+    expect(fixed.success).toBe(true);
+
+    const oneSourceFlexible = CatalogComboConfigurationInputSchema.safeParse({
+      selectionMode: "mix_sizes_and_colors",
+      itemCount: 3,
+      price: { amountBdt: 2100 },
+      components: [{ productId, fixedColor: null }],
+    });
+    expect(oneSourceFlexible.success).toBe(true);
+
+    const duplicateFlexibleSource =
+      CatalogComboConfigurationInputSchema.safeParse({
+        selectionMode: "mix_sizes_and_colors",
+        itemCount: 3,
+        price: { amountBdt: 2100 },
+        components: [
+          { productId, fixedColor: null },
+          { productId, fixedColor: null },
+        ],
+      });
+    expect(duplicateFlexibleSource.success).toBe(false);
+  });
+
   it("accepts an optional reason when returning an Order to pending", () => {
     expect(
       OrderStatusUpdateInputSchema.safeParse({

@@ -1,20 +1,23 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import type {
   CatalogCombo,
+  CatalogComboThumbnail,
   CatalogComboVariantOption,
   CatalogSizeGuide,
 } from "@aaraj/contracts";
 import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
-import { ArrowRight, ShoppingCart } from "lucide-react";
+import { ArrowRight, Package, ShoppingCart } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Button } from "@/components/ui/button";
 import { FieldDescription } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
+import { Trace, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { useCartSheet, useCartStore } from "@/features/cart/cart-provider";
 import { ProductPrice } from "@/features/catalog/product-price";
-import { formatBdtPrice } from "@/lib/currency";
 import { SizeGuideTable } from "./size-guide-table";
 
 export function ComboPurchase({
@@ -40,7 +43,7 @@ export function ComboPurchase({
   const addCombo = useCartStore((state) => state.addCombo);
   const refresh = useCartStore((state) => state.refresh);
   const [sharedSize, setSharedSize] = useState(initialSize ?? "");
-  const [activeSize, setActiveSize] = useState(initialSize ?? "");
+  const [activeColor, setActiveColor] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [status, setStatus] = useState<string | null>(null);
 
@@ -58,24 +61,38 @@ export function ComboPurchase({
       ),
     [combo.components, sizeOrder],
   );
+  const mixColorOptions = useMemo(() => {
+    const byColor = new Map<
+      string,
+      { color: string; selectedCount: number; availableQuantity: number }
+    >();
+    for (const component of combo.components) {
+      for (const variant of component.variants) {
+        const key = normalizeOption(variant.color);
+        const summary = byColor.get(key) ?? {
+          color: variant.color,
+          selectedCount: 0,
+          availableQuantity: 0,
+        };
+        summary.selectedCount += quantities[variant.variantId] ?? 0;
+        summary.availableQuantity += variant.availableQuantity;
+        byColor.set(key, summary);
+      }
+    }
+    return [...byColor.values()].sort((left, right) =>
+      left.color.localeCompare(right.color, "en", { sensitivity: "base" }),
+    );
+  }, [combo.components, quantities]);
   const fixedSizeOptions = useMemo(
     () => getFixedComboSizes(combo, sizeOrder),
     [combo, sizeOrder],
   );
   const sharedSizeOptions =
     combo.selectionMode === "fixed_combo" ? fixedSizeOptions : sizeOptions;
-  const availableSharedSizes = sharedSizeOptions.filter((size) =>
+  const availableSharedSizes =
     combo.selectionMode === "fixed_combo"
-      ? combo.components.every((component) =>
-          component.variants.some(
-            (variant) =>
-              variant.availableQuantity > 0 &&
-              sameOption(variant.sizeLabel, size) &&
-              sameOption(variant.color, component.fixedColor ?? ""),
-          ),
-        )
-      : availableAtSharedSize(combo, size) >= combo.itemCount,
-  );
+      ? sharedSizeOptions.filter((size) => hasAvailableFixedSize(combo, size))
+      : [];
 
   const selectedCount = Object.values(quantities).reduce(
     (total, quantity) => total + quantity,
@@ -95,6 +112,13 @@ export function ComboPurchase({
         ),
       0,
     );
+  const activeMixColor =
+    mixColorOptions.find(({ color }) => sameOption(color, activeColor))
+      ?.color ??
+    mixColorOptions.find(({ availableQuantity }) => availableQuantity > 0)
+      ?.color ??
+    mixColorOptions[0]?.color ??
+    "";
 
   const selectedItems =
     combo.selectionMode === "fixed_combo"
@@ -128,23 +152,16 @@ export function ComboPurchase({
       ? selectedItems.length === combo.itemCount && Boolean(sharedSize)
       : selectedTotal === combo.itemCount &&
         (combo.selectionMode !== "mix_colors_one_size" || Boolean(sharedSize));
-  const individualTotal = complete
-    ? selectedItems.reduce(
-        (total, { variant, quantity }) =>
-          total + variant.price.amountBdt * quantity,
-        0,
-      )
+  const regularBaseValue = getComboRegularBaseValue(
+    combo,
+    selectedItems,
+    complete,
+    sharedSize,
+    availableSharedSizes,
+  );
+  const regularBasePrice = regularBaseValue
+    ? { amountBdt: regularBaseValue.amountBdt }
     : null;
-  const compareAtPrice =
-    individualTotal !== null && individualTotal > combo.price.amountBdt
-      ? { amountBdt: individualTotal }
-      : null;
-  const mixSummaryText = sizeOptions
-    .map((size) => ({ size, quantity: countAtSize(size) }))
-    .filter(({ quantity }) => quantity > 0)
-    .map(({ size, quantity }) => `${quantity}×${size}`)
-    .join(" · ");
-
   function setVariantQuantity(
     variant: CatalogComboVariantOption,
     value: number,
@@ -160,17 +177,6 @@ export function ComboPurchase({
       else next[variant.variantId] = nextQuantity;
       return next;
     });
-  }
-
-  function toggleVariant(variant: CatalogComboVariantOption) {
-    const currentQuantity = quantities[variant.variantId] ?? 0;
-    if (currentQuantity > 0) {
-      setVariantQuantity(variant, 0);
-      return;
-    }
-    if (selectedCount < combo.itemCount && variant.availableQuantity > 0) {
-      setVariantQuantity(variant, 1);
-    }
   }
 
   function changeSharedSize(size: string) {
@@ -223,23 +229,15 @@ export function ComboPurchase({
     !complete || !inStock || quantityLimitReached || isMutating || isLoading;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div aria-live="polite" aria-atomic="true">
         <ProductPrice
           price={{ amountBdt: combo.price.amountBdt }}
-          compareAtPrice={compareAtPrice}
+          compareAtPrice={regularBasePrice}
           size="prominent"
         />
-        {individualTotal !== null &&
-          individualTotal > combo.price.amountBdt && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Individual prices for your selected items:{" "}
-              {formatBdtPrice({ amountBdt: individualTotal })}
-            </p>
-          )}
       </div>
 
-      <p className="text-sm font-medium">Sold as a complete set.</p>
       {combo.selectionMode === "fixed_combo" && (
         <p className="text-sm text-muted-foreground">
           Choose one size for every item in the set.
@@ -251,12 +249,6 @@ export function ComboPurchase({
           available colors.
         </p>
       )}
-      {combo.selectionMode === "mix_sizes_and_colors" && (
-        <p className="text-sm text-muted-foreground">
-          Choose sizes and colors for exactly {combo.itemCount} items. Your
-          selections stay saved as you switch sizes.
-        </p>
-      )}
       {!inStock && (
         <p className="text-sm text-destructive" role="status">
           This combo is currently out of stock.
@@ -264,7 +256,7 @@ export function ComboPurchase({
       )}
 
       {combo.selectionMode === "fixed_combo" ? (
-        <fieldset className="space-y-2">
+        <fieldset className="space-y-3">
           <legend className="text-sm font-medium">
             Size for the whole set
           </legend>
@@ -295,38 +287,213 @@ export function ComboPurchase({
             </FieldDescription>
           )}
         </fieldset>
+      ) : combo.selectionMode === "mix_sizes_and_colors" ? (
+        <div className="space-y-4">
+          <fieldset className="space-y-3">
+            <legend className="flex w-full flex-col gap-1 text-sm font-medium lg:flex-row lg:items-center lg:justify-between">
+              <span>
+                Color
+                <span className="font-normal text-muted-foreground">
+                  {` (Choose ${combo.itemCount} items across colors and sizes)`}
+                </span>
+              </span>
+              <span
+                aria-live="polite"
+                className="self-end font-normal text-muted-foreground lg:self-auto"
+              >
+                {selectedCount} of {combo.itemCount} selected
+              </span>
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {mixColorOptions.map(
+                ({
+                  color,
+                  selectedCount: colorSelectedCount,
+                  availableQuantity,
+                }) => {
+                  const selected = sameOption(activeMixColor, color);
+                  const available = availableQuantity > 0;
+                  return (
+                    <Button
+                      key={color}
+                      aria-label={`Choose color ${color}${colorSelectedCount > 0 ? `, ${colorSelectedCount} selected` : ""}${!available ? ", sold out" : ""}`}
+                      aria-pressed={selected}
+                      disabled={!available && colorSelectedCount === 0}
+                      onClick={() => setActiveColor(color)}
+                      type="button"
+                      variant={selected ? "default" : "outline"}
+                    >
+                      {color}
+                      {colorSelectedCount > 0 ? ` · ${colorSelectedCount}` : ""}
+                      {!available && colorSelectedCount === 0 && (
+                        <span className="ml-1 text-xs font-normal opacity-70">
+                          Sold out
+                        </span>
+                      )}
+                    </Button>
+                  );
+                },
+              )}
+            </div>
+          </fieldset>
+
+          {activeMixColor && (
+            <div
+              aria-label={`Products available in ${activeMixColor}`}
+              className="divide-y divide-border overflow-hidden rounded-lg border border-border"
+              role="region"
+            >
+              {combo.components.map((component) => {
+                const colorVariants = component.variants.filter((variant) =>
+                  sameOption(variant.color, activeMixColor),
+                );
+                const options = orderedSizes(
+                  colorVariants.map(({ sizeLabel }) => sizeLabel),
+                  sizeOrder,
+                ).flatMap((size) =>
+                  colorVariants.filter((variant) =>
+                    sameOption(variant.sizeLabel, size),
+                  ),
+                );
+                if (options.length === 0) return null;
+                const thumbnail =
+                  component.thumbnails?.find(
+                    ({ color }) => color && sameOption(color, activeMixColor),
+                  ) ??
+                  component.thumbnails?.find(({ color }) => color === null);
+
+                return (
+                  <section
+                    aria-label={component.productName}
+                    className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:gap-3"
+                    key={component.id}
+                  >
+                    <div className="flex min-w-0 items-center gap-3 sm:contents">
+                      <ComboComponentThumbnail thumbnail={thumbnail} />
+                      <h3
+                        className="line-clamp-2 min-w-0 flex-1 text-sm font-semibold leading-5 sm:hidden"
+                        title={component.productName}
+                      >
+                        {component.productName}
+                      </h3>
+                    </div>
+                    <div className="@container min-w-0 flex-1 space-y-2">
+                      <h3
+                        className="hidden line-clamp-2 text-sm font-semibold leading-5 sm:block"
+                        title={component.productName}
+                      >
+                        {component.productName}
+                      </h3>
+                      <fieldset className="min-w-0">
+                        <legend className="sr-only">
+                          Sizes in {activeMixColor} for {component.productName}
+                        </legend>
+                        <div className="grid grid-cols-2 gap-1.5 @sm:grid-cols-4">
+                          {options.map((variant) => {
+                            const quantity = quantities[variant.variantId] ?? 0;
+                            const canAdd =
+                              variant.availableQuantity > quantity &&
+                              selectedCount < combo.itemCount;
+                            return (
+                              <article
+                                aria-label={`${component.productName}, ${activeMixColor}, size ${variant.sizeLabel}`}
+                                className={`flex min-h-10 min-w-0 items-center justify-between gap-1 rounded-md border px-1.5 py-1.5 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
+                                key={variant.variantId}
+                              >
+                                <span className="text-sm font-medium">
+                                  {variant.sizeLabel}
+                                </span>
+                                {quantity === 0 ? (
+                                  variant.availableQuantity > 0 ? (
+                                    <Button
+                                      aria-label={`Add one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
+                                      disabled={!canAdd}
+                                      onClick={() =>
+                                        setVariantQuantity(variant, 1)
+                                      }
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      Add
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">
+                                      Sold out
+                                    </span>
+                                  )
+                                ) : (
+                                  <div className="flex shrink-0 items-center gap-0.5">
+                                    <Button
+                                      aria-label={`Remove one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
+                                      onClick={() =>
+                                        setVariantQuantity(
+                                          variant,
+                                          quantity - 1,
+                                        )
+                                      }
+                                      className="h-6 w-6 p-0"
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      −
+                                    </Button>
+                                    <span
+                                      aria-live="polite"
+                                      className="min-w-4 text-center text-xs tabular-nums"
+                                    >
+                                      {quantity}
+                                    </span>
+                                    <Button
+                                      aria-label={`Add one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
+                                      disabled={!canAdd}
+                                      onClick={() =>
+                                        setVariantQuantity(
+                                          variant,
+                                          quantity + 1,
+                                        )
+                                      }
+                                      className="h-6 w-6 p-0"
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      +
+                                    </Button>
+                                  </div>
+                                )}
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+        </div>
       ) : (
         <>
-          <fieldset className="space-y-2">
+          <fieldset className="space-y-3">
             <legend className="text-sm font-medium">
-              {combo.selectionMode === "mix_colors_one_size"
-                ? "One size for the whole set"
-                : "Choose a size to select items"}
+              One size for the whole set
             </legend>
             <div className="flex flex-wrap gap-2">
               {sizeOptions.map((size) => {
-                const selected =
-                  combo.selectionMode === "mix_colors_one_size"
-                    ? sameOption(sharedSize, size)
-                    : sameOption(activeSize, size);
+                const selected = sameOption(sharedSize, size);
                 const count = countAtSize(size);
                 const available =
-                  combo.selectionMode === "mix_colors_one_size"
-                    ? availableAtSharedSize(combo, size) >= combo.itemCount
-                    : availableAtSharedSize(combo, size) > 0;
+                  availableAtSharedSize(combo, size) >= combo.itemCount;
                 return (
                   <Button
                     key={size}
-                    aria-label={`Choose size ${size}`}
+                    aria-label={`Choose size ${size}${count > 0 ? `, ${count} selected` : ""}`}
                     aria-pressed={selected}
                     disabled={!available && !selected}
-                    onClick={() => {
-                      if (combo.selectionMode === "mix_colors_one_size") {
-                        changeSharedSize(size);
-                      } else {
-                        setActiveSize(size);
-                      }
-                    }}
+                    onClick={() => changeSharedSize(size)}
                     type="button"
                     variant={selected ? "default" : "outline"}
                   >
@@ -338,152 +505,134 @@ export function ComboPurchase({
             </div>
           </fieldset>
 
-          {combo.selectionMode === "mix_sizes_and_colors" && (
-            <section
-              aria-label="Combo selection progress"
-              className="space-y-2 border border-border p-3"
-            >
-              <p className="font-medium">
-                {selectedCount} of {combo.itemCount} selected
-              </p>
-              {selectedCount === combo.itemCount && (
-                <p className="text-sm text-muted-foreground">
-                  Remove a selected item to change your mix.
-                </p>
-              )}
-              {mixSummaryText && (
-                <p className="text-sm text-muted-foreground">
-                  Your mix: {mixSummaryText}
-                </p>
-              )}
-              <div
-                aria-label={`${selectedCount} of ${combo.itemCount} items selected`}
-                aria-valuemax={combo.itemCount}
-                aria-valuemin={0}
-                aria-valuenow={selectedCount}
-                className="h-2 overflow-hidden rounded-full bg-muted"
-                role="progressbar"
-              >
-                <div
-                  className="h-full bg-primary transition-[width]"
-                  style={{
-                    width: `${(selectedCount / combo.itemCount) * 100}%`,
-                  }}
-                />
-              </div>
-            </section>
+          {sharedSize && (
+            <p className="text-sm font-medium">
+              Choose {combo.itemCount} items in {sharedSize}
+              {selectedTotal > 0 ? ` · ${selectedTotal} selected` : ""}
+            </p>
           )}
-
-          {combo.selectionMode === "mix_colors_one_size" && sharedSize && (
-            <div className="space-y-1">
-              <p className="text-sm font-medium">
-                Choose any {combo.itemCount} in {sharedSize}
-                {selectedTotal > 0 ? ` · ${selectedTotal} selected` : ""}
-              </p>
-              {selectedTotal === combo.itemCount && (
-                <p className="text-sm text-muted-foreground">
-                  Remove a selected item to change your mix.
-                </p>
-              )}
-            </div>
-          )}
-          {combo.selectionMode === "mix_sizes_and_colors" && activeSize && (
-            <p className="text-sm font-medium">Choose items in {activeSize}</p>
-          )}
-
-          {(combo.selectionMode === "mix_colors_one_size"
-            ? sharedSize
-            : activeSize) && (
-            <div className="space-y-4">
+          {sharedSize && (
+            <div className="space-y-6">
               {combo.components.map((component) => {
                 const options = component.variants
                   .filter((variant) =>
-                    sameOption(
-                      variant.sizeLabel,
-                      combo.selectionMode === "mix_colors_one_size"
-                        ? sharedSize
-                        : activeSize,
-                    ),
+                    sameOption(variant.sizeLabel, sharedSize),
                   )
                   .sort((left, right) =>
                     left.color.localeCompare(right.color, "en", {
                       sensitivity: "base",
                     }),
                   );
-                if (options.length === 0) return null;
                 return (
                   <section
                     aria-label={component.productName}
-                    className="space-y-2"
+                    className="min-w-0"
                     key={component.id}
                   >
-                    <h2 className="text-sm font-medium">
-                      {component.productName}
-                    </h2>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {options.map((variant) => {
-                        const quantity = quantities[variant.variantId] ?? 0;
-                        const canAdd =
-                          variant.availableQuantity > quantity &&
-                          selectedCount < combo.itemCount;
-                        const canChangeSelection =
-                          quantity > 0 ||
-                          (variant.availableQuantity > 0 &&
-                            selectedCount < combo.itemCount);
-                        return (
-                          <article
-                            aria-label={`${component.productName}, ${variant.color}, size ${variant.sizeLabel}`}
-                            className={`rounded-md border p-2 ${quantity > 0 ? "border-primary" : "border-border"}`}
-                            key={variant.variantId}
-                          >
-                            <button
-                              aria-pressed={quantity > 0}
-                              className="min-h-12 w-full text-left text-sm"
-                              disabled={!canChangeSelection}
-                              onClick={() => toggleVariant(variant)}
-                              type="button"
-                            >
-                              <span className="block font-medium">
-                                {variant.color}
-                              </span>
-                              {variant.availableQuantity === 0 &&
-                                quantity === 0 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    Sold out
-                                  </span>
-                                )}
-                            </button>
-                            <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
-                              <Button
-                                aria-label={`Remove one ${component.productName} ${variant.color} ${variant.sizeLabel}`}
-                                disabled={quantity === 0}
-                                onClick={() =>
-                                  setVariantQuantity(variant, quantity - 1)
-                                }
-                                size="sm"
-                                type="button"
-                                variant="ghost"
-                              >
-                                −
-                              </Button>
-                              <span aria-live="polite">{quantity}</span>
-                              <Button
-                                aria-label={`Add one ${component.productName} ${variant.color} ${variant.sizeLabel}`}
-                                disabled={!canAdd}
-                                onClick={() =>
-                                  setVariantQuantity(variant, quantity + 1)
-                                }
-                                size="sm"
-                                type="button"
-                                variant="ghost"
-                              >
-                                +
-                              </Button>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
+                    <Trace className="gap-3">
+                      <TraceLine className="w-full text-foreground">
+                        <TraceIcon>
+                          <Package />
+                        </TraceIcon>
+                        <TraceTitle
+                          className="font-semibold whitespace-normal"
+                          title={component.productName}
+                        >
+                          {component.productName}
+                        </TraceTitle>
+                      </TraceLine>
+                      <div className="ml-[7px] min-w-0 border-l border-border pl-4 text-foreground">
+                        {options.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            No options available in {sharedSize}.
+                          </p>
+                        ) : (
+                          <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr))]">
+                            {options.map((variant) => {
+                              const quantity =
+                                quantities[variant.variantId] ?? 0;
+                              const canAdd =
+                                variant.availableQuantity > quantity &&
+                                selectedCount < combo.itemCount;
+                              return (
+                                <article
+                                  aria-label={`${component.productName}, ${variant.color}, size ${variant.sizeLabel}`}
+                                  className={`flex min-w-0 items-center justify-between gap-3 rounded-md border px-4 py-3 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
+                                  key={variant.variantId}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium">
+                                      {variant.color}
+                                    </span>
+                                    {variant.availableQuantity === 0 &&
+                                      quantity === 0 && (
+                                        <span className="block text-xs text-muted-foreground">
+                                          Sold out
+                                        </span>
+                                      )}
+                                  </div>
+                                  {quantity === 0 &&
+                                  variant.availableQuantity > 0 ? (
+                                    <Button
+                                      aria-label={`Add one ${component.productName} ${variant.color} size ${variant.sizeLabel}`}
+                                      disabled={!canAdd}
+                                      onClick={() =>
+                                        setVariantQuantity(variant, 1)
+                                      }
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      Add
+                                    </Button>
+                                  ) : quantity > 0 ? (
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      <Button
+                                        aria-label={`Remove one ${component.productName} ${variant.color} size ${variant.sizeLabel}`}
+                                        onClick={() =>
+                                          setVariantQuantity(
+                                            variant,
+                                            quantity - 1,
+                                          )
+                                        }
+                                        className="size-8 p-0"
+                                        size="sm"
+                                        type="button"
+                                        variant="ghost"
+                                      >
+                                        −
+                                      </Button>
+                                      <span
+                                        aria-live="polite"
+                                        className="min-w-5 text-center text-sm tabular-nums"
+                                      >
+                                        {quantity}
+                                      </span>
+                                      <Button
+                                        aria-label={`Add one ${component.productName} ${variant.color} size ${variant.sizeLabel}`}
+                                        disabled={!canAdd}
+                                        onClick={() =>
+                                          setVariantQuantity(
+                                            variant,
+                                            quantity + 1,
+                                          )
+                                        }
+                                        className="size-8 p-0"
+                                        size="sm"
+                                        type="button"
+                                        variant="ghost"
+                                      >
+                                        +
+                                      </Button>
+                                    </div>
+                                  ) : null}
+                                </article>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </Trace>
                   </section>
                 );
               })}
@@ -518,7 +667,7 @@ export function ComboPurchase({
           <ArrowRight aria-hidden="true" /> Buy now
         </Button>
       </div>
-      {!complete && (
+      {!complete && combo.selectionMode !== "mix_sizes_and_colors" && (
         <p className="text-sm text-muted-foreground">
           {combo.selectionMode === "fixed_combo"
             ? "Choose an available shared size to continue."
@@ -567,7 +716,7 @@ export function ComboPurchase({
       >
         <ProductPrice
           price={{ amountBdt: combo.price.amountBdt }}
-          compareAtPrice={compareAtPrice}
+          compareAtPrice={regularBasePrice}
           size="prominent"
         />
         <Button
@@ -584,6 +733,102 @@ export function ComboPurchase({
   );
 }
 
+function getComboRegularBaseValue(
+  combo: CatalogCombo,
+  selectedItems: Array<{
+    variant: CatalogComboVariantOption;
+    quantity: number;
+  }>,
+  complete: boolean,
+  sharedSize: string,
+  availableSharedSizes: string[],
+): { amountBdt: number } | null {
+  if (complete) {
+    return {
+      amountBdt: selectedItems.reduce(
+        (total, { variant, quantity }) =>
+          total + variant.price.amountBdt * quantity,
+        0,
+      ),
+    };
+  }
+
+  if (combo.selectionMode === "fixed_combo") {
+    const sizes = availableSharedSizes.filter(
+      (size) => !sharedSize || sameOption(size, sharedSize),
+    );
+    const totals = sizes.flatMap((size) => {
+      const variants = combo.components.map((component) =>
+        component.variants.find(
+          (variant) =>
+            variant.availableQuantity > 0 &&
+            sameOption(variant.color, component.fixedColor ?? "") &&
+            sameOption(variant.sizeLabel, size),
+        ),
+      );
+      return variants.every(Boolean)
+        ? [
+            variants.reduce(
+              (total, variant) => total + variant!.price.amountBdt,
+              0,
+            ),
+          ]
+        : [];
+    });
+    if (totals.length === 0) return null;
+    return { amountBdt: Math.min(...totals) };
+  }
+
+  const selectedByVariant = new Map<string, number>();
+  let selectedAmount = 0;
+  let selectedCount = 0;
+  for (const { variant, quantity } of selectedItems) {
+    selectedByVariant.set(
+      variant.variantId,
+      (selectedByVariant.get(variant.variantId) ?? 0) + quantity,
+    );
+    selectedAmount += variant.price.amountBdt * quantity;
+    selectedCount += quantity;
+  }
+
+  const candidates = combo.components.flatMap((component) =>
+    component.variants.flatMap((variant) => {
+      const sizeMatches =
+        combo.selectionMode !== "mix_colors_one_size" ||
+        !sharedSize ||
+        sameOption(variant.sizeLabel, sharedSize);
+      const availableQuantity =
+        variant.availableQuantity -
+        (selectedByVariant.get(variant.variantId) ?? 0);
+      return sizeMatches && availableQuantity > 0
+        ? [{ price: variant.price.amountBdt, availableQuantity }]
+        : [];
+    }),
+  );
+  const missingCount = combo.itemCount - selectedCount;
+  const amountBdt = fillRegularValue(candidates, missingCount, selectedAmount);
+  return amountBdt === null ? null : { amountBdt };
+}
+
+function fillRegularValue(
+  candidates: Array<{ price: number; availableQuantity: number }>,
+  count: number,
+  selectedAmount: number,
+): number | null {
+  const sorted = [...candidates].sort(
+    (left, right) => left.price - right.price,
+  );
+  let remaining = count;
+  let total = selectedAmount;
+  for (const candidate of sorted) {
+    const quantity = Math.min(remaining, candidate.availableQuantity);
+    total += quantity * candidate.price;
+    remaining -= quantity;
+    if (remaining === 0) return total;
+  }
+  return null;
+}
+
 function availableAtSharedSize(combo: CatalogCombo, size: string) {
   return combo.components.reduce(
     (total, component) =>
@@ -595,6 +840,61 @@ function availableAtSharedSize(combo: CatalogCombo, size: string) {
         0,
       ),
     0,
+  );
+}
+
+function ComboComponentThumbnail({
+  thumbnail,
+}: {
+  thumbnail: CatalogComboThumbnail | undefined;
+}) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  return (
+    <AspectRatio
+      className="w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted/30 sm:w-18"
+      ratio="square"
+    >
+      {thumbnail && thumbnail.card.src !== failedSrc ? (
+        <Image
+          alt=""
+          className="object-contain"
+          fill
+          loading="lazy"
+          onError={() => setFailedSrc(thumbnail.card.src)}
+          sizes="(min-width: 640px) 72px, 64px"
+          src={thumbnail.card.src}
+          unoptimized
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center text-muted-foreground">
+          <Package aria-hidden="true" className="size-5" />
+        </div>
+      )}
+    </AspectRatio>
+  );
+}
+
+function hasAvailableFixedSize(combo: CatalogCombo, size: string) {
+  const demandByVariant = new Map<
+    string,
+    { demand: number; availableQuantity: number }
+  >();
+  for (const component of combo.components) {
+    const variant = component.variants.find(
+      (candidate) =>
+        sameOption(candidate.sizeLabel, size) &&
+        sameOption(candidate.color, component.fixedColor ?? ""),
+    );
+    if (!variant) return false;
+    const current = demandByVariant.get(variant.variantId);
+    demandByVariant.set(variant.variantId, {
+      demand: (current?.demand ?? 0) + 1,
+      availableQuantity: variant.availableQuantity,
+    });
+  }
+  return [...demandByVariant.values()].every(
+    ({ demand, availableQuantity }) => demand <= availableQuantity,
   );
 }
 

@@ -184,7 +184,8 @@ export class CatalogComboService {
           ...conditions,
           sql`exists (
             select 1 from catalog.product_variant v
-            where v.product_id = ${catalogProduct.id} and v.is_active = true
+            where v.product_id = ${catalogProduct.id}
+              and v.is_active = true and v.price_bdt is not null
           )`,
         ),
       )
@@ -205,6 +206,7 @@ export class CatalogComboService {
             and(
               inArray(catalogProductVariant.productId, productIds),
               eq(catalogProductVariant.isActive, true),
+              sql`${catalogProductVariant.priceBdt} is not null`,
             ),
           )
           .orderBy(
@@ -224,8 +226,7 @@ export class CatalogComboService {
         id: variant.id,
         color: variant.color,
         sizeLabel: variant.sizeLabel,
-        price:
-          variant.priceBdt === null ? null : { amountBdt: variant.priceBdt },
+        price: { amountBdt: variant.priceBdt! },
       })),
     }));
   }

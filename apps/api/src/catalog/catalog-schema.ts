@@ -260,10 +260,6 @@ export const catalogComboComponent = catalogSchema.table(
     sortOrder: integer("sort_order").notNull(),
   },
   (table) => [
-    uniqueIndex("combo_component_product_uidx").on(
-      table.comboProductId,
-      table.productId,
-    ),
     uniqueIndex("combo_component_order_uidx").on(
       table.comboProductId,
       table.sortOrder,

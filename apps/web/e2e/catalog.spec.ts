@@ -863,9 +863,10 @@ test("staff manages reusable size guides and apparel products safely", async ({
   ).toBeVisible();
 });
 
-test("combo option selections stay saved per size and the cart receives the chosen variants", async ({
+test("combo option selections stay saved per color and the cart receives the chosen variants", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   const cartLoaded = page.waitForResponse(
     (response) =>
       response.request().method() === "GET" &&
@@ -878,26 +879,54 @@ test("combo option selections stay saved per size and the cart receives the chos
   expect((await cartLoaded).status()).toBe(200);
   await expect(page.getByText("Preparing your cart…")).toHaveCount(0);
   await expect(page.getByText("Loading your cart…")).toHaveCount(0);
-  await page.getByRole("button", { name: "Choose size M" }).click();
+  const colors = page.getByRole("group", { name: /^Color/ });
+  await colors.getByRole("button", { name: "Choose color Navy" }).click();
   const fullZip = page.getByRole("region", { name: "Full Zip Jacket" });
-  const navy = fullZip.getByRole("button", { name: "Navy", exact: true });
-  await navy.click();
-  await expect(navy).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Choose size L" }).click();
+  const sizeGrid = fullZip.locator(".grid").first();
+  const visibleColumnCount = () =>
+    sizeGrid.evaluate(
+      (element) =>
+        getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/)
+          .length,
+    );
+  await expect.poll(visibleColumnCount).toBe(2);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect.poll(visibleColumnCount).toBe(4);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const navyAdd = fullZip.getByRole("button", {
+    name: "Add one Full Zip Jacket Navy size M",
+  });
+  await navyAdd.click();
+  const navyRemove = fullZip.getByRole("button", {
+    name: "Remove one Full Zip Jacket Navy size M",
+  });
+  await expect(navyRemove).toBeEnabled();
+  await colors.getByRole("button", { name: "Choose color Olive" }).click();
   const halfZip = page.getByRole("region", { name: "Half Zip Jacket" });
-  const olive = halfZip.getByRole("button", { name: "Olive", exact: true });
-  await olive.click();
-  await expect(olive).toHaveAttribute("aria-pressed", "true");
+  const oliveAdd = halfZip.getByRole("button", {
+    name: "Add one Half Zip Jacket Olive size L",
+  });
+  await oliveAdd.click();
+  await expect(
+    halfZip.getByRole("button", {
+      name: "Remove one Half Zip Jacket Olive size L",
+    }),
+  ).toBeEnabled();
   await expect(page.getByText("2 of 2 selected")).toBeVisible();
-  await page.getByRole("button", { name: "Choose size M" }).click();
-  await expect(navy).toHaveAttribute("aria-pressed", "true");
-  await navy.click();
-  await expect(navy).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    colors.getByRole("button", { name: "Choose color Olive, 1 selected" }),
+  ).toBeVisible();
+  await colors
+    .getByRole("button", { name: "Choose color Navy, 1 selected" })
+    .click();
+  await expect(navyRemove).toBeEnabled();
+  await navyRemove.click();
   await expect(page.getByText("1 of 2 selected")).toBeVisible();
-  await navy.click();
-  await expect(navy).toHaveAttribute("aria-pressed", "true");
+  await navyAdd.click();
   await expect(page.getByText("2 of 2 selected")).toBeVisible();
-  await page.getByRole("button", { name: "Choose size L" }).click();
+  await colors
+    .getByRole("button", { name: "Choose color Olive, 1 selected" })
+    .click();
 
   const addRequest = page.waitForRequest(
     (request) =>
@@ -921,7 +950,6 @@ test("combo option selections stay saved per size and the cart receives the chos
     ],
   });
   await expect(page.getByText("Combo added to your cart.")).toBeVisible();
-  await expect(page.getByText("Sold as a complete set.").first()).toBeVisible();
 });
 
 test("customer Order page explains cancellation", async ({ page }) => {

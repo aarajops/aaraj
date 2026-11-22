@@ -24,10 +24,11 @@ async function createPublishedSourceProduct(
     categoryId: string;
     sizeGuideId: string;
     colors: string[];
+    sizes?: string[];
     priceBdt: number;
   },
 ): Promise<SourceProduct> {
-  const sizes = ["S", "M", "L"];
+  const sizes = input.sizes ?? ["S", "M", "L"];
   const variants = input.colors.flatMap((color) =>
     sizes.map((sizeLabel) => ({
       sku: `E2E-${input.suffix}-${color.toUpperCase()}-${sizeLabel}`,
@@ -119,6 +120,79 @@ async function createPublishedSourceProduct(
     expect(stockResponse.status()).toBe(201);
   }
   return { id: product.id, name: product.name, variants: variantByOption };
+}
+
+async function createDraftSourceProduct(
+  page: import("@playwright/test").Page,
+  input: {
+    suffix: string;
+    name: string;
+    categoryId: string;
+    sizeGuideId: string;
+    color: string;
+    priceBdt: number;
+    stockQuantity: number;
+  },
+): Promise<SourceProduct> {
+  const variants = ["S", "M", "L"].map((sizeLabel) => ({
+    sku: `E2E-${input.suffix}-${input.color.toUpperCase()}-${sizeLabel}`,
+    color: input.color,
+    sizeLabel,
+    price: { amountBdt: input.priceBdt },
+    compareAtPrice: { amountBdt: input.priceBdt + 300 },
+  }));
+  const createdResponse = await page.request.post("/api/v1/catalog/products", {
+    headers: { Origin: origin },
+    data: {
+      productType: "single",
+      slug: `${input.suffix}-source`,
+      name: input.name,
+      description: `${input.name} is an unpublished inventory source for Combo coverage.`,
+      audience: "unisex",
+      categoryId: input.categoryId,
+      fit: "Regular",
+      sizeGuideId: input.sizeGuideId,
+      variants,
+      isPublished: false,
+    },
+  });
+  expect(createdResponse.status()).toBe(201);
+  const createdProduct = await createdResponse.json();
+  const managedResponse = await page.request.get(
+    `/api/v1/catalog/products/manage/${createdProduct.id}`,
+  );
+  expect(managedResponse.status()).toBe(200);
+  const managed = await managedResponse.json();
+  const variantByOption = new Map<string, { id: string; priceBdt: number }>();
+  for (const variant of managed.variants as Array<{
+    id: string;
+    color: string;
+    sizeLabel: string;
+    price: { amountBdt: number } | null;
+  }>) {
+    expect(variant.price).not.toBeNull();
+    variantByOption.set(`${variant.color}/${variant.sizeLabel}`, {
+      id: variant.id,
+      priceBdt: variant.price!.amountBdt,
+    });
+    const stockResponse = await page.request.post(
+      `/api/v1/inventory/manage/${variant.id}/adjustments`,
+      {
+        headers: { Origin: origin },
+        data: {
+          commandId: randomUUID(),
+          delta: input.stockQuantity,
+          reason: "Seed unpublished Combo source inventory",
+        },
+      },
+    );
+    expect(stockResponse.status()).toBe(201);
+  }
+  return {
+    id: managed.id,
+    name: managed.name,
+    variants: variantByOption,
+  };
 }
 
 async function createPublishedCombo(
@@ -263,6 +337,10 @@ test("Combo management to partial COD fulfillment works through the real browser
           sizeLabel: "L",
           measurements: [{ key: "chest_width", value: "22.0" }],
         },
+        {
+          sizeLabel: "XXL",
+          measurements: [{ key: "chest_width", value: "26.0" }],
+        },
       ],
     },
   });
@@ -276,6 +354,7 @@ test("Combo management to partial COD fulfillment works through the real browser
       categoryId: category.id,
       sizeGuideId: guide.id,
       colors: ["Navy", "Black"],
+      sizes: ["S", "M", "L", "XXL"],
       priceBdt: 2200,
     }),
     createPublishedSourceProduct(page, {
@@ -416,7 +495,7 @@ test("Combo management to partial COD fulfillment works through the real browser
     .getByRole("button", { name: `Add ${fullZip.name} to combo` })
     .click();
   await expect(comboItems).toContainText(fullZip.name);
-  await expect(comboItems).toContainText("2 colors · 3 sizes · 6 variants");
+  await expect(comboItems).toContainText("2 colors · 4 sizes · 8 variants");
   for (const source of sourceProducts.slice(1)) {
     await page.getByLabel("Search products to add").fill(source.name);
     await page
@@ -449,6 +528,16 @@ test("Combo management to partial COD fulfillment works through the real browser
     await fixedColor.click();
     await page.getByRole("option", { name: color, exact: true }).click();
   }
+  await page.getByLabel("Search products to add").fill(fullZip.name);
+  await page
+    .getByRole("button", {
+      name: `Add another ${fullZip.name} to combo`,
+    })
+    .click();
+  await expect(
+    comboItems.getByRole("combobox", { name: "Fixed color" }),
+  ).toHaveCount(sourceProducts.length + 1);
+  await comboItems.getByRole("button", { name: "Remove combo item 6" }).click();
   await chooseSelectOption(page, "Customer selections", "Mix colors, one size");
   await expect(comboItems).toContainText("Products customers can choose from");
   await expect(
@@ -523,6 +612,22 @@ test("Combo management to partial COD fulfillment works through the real browser
       (component: { productName: string }) => component.productName,
     ),
   ).toEqual(sourceProducts.map(({ name }) => name));
+  for (const [index, component] of publishedCombo.combo.components.entries()) {
+    const thumbnail = component.thumbnails?.find(
+      ({ color }: { color: string | null }) => color === null,
+    );
+    const source = sourceProducts[index];
+    if (!thumbnail || !source) {
+      throw new Error("The published combo source thumbnail is missing.");
+    }
+    expect(thumbnail.altText).toBe(`${source.name} product image`);
+    expect(thumbnail.card.src).toMatch(
+      /^\/api\/v1\/catalog\/media\/.+\/card\/[a-f0-9]{64}\.webp$/,
+    );
+    const thumbnailResponse = await page.request.get(thumbnail.card.src);
+    expect(thumbnailResponse.status()).toBe(200);
+    expect(thumbnailResponse.headers()["content-type"]).toContain("image/webp");
+  }
   expect(publishedCombo.combo.itemCount).toBe(3);
 
   const fixedCombo = await createPublishedCombo(page, {
@@ -555,6 +660,102 @@ test("Combo management to partial COD fulfillment works through the real browser
   });
   expect(fixedCombo.combo.selectionMode).toBe("fixed_combo");
   expect(mixColorsCombo.combo.selectionMode).toBe("mix_colors_one_size");
+
+  const unpublishedSource = await createDraftSourceProduct(page, {
+    suffix: `${suffix}-hidden-source`,
+    name: `E2E Unpublished Source ${suffix}`,
+    categoryId: category.id,
+    sizeGuideId: guide.id,
+    color: "Black",
+    priceBdt: 900,
+    stockQuantity: 1,
+  });
+  const repeatedFixedCombo = await createPublishedCombo(page, {
+    suffix: `${suffix}-repeated-fixed`,
+    name: `E2E Repeated Fixed Combo ${suffix}`,
+    slug: `e2e-repeated-fixed-combo-${suffix}`,
+    categoryId: category.id,
+    sizeGuideId: guide.id,
+    selectionMode: "fixed_combo",
+    components: [
+      { productId: unpublishedSource.id, fixedColor: "Black" },
+      { productId: unpublishedSource.id, fixedColor: "Black" },
+    ],
+    priceBdt: 1500,
+  });
+  expect(repeatedFixedCombo).toMatchObject({
+    isPublished: true,
+    inStock: false,
+    combo: { itemCount: 2, selectionMode: "fixed_combo" },
+  });
+  const [repeatedFirst, repeatedSecond] = repeatedFixedCombo.combo.components;
+  const repeatedMediumVariant = unpublishedSource.variants.get("Black/M")!;
+  const repeatedSelection = {
+    revision: 0,
+    productId: repeatedFixedCombo.id,
+    comboRevision: repeatedFixedCombo.combo.revision,
+    selections: [
+      { componentId: repeatedFirst.id, variantId: repeatedMediumVariant.id },
+      { componentId: repeatedSecond.id, variantId: repeatedMediumVariant.id },
+    ],
+    quantity: 1,
+  };
+  const isolatedCartContext = await browser.newContext({ baseURL: origin });
+  try {
+    const rejectedUnderstockedSet = await isolatedCartContext.request.post(
+      "/api/v1/cart/combos",
+      { headers: { Origin: origin }, data: repeatedSelection },
+    );
+    expect(rejectedUnderstockedSet.status()).toBe(422);
+    expect(await rejectedUnderstockedSet.json()).toMatchObject({
+      errorCode: "COMBO_VARIANT_UNAVAILABLE",
+    });
+
+    const addOneMoreMedium = await page.request.post(
+      `/api/v1/inventory/manage/${repeatedMediumVariant.id}/adjustments`,
+      {
+        headers: { Origin: origin },
+        data: {
+          commandId: randomUUID(),
+          delta: 1,
+          reason: "Complete stock for the repeated fixed Combo",
+        },
+      },
+    );
+    expect(addOneMoreMedium.status()).toBe(201);
+    const acceptedRepeatedSet = await isolatedCartContext.request.post(
+      "/api/v1/cart/combos",
+      { headers: { Origin: origin }, data: repeatedSelection },
+    );
+    expect(acceptedRepeatedSet.status()).toBe(201);
+    expect((await acceptedRepeatedSet.json()).combos[0]).toMatchObject({
+      productId: repeatedFixedCombo.id,
+      availability: "available",
+    });
+  } finally {
+    await isolatedCartContext.close();
+  }
+
+  const singleSourceFlexibleCombo = await createPublishedCombo(page, {
+    suffix: `${suffix}-one-source-mix`,
+    name: `E2E One Source Flexible Combo ${suffix}`,
+    slug: `e2e-one-source-flexible-combo-${suffix}`,
+    categoryId: category.id,
+    sizeGuideId: guide.id,
+    itemCount: 3,
+    selectionMode: "mix_sizes_and_colors",
+    components: [{ productId: unpublishedSource.id, fixedColor: null }],
+    priceBdt: 2100,
+  });
+  expect(singleSourceFlexibleCombo).toMatchObject({
+    isPublished: true,
+    inStock: true,
+    combo: {
+      itemCount: 3,
+      selectionMode: "mix_sizes_and_colors",
+      components: [{ productId: unpublishedSource.id }],
+    },
+  });
 
   const fixedCustomerContext = await browser.newContext({ baseURL: origin });
   try {
@@ -645,6 +846,16 @@ test("Combo management to partial COD fulfillment works through the real browser
         level: 1,
       }),
     ).toBeVisible();
+    const mixColorsProductRegion = mixColorsPage.getByRole("region", {
+      name: mixColorsCombo.name,
+      exact: true,
+    });
+    await expect(
+      mixColorsProductRegion.getByRole("deletion").first(),
+    ).toHaveText("৳3,600");
+    await expect(
+      mixColorsProductRegion.getByText("From", { exact: true }),
+    ).toHaveCount(0);
     const mixAddButton = mixColorsPage.getByRole("button", {
       name: "Add to cart",
       exact: true,
@@ -664,36 +875,46 @@ test("Combo management to partial COD fulfillment works through the real browser
     const mixFullCard = mixColorsPage.getByRole("region", {
       name: fullZip.name,
     });
+    await expect(mixFullCard.getByText("Sold out")).toBeVisible();
     await expect(
-      mixFullCard.getByRole("button", { name: "Black Sold out", exact: true }),
-    ).toBeDisabled();
-    const navyColor = mixFullCard.getByRole("button", {
-      name: "Navy",
-      exact: true,
-    });
-    await navyColor.click();
-    await expect(navyColor).toHaveAttribute("aria-pressed", "true");
-    await navyColor.click();
-    await expect(navyColor).toHaveAttribute("aria-pressed", "false");
+      mixFullCard.getByRole("button", {
+        name: `Add one ${fullZip.name} Black size M`,
+      }),
+    ).toHaveCount(0);
     const addNavy = mixFullCard.getByRole("button", {
-      name: `Add one ${fullZip.name} Navy M`,
+      name: `Add one ${fullZip.name} Navy size M`,
     });
+    await addNavy.click();
+    await mixFullCard
+      .getByRole("button", {
+        name: `Remove one ${fullZip.name} Navy size M`,
+      })
+      .click();
     await addNavy.click();
     await addNavy.click();
     const mixHalfCard = mixColorsPage.getByRole("region", {
       name: halfZip.name,
     });
-    await mixHalfCard.getByRole("button", { name: "Red", exact: true }).click();
+    await mixHalfCard
+      .getByRole("button", {
+        name: `Add one ${halfZip.name} Red size M`,
+      })
+      .click();
     await expect(addNavy).toBeDisabled();
     await expect(mixAddButton).toBeEnabled();
     await expect(
-      mixColorsPage.getByText("Choose any 3 in M · 3 selected"),
+      mixColorsPage.getByText("Choose 3 items in M · 3 selected"),
     ).toBeVisible();
+    await expect(
+      mixColorsProductRegion.getByRole("deletion").first(),
+    ).toHaveText("৳6,200");
     const mixHoodieCard = mixColorsPage.getByRole("region", {
       name: hoodie.name,
     });
     await expect(
-      mixHoodieCard.getByRole("button", { name: "Olive", exact: true }),
+      mixHoodieCard.getByRole("button", {
+        name: `Add one ${hoodie.name} Olive size M`,
+      }),
     ).toBeDisabled();
     await sharedSize
       .getByRole("button", { name: "Choose size L", exact: true })
@@ -703,12 +924,20 @@ test("Combo management to partial COD fulfillment works through the real browser
       .getByRole("button", { name: "Choose size M", exact: true })
       .click();
     await mixFullCard
-      .getByRole("button", { name: "Navy", exact: true })
+      .getByRole("button", {
+        name: `Add one ${fullZip.name} Navy size M`,
+      })
       .click();
     await mixFullCard
-      .getByRole("button", { name: `Add one ${fullZip.name} Navy M` })
+      .getByRole("button", {
+        name: `Add one ${fullZip.name} Navy size M`,
+      })
       .click();
-    await mixHalfCard.getByRole("button", { name: "Red", exact: true }).click();
+    await mixHalfCard
+      .getByRole("button", {
+        name: `Add one ${halfZip.name} Red size M`,
+      })
+      .click();
     await expect(mixAddButton).toBeEnabled();
 
     const addMixColorsResponsePromise = mixColorsPage.waitForResponse(
@@ -756,6 +985,8 @@ test("Combo management to partial COD fulfillment works through the real browser
     await expect(
       customerPage.getByRole("heading", { name: comboName, level: 1 }),
     ).toBeVisible();
+    const actualComboPrice = customerPage.getByText("3,500").first();
+    await expect(actualComboPrice).toBeVisible();
     await expect(
       customerPage.getByRole("heading", { name: "Size guide", level: 3 }),
     ).toBeVisible();
@@ -764,43 +995,62 @@ test("Combo management to partial COD fulfillment works through the real browser
     const fullZipCard = customerPage.getByRole("region", {
       name: fullZip.name,
     });
-    const mixSizes = customerPage.getByRole("group", {
-      name: "Choose a size to select items",
-    });
-    await expect(
-      mixSizes.getByRole("button", { name: "Choose size S" }),
-    ).toBeDisabled();
-    await mixSizes.getByRole("button", { name: "Choose size M" }).click();
-    await expect(
-      fullZipCard.getByRole("button", { name: "Black Sold out", exact: true }),
-    ).toBeDisabled();
-    const navyButton = fullZipCard.getByRole("button", {
-      name: "Navy",
-      exact: true,
-    });
-    await navyButton.click();
-    await expect(navyButton).toHaveAttribute("aria-pressed", "true");
-    await mixSizes.getByRole("button", { name: "Choose size L" }).click();
-
     const halfZipCard = customerPage.getByRole("region", {
       name: halfZip.name,
     });
-    await halfZipCard
-      .getByRole("button", { name: "White", exact: true })
-      .click();
-    await mixSizes.getByRole("button", { name: "Choose size M" }).click();
-    await expect(navyButton).toHaveAttribute("aria-pressed", "true");
-    await navyButton.click();
-    await expect(navyButton).toHaveAttribute("aria-pressed", "false");
-    await navyButton.click();
-    await expect(navyButton).toHaveAttribute("aria-pressed", "true");
-    await fullZipCard
-      .getByRole("button", { name: `Add one ${fullZip.name} Navy M` })
-      .click();
-    await expect(customerPage.getByText("Your mix: 2×M · 1×L")).toBeVisible();
+    const mixColors = customerPage.getByRole("group", {
+      name: /^Color/,
+    });
     await expect(
-      customerPage.getByLabel("3 of 3 items selected"),
+      mixColors.getByRole("button", { name: "Choose color Black" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      customerPage.getByText("(Choose 3 items across colors and sizes)"),
     ).toBeVisible();
+    await expect(fullZipCard.getByText("Sold out").first()).toBeVisible();
+    const addNavyColor = mixColors.getByRole("button", {
+      name: "Choose color Navy",
+    });
+    await addNavyColor.click();
+    await expect(fullZipCard).toBeVisible();
+    await expect(halfZipCard).toHaveCount(0);
+    const addNavyMedium = fullZipCard.getByRole("button", {
+      name: `Add one ${fullZip.name} Navy size M`,
+    });
+    await expect(customerPage.getByText("0 of 3 selected")).toBeVisible();
+    await addNavyMedium.click();
+    await addNavyMedium.click();
+    await expect(customerPage.getByText("2 of 3 selected")).toBeVisible();
+    await expect(
+      mixColors.getByRole("button", { name: "Choose color Navy, 2 selected" }),
+    ).toBeVisible();
+
+    await mixColors.getByRole("button", { name: "Choose color White" }).click();
+    await expect(halfZipCard).toBeVisible();
+    const addWhiteLarge = halfZipCard.getByRole("button", {
+      name: `Add one ${halfZip.name} White size L`,
+    });
+    await addWhiteLarge.click();
+    await expect(customerPage.getByText("3 of 3 selected")).toBeVisible();
+    await mixColors
+      .getByRole("button", { name: "Choose color Navy, 2 selected" })
+      .click();
+    await expect(
+      fullZipCard.getByRole("button", {
+        name: `Remove one ${fullZip.name} Navy size M`,
+      }),
+    ).toBeEnabled();
+    await expect(
+      mixColors.getByRole("button", { name: "Choose color White, 1 selected" }),
+    ).toBeVisible();
+    await expect(customerPage.getByText("Regular/Base price:")).toHaveCount(0);
+    await expect(
+      customerPage
+        .getByRole("region", { name: comboName, exact: true })
+        .getByRole("deletion")
+        .first(),
+    ).toHaveText("৳6,200");
+    await expect(actualComboPrice).toBeVisible();
 
     const addComboResponsePromise = customerPage.waitForResponse(
       (response) =>
@@ -831,7 +1081,21 @@ test("Combo management to partial COD fulfillment works through the real browser
     await expect(
       customerPage.getByText("Combo added to your cart."),
     ).toBeVisible();
-    await customerPage.getByRole("link", { name: "Checkout" }).click();
+    await customerPage.reload();
+    await customerPage.goto("/cart");
+    await expect(
+      customerPage.getByRole("heading", { name: "Your cart", level: 1 }),
+    ).toBeVisible();
+    await expect(
+      customerPage.getByRole("link", { name: comboName }),
+    ).toBeVisible();
+    await expect(
+      customerPage.getByText(`${fullZip.name} · Navy · M`, { exact: true }),
+    ).toHaveCount(2);
+    await expect(
+      customerPage.getByText(`${halfZip.name} · White · L`, { exact: true }),
+    ).toBeVisible();
+    await customerPage.goto("/checkout");
     await expect(customerPage).toHaveURL(/\/checkout$/);
 
     const quotePromise = customerPage.waitForResponse(
@@ -1022,4 +1286,77 @@ test("Combo management to partial COD fulfillment works through the real browser
   } finally {
     await customerContext.close();
   }
+
+  await page.unroute("**/api/v1/catalog/combos/manage/*");
+  let editConfigurationAttempts = 0;
+  let editProductUpdateAttempts = 0;
+  await page.route(
+    `**/api/v1/catalog/combos/manage/${publishedCombo.id}`,
+    async (route) => {
+      if (route.request().method() === "PUT") {
+        editConfigurationAttempts += 1;
+        if (editConfigurationAttempts === 1) {
+          await route.fulfill({
+            status: 503,
+            json: {
+              statusCode: 503,
+              message:
+                "Temporary combo configuration failure for edit retry coverage.",
+            },
+          });
+          return;
+        }
+      }
+      await route.continue();
+    },
+  );
+  await page.route(
+    `**/api/v1/catalog/products/${publishedCombo.id}`,
+    async (route) => {
+      if (route.request().method() === "PATCH") {
+        editProductUpdateAttempts += 1;
+      }
+      await route.continue();
+    },
+  );
+  await page.goto(`/admin/catalog/${publishedCombo.id}/edit`);
+  await chooseSelectOption(page, "Audience", "Men");
+  await page.locator("#combo-price").fill("3600");
+  const saveChanges = page.getByRole("button", { name: "Save changes" });
+  const firstEditConfiguration = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      response
+        .url()
+        .endsWith(`/api/v1/catalog/combos/manage/${publishedCombo.id}`),
+  );
+  await saveChanges.click();
+  expect((await firstEditConfiguration).status()).toBe(503);
+  await expect(
+    page.getByText(
+      "Temporary combo configuration failure for edit retry coverage.",
+    ),
+  ).toBeVisible();
+  await expect(saveChanges).toBeEnabled();
+
+  const retryEditConfiguration = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      response
+        .url()
+        .endsWith(`/api/v1/catalog/combos/manage/${publishedCombo.id}`),
+  );
+  await saveChanges.click();
+  expect((await retryEditConfiguration).status()).toBe(200);
+  expect(editConfigurationAttempts).toBe(2);
+  expect(editProductUpdateAttempts).toBe(1);
+
+  const recoveredProductResponse = await page.request.get(
+    `/api/v1/catalog/products/${comboSlug}`,
+  );
+  expect(recoveredProductResponse.status()).toBe(200);
+  expect(await recoveredProductResponse.json()).toMatchObject({
+    audience: "men",
+    combo: { price: { amountBdt: 3600 } },
+  });
 });

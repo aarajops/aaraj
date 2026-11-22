@@ -638,7 +638,7 @@ export class CatalogService {
           sql`(
             select count(*) from catalog.combo_component c
             where c.combo_product_id = ${catalogProduct.id}
-          ) >= 2`,
+          ) >= 1`,
           sql`not exists (
             select 1
             from catalog.combo_component c
@@ -646,7 +646,6 @@ export class CatalogService {
             where c.combo_product_id = ${catalogProduct.id}
               and (
                 component.product_type <> 'single'
-                or component.is_published = false
                 or not exists (
                   select 1 from catalog.product_variant v
                   where v.product_id = component.id
@@ -1495,9 +1494,7 @@ async function validateComboPublishability(
   await requireActiveLeafCategory(transaction, product.categoryId);
   const combo = await loadCombo(transaction, product.id);
   if (!combo) {
-    throw new BadRequestException(
-      "Configure at least two combo components before publishing.",
-    );
+    throw new BadRequestException("Configure the combo before publishing it.");
   }
   await validateComboConfiguration(transaction, product.id, {
     selectionMode: combo.selectionMode,
@@ -1543,26 +1540,6 @@ async function validateComboPublishability(
         "Every size offered by this combo must appear in its size guide.",
       );
     }
-  }
-  const componentIds = combo.components.map(({ productId }) => productId);
-  const componentProducts = await transaction
-    .select({
-      id: catalogProduct.id,
-      productType: catalogProduct.productType,
-      isPublished: catalogProduct.isPublished,
-    })
-    .from(catalogProduct)
-    .where(inArray(catalogProduct.id, componentIds));
-  if (
-    componentProducts.length !== componentIds.length ||
-    componentProducts.some(
-      (component) =>
-        component.productType !== "single" || !component.isPublished,
-    )
-  ) {
-    throw new BadRequestException(
-      "Publish every single product used by this combo before publishing the combo.",
-    );
   }
   const [readyImage] = await transaction
     .select({ id: catalogProductMedia.id })
@@ -1815,7 +1792,7 @@ async function loadProductDetail(
   const variants = loadedVariants;
   const combo =
     product.productType === "combo"
-      ? await loadCombo(transaction, product.id)
+      ? await loadCombo(transaction, product.id, true)
       : null;
   const startingPricing = combo
     ? { price: combo.price, compareAtPrice: null }

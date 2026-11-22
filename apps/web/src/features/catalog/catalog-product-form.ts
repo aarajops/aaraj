@@ -281,8 +281,21 @@ export const productFormSchema = z
           path: ["comboComponents"],
           message:
             form.comboSelectionMode === "fixed_combo"
-              ? "Choose at least two products for this fixed combo."
+              ? "Choose at least two items for this fixed combo."
               : "Choose at least one existing product for customers to choose from.",
+        });
+      }
+      const lockedItemCount = parseBdtPrice(form.comboItemCount);
+      if (
+        form.id &&
+        form.comboSelectionMode === "fixed_combo" &&
+        lockedItemCount !== null &&
+        form.comboComponents.length !== lockedItemCount
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["comboComponents"],
+          message: `A fixed combo must include exactly ${lockedItemCount} items because its item count cannot be changed.`,
         });
       }
       if (

@@ -155,6 +155,7 @@ export function CatalogManager({
     fields: comboComponentFields,
     append: appendComboComponent,
     remove: removeComboComponent,
+    replace: replaceComboComponents,
   } = useFieldArray({ control, name: "comboComponents" });
   const comboComponentValues = useWatch({
     control,
@@ -197,7 +198,17 @@ export function CatalogManager({
   const slugError = errors.slug?.message;
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
   const comboItemCountIsLocked = Boolean(initialProduct?.combo);
+  const fixedComboCountMismatch = Boolean(
+    comboItemCountIsLocked &&
+    comboComponentFields.length !== initialProduct?.combo?.itemCount,
+  );
   const [createdProductId, setCreatedProductId] = useState<string | null>(null);
+  const [recoveryProductId, setRecoveryProductId] = useState<string | null>(
+    null,
+  );
+  const [lastSavedProductInput, setLastSavedProductInput] = useState<
+    string | null
+  >(null);
   const [productRevisionConflict, setProductRevisionConflict] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [productRefreshError, setProductRefreshError] = useState<string | null>(
@@ -405,7 +416,8 @@ export function CatalogManager({
       Boolean(submission.comboConfiguration) &&
       (submission.id === null ||
         comboConfigurationChanged ||
-        submission.id === createdProductId);
+        submission.id === createdProductId ||
+        submission.id === recoveryProductId);
     if (
       submission.id &&
       !hasProductChanges &&
@@ -464,7 +476,10 @@ export function CatalogManager({
           return;
         }
         savedProductDetail = detail.data;
-      } else if (submission.id === createdProductId) {
+      } else if (
+        submission.id === createdProductId ||
+        submission.id === recoveryProductId
+      ) {
         savedProductId = submission.id;
         const recoveredProductDetail = await fetchManagedProductDetail(
           savedProductId,
@@ -484,7 +499,11 @@ export function CatalogManager({
           return;
         }
         savedProductDetail = recoveredProductDetail;
-        if (hasProductDetailsChanges) {
+        const productInputFingerprint = JSON.stringify(submission.input);
+        if (
+          hasProductDetailsChanges &&
+          lastSavedProductInput !== productInputFingerprint
+        ) {
           const response = await updateCatalogProduct(
             savedProductId,
             savedProductDetail.editRevision,
@@ -508,6 +527,7 @@ export function CatalogManager({
             return;
           }
           savedProductDetail = updated.data;
+          setLastSavedProductInput(productInputFingerprint);
         }
         if (
           submission.comboConfiguration &&
@@ -552,6 +572,8 @@ export function CatalogManager({
             return;
           }
           savedProductDetail = updated.data;
+          setLastSavedProductInput(JSON.stringify(submission.input));
+          setRecoveryProductId(submission.id);
         }
       }
 
@@ -564,6 +586,7 @@ export function CatalogManager({
         if (!response.ok) {
           const problem = await readApiErrorResponse(response);
           if (response.status === 412) setProductRevisionConflict(true);
+          if (submission.id !== null) setRecoveryProductId(savedProductId);
           setFormErrorMessage(
             getApiErrorMessage(problem) ??
               "The combo configuration could not be saved.",
@@ -573,6 +596,7 @@ export function CatalogManager({
         if (
           !CatalogComboManageSchema.safeParse(await response.json()).success
         ) {
+          if (submission.id !== null) setRecoveryProductId(savedProductId);
           setFormErrorMessage(
             "The server returned an invalid combo configuration.",
           );
@@ -862,13 +886,34 @@ export function CatalogManager({
                                   field.value === "fixed_combo" &&
                                   nextMode !== "fixed_combo"
                                 ) {
+                                  const currentComponents =
+                                    getValues("comboComponents");
                                   setValue(
                                     "comboItemCount",
                                     String(
-                                      Math.max(2, comboComponentFields.length),
+                                      Math.max(2, currentComponents.length),
                                     ),
                                     { shouldDirty: true },
                                   );
+                                  const uniqueComponents = [
+                                    ...new Map(
+                                      currentComponents.map((component) => [
+                                        component.productId,
+                                        component,
+                                      ]),
+                                    ).values(),
+                                  ];
+                                  if (
+                                    uniqueComponents.length !==
+                                    currentComponents.length
+                                  ) {
+                                    replaceComboComponents(
+                                      uniqueComponents.map((component) => ({
+                                        ...component,
+                                        fixedColor: "",
+                                      })),
+                                    );
+                                  }
                                 }
                                 field.onChange(nextMode);
                               }}
@@ -882,7 +927,13 @@ export function CatalogManager({
                                 </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="fixed_combo">
+                                <SelectItem
+                                  disabled={
+                                    fixedComboCountMismatch &&
+                                    comboSelectionMode !== "fixed_combo"
+                                  }
+                                  value="fixed_combo"
+                                >
                                   Fixed combo
                                 </SelectItem>
                                 <SelectItem value="mix_colors_one_size">
@@ -897,11 +948,18 @@ export function CatalogManager({
                         />
                         <FieldDescription>
                           {comboSelectionMode === "fixed_combo"
-                            ? "Every listed product is included. You fix each color; customers choose one shared size."
+                            ? "Every listed item is included. Fix each color; customers choose one shared size. You can add the same product more than once."
                             : comboSelectionMode === "mix_colors_one_size"
                               ? "Customers choose exactly the set size from the listed products; the same product can be picked more than once if stock allows."
                               : "Customers choose exactly the set size across any listed products, colors, and sizes. Their choices stay selected while they switch sizes."}
                         </FieldDescription>
+                        {fixedComboCountMismatch && (
+                          <FieldDescription>
+                            A fixed combo must list exactly{" "}
+                            {initialProduct?.combo?.itemCount} items. Add or
+                            remove an item before changing to Fixed combo.
+                          </FieldDescription>
+                        )}
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="combo-item-count">
@@ -1018,7 +1076,8 @@ export function CatalogManager({
                               candidate.id,
                             );
                             const canAdd =
-                              !isSelected &&
+                              (comboSelectionMode === "fixed_combo" ||
+                                !isSelected) &&
                               comboComponentFields.length <
                                 MAX_COMBO_COMPONENTS;
                             return (
@@ -1036,7 +1095,12 @@ export function CatalogManager({
                                   </p>
                                 </div>
                                 <Button
-                                  aria-label={`Add ${candidate.name} to combo`}
+                                  aria-label={
+                                    comboSelectionMode === "fixed_combo" &&
+                                    isSelected
+                                      ? `Add another ${candidate.name} to combo`
+                                      : `Add ${candidate.name} to combo`
+                                  }
                                   disabled={!canAdd}
                                   onClick={() =>
                                     appendComboComponent({
@@ -1047,7 +1111,12 @@ export function CatalogManager({
                                   type="button"
                                   variant={isSelected ? "outline" : "secondary"}
                                 >
-                                  {isSelected ? "Added" : "Add item"}
+                                  {isSelected &&
+                                  comboSelectionMode !== "fixed_combo"
+                                    ? "Added"
+                                    : isSelected
+                                      ? "Add another item"
+                                      : "Add item"}
                                 </Button>
                               </div>
                             );
@@ -1196,7 +1265,8 @@ export function CatalogManager({
                             No products match this search.
                           </p>
                         )}
-                      {matchingComboCandidates.length > 0 &&
+                      {comboSelectionMode !== "fixed_combo" &&
+                        matchingComboCandidates.length > 0 &&
                         availableComboCandidateCount === 0 && (
                           <p
                             className="text-sm text-muted-foreground"
