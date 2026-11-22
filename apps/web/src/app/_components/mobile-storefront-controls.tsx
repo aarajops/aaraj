@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react";
 import Link from "next/link";
-import { Menu, Phone, Search } from "lucide-react";
+import { Menu, Phone, Search, Truck } from "lucide-react";
 import type {
   CatalogCategoryOption,
   PublicStorefrontSettings,
@@ -63,11 +63,12 @@ export function MobileStorefrontControls({
             <ul className="grid gap-1">
               <li>
                 <SheetClose
-                  className="block rounded-md px-3 py-3 text-sm font-medium text-foreground hover:bg-muted"
+                  className="flex items-center gap-2 rounded-md px-3 py-3 text-sm font-medium text-foreground hover:bg-muted"
                   nativeButton={false}
                   render={<Link href="/track-order" />}
                 >
-                  Track Your Order
+                  <Truck aria-hidden="true" className="size-4" />
+                  Track My Order
                 </SheetClose>
               </li>
               {headerNavigation.map(({ href, label }, index) => (

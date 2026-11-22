@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Phone } from "lucide-react";
+import { Phone, Truck } from "lucide-react";
 import { Suspense } from "react";
 import {
   NavigationMenu,
@@ -38,8 +38,12 @@ export async function SiteHeader() {
             aria-label="Store utility navigation"
             className="hidden h-10 items-center justify-end gap-5 text-xs text-muted-foreground xl:flex"
           >
-            <Link className="hover:text-foreground" href="/track-order">
-              Track Your Order
+            <Link
+              className="inline-flex items-center gap-1.5 hover:text-foreground"
+              href="/track-order"
+            >
+              <Truck aria-hidden="true" className="size-3.5" />
+              Track My Order
             </Link>
             <Link className="hover:text-foreground" href="/account">
               Log In
