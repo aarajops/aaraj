@@ -488,6 +488,7 @@ test("Combo management to partial COD fulfillment works through the real browser
   await chooseSelectOption(page, "Customer selections", "Mix sizes and colors");
   await page.getByLabel("Items in combo", { exact: true }).fill("3");
   await page.locator("#combo-price").fill("3500");
+  await page.locator("#combo-compare-at-price").fill("6200");
   const comboItems = page.getByRole("group", { name: "Combo items" });
   await expect(comboItems).toContainText("No items added yet.");
   await page.getByLabel("Search products to add").fill(fullZip.name);
@@ -598,6 +599,7 @@ test("Combo management to partial COD fulfillment works through the real browser
     combo: {
       selectionMode: "mix_sizes_and_colors",
       price: { amountBdt: 3500 },
+      compareAtPrice: { amountBdt: 6200 },
     },
   });
   expect(publishedCombo.sizeGuide.id).toBe(guide.id);
@@ -850,9 +852,7 @@ test("Combo management to partial COD fulfillment works through the real browser
       name: mixColorsCombo.name,
       exact: true,
     });
-    await expect(
-      mixColorsProductRegion.getByRole("deletion").first(),
-    ).toHaveText("৳3,600");
+    await expect(mixColorsProductRegion.getByRole("deletion")).toHaveCount(0);
     await expect(
       mixColorsProductRegion.getByText("From", { exact: true }),
     ).toHaveCount(0);
@@ -909,9 +909,7 @@ test("Combo management to partial COD fulfillment works through the real browser
     await expect(
       mixColorsPage.getByText("Choose 3 items in M · 3 selected"),
     ).toBeVisible();
-    await expect(
-      mixColorsProductRegion.getByRole("deletion").first(),
-    ).toHaveText("৳6,200");
+    await expect(mixColorsProductRegion.getByRole("deletion")).toHaveCount(0);
     const mixHoodieCard = mixColorsPage.getByRole("region", {
       name: hoodie.name,
     });
@@ -1365,6 +1363,9 @@ test("Combo management to partial COD fulfillment works through the real browser
   expect(recoveredProductResponse.status()).toBe(200);
   expect(await recoveredProductResponse.json()).toMatchObject({
     audience: "men",
-    combo: { price: { amountBdt: 3600 } },
+    combo: {
+      price: { amountBdt: 3600 },
+      compareAtPrice: { amountBdt: 6200 },
+    },
   });
 });
