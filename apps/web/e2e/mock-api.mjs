@@ -353,6 +353,7 @@ const comboFixtureProduct = {
   combo: {
     selectionMode: "mix_sizes_and_colors",
     price: { amountBdt: 2000 },
+    compareAtPrice: null,
     itemCount: 2,
     revision: 1,
     components: [
