@@ -662,6 +662,27 @@ test("Combo management to partial COD fulfillment works through the real browser
   });
   expect(fixedCombo.combo.selectionMode).toBe("fixed_combo");
   expect(mixColorsCombo.combo.selectionMode).toBe("mix_colors_one_size");
+  const derivedComboResponse = await page.request.get(
+    `/api/v1/catalog/products/${mixColorsCombo.slug}`,
+  );
+  expect(derivedComboResponse.status()).toBe(200);
+  expect(await derivedComboResponse.json()).toMatchObject({
+    price: { amountBdt: 3300 },
+    compareAtPrice: { amountBdt: 5100 },
+    combo: { compareAtPrice: null },
+  });
+  const derivedComboCardResponse = await page.request.get(
+    `/api/v1/catalog/products?search=${encodeURIComponent(mixColorsCombo.name)}`,
+  );
+  expect(derivedComboCardResponse.status()).toBe(200);
+  expect(await derivedComboCardResponse.json()).toMatchObject({
+    products: [
+      {
+        matchedVariantPrice: { amountBdt: 3300 },
+        matchedVariantCompareAtPrice: { amountBdt: 5100 },
+      },
+    ],
+  });
 
   const unpublishedSource = await createDraftSourceProduct(page, {
     suffix: `${suffix}-hidden-source`,
@@ -852,7 +873,9 @@ test("Combo management to partial COD fulfillment works through the real browser
       name: mixColorsCombo.name,
       exact: true,
     });
-    await expect(mixColorsProductRegion.getByRole("deletion")).toHaveCount(0);
+    await expect(
+      mixColorsProductRegion.getByRole("deletion").first(),
+    ).toHaveText("৳5,100");
     await expect(
       mixColorsProductRegion.getByText("From", { exact: true }),
     ).toHaveCount(0);
@@ -909,7 +932,9 @@ test("Combo management to partial COD fulfillment works through the real browser
     await expect(
       mixColorsPage.getByText("Choose 3 items in M · 3 selected"),
     ).toBeVisible();
-    await expect(mixColorsProductRegion.getByRole("deletion")).toHaveCount(0);
+    await expect(
+      mixColorsProductRegion.getByRole("deletion").first(),
+    ).toHaveText("৳7,700");
     const mixHoodieCard = mixColorsPage.getByRole("region", {
       name: hoodie.name,
     });

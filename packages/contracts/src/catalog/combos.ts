@@ -163,6 +163,130 @@ export const CatalogComboSchema = z.strictObject({
 });
 export type CatalogCombo = z.infer<typeof CatalogComboSchema>;
 
+/**
+ * Returns the combo's configured regular price, or the lowest regular price of
+ * a complete selectable set when no combo-level price is configured. A full
+ * selection uses the exact selected source variants.
+ */
+export function getComboRegularPrice(
+  combo: CatalogCombo,
+  selectedVariantIds: readonly string[] = [],
+): { amountBdt: number } | null {
+  if (combo.compareAtPrice) return combo.compareAtPrice;
+
+  if (selectedVariantIds.length === combo.itemCount) {
+    const variantsById = new Map(
+      combo.components.flatMap((component) =>
+        component.variants.map(
+          (variant) => [variant.variantId, variant] as const,
+        ),
+      ),
+    );
+    let amountBdt = 0;
+    for (const variantId of selectedVariantIds) {
+      const variant = variantsById.get(variantId);
+      if (!variant) return null;
+      amountBdt += variant.compareAtPrice?.amountBdt ?? variant.price.amountBdt;
+    }
+    return { amountBdt };
+  }
+
+  if (combo.selectionMode === "fixed_combo") {
+    const firstComponent = combo.components[0];
+    if (!firstComponent) return null;
+    const sizes = uniqueOptions(
+      firstComponent.variants
+        .filter((variant) =>
+          sameOption(variant.color, firstComponent.fixedColor ?? ""),
+        )
+        .map(({ sizeLabel }) => sizeLabel),
+    );
+    const totals = sizes.flatMap((size) => {
+      const demandByVariant = new Map<string, number>();
+      let amountBdt = 0;
+      for (const component of combo.components) {
+        const variant = component.variants.find(
+          (candidate) =>
+            sameOption(candidate.color, component.fixedColor ?? "") &&
+            sameOption(candidate.sizeLabel, size),
+        );
+        if (!variant || variant.availableQuantity < 1) return [];
+        const demand = (demandByVariant.get(variant.variantId) ?? 0) + 1;
+        if (demand > variant.availableQuantity) return [];
+        demandByVariant.set(variant.variantId, demand);
+        amountBdt +=
+          variant.compareAtPrice?.amountBdt ?? variant.price.amountBdt;
+      }
+      return [amountBdt];
+    });
+    return minimumPrice(totals);
+  }
+
+  const sizes =
+    combo.selectionMode === "mix_colors_one_size"
+      ? uniqueOptions(
+          combo.components.flatMap((component) =>
+            component.variants.map(({ sizeLabel }) => sizeLabel),
+          ),
+        )
+      : [null];
+  const totals = sizes.flatMap((size) => {
+    const options = combo.components.flatMap((component) =>
+      component.variants
+        .filter(
+          (variant) => size === null || sameOption(variant.sizeLabel, size),
+        )
+        .map((variant) => ({
+          amountBdt:
+            variant.compareAtPrice?.amountBdt ?? variant.price.amountBdt,
+          quantity: variant.availableQuantity,
+        })),
+    );
+    const total = cheapestAvailableTotal(options, combo.itemCount);
+    return total === null ? [] : [total];
+  });
+  return minimumPrice(totals);
+}
+
+function cheapestAvailableTotal(
+  options: readonly { amountBdt: number; quantity: number }[],
+  itemCount: number,
+): number | null {
+  let remaining = itemCount;
+  let total = 0;
+  for (const option of [...options].sort(
+    (left, right) => left.amountBdt - right.amountBdt,
+  )) {
+    const quantity = Math.min(remaining, option.quantity);
+    total += quantity * option.amountBdt;
+    remaining -= quantity;
+    if (remaining === 0) return total;
+  }
+  return null;
+}
+
+function minimumPrice(
+  amounts: readonly number[],
+): { amountBdt: number } | null {
+  return amounts.length ? { amountBdt: Math.min(...amounts) } : null;
+}
+
+function uniqueOptions(values: readonly string[]): string[] {
+  const unique = new Map<string, string>();
+  for (const value of values) {
+    const key = value.trim().toLocaleLowerCase("en-US");
+    if (!unique.has(key)) unique.set(key, value);
+  }
+  return [...unique.values()];
+}
+
+function sameOption(left: string, right: string): boolean {
+  return (
+    left.trim().toLocaleLowerCase("en-US") ===
+    right.trim().toLocaleLowerCase("en-US")
+  );
+}
+
 export const CatalogComboManageSchema = CatalogComboSchema.extend({
   productRevision: z.number().int().positive(),
 });

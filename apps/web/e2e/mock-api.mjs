@@ -26,6 +26,7 @@ import {
   DEFAULT_PUBLIC_STOREFRONT_HEADER_LINKS,
   MAX_LIST_OFFSET,
   MAX_LIST_PAGE_SIZE,
+  getComboRegularPrice,
 } from "@aaraj/contracts";
 
 const host = process.env.HOST ?? "127.0.0.1";
@@ -412,6 +413,9 @@ const comboFixtureProduct = {
     ],
   },
 };
+comboFixtureProduct.compareAtPrice = getComboRegularPrice(
+  comboFixtureProduct.combo,
+);
 let storefrontCart = {
   schemaVersion: 1,
   currency: "BDT",
@@ -2065,7 +2069,10 @@ function summary(product) {
   const fields = { ...product };
   delete fields.variants;
   delete fields.editRevision;
-  const price = startingPrice(product);
+  const price =
+    product.productType === "combo" && product.combo
+      ? product.combo.price.amountBdt
+      : startingPrice(product);
   return {
     ...fields,
     price: price === null ? null : { amountBdt: price },
@@ -2213,17 +2220,18 @@ function sendPublishedProductPage(response, source, url) {
   const candidateNextOffset = query.offset + pageRows.length;
   send(response, 200, {
     products: pageRows.map((product) => {
+      const combo = product.productType === "combo" ? product.combo : null;
       const purchasableVariants = product.variants.filter((variant) =>
         matchesPublishedVariant(variant, query),
       );
       const matchedPrices = purchasableVariants.map(
         ({ price }) => price.amountBdt,
       );
-      const matchedPrice = matchedPrices.length
+      const matchedSourcePrice = matchedPrices.length
         ? Math.min(...matchedPrices)
         : null;
       const lowestVariants = purchasableVariants.filter(
-        ({ price }) => price.amountBdt === matchedPrice,
+        ({ price }) => price.amountBdt === matchedSourcePrice,
       );
       const matchedCompareAtPrices = new Set(
         lowestVariants.map(
@@ -2234,18 +2242,27 @@ function sendPublishedProductPage(response, source, url) {
         matchedCompareAtPrices.size === 1
           ? [...matchedCompareAtPrices][0]
           : null;
+      const matchedPrice = combo?.price.amountBdt ?? matchedSourcePrice;
+      const matchedRegularPrice = combo
+        ? getComboRegularPrice(combo)
+        : matchedCompareAtPrice === null
+          ? null
+          : { amountBdt: matchedCompareAtPrice };
       return {
         ...summary(product),
         images: product.images ?? [],
-        inStock: purchasableVariants.some(({ inStock }) => inStock !== false),
-        priceVaries: new Set(matchedPrices).size > 1,
+        inStock: combo
+          ? product.inStock
+          : purchasableVariants.some(({ inStock }) => inStock !== false),
+        priceVaries: combo ? false : new Set(matchedPrices).size > 1,
         matchedVariantPrice:
           matchedPrice === null ? null : { amountBdt: matchedPrice },
         matchedVariantCompareAtPrice:
-          matchedCompareAtPrice === null ||
-          matchedCompareAtPrice <= matchedPrice
+          matchedRegularPrice === null ||
+          matchedPrice === null ||
+          matchedRegularPrice.amountBdt <= matchedPrice
             ? null
-            : { amountBdt: matchedCompareAtPrice },
+            : matchedRegularPrice,
       };
     }),
     limit: query.limit,

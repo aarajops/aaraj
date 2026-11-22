@@ -6,9 +6,13 @@ import type {
   CatalogCombo,
   CatalogComboThumbnail,
   CatalogComboVariantOption,
+  CatalogPrice,
   CatalogSizeGuide,
 } from "@aaraj/contracts";
-import { MAX_CART_QUANTITY_PER_VARIANT } from "@aaraj/contracts";
+import {
+  getComboRegularPrice,
+  MAX_CART_QUANTITY_PER_VARIANT,
+} from "@aaraj/contracts";
 import { ArrowRight, Package, ShoppingCart } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -23,12 +27,14 @@ import { SizeGuideTable } from "./size-guide-table";
 export function ComboPurchase({
   productId,
   combo,
+  initialCompareAtPrice,
   inStock,
   sizeGuide,
   initialSize,
 }: {
   productId: string;
   combo: CatalogCombo;
+  initialCompareAtPrice: CatalogPrice | null;
   inStock: boolean;
   sizeGuide: CatalogSizeGuide | null;
   initialSize?: string;
@@ -180,6 +186,14 @@ export function ComboPurchase({
       ? selectedItems.length === combo.itemCount && Boolean(sharedSize)
       : selectedTotal === combo.itemCount &&
         (combo.selectionMode !== "mix_colors_one_size" || Boolean(sharedSize));
+  const displayedCompareAtPrice = complete
+    ? getComboRegularPrice(
+        combo,
+        selectedItems.flatMap(({ variant, quantity }) =>
+          Array.from({ length: quantity }, () => variant.variantId),
+        ),
+      )
+    : initialCompareAtPrice;
   function setVariantQuantity(
     variant: CatalogComboVariantOption,
     value: number,
@@ -268,7 +282,7 @@ export function ComboPurchase({
       <div aria-live="polite" aria-atomic="true">
         <ProductPrice
           price={{ amountBdt: combo.price.amountBdt }}
-          compareAtPrice={combo.compareAtPrice}
+          compareAtPrice={displayedCompareAtPrice}
           size="prominent"
         />
       </div>
@@ -766,7 +780,7 @@ export function ComboPurchase({
       >
         <ProductPrice
           price={{ amountBdt: combo.price.amountBdt }}
-          compareAtPrice={combo.compareAtPrice}
+          compareAtPrice={displayedCompareAtPrice}
           size="prominent"
         />
         <Button

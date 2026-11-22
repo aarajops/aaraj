@@ -214,6 +214,7 @@ export default async function ProductPage({
             <div className="mt-5">
               {product.productType === "combo" && product.combo ? (
                 <ComboPurchase
+                  initialCompareAtPrice={product.compareAtPrice}
                   initialSize={initialSize}
                   productId={product.id}
                   combo={product.combo}

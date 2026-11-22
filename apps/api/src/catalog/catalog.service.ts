@@ -22,10 +22,12 @@ import type {
   CatalogCategoryReference,
   CatalogPrice,
   CatalogPriceRange,
+  CatalogCombo,
 } from "@aaraj/contracts";
 import {
   API_V1_BASE_PATH,
   CATALOG_PRODUCT_SLUG_MAX_LENGTH,
+  getComboRegularPrice,
   CatalogProductUpdateSchema,
   CatalogMediaDerivativesSchema,
   MAX_CATALOG_PRODUCT_MEDIA,
@@ -409,21 +411,22 @@ export class CatalogService {
     ]);
 
     const selectedRows = rows.slice(0, query.limit);
-    const [categoryReferences, lowestVariantPricing] = await Promise.all([
+    const productIds = selectedRows.map(({ id }) => id);
+    const [categoryReferences, comboMap] = await Promise.all([
       loadCategoryReferences(
         this.database.db,
         selectedRows.map(({ categoryId }) => categoryId),
       ),
-      loadLowestVariantPricing(
-        this.database.db,
-        selectedRows.map(({ id }) => id),
+      this.database.db.transaction((transaction) =>
+        loadCombos(transaction, productIds),
       ),
     ]);
-    const productIds = selectedRows.map(({ id }) => id);
-    const [imagesByProduct, variantSummariesByProduct] = await Promise.all([
-      this.loadPublishedProductImages(productIds),
-      this.loadPublishedProductVariantSummaries(productIds, query),
-    ]);
+    const [lowestVariantPricing, imagesByProduct, variantSummariesByProduct] =
+      await Promise.all([
+        loadLowestVariantPricing(this.database.db, productIds, comboMap),
+        this.loadPublishedProductImages(productIds),
+        this.loadPublishedProductVariantSummaries(productIds, query, comboMap),
+      ]);
     const page = toProductPage(
       rows,
       query,
@@ -452,6 +455,7 @@ export class CatalogService {
   private async loadPublishedProductVariantSummaries(
     productIds: string[],
     query: CatalogPublishedProductListQuery,
+    comboMap: ReadonlyMap<string, CatalogCombo>,
   ): Promise<
     Map<
       string,
@@ -512,13 +516,10 @@ export class CatalogService {
         ];
       }),
     );
-    const comboMap = await this.database.db.transaction((transaction) =>
-      loadCombos(transaction, productIds),
-    );
     for (const [productId, combo] of comboMap) {
       summaries.set(productId, {
         price: combo.price,
-        compareAtPrice: combo.compareAtPrice,
+        compareAtPrice: getComboRegularPrice(combo),
         priceVaries: false,
         inStock: comboHasAvailableSet(combo),
       });
@@ -1796,7 +1797,10 @@ async function loadProductDetail(
       ? await loadCombo(transaction, product.id, true)
       : null;
   const startingPricing = combo
-    ? { price: combo.price, compareAtPrice: combo.compareAtPrice }
+    ? {
+        price: combo.price,
+        compareAtPrice: getComboRegularPrice(combo),
+      }
     : lowestActiveVariantPricing(variants);
 
   return {
@@ -1833,6 +1837,7 @@ type CatalogProductPricing = {
 async function loadLowestVariantPricing(
   database: DatabaseService["db"],
   productIds: string[],
+  comboMap?: ReadonlyMap<string, CatalogCombo>,
 ): Promise<Map<string, CatalogProductPricing>> {
   if (!productIds.length) return new Map();
 
@@ -1865,21 +1870,15 @@ async function loadLowestVariantPricing(
       lowestVariantPricing(variantsByProduct.get(productId) ?? []),
     ]),
   );
-  const combos = await database
-    .select({
-      productId: catalogCombo.productId,
-      priceBdt: catalogCombo.priceBdt,
-      compareAtPriceBdt: catalogCombo.compareAtPriceBdt,
-    })
-    .from(catalogCombo)
-    .where(inArray(catalogCombo.productId, productIds));
-  for (const combo of combos) {
-    pricing.set(combo.productId, {
-      price: toCatalogPrice(combo.priceBdt),
-      compareAtPrice:
-        combo.compareAtPriceBdt === null
-          ? null
-          : toCatalogPrice(combo.compareAtPriceBdt),
+  const combos =
+    comboMap ??
+    (await database.transaction((transaction) =>
+      loadCombos(transaction, productIds),
+    ));
+  for (const [productId, combo] of combos) {
+    pricing.set(productId, {
+      price: combo.price,
+      compareAtPrice: getComboRegularPrice(combo),
     });
   }
   return pricing;
