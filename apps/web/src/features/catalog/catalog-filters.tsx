@@ -543,6 +543,8 @@ function getSortLabel(
   switch (sort) {
     case "newest":
       return "Newest";
+    case "recently-updated":
+      return "Recently updated";
     case "price-ascending":
       return "Price: low to high";
     case "price-descending":

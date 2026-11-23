@@ -403,7 +403,9 @@ export class CatalogService {
               desc(catalogProduct.createdAt),
               desc(catalogProduct.id),
             ]
-          : [desc(catalogProduct.createdAt), desc(catalogProduct.id)];
+          : query.sort === "recently-updated"
+            ? [desc(catalogProduct.updatedAt), desc(catalogProduct.id)]
+            : [desc(catalogProduct.createdAt), desc(catalogProduct.id)];
     const [rows, filterOptions] = await Promise.all([
       this.database.db
         .select()
