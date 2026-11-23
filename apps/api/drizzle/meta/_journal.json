@@ -512,6 +512,13 @@
       "when": 1795345034214,
       "tag": "0072_combo_regular_price",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1795416816060,
+      "tag": "0073_catalog_product_create_idempotency",
+      "breakpoints": true
     }
   ]
 }

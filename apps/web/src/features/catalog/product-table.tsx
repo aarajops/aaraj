@@ -14,6 +14,7 @@ import {
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
 import { ProductPrice } from "@/features/catalog/product-price";
+import { formatDateTime } from "@/lib/date-time";
 import { Pencil } from "lucide-react";
 
 const columnHelper = createDataTableColumnHelper<CatalogProduct>();
@@ -97,6 +98,10 @@ export function ProductTable({
             </Badge>
           ),
         }),
+        columnHelper.accessor("updatedAt", {
+          header: "Updated",
+          cell: ({ getValue }) => formatDateTime(getValue()),
+        }),
       ]),
     [],
   );
@@ -139,6 +144,16 @@ export function ProductTable({
             .filter(({ isLeaf }) => isLeaf)
             .map(({ id, path }) => ({ value: id, label: path }))
             .concat({ value: "uncategorized", label: "Uncategorized" }),
+        },
+        {
+          name: "sort",
+          label: "Updated",
+          allLabel: "Recently updated",
+          value: query.sort ?? "",
+          options: [
+            { value: "updated-desc", label: "Recently updated" },
+            { value: "updated-asc", label: "Oldest updated" },
+          ],
         },
       ]}
       onRefresh={onRefresh}

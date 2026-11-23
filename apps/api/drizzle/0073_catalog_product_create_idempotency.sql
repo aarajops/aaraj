@@ -1,0 +1,4 @@
+ALTER TABLE "catalog"."product" ADD COLUMN "create_command_id" uuid;--> statement-breakpoint
+ALTER TABLE "catalog"."product" ADD COLUMN "create_request_fingerprint" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "product_create_command_uidx" ON "catalog"."product" USING btree ("create_command_id") WHERE "catalog"."product"."create_command_id" is not null;--> statement-breakpoint
+ALTER TABLE "catalog"."product" ADD CONSTRAINT "product_create_command_fingerprint_check" CHECK (("catalog"."product"."create_command_id" is null and "catalog"."product"."create_request_fingerprint" is null) or ("catalog"."product"."create_command_id" is not null and "catalog"."product"."create_request_fingerprint" ~ '^[0-9a-f]{64}$'));

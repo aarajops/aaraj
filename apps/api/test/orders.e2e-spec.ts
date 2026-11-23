@@ -20,6 +20,7 @@ import { guestCartRevisionReceipt } from "../src/cart/cart-schema.js";
 import { configureApp } from "../src/configure-app.js";
 import { deriveCartCookieSigningSecret } from "../src/cart/cart-cookie.js";
 import {
+  catalogCategory,
   catalogProduct,
   catalogProductMedia,
   catalogProductVariant,
@@ -915,6 +916,17 @@ describe("COD Orders and checkout", () => {
 
   it("enforces fixed colors, one shared size, and independent component selections", async () => {
     const combo = await createComboFixture();
+    const categorySlug = `combo-facets-${randomUUID()}`;
+    const [comboCategory] = await database.db
+      .insert(catalogCategory)
+      .values({ name: "Combo facet test", slug: categorySlug })
+      .returning({ id: catalogCategory.id });
+    if (!comboCategory)
+      throw new Error("Could not create combo test category.");
+    await database.db
+      .update(catalogProduct)
+      .set({ categoryId: comboCategory.id })
+      .where(eq(catalogProduct.id, combo.productId));
     const fixed = await configureComboMode(
       combo.productId,
       "fixed_combo",
@@ -924,6 +936,24 @@ describe("COD Orders and checkout", () => {
       selectionMode: "fixed_combo",
       revision: 2,
     });
+    const comboFacetPage = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/catalog/products?category=${categorySlug}`)
+      .expect(200);
+    expect(comboFacetPage.body.filters).toMatchObject({
+      colors: ["Blue"],
+      sizes: ["M"],
+      priceRange: { minPriceBdt: 1200, maxPriceBdt: 1200 },
+    });
+    const unavailableComboColor = await request(app.getHttpServer())
+      .get(
+        `${API_V1_BASE_PATH}/catalog/products?category=${categorySlug}&color=Red`,
+      )
+      .expect(200);
+    expect(unavailableComboColor.body.products).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: combo.productId }),
+      ]),
+    );
     const fixedSelections = comboSelectionsFor(
       fixed.body.components,
       combo.variants,

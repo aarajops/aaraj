@@ -45,6 +45,7 @@ describe("catalog and security audit", () => {
   let admin: Account;
   let staff: Account;
   let customer: Account;
+  const productIdsToClean = new Set<string>();
 
   async function createAccount(name: string): Promise<Account> {
     const email = `${name}@catalog-e2e.example`;
@@ -93,6 +94,169 @@ describe("catalog and security audit", () => {
 
   afterAll(async () => {
     await app?.close();
+  });
+
+  afterEach(async () => {
+    if (productIdsToClean.size) {
+      await database.db
+        .delete(catalogProduct)
+        .where(inArray(catalogProduct.id, [...productIdsToClean]));
+      productIdsToClean.clear();
+    }
+  });
+
+  it("replays product creation safely and rejects a reused command with changed input", async () => {
+    const commandId = randomUUID();
+    const input = {
+      commandId,
+      slug: `idempotent-product-${randomUUID()}`,
+      name: "Idempotent product",
+      audience: "unisex",
+      reason: "Check safe product create retries",
+    };
+    const createRequest = () =>
+      request(app.getHttpServer())
+        .post("/api/v1/catalog/products")
+        .set("Cookie", staff.cookie)
+        .set("Origin", origin)
+        .send(input)
+        .expect(201);
+    const [created, replay] = await Promise.all([
+      createRequest(),
+      createRequest(),
+    ]);
+    productIdsToClean.add(created.body.id as string);
+    expect(replay.body.id).toBe(created.body.id);
+
+    await request(app.getHttpServer())
+      .post("/api/v1/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({ ...input, name: "Changed after retry" })
+      .expect(409);
+
+    const commands = await database.db
+      .select({ id: catalogProduct.id })
+      .from(catalogProduct)
+      .where(eq(catalogProduct.createCommandId, commandId));
+    expect(commands).toEqual([{ id: created.body.id }]);
+  });
+
+  it("reconciles a SKU swap in one product without changing variant identity", async () => {
+    const created = await request(app.getHttpServer())
+      .post("/api/v1/catalog/products")
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .send({
+        slug: `sku-swap-${randomUUID()}`,
+        name: "SKU swap product",
+        audience: "unisex",
+        variants: [
+          {
+            sku: `SWAP-A-${randomUUID()}`,
+            color: "Black",
+            sizeLabel: "M",
+            price: { amountBdt: 1000 },
+          },
+          {
+            sku: `SWAP-B-${randomUUID()}`,
+            color: "Navy",
+            sizeLabel: "M",
+            price: { amountBdt: 1100 },
+          },
+        ],
+      })
+      .expect(201);
+    productIdsToClean.add(created.body.id as string);
+    const managed = await request(app.getHttpServer())
+      .get(`/api/v1/catalog/products/manage/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    const before = managed.body.variants as Array<{
+      id: string;
+      sku: string;
+      color: string;
+      sizeLabel: string;
+    }>;
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/catalog/products/${created.body.id}`)
+      .set("Cookie", staff.cookie)
+      .set("Origin", origin)
+      .set("If-Match", productEtag(created.body.id, managed.body.editRevision))
+      .send({
+        variants: [
+          {
+            sku: before[1]!.sku,
+            color: "Black",
+            sizeLabel: "M",
+            price: { amountBdt: 1000 },
+          },
+          {
+            sku: before[0]!.sku,
+            color: "Navy",
+            sizeLabel: "M",
+            price: { amountBdt: 1100 },
+          },
+        ],
+        reason: "Swap the two product SKUs",
+      });
+    expect(updateResponse.status, JSON.stringify(updateResponse.body)).toBe(
+      200,
+    );
+    const updated = updateResponse;
+
+    expect(
+      updated.body.variants.map(({ id }: { id: string }) => id).sort(),
+    ).toEqual(before.map(({ id }) => id).sort());
+    expect(
+      updated.body.variants.map(
+        ({ color, sku }: { color: string; sku: string }) => `${color}:${sku}`,
+      ),
+    ).toEqual([`Black:${before[1]!.sku}`, `Navy:${before[0]!.sku}`]);
+  });
+
+  it("sorts product management results by updatedAt in either direction", async () => {
+    const token = randomUUID();
+    const products = await Promise.all(
+      ["older", "newer"].map((label) =>
+        request(app.getHttpServer())
+          .post("/api/v1/catalog/products")
+          .set("Cookie", staff.cookie)
+          .set("Origin", origin)
+          .send({
+            slug: `updated-sort-${label}-${token}`,
+            name: `Updated sort ${label} ${token}`,
+            audience: "unisex",
+          })
+          .expect(201),
+      ),
+    );
+    products.forEach(({ body }) => productIdsToClean.add(body.id as string));
+    const oldDate = new Date("2020-01-01T00:00:00.000Z");
+    const newDate = new Date("2021-01-01T00:00:00.000Z");
+    await database.db
+      .update(catalogProduct)
+      .set({ updatedAt: oldDate })
+      .where(eq(catalogProduct.id, products[0]!.body.id));
+    await database.db
+      .update(catalogProduct)
+      .set({ updatedAt: newDate })
+      .where(eq(catalogProduct.id, products[1]!.body.id));
+
+    const oldestFirst = await request(app.getHttpServer())
+      .get(`/api/v1/catalog/products/manage?search=${token}&sort=updated-asc`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(
+      oldestFirst.body.products.map(({ id }: { id: string }) => id),
+    ).toEqual(products.map(({ body }) => body.id));
+    const newestFirst = await request(app.getHttpServer())
+      .get(`/api/v1/catalog/products/manage?search=${token}&sort=updated-desc`)
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(
+      newestFirst.body.products.map(({ id }: { id: string }) => id),
+    ).toEqual(products.map(({ body }) => body.id).reverse());
   });
 
   it("requires a current product ETag and rejects stale product edits", async () => {

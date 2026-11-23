@@ -169,6 +169,7 @@ export type CatalogProductSlugSuggestionQuery = z.infer<
 >;
 
 export const CatalogProductCreateSchema = CatalogProductFieldsSchema.extend({
+  commandId: z.uuid().optional(),
   reason: z.string().trim().min(3).max(500).optional(),
 }).check(({ value, issues }) => {
   for (const issue of validateVariantInputs(value)) {
@@ -214,6 +215,7 @@ export const CatalogProductListQuerySchema = OffsetPaginationQuerySchema.extend(
     search: CatalogSearchQuerySchema,
     categoryId: z.union([z.uuid(), z.literal("uncategorized")]).optional(),
     status: z.enum(["draft", "published"]).optional(),
+    sort: z.enum(["updated-desc", "updated-asc"]).optional(),
   },
 );
 export type CatalogProductListQuery = z.infer<

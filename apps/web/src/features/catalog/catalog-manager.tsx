@@ -218,6 +218,10 @@ export function CatalogManager({
   );
   const productLoadRequestId = useRef(0);
   const slugSuggestionRequestId = useRef(0);
+  const [createCommand, setCreateCommand] = useState<{
+    fingerprint: string;
+    id: string;
+  } | null>(null);
   const [isLoadingSizeGuides, setIsLoadingSizeGuides] = useState(false);
   const [sizeGuideLoadError, setSizeGuideLoadError] = useState<string | null>(
     null,
@@ -436,6 +440,13 @@ export function CatalogManager({
       if (submission.id === null) {
         const input = { ...submission.input };
         if (!getFieldState("slug").isDirty) delete input.slug;
+        const fingerprint = JSON.stringify(input);
+        const command =
+          createCommand?.fingerprint === fingerprint
+            ? createCommand
+            : { fingerprint, id: crypto.randomUUID() };
+        if (command !== createCommand) setCreateCommand(command);
+        input.commandId = command.id;
         const response = await createCatalogProduct(input);
         if (!response.ok) {
           const problem = await readApiErrorResponse(response);

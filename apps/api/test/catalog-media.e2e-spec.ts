@@ -359,6 +359,19 @@ describe("catalog media management", () => {
         .from(catalogProduct)
         .where(eq(catalogProduct.id, otherProductId)),
     ).toHaveLength(1);
+
+    await database.db
+      .update(catalogProductVariant)
+      .set({ isActive: false })
+      .where(eq(catalogProductVariant.id, variantId));
+    await upload(productId, {
+      commandId: randomUUID(),
+      variantId,
+    }).expect(400);
+    await database.db
+      .update(catalogProductVariant)
+      .set({ isActive: true })
+      .where(eq(catalogProductVariant.id, variantId));
   });
 
   it("persists the selected media order through to the public product", async () => {

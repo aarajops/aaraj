@@ -177,6 +177,8 @@ export const catalogProduct = catalogSchema.table(
     }),
     isPublished: boolean("is_published").notNull().default(false),
     editRevision: integer("edit_revision").notNull().default(1),
+    createCommandId: uuid("create_command_id"),
+    createRequestFingerprint: text("create_request_fingerprint"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -186,6 +188,9 @@ export const catalogProduct = catalogSchema.table(
   },
   (table) => [
     uniqueIndex("product_slug_uidx").on(table.slug),
+    uniqueIndex("product_create_command_uidx")
+      .on(table.createCommandId)
+      .where(sql`${table.createCommandId} is not null`),
     index("product_category_id_idx").on(table.categoryId),
     index("product_published_updated_idx").on(
       table.isPublished,
@@ -213,6 +218,10 @@ export const catalogProduct = catalogSchema.table(
       sql`${table.productType} in ('single', 'combo')`,
     ),
     check("product_edit_revision_check", sql`${table.editRevision} > 0`),
+    check(
+      "product_create_command_fingerprint_check",
+      sql`(${table.createCommandId} is null and ${table.createRequestFingerprint} is null) or (${table.createCommandId} is not null and ${table.createRequestFingerprint} ~ '^[0-9a-f]{64}$')`,
+    ),
   ],
 );
 

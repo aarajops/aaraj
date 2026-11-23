@@ -5,6 +5,7 @@ import {
   NotFoundException,
   PreconditionFailedException,
 } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { AuthorizationService } from "@nestjs/authorization";
 import type {
   CatalogProductDetailImage,
@@ -345,6 +346,10 @@ export class CatalogService {
               minPriceBdt: undefined,
               maxPriceBdt: undefined,
             }),
+            or(
+              isNull(catalogComboComponent.fixedColor),
+              sql`lower(btrim(${catalogComboComponent.fixedColor})) = lower(btrim(${catalogProductVariant.color}))`,
+            ),
           ),
         );
       const matchingCombo = this.database.db
@@ -710,47 +715,84 @@ export class CatalogService {
     const cached = await readPublishedFilterOptionsCache();
     if (cached) return filterOptionsForCategory(cached, categorySlug);
 
-    const [productCounts, variantValues, categoryOptions] = await Promise.all([
-      this.database.db
-        .select({
-          categoryId: catalogProduct.categoryId,
-          publishedProductCount: count(),
-        })
-        .from(catalogProduct)
-        .where(
-          and(
-            ...this.publishedProductEligibilityConditions(),
-            isNotNull(catalogProduct.categoryId),
+    const [productCounts, variantValues, comboVariantValues, categoryOptions] =
+      await Promise.all([
+        this.database.db
+          .select({
+            categoryId: catalogProduct.categoryId,
+            publishedProductCount: count(),
+          })
+          .from(catalogProduct)
+          .where(
+            and(
+              ...this.publishedProductEligibilityConditions(),
+              isNotNull(catalogProduct.categoryId),
+            ),
+          )
+          .groupBy(catalogProduct.categoryId),
+        this.database.db
+          .select({
+            categoryId: catalogProduct.categoryId,
+            color: catalogProductVariant.color,
+            size: catalogProductVariant.sizeLabel,
+            minPriceBdt: sql<number>`min(${catalogProductVariant.priceBdt})`,
+            maxPriceBdt: sql<number>`max(${catalogProductVariant.priceBdt})`,
+          })
+          .from(catalogProductVariant)
+          .innerJoin(
+            catalogProduct,
+            eq(catalogProductVariant.productId, catalogProduct.id),
+          )
+          .where(
+            and(
+              ...this.publishedProductEligibilityConditions(),
+              eq(catalogProductVariant.isActive, true),
+              isNotNull(catalogProductVariant.priceBdt),
+            ),
+          )
+          .groupBy(
+            catalogProduct.categoryId,
+            catalogProductVariant.color,
+            catalogProductVariant.sizeLabel,
           ),
-        )
-        .groupBy(catalogProduct.categoryId),
-      this.database.db
-        .select({
-          categoryId: catalogProduct.categoryId,
-          color: catalogProductVariant.color,
-          size: catalogProductVariant.sizeLabel,
-          minPriceBdt: sql<number>`min(${catalogProductVariant.priceBdt})`,
-          maxPriceBdt: sql<number>`max(${catalogProductVariant.priceBdt})`,
-        })
-        .from(catalogProductVariant)
-        .innerJoin(
-          catalogProduct,
-          eq(catalogProductVariant.productId, catalogProduct.id),
-        )
-        .where(
-          and(
-            ...this.publishedProductEligibilityConditions(),
-            eq(catalogProductVariant.isActive, true),
-            isNotNull(catalogProductVariant.priceBdt),
+        this.database.db
+          .select({
+            categoryId: catalogProduct.categoryId,
+            color: catalogProductVariant.color,
+            size: catalogProductVariant.sizeLabel,
+            minPriceBdt: catalogCombo.priceBdt,
+            maxPriceBdt: catalogCombo.priceBdt,
+          })
+          .from(catalogCombo)
+          .innerJoin(
+            catalogProduct,
+            eq(catalogCombo.productId, catalogProduct.id),
+          )
+          .innerJoin(
+            catalogComboComponent,
+            eq(catalogComboComponent.comboProductId, catalogCombo.productId),
+          )
+          .innerJoin(
+            catalogProductVariant,
+            eq(
+              catalogProductVariant.productId,
+              catalogComboComponent.productId,
+            ),
+          )
+          .where(
+            and(
+              ...this.publishedProductEligibilityConditions(),
+              eq(catalogProductVariant.isActive, true),
+              isNotNull(catalogProductVariant.priceBdt),
+              or(
+                isNull(catalogComboComponent.fixedColor),
+                sql`lower(btrim(${catalogComboComponent.fixedColor})) = lower(btrim(${catalogProductVariant.color}))`,
+              ),
+            ),
           ),
-        )
-        .groupBy(
-          catalogProduct.categoryId,
-          catalogProductVariant.color,
-          catalogProductVariant.sizeLabel,
-        ),
-      this.categories.listPublic(),
-    ]);
+        this.categories.listPublic(),
+      ]);
+    const allVariantValues = [...variantValues, ...comboVariantValues];
 
     const categoriesById = new Map(
       categoryOptions.categories.map((category) => [category.id, category]),
@@ -764,7 +806,7 @@ export class CatalogService {
       }
     >();
     let priceRange: CatalogPriceRange | null = null;
-    for (const row of variantValues) {
+    for (const row of allVariantValues) {
       const range = {
         minPriceBdt: row.minPriceBdt,
         maxPriceBdt: row.maxPriceBdt,
@@ -810,8 +852,8 @@ export class CatalogService {
           ...category,
           publishedProductCount: publishedProductCounts.get(category.id) ?? 0,
         })),
-      colors: uniqueFilterValues(variantValues.map(({ color }) => color)),
-      sizes: uniqueFilterValues(variantValues.map(({ size }) => size)),
+      colors: uniqueFilterValues(allVariantValues.map(({ color }) => color)),
+      sizes: uniqueFilterValues(allVariantValues.map(({ size }) => size)),
       priceRange,
     };
     const cache: PublishedFilterOptionsCache = {
@@ -939,7 +981,14 @@ export class CatalogService {
       .select()
       .from(catalogProduct)
       .where(predicates.length ? and(...predicates) : undefined)
-      .orderBy(desc(catalogProduct.updatedAt), desc(catalogProduct.id))
+      .orderBy(
+        query.sort === "updated-asc"
+          ? asc(catalogProduct.updatedAt)
+          : desc(catalogProduct.updatedAt),
+        query.sort === "updated-asc"
+          ? asc(catalogProduct.id)
+          : desc(catalogProduct.id),
+      )
       .limit(query.limit + 1)
       .offset(query.offset);
     const selectedRows = rows.slice(0, query.limit);
@@ -993,6 +1042,9 @@ export class CatalogService {
   }
 
   async create(actor: AccessPrincipal, input: CatalogProductCreateInput) {
+    const requestFingerprint = input.commandId
+      ? fingerprintCatalogProductCreate(input)
+      : null;
     const created = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
@@ -1000,6 +1052,40 @@ export class CatalogService {
         actor,
         transaction,
       );
+      if (input.commandId && requestFingerprint) {
+        await transaction.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${input.commandId}, 0))`,
+        );
+        const [previouslyCreated] = await transaction
+          .select()
+          .from(catalogProduct)
+          .where(eq(catalogProduct.createCommandId, input.commandId))
+          .limit(1);
+        if (previouslyCreated) {
+          if (
+            previouslyCreated.createRequestFingerprint !== requestFingerprint
+          ) {
+            throw new ConflictException(
+              "This product creation command was already used with different details.",
+            );
+          }
+          const category = previouslyCreated.categoryId
+            ? await loadCategoryReference(
+                transaction,
+                previouslyCreated.categoryId,
+              )
+            : null;
+          const lowestVariantPricing = await loadProductVariantPricing(
+            transaction,
+            previouslyCreated.id,
+          );
+          return toCatalogProduct(
+            previouslyCreated,
+            category,
+            lowestVariantPricing,
+          );
+        }
+      }
       try {
         const variants = input.variants ?? [];
         const values = toProductPersistenceValues(input);
@@ -1025,6 +1111,12 @@ export class CatalogService {
         const productValues = {
           ...values,
           isPublished: input.isPublished ?? false,
+          ...(input.commandId && requestFingerprint
+            ? {
+                createCommandId: input.commandId,
+                createRequestFingerprint: requestFingerprint,
+              }
+            : {}),
         };
         const [product] = input.slug
           ? await transaction
@@ -1660,6 +1752,17 @@ async function reconcileVariants(
     ]),
   );
   const desiredIds = new Set<string>();
+  const matched: Array<{
+    variant: CatalogProductVariantInput;
+    existing: (typeof existing)[number];
+    priceBdt: number | null;
+    compareAtPriceBdt: number | null;
+  }> = [];
+  const added: Array<{
+    variant: CatalogProductVariantInput;
+    priceBdt: number | null;
+    compareAtPriceBdt: number | null;
+  }> = [];
   const pricingChanges: Array<{
     variantId: string;
     previousAmountBdt: number | null;
@@ -1700,50 +1803,120 @@ async function reconcileVariants(
               : safeAmountBdt(nextCompareAtPriceBdt),
         });
       }
-      await transaction
-        .update(catalogProductVariant)
-        .set({
-          sku: variant.sku,
-          color: variant.color,
-          sizeLabel: variant.sizeLabel,
-          priceBdt: nextPriceBdt,
-          compareAtPriceBdt: nextCompareAtPriceBdt,
-          isActive: true,
-          updatedAt: new Date(),
-        })
-        .where(eq(catalogProductVariant.id, match.id));
+      matched.push({
+        variant,
+        existing: match,
+        priceBdt: nextPriceBdt,
+        compareAtPriceBdt: nextCompareAtPriceBdt,
+      });
     } else {
-      const [inserted] = await transaction
-        .insert(catalogProductVariant)
-        .values({
+      added.push({
+        variant,
+        priceBdt: nextPriceBdt,
+        compareAtPriceBdt: nextCompareAtPriceBdt,
+      });
+    }
+  }
+
+  const skuChanges = matched.filter(
+    ({ variant, existing }) =>
+      normalize(variant.sku) !== normalize(existing.sku),
+  );
+  if (skuChanges.length) {
+    await transaction
+      .update(catalogProductVariant)
+      .set({ sku: sql`'__pending_' || gen_random_uuid()::text` })
+      .where(
+        inArray(
+          catalogProductVariant.id,
+          skuChanges.map(({ existing }) => existing.id),
+        ),
+      );
+  }
+
+  if (matched.length) {
+    const caseExpression = <T>(
+      valueFor: (entry: (typeof matched)[number]) => T,
+    ) =>
+      sql<T>`case ${catalogProductVariant.id} ${sql.join(
+        matched.map(
+          (entry) => sql`when ${entry.existing.id} then ${valueFor(entry)}`,
+        ),
+        sql` `,
+      )} end`;
+    await transaction
+      .update(catalogProductVariant)
+      .set({
+        sku: caseExpression<string>(({ variant }) => variant.sku),
+        color: caseExpression<string>(({ variant }) => variant.color),
+        sizeLabel: caseExpression<string>(({ variant }) => variant.sizeLabel),
+        priceBdt: sql<number | null>`${caseExpression<number | null>(
+          ({ priceBdt }) => priceBdt,
+        )}::integer`,
+        compareAtPriceBdt: sql<number | null>`${caseExpression<number | null>(
+          ({ compareAtPriceBdt }) => compareAtPriceBdt,
+        )}::integer`,
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(
+        inArray(
+          catalogProductVariant.id,
+          matched.map(({ existing }) => existing.id),
+        ),
+      );
+  }
+
+  if (added.length) {
+    const inserted = await transaction
+      .insert(catalogProductVariant)
+      .values(
+        added.map(({ variant, priceBdt, compareAtPriceBdt }) => ({
           productId,
           sku: variant.sku,
           color: variant.color,
           sizeLabel: variant.sizeLabel,
-          priceBdt: nextPriceBdt,
-          compareAtPriceBdt: nextCompareAtPriceBdt,
+          priceBdt,
+          compareAtPriceBdt,
           isActive: true,
-        })
-        .returning({ id: catalogProductVariant.id });
-      if (!inserted) throw new Error("Product variant insert returned no row.");
-      desiredIds.add(inserted.id);
-      if (nextPriceBdt !== null || nextCompareAtPriceBdt !== null) {
+        })),
+      )
+      .returning({
+        id: catalogProductVariant.id,
+        color: catalogProductVariant.color,
+        sizeLabel: catalogProductVariant.sizeLabel,
+      });
+    const insertedByCombination = new Map(
+      inserted.map((variant) => [
+        combinationKey(variant.color, variant.sizeLabel),
+        variant,
+      ]),
+    );
+    for (const { variant, priceBdt, compareAtPriceBdt } of added) {
+      const insertedVariant = insertedByCombination.get(
+        combinationKey(variant.color, variant.sizeLabel),
+      );
+      if (!insertedVariant)
+        throw new Error("Product variant insert returned no row.");
+      desiredIds.add(insertedVariant.id);
+      if (priceBdt !== null || compareAtPriceBdt !== null) {
         pricingChanges.push({
-          variantId: inserted.id,
+          variantId: insertedVariant.id,
           previousAmountBdt: null,
-          nextAmountBdt:
-            nextPriceBdt === null ? null : safeAmountBdt(nextPriceBdt),
+          nextAmountBdt: priceBdt === null ? null : safeAmountBdt(priceBdt),
           previousCompareAtAmountBdt: null,
           nextCompareAtAmountBdt:
-            nextCompareAtPriceBdt === null
+            compareAtPriceBdt === null
               ? null
-              : safeAmountBdt(nextCompareAtPriceBdt),
+              : safeAmountBdt(compareAtPriceBdt),
         });
       }
     }
   }
 
-  const removed = existing.filter((variant) => !desiredIds.has(variant.id));
+  const removed = existing.filter(
+    (variant) => variant.isActive && !desiredIds.has(variant.id),
+  );
   if (removed.length) {
     await transaction
       .update(catalogProductVariant)
@@ -1993,7 +2166,7 @@ async function loadSizeGuideDetail(
 
 function toProductPage(
   rows: (typeof catalogProduct.$inferSelect)[],
-  query: CatalogProductListQuery,
+  query: Pick<CatalogProductListQuery, "limit" | "offset">,
   categories: Map<string, CatalogCategoryReference>,
   lowestVariantPricing: Map<string, CatalogProductPricing>,
 ): CatalogProductPage {
@@ -2100,6 +2273,28 @@ function combinationKey(color: string, sizeLabel: string): string {
 
 function normalize(value: string): string {
   return value.trim().toLocaleLowerCase("en-US");
+}
+
+function fingerprintCatalogProductCreate(
+  input: CatalogProductCreateInput,
+): string {
+  const { commandId: _commandId, ...payload } = input;
+  return createHash("sha256").update(stableJson(payload)).digest("hex");
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const properties = Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`);
+    return `{${properties.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 function escapeLikeWildcards(value: string): string {

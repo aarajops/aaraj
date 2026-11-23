@@ -293,12 +293,13 @@ export class CatalogMediaService {
             and(
               eq(catalogProductVariant.id, variantId),
               eq(catalogProductVariant.productId, productId),
+              eq(catalogProductVariant.isActive, true),
             ),
           )
           .limit(1);
         if (!variant)
           throw new BadRequestException(
-            "Select a variant that belongs to this product.",
+            "Select an active variant that belongs to this product.",
           );
       }
 

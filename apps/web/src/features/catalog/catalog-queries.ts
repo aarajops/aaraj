@@ -69,6 +69,7 @@ export function parseCatalogPageQuery(
       typeof searchParams.search === "string" ? searchParams.search : undefined,
     status:
       typeof searchParams.status === "string" ? searchParams.status : undefined,
+    sort: typeof searchParams.sort === "string" ? searchParams.sort : undefined,
     categoryId:
       typeof searchParams.categoryId === "string"
         ? searchParams.categoryId

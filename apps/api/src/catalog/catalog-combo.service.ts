@@ -16,6 +16,7 @@ import { DatabaseService } from "../platform/database/database.service.js";
 import type { AuditTransaction } from "../platform/audit/audit.types.js";
 import type { AccessPrincipal } from "../platform/authorization/permissions.service.js";
 import { CatalogPolicy } from "./catalog.policy.js";
+import { invalidatePublishedFilterOptionsCache } from "./published-filter-cache.js";
 import {
   catalogCombo,
   catalogComboComponent,
@@ -59,6 +60,7 @@ export class CatalogComboService {
     input: CatalogComboConfigurationInput,
     expectedProductRevision: number,
   ): Promise<CatalogComboManage> {
+    let didChange = false;
     const result = await this.database.db.transaction(async (transaction) => {
       await this.authorization.authorize(
         CatalogPolicy,
@@ -105,6 +107,7 @@ export class CatalogComboService {
         return { ...currentCombo, productRevision: product.editRevision };
       }
 
+      didChange = true;
       await transaction
         .insert(catalogCombo)
         .values({
@@ -174,6 +177,7 @@ export class CatalogComboService {
       });
       return { ...combo, productRevision: updatedProduct.editRevision };
     });
+    if (didChange) await invalidatePublishedFilterOptionsCache();
     return result;
   }
 
