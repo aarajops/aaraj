@@ -48,7 +48,7 @@ export async function PublishedProductListing({
   const query = {
     ...parsedQuery,
     ...(categorySlug ? { category: categorySlug } : {}),
-    ...(sort && !parsedQuery.sort ? { sort } : {}),
+    sort: parsedQuery.sort ?? sort ?? "updated-ascending",
   };
   const page = await getPublishedProducts(query);
   const category = categorySlug

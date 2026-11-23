@@ -515,9 +515,9 @@ function SortControl({
           Sort by
         </FieldLabel>
         <Select
-          defaultValue={query.sort ?? "newest"}
+          defaultValue={query.sort ?? "updated-ascending"}
           items={sortOptions}
-          key={query.sort ?? "newest"}
+          key={query.sort ?? "updated-ascending"}
           name="sort"
           onValueChange={submitSortChange}
         >
