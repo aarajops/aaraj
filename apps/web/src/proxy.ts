@@ -18,6 +18,10 @@ export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDevelopment = process.env.NODE_ENV === "development";
   const isAdmin = request.nextUrl.pathname.startsWith("/admin");
+  const usesCatalogPriceSlider =
+    request.nextUrl.pathname === "/shop" ||
+    request.nextUrl.pathname === "/shop/new" ||
+    request.nextUrl.pathname.startsWith("/shop/categories/");
   const hasStorefrontGtm =
     !isAdmin && Boolean(getGtmIdForRequestHost(request.headers.get("host")));
   const storefrontOnly = (sources: string) =>
@@ -49,7 +53,7 @@ export function proxy(request: NextRequest) {
     )}`,
     // Base UI sliders position their thumbs and track with style attributes.
     // Keep inline style elements nonce-gated through style-src above.
-    "style-src-attr 'unsafe-inline'",
+    ...(usesCatalogPriceSlider ? ["style-src-attr 'unsafe-inline'"] : []),
     `img-src 'self' blob: data:${storefrontOnly(
       sources(
         trackingHosts.googleTag,
