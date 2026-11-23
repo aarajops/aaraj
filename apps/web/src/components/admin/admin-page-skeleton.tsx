@@ -86,7 +86,7 @@ const adminListSkeletons: Record<
 > = {
   products: {
     label: "products",
-    columnCount: 6,
+    columnCount: 7,
     filterCount: 2,
     hasAction: true,
   },
