@@ -47,6 +47,9 @@ export function proxy(request: NextRequest) {
         "https://fonts.googleapis.com",
       ),
     )}`,
+    // Base UI sliders position their thumbs and track with style attributes.
+    // Keep inline style elements nonce-gated through style-src above.
+    "style-src-attr 'unsafe-inline'",
     `img-src 'self' blob: data:${storefrontOnly(
       sources(
         trackingHosts.googleTag,
