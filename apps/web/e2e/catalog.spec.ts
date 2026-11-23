@@ -611,13 +611,22 @@ test("staff manages reusable size guides and apparel products safely", async ({
   const firstPageProduct = await publicProductName.textContent();
   await page.getByRole("link", { name: "Next" }).click();
   await expect(page).toHaveURL(
-    /\/shop\/categories\/t-shirts\?limit=1&offset=1/,
+    (url) =>
+      url.pathname === "/shop/categories/t-shirts" &&
+      url.searchParams.get("sort") === "updated-ascending" &&
+      url.searchParams.get("limit") === "1" &&
+      url.searchParams.get("offset") === "1",
   );
-  await expect(page).toHaveURL(/offset=1/);
   await expect(publicProductName).toHaveCount(1);
   await expect(publicProductName).not.toHaveText(firstPageProduct ?? "");
   await page.getByRole("link", { name: "Previous" }).click();
-  await expect(page).toHaveURL(/\/shop\/categories\/t-shirts\?limit=1$/);
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === "/shop/categories/t-shirts" &&
+      url.searchParams.get("sort") === "updated-ascending" &&
+      url.searchParams.get("limit") === "1" &&
+      url.searchParams.get("offset") === null,
+  );
 
   await page.goto("/admin/catalog");
   await openProductEdit(page, "Aaraj E2E T-shirt");
