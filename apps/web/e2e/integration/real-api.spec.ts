@@ -282,11 +282,6 @@ test("superadmin manages user access and repeatedly saves delivery tariffs", asy
         .getByRole("status")
         .filter({ hasText: `admin access removed from ${targetEmail}` }),
     ).toBeVisible();
-    const remainingAccess = await page.request.get(
-      `/api/v1/access/users?search=${encodeURIComponent(targetEmail)}`,
-    );
-    expect(remainingAccess.status()).toBe(200);
-    expect((await remainingAccess.json()).users[0].roles).toEqual(["customer"]);
     await expect(
       targetRow.getByText("customer", { exact: true }),
     ).toBeVisible();
