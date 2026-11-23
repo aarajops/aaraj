@@ -3,63 +3,57 @@
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { cn } from "cn";
 
-function Slider({ className, ...props }: SliderPrimitive.Root.Props) {
+type SliderProps = SliderPrimitive.Root.Props & {
+  thumbAriaLabels?: readonly string[];
+};
+
+function Slider({
+  className,
+  defaultValue,
+  value,
+  min = 0,
+  max = 100,
+  thumbAriaLabels,
+  ...props
+}: SliderProps) {
+  const values = Array.isArray(value)
+    ? value
+    : Array.isArray(defaultValue)
+      ? defaultValue
+      : [min, max];
+
   return (
     <SliderPrimitive.Root
-      className={cn("w-full touch-none select-none", className)}
+      className={cn("data-horizontal:w-full data-vertical:h-full", className)}
       data-slot="slider"
+      defaultValue={defaultValue}
+      max={max}
+      min={min}
+      thumbAlignment="edge"
+      value={value}
       {...props}
-    />
+    >
+      <SliderPrimitive.Control className="relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col">
+        <SliderPrimitive.Track
+          className="relative grow overflow-hidden rounded-full bg-muted select-none data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
+          data-slot="slider-track"
+        >
+          <SliderPrimitive.Indicator
+            className="bg-primary select-none data-horizontal:h-full data-vertical:w-full"
+            data-slot="slider-range"
+          />
+        </SliderPrimitive.Track>
+        {values.map((_, index) => (
+          <SliderPrimitive.Thumb
+            aria-label={thumbAriaLabels?.[index]}
+            className="relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50"
+            data-slot="slider-thumb"
+            key={index}
+          />
+        ))}
+      </SliderPrimitive.Control>
+    </SliderPrimitive.Root>
   );
 }
 
-function SliderControl({ className, ...props }: SliderPrimitive.Control.Props) {
-  return (
-    <SliderPrimitive.Control
-      className={cn("flex h-6 w-full touch-none items-center", className)}
-      data-slot="slider-control"
-      {...props}
-    />
-  );
-}
-
-function SliderTrack({ className, ...props }: SliderPrimitive.Track.Props) {
-  return (
-    <SliderPrimitive.Track
-      className={cn(
-        "relative h-1.5 w-full grow rounded-full bg-muted",
-        className,
-      )}
-      data-slot="slider-track"
-      {...props}
-    />
-  );
-}
-
-function SliderIndicator({
-  className,
-  ...props
-}: SliderPrimitive.Indicator.Props) {
-  return (
-    <SliderPrimitive.Indicator
-      className={cn("absolute h-full rounded-full bg-primary", className)}
-      data-slot="slider-indicator"
-      {...props}
-    />
-  );
-}
-
-function SliderThumb({ className, ...props }: SliderPrimitive.Thumb.Props) {
-  return (
-    <SliderPrimitive.Thumb
-      className={cn(
-        "size-4 cursor-grab rounded-full border border-primary bg-background shadow-sm outline-none active:cursor-grabbing focus-visible:ring-3 focus-visible:ring-ring/50 data-disabled:cursor-not-allowed data-disabled:opacity-50",
-        className,
-      )}
-      data-slot="slider-thumb"
-      {...props}
-    />
-  );
-}
-
-export { Slider, SliderControl, SliderIndicator, SliderThumb, SliderTrack };
+export { Slider };

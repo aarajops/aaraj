@@ -10,13 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Slider,
-  SliderControl,
-  SliderIndicator,
-  SliderThumb,
-  SliderTrack,
-} from "@/components/ui/slider";
+import { Slider } from "@/components/ui/slider";
 import {
   Select,
   SelectContent,
@@ -419,17 +413,9 @@ function PriceRangeFilter({
             onPriceCommit();
           }}
           step={1}
-          thumbAlignment="edge"
+          thumbAriaLabels={["Minimum price", "Maximum price"]}
           value={sliderValues}
-        >
-          <SliderControl>
-            <SliderTrack>
-              <SliderIndicator />
-              <SliderThumb aria-label="Minimum price" index={0} />
-              <SliderThumb aria-label="Maximum price" index={1} />
-            </SliderTrack>
-          </SliderControl>
-        </Slider>
+        />
       )}
       <div className="grid grid-cols-2 gap-3">
         <Field>
