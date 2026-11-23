@@ -62,9 +62,6 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Build shared packages
-        run: pnpm run build:packages
-
       - name: Check formatting
         run: pnpm run format:check
 
