@@ -389,6 +389,7 @@ test("admin data tables keep shared geometry and responsive scroll behavior", as
             careInstructions: "Machine wash cold.",
             sizeGuideId: null,
             price: { amountBdt: 1800 },
+            thumbnail: null,
             isPublished: true,
             createdAt: "2026-10-01T12:00:00.000Z",
             updatedAt: "2026-10-01T12:00:00.000Z",

@@ -2128,7 +2128,30 @@ function hasVariantConflict(variants, currentProductId = null) {
 }
 
 function sendProductPage(response, source, url) {
-  sendPage(response, source.map(summary), url, "products");
+  sendPage(
+    response,
+    source.map((product) => {
+      const thumbnail = [...(productMedia.get(product.id) ?? [])]
+        .filter(
+          ({ status, variantId }) =>
+            status === "ready" &&
+            (variantId === null ||
+              product.variants.some(
+                ({ id, isActive }) => id === variantId && isActive,
+              )),
+        )
+        .sort(
+          (left, right) =>
+            left.sortOrder - right.sortOrder || left.id.localeCompare(right.id),
+        )[0];
+      return {
+        ...summary(product),
+        thumbnail: thumbnail ? { mediaId: thumbnail.id } : null,
+      };
+    }),
+    url,
+    "products",
+  );
 }
 
 function sendPublishedProductPage(response, source, url) {
