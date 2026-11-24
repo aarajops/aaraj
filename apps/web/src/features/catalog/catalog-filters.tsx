@@ -515,9 +515,9 @@ function SortControl({
           Sort by
         </FieldLabel>
         <Select
-          defaultValue={query.sort ?? "updated-ascending"}
+          defaultValue={query.sort ?? "updated-descending"}
           items={sortOptions}
-          key={query.sort ?? "updated-ascending"}
+          key={query.sort ?? "updated-descending"}
           name="sort"
           onValueChange={submitSortChange}
         >
@@ -541,10 +541,12 @@ function getSortLabel(
   sort: (typeof CatalogPublishedProductSortSchema.options)[number],
 ) {
   switch (sort) {
+    case "updated-descending":
+      return "Recently updated";
     case "newest":
       return "Newest";
     case "updated-ascending":
-      return "Updated: oldest first";
+      return "Oldest updated";
     case "price-ascending":
       return "Price: low to high";
     case "price-descending":

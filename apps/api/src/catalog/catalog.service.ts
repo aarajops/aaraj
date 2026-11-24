@@ -405,7 +405,9 @@ export class CatalogService {
             ]
           : query.sort === "updated-ascending"
             ? [asc(catalogProduct.updatedAt), asc(catalogProduct.id)]
-            : [desc(catalogProduct.createdAt), desc(catalogProduct.id)];
+            : query.sort === "newest"
+              ? [desc(catalogProduct.createdAt), desc(catalogProduct.id)]
+              : [desc(catalogProduct.updatedAt), desc(catalogProduct.id)];
     const [rows, filterOptions] = await Promise.all([
       this.database.db
         .select()

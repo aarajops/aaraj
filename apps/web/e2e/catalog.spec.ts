@@ -613,7 +613,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page).toHaveURL(
     (url) =>
       url.pathname === "/shop/categories/t-shirts" &&
-      url.searchParams.get("sort") === "updated-ascending" &&
+      url.searchParams.get("sort") === "updated-descending" &&
       url.searchParams.get("limit") === "1" &&
       url.searchParams.get("offset") === "1",
   );
@@ -623,7 +623,7 @@ test("staff manages reusable size guides and apparel products safely", async ({
   await expect(page).toHaveURL(
     (url) =>
       url.pathname === "/shop/categories/t-shirts" &&
-      url.searchParams.get("sort") === "updated-ascending" &&
+      url.searchParams.get("sort") === "updated-descending" &&
       url.searchParams.get("limit") === "1" &&
       url.searchParams.get("offset") === null,
   );

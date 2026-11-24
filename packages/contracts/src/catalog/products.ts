@@ -22,6 +22,7 @@ export const CatalogAudienceSchema = z.enum(["men", "women", "unisex"]);
 export type CatalogAudience = z.infer<typeof CatalogAudienceSchema>;
 
 export const CatalogPublishedProductSortSchema = z.enum([
+  "updated-descending",
   "newest",
   "updated-ascending",
   "price-ascending",
