@@ -538,18 +538,25 @@ export class CatalogService {
 
   private async loadReadyProductImages(
     productIds: string[],
+    options: { firstPerProduct?: boolean } = {},
   ): Promise<Map<string, CatalogProductDetailImage[]>> {
     const imagesByProduct = new Map<string, CatalogProductDetailImage[]>();
     if (!productIds.length) return imagesByProduct;
 
-    const rows = await this.database.db
-      .select({
-        id: catalogProductMedia.id,
-        productId: catalogProductMedia.productId,
-        variantId: catalogProductMedia.variantId,
-        altText: catalogProductMedia.altText,
-        derivatives: catalogProductMedia.derivatives,
-      })
+    const imageSelection = {
+      id: catalogProductMedia.id,
+      productId: catalogProductMedia.productId,
+      variantId: catalogProductMedia.variantId,
+      altText: catalogProductMedia.altText,
+      derivatives: catalogProductMedia.derivatives,
+    };
+    const imageQuery = options.firstPerProduct
+      ? this.database.db.selectDistinctOn(
+          [catalogProductMedia.productId],
+          imageSelection,
+        )
+      : this.database.db.select(imageSelection);
+    const rows = await imageQuery
       .from(catalogProductMedia)
       .leftJoin(
         catalogProductVariant,
@@ -565,7 +572,13 @@ export class CatalogService {
           ),
         ),
       )
-      .orderBy(asc(catalogProductMedia.sortOrder), asc(catalogProductMedia.id));
+      .orderBy(
+        ...(options.firstPerProduct
+          ? [asc(catalogProductMedia.productId)]
+          : []),
+        asc(catalogProductMedia.sortOrder),
+        asc(catalogProductMedia.id),
+      );
 
     for (const row of rows) {
       const parsed = CatalogMediaDerivativesSchema.safeParse(row.derivatives);
@@ -1004,7 +1017,7 @@ export class CatalogService {
           selectedRows.map(({ categoryId }) => categoryId),
         ),
         loadLowestVariantPricing(this.database.db, productIds),
-        this.loadReadyProductImages(productIds),
+        this.loadReadyProductImages(productIds, { firstPerProduct: true }),
       ]);
     const page = toProductPage(
       rows,
