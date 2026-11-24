@@ -3,10 +3,11 @@
 import { useMemo } from "react";
 import type {
   CatalogCategoryOption,
-  CatalogProduct,
   CatalogProductListQuery,
   CatalogProductPage,
 } from "@aaraj/contracts";
+import Image from "next/image";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenuLinkItem } from "@/components/ui/dropdown-menu";
 import {
@@ -14,13 +15,16 @@ import {
   createDataTableColumnHelper,
 } from "@/components/admin/admin-data-table";
 import { ProductPrice } from "@/features/catalog/product-price";
+import { managedProductMediaPreviewUrl } from "@/features/catalog/catalog-client";
 import { formatDateTime } from "@/lib/date-time";
-import { Pencil } from "lucide-react";
+import { ImageOff, Pencil } from "lucide-react";
 
-const columnHelper = createDataTableColumnHelper<CatalogProduct>();
+type CatalogProductRow = CatalogProductPage["products"][number];
+
+const columnHelper = createDataTableColumnHelper<CatalogProductRow>();
 
 type ProductTableProps = {
-  products: CatalogProduct[];
+  products: CatalogProductPage["products"];
   categoryOptions: CatalogCategoryOption[];
   query: CatalogProductListQuery;
   onRefresh: () => void;
@@ -45,16 +49,48 @@ export function ProductTable({
         columnHelper.accessor("name", {
           header: "Product",
           cell: ({ row }) => (
-            <div className="whitespace-normal">
-              <p className="font-medium text-foreground">{row.original.name}</p>
-              {row.original.productType === "combo" && (
-                <Badge className="mt-1" variant="outline">
-                  Combo
-                </Badge>
-              )}
-              <p className="break-all text-sm text-muted-foreground">
-                /{row.original.slug}
-              </p>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="w-12 shrink-0">
+                {row.original.thumbnail ? (
+                  <AspectRatio
+                    aria-hidden="true"
+                    className="overflow-hidden rounded-md border bg-muted"
+                    ratio="square"
+                  >
+                    <Image
+                      alt=""
+                      className="object-cover"
+                      fill
+                      src={managedProductMediaPreviewUrl(
+                        row.original.id,
+                        row.original.thumbnail.mediaId,
+                      )}
+                      unoptimized
+                    />
+                  </AspectRatio>
+                ) : (
+                  <AspectRatio
+                    aria-hidden="true"
+                    className="grid place-items-center rounded-md border bg-muted text-muted-foreground"
+                    ratio="square"
+                  >
+                    <ImageOff aria-hidden="true" className="size-4" />
+                  </AspectRatio>
+                )}
+              </div>
+              <div className="min-w-0 whitespace-normal">
+                <p className="font-medium text-foreground">
+                  {row.original.name}
+                </p>
+                {row.original.productType === "combo" && (
+                  <Badge className="mt-1" variant="outline">
+                    Combo
+                  </Badge>
+                )}
+                <p className="break-all text-sm text-muted-foreground">
+                  /{row.original.slug}
+                </p>
+              </div>
             </div>
           ),
         }),

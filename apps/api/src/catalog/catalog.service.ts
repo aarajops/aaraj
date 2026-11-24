@@ -147,7 +147,7 @@ export class CatalogService {
       );
 
     const imagesByProduct = options.includeImages
-      ? await this.loadPublishedProductImages([
+      ? await this.loadReadyProductImages([
           ...new Set(rows.map(({ productId }) => productId)),
         ])
       : new Map<string, CatalogProductDetailImage[]>();
@@ -234,7 +234,7 @@ export class CatalogService {
         productIds,
       );
       if (combos.length === 0) return [];
-      const imagesByProduct = await this.loadPublishedProductImages(
+      const imagesByProduct = await this.loadReadyProductImages(
         combos.map(({ productId }) => productId),
       );
       return combos.map((combo) => {
@@ -433,7 +433,7 @@ export class CatalogService {
     const [lowestVariantPricing, imagesByProduct, variantSummariesByProduct] =
       await Promise.all([
         loadLowestVariantPricing(this.database.db, productIds, comboMap),
-        this.loadPublishedProductImages(productIds),
+        this.loadReadyProductImages(productIds),
         this.loadPublishedProductVariantSummaries(productIds, query, comboMap),
       ]);
     const page = toProductPage(
@@ -536,7 +536,7 @@ export class CatalogService {
     return summaries;
   }
 
-  private async loadPublishedProductImages(
+  private async loadReadyProductImages(
     productIds: string[],
   ): Promise<Map<string, CatalogProductDetailImage[]>> {
     const imagesByProduct = new Map<string, CatalogProductDetailImage[]>();
@@ -936,7 +936,7 @@ export class CatalogService {
         sizeGuide: detail.sizeGuide,
       };
     });
-    const imagesByProduct = await this.loadPublishedProductImages([product.id]);
+    const imagesByProduct = await this.loadReadyProductImages([product.id]);
     return {
       ...product,
       images: imagesByProduct.get(product.id) ?? [],
@@ -996,17 +996,32 @@ export class CatalogService {
       .limit(query.limit + 1)
       .offset(query.offset);
     const selectedRows = rows.slice(0, query.limit);
-    const [categoryReferences, lowestVariantPricing] = await Promise.all([
-      loadCategoryReferences(
-        this.database.db,
-        selectedRows.map(({ categoryId }) => categoryId),
-      ),
-      loadLowestVariantPricing(
-        this.database.db,
-        selectedRows.map(({ id }) => id),
-      ),
-    ]);
-    return toProductPage(rows, query, categoryReferences, lowestVariantPricing);
+    const productIds = selectedRows.map(({ id }) => id);
+    const [categoryReferences, lowestVariantPricing, imagesByProduct] =
+      await Promise.all([
+        loadCategoryReferences(
+          this.database.db,
+          selectedRows.map(({ categoryId }) => categoryId),
+        ),
+        loadLowestVariantPricing(this.database.db, productIds),
+        this.loadReadyProductImages(productIds),
+      ]);
+    const page = toProductPage(
+      rows,
+      query,
+      categoryReferences,
+      lowestVariantPricing,
+    );
+    return {
+      ...page,
+      products: page.products.map((product) => {
+        const thumbnail = imagesByProduct.get(product.id)?.[0];
+        return {
+          ...product,
+          thumbnail: thumbnail ? { mediaId: thumbnail.id } : null,
+        };
+      }),
+    };
   }
 
   async findForManagement(
@@ -2168,12 +2183,16 @@ async function loadSizeGuideDetail(
   return loadCatalogSizeGuideContent(transaction, guide);
 }
 
+type CatalogProductPageData = Omit<CatalogProductPage, "products"> & {
+  products: CatalogProduct[];
+};
+
 function toProductPage(
   rows: (typeof catalogProduct.$inferSelect)[],
   query: Pick<CatalogProductListQuery, "limit" | "offset">,
   categories: Map<string, CatalogCategoryReference>,
   lowestVariantPricing: Map<string, CatalogProductPricing>,
-): CatalogProductPage {
+): CatalogProductPageData {
   const hasMore = rows.length > query.limit;
   const products = rows.slice(0, query.limit).map((product) =>
     toCatalogProduct(

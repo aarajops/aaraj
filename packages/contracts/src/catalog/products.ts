@@ -13,6 +13,7 @@ import { CatalogSizeGuideSchema } from "./size-guides.js";
 import {
   CatalogProductDetailImageSchema,
   CatalogProductImageSchema,
+  CatalogProductThumbnailSchema,
 } from "./media.js";
 import { CatalogComboSchema } from "./combos.js";
 import { CatalogSearchQuerySchema } from "./search.js";
@@ -303,7 +304,9 @@ export type CatalogPublishedProductListQuery = z.infer<
 >;
 
 export const CatalogProductPageSchema = z.strictObject({
-  products: CatalogProductSchema.array(),
+  products: CatalogProductSchema.extend({
+    thumbnail: CatalogProductThumbnailSchema.nullable(),
+  }).array(),
   ...OffsetPaginationMetadataSchema.shape,
 });
 export type CatalogProductPage = z.infer<typeof CatalogProductPageSchema>;
