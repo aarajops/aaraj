@@ -769,6 +769,23 @@ describe("COD Orders and checkout", () => {
 
   beforeEach(async () => {
     vi.unstubAllGlobals();
+    const throttlerPrefix = process.env.THROTTLER_REDIS_KEY_PREFIX;
+    if (!throttlerPrefix) {
+      throw new Error("The E2E throttler prefix is missing.");
+    }
+    const redis = getRedisClient();
+    let cursor = "0";
+    do {
+      const [nextCursor, keys] = await redis.scan(
+        cursor,
+        "MATCH",
+        `{${throttlerPrefix}*`,
+        "COUNT",
+        100,
+      );
+      cursor = nextCursor;
+      if (keys.length > 0) await redis.del(...keys);
+    } while (cursor !== "0");
     await database.db.delete(pathaoApiToken);
     const date = bangladeshBusinessDate();
     await database.db

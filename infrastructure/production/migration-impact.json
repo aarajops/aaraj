@@ -48,5 +48,6 @@
   "0072_combo_regular_price.sql": "compatible",
   "0073_catalog_product_create_idempotency.sql": "compatible",
   "0074_order_line_accepted_quantity.sql": "compatible",
-  "0075_manual_staff_order_source.sql": "compatible"
+  "0075_manual_staff_order_source.sql": "compatible",
+  "0076_order_line_accepted_quantity_protection.sql": "compatible"
 }

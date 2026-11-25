@@ -533,6 +533,13 @@
       "when": 1795603527666,
       "tag": "0075_manual_staff_order_source",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1795605927068,
+      "tag": "0076_order_line_accepted_quantity_protection",
+      "breakpoints": true
     }
   ]
 }
