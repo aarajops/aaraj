@@ -1,0 +1,2 @@
+ALTER TABLE "orders"."order_line" ADD COLUMN "accepted_quantity" integer;--> statement-breakpoint
+ALTER TABLE "orders"."order_line" ADD CONSTRAINT "order_line_accepted_quantity_check" CHECK ("orders"."order_line"."accepted_quantity" is null or ("orders"."order_line"."combo_group_id" is null and "orders"."order_line"."accepted_quantity" between 0 and "orders"."order_line"."quantity"));

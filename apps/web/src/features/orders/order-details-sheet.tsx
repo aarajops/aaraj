@@ -52,8 +52,14 @@ import {
 } from "./order-status-badges";
 import { PathaoBookingPanel } from "./pathao-booking-panel";
 import {
+  getOrderAcceptedMerchandiseAmount,
   getAcceptedComboSelection,
-  getComboBillableAmount,
+  hasRecordedAcceptedQuantity,
+  getOrderComboBillableAmount,
+  getOrderDeliveryAmount,
+  getOrderDiscountForAcceptedMerchandise,
+  getOrderLineAcceptedAmount,
+  getOrderLineAcceptedQuantity,
 } from "./orders-format";
 
 type OrderDetailsSheetProps = {
@@ -314,6 +320,12 @@ function OrderDetailsSheetContent({
         .join(", ")
     : "";
   const discountPreviewBdt = Number(discountAmountBdt);
+  const acceptedMerchandiseBdt = order
+    ? getOrderAcceptedMerchandiseAmount(order)
+    : 0;
+  const acceptedDiscountBdt = order
+    ? getOrderDiscountForAcceptedMerchandise(order, acceptedMerchandiseBdt)
+    : 0;
   const discountInputValid =
     order !== null &&
     discountAmountBdt.trim() !== "" &&
@@ -562,21 +574,29 @@ function OrderDetailsSheetContent({
                           <span className="text-muted-foreground">
                             {line.color} · {line.sizeLabel} · Qty{" "}
                             {line.quantity}
+                            {hasRecordedAcceptedQuantity(line)
+                              ? ` · accepted ${line.acceptedQuantity}`
+                              : ""}
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1">
                           <span className="grid justify-items-end tabular-nums">
                             <span>
                               {formatBdtPrice({
-                                amountBdt: line.grossAmountBdt,
+                                amountBdt: getOrderLineAcceptedAmount(
+                                  order,
+                                  line,
+                                ),
                               })}
                             </span>
                             {line.compareAtPriceBdt !== null &&
-                              line.compareAtPriceBdt > line.unitPriceBdt && (
+                              line.compareAtPriceBdt > line.unitPriceBdt &&
+                              getOrderLineAcceptedQuantity(order, line) > 0 && (
                                 <del className="text-xs text-muted-foreground">
                                   {formatBdtPrice({
                                     amountBdt:
-                                      line.compareAtPriceBdt * line.quantity,
+                                      line.compareAtPriceBdt *
+                                      getOrderLineAcceptedQuantity(order, line),
                                   })}
                                 </del>
                               )}
@@ -624,7 +644,7 @@ function OrderDetailsSheetContent({
                       </span>
                       <span className="shrink-0 font-medium">
                         {formatBdtPrice({
-                          amountBdt: getComboBillableAmount(group),
+                          amountBdt: getOrderComboBillableAmount(order, group),
                         })}
                       </span>
                     </div>
@@ -818,19 +838,19 @@ function OrderDetailsSheetContent({
               <DetailRow
                 label="Subtotal"
                 value={formatBdtPrice({
-                  amountBdt: order.merchandiseGrossBdt,
+                  amountBdt: acceptedMerchandiseBdt,
                 })}
               />
-              {order.manualDiscountBdt > 0 && (
+              {acceptedDiscountBdt > 0 && (
                 <DetailRow
                   label="Discount"
-                  value={`−${formatBdtPrice({ amountBdt: order.manualDiscountBdt })}`}
+                  value={`−${formatBdtPrice({ amountBdt: acceptedDiscountBdt })}`}
                 />
               )}
               <DetailRow
                 label="Delivery"
                 value={formatBdtPrice({
-                  amountBdt: order.delivery.grossAmountBdt,
+                  amountBdt: getOrderDeliveryAmount(order),
                 })}
               />
               <DetailRow

@@ -387,6 +387,7 @@ export const customerOrderLine = ordersSchema.table(
     }),
     variantId: uuid("variant_id").notNull(),
     quantity: integer("quantity").notNull(),
+    acceptedQuantity: integer("accepted_quantity"),
     unitPriceBdt: bigint("unit_price_bdt", { mode: "number" }).notNull(),
     grossAmountBdt: bigint("gross_amount_bdt", { mode: "number" }).notNull(),
     productSnapshot: jsonb("product_snapshot").notNull(),
@@ -397,6 +398,10 @@ export const customerOrderLine = ordersSchema.table(
       .where(sql`${table.comboGroupId} is null`),
     index("order_line_variant_idx").on(table.variantId),
     check("order_line_quantity_check", sql`${table.quantity} between 1 and 10`),
+    check(
+      "order_line_accepted_quantity_check",
+      sql`${table.acceptedQuantity} is null or (${table.comboGroupId} is null and ${table.acceptedQuantity} between 0 and ${table.quantity})`,
+    ),
     check(
       "order_line_amount_check",
       sql`${table.unitPriceBdt} between 0 and 9007199254740991 and ${table.grossAmountBdt} between 0 and 9007199254740991 and ${table.grossAmountBdt} = ${table.unitPriceBdt} * ${table.quantity}`,

@@ -11,7 +11,13 @@ import type { PathaoCustomerTracking } from "@aaraj/contracts";
 import { CustomerOrderDetailsSkeleton } from "./order-page-skeleton";
 import {
   getAcceptedComboSelection,
-  getComboBillableAmount,
+  hasRecordedAcceptedQuantity,
+  getOrderAcceptedMerchandiseAmount,
+  getOrderComboBillableAmount,
+  getOrderDeliveryAmount,
+  getOrderDiscountForAcceptedMerchandise,
+  getOrderLineAcceptedAmount,
+  getOrderLineAcceptedQuantity,
   humanizePathaoStatus,
 } from "./orders-format";
 
@@ -65,6 +71,12 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
 
   const presentation = order ? getOrderPresentation(order) : null;
   const settlement = order ? getSettlementSummary(order) : null;
+  const acceptedMerchandiseBdt = order
+    ? getOrderAcceptedMerchandiseAmount(order)
+    : 0;
+  const acceptedDiscountBdt = order
+    ? getOrderDiscountForAcceptedMerchandise(order, acceptedMerchandiseBdt)
+    : 0;
 
   return (
     <main className="flex-1 bg-background px-5 py-10 text-foreground sm:py-14">
@@ -138,16 +150,23 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                         <p className="font-medium">{line.productName}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {line.color} · {line.sizeLabel} · Qty {line.quantity}
+                          {hasRecordedAcceptedQuantity(line)
+                            ? ` · accepted ${line.acceptedQuantity}`
+                            : ""}
                         </p>
                       </div>
                       <span className="grid justify-items-end whitespace-nowrap">
-                        {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                        {formatBdtPrice({
+                          amountBdt: getOrderLineAcceptedAmount(order, line),
+                        })}
                         {line.compareAtPriceBdt !== null &&
-                          line.compareAtPriceBdt > line.unitPriceBdt && (
+                          line.compareAtPriceBdt > line.unitPriceBdt &&
+                          getOrderLineAcceptedQuantity(order, line) > 0 && (
                             <del className="text-xs text-muted-foreground">
                               {formatBdtPrice({
                                 amountBdt:
-                                  line.compareAtPriceBdt * line.quantity,
+                                  line.compareAtPriceBdt *
+                                  getOrderLineAcceptedQuantity(order, line),
                               })}
                             </del>
                           )}
@@ -196,7 +215,7 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
                     </div>
                     <span className="grid justify-items-end whitespace-nowrap">
                       {formatBdtPrice({
-                        amountBdt: getComboBillableAmount(group),
+                        amountBdt: getOrderComboBillableAmount(order, group),
                       })}
                     </span>
                   </li>
@@ -213,16 +232,16 @@ export function CustomerOrderDetails({ orderId }: { orderId: string }) {
               </h2>
               <dl className="mt-3 grid gap-2 text-sm">
                 <DataRow label="Payment method" value="Cash on Delivery" />
-                {order.manualDiscountBdt > 0 && (
+                {acceptedDiscountBdt > 0 && (
                   <DataRow
                     label="Order discount"
-                    value={`−${formatBdtPrice({ amountBdt: order.manualDiscountBdt })}`}
+                    value={`−${formatBdtPrice({ amountBdt: acceptedDiscountBdt })}`}
                   />
                 )}
                 <DataRow
                   label="Delivery fee"
                   value={formatBdtPrice({
-                    amountBdt: order.delivery.grossAmountBdt,
+                    amountBdt: getOrderDeliveryAmount(order),
                   })}
                 />
               </dl>

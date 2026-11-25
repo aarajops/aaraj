@@ -1403,17 +1403,58 @@ export class CartService {
 
   private async readGuestState(id: string): Promise<CartStoredState | null> {
     try {
-      const raw = await getRedisClient().get(this.guestKey(id));
-      if (raw === null) return null;
-      let decoded: unknown;
-      try {
-        decoded = JSON.parse(raw);
-      } catch {
-        throw invalidStoredCart();
+      const redis = getRedisClient();
+      let raw = await redis.get(this.guestKey(id));
+      for (let attempt = 0; raw !== null && attempt < 3; attempt += 1) {
+        let state: CartStoredState;
+        try {
+          state = parseStoredState(JSON.parse(raw));
+        } catch {
+          throw invalidStoredCart();
+        }
+        if (
+          !(await this.hasGuestRevisionReceipt(
+            createHash("sha256").update(id).digest("hex"),
+            state.revision,
+          ))
+        ) {
+          return state;
+        }
+
+        // A committed order receipt is durable even if Redis was unavailable
+        // when checkout tried to clear this exact cart revision.
+        const cleanup = await this.clearGuestCartAfterCheckout(
+          id,
+          state.revision,
+        );
+        if (cleanup === "unavailable") {
+          throw new ServiceUnavailableException(
+            "Guest cart cleanup is pending. Retry when cart storage is available.",
+            { errorCode: "ORDER_CART_CLEANUP_PENDING" },
+          );
+        }
+        if (cleanup === "cleared") {
+          return {
+            ...EMPTY_CART,
+            revision: state.revision + 1,
+          };
+        }
+
+        raw = await redis.get(this.guestKey(id));
       }
-      return parseStoredState(decoded);
+      if (raw === null) return null;
+      throw new ConflictException(
+        "The guest cart changed while checkout cleanup was being recovered.",
+        { errorCode: "CART_REVISION_STALE" },
+      );
     } catch (error) {
-      if (error instanceof InternalServerErrorException) throw error;
+      if (
+        error instanceof ConflictException ||
+        error instanceof InternalServerErrorException ||
+        error instanceof ServiceUnavailableException
+      ) {
+        throw error;
+      }
       throw new ServiceUnavailableException(
         "Guest cart storage is temporarily unavailable.",
         { errorCode: "CART_STORAGE_UNAVAILABLE" },

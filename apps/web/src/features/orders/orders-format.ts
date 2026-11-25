@@ -9,6 +9,113 @@ export type ComboBillableRow = {
   grossAmountBdt: number;
 };
 
+const POST_DISPATCH_STATUSES = new Set([
+  "partially_delivered",
+  "delivered",
+  "delivery_failed",
+  "returned",
+]);
+
+export function hasRecordedAcceptedQuantity(
+  line: Order["lines"][number],
+): line is Order["lines"][number] & { acceptedQuantity: number } {
+  return line.acceptedQuantity !== null && line.acceptedQuantity !== undefined;
+}
+
+export function getOrderLineAcceptedQuantity(
+  order: Order,
+  line: Order["lines"][number],
+): number {
+  if (hasRecordedAcceptedQuantity(line)) {
+    return line.acceptedQuantity;
+  }
+  if (
+    order.fulfillmentStatus === "delivery_failed" ||
+    order.fulfillmentStatus === "returned"
+  ) {
+    return 0;
+  }
+  return line.quantity;
+}
+
+export function getOrderLineAcceptedAmount(
+  order: Order,
+  line: Order["lines"][number],
+): number {
+  return getOrderLineAcceptedQuantity(order, line) * line.unitPriceBdt;
+}
+
+export function getOrderComboBillableRows(
+  order: Order,
+  group: Order["comboGroups"][number],
+): ComboBillableRow[] {
+  if (
+    POST_DISPATCH_STATUSES.has(order.fulfillmentStatus) &&
+    group.deliveryOutcome === "pending"
+  ) {
+    return [];
+  }
+  return getComboBillableRows(group);
+}
+
+export function getOrderComboBillableAmount(
+  order: Order,
+  group: Order["comboGroups"][number],
+): number {
+  return getOrderComboBillableRows(order, group).reduce(
+    (total, row) => total + row.grossAmountBdt,
+    0,
+  );
+}
+
+export function getOrderAcceptedMerchandiseAmount(order: Order): number {
+  const standaloneAmount = order.lines
+    .filter((line) => line.comboGroupId === null)
+    .reduce(
+      (total, line) => total + getOrderLineAcceptedAmount(order, line),
+      0,
+    );
+  const comboAmount = order.comboGroups.reduce(
+    (total, group) => total + getOrderComboBillableAmount(order, group),
+    0,
+  );
+  return standaloneAmount + comboAmount;
+}
+
+export function getOrderDiscountForAcceptedMerchandise(
+  order: Order,
+  acceptedMerchandiseBdt = getOrderAcceptedMerchandiseAmount(order),
+): number {
+  if (!POST_DISPATCH_STATUSES.has(order.fulfillmentStatus)) {
+    return order.manualDiscountBdt;
+  }
+  if (acceptedMerchandiseBdt === 0) return 0;
+  if (
+    !order.lines.some(
+      (line) => line.comboGroupId === null && hasRecordedAcceptedQuantity(line),
+    )
+  ) {
+    return order.manualDiscountBdt;
+  }
+  if (order.merchandiseGrossBdt === 0) return 0;
+  const discountBasis = Math.min(
+    acceptedMerchandiseBdt,
+    order.merchandiseGrossBdt,
+  );
+  return Number(
+    (BigInt(order.manualDiscountBdt) * BigInt(discountBasis) +
+      BigInt(order.merchandiseGrossBdt) / BigInt(2)) /
+      BigInt(order.merchandiseGrossBdt),
+  );
+}
+
+export function getOrderDeliveryAmount(order: Order): number {
+  return POST_DISPATCH_STATUSES.has(order.fulfillmentStatus) &&
+    order.codAmountDueBdt === 0
+    ? 0
+    : order.delivery.grossAmountBdt;
+}
+
 export function getComboBillableRows(
   group: Order["comboGroups"][number],
 ): ComboBillableRow[] {

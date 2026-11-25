@@ -166,6 +166,15 @@ export const OrderFulfillmentOutcomeInputSchema = z.strictObject({
     "returned",
   ]),
   reason: z.string().trim().min(3).max(500),
+  acceptedItems: z
+    .array(
+      z.strictObject({
+        variantId: z.uuid(),
+        quantity: z.number().int().min(1).max(MAX_CART_QUANTITY_PER_VARIANT),
+      }),
+    )
+    .max(MAX_ORDER_LINES)
+    .optional(),
 });
 export type OrderFulfillmentOutcomeInput = z.infer<
   typeof OrderFulfillmentOutcomeInputSchema
@@ -212,6 +221,13 @@ const OrderLineSchema = z.strictObject({
   variantId: z.uuid(),
   selectionIndex: z.number().int().min(0).max(9).optional(),
   comboGroupId: z.uuid().nullable().default(null),
+  acceptedQuantity: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_CART_QUANTITY_PER_VARIANT)
+    .nullable()
+    .optional(),
   productName: z.string().min(1).max(160),
   color: z.string().min(1).max(80),
   sizeLabel: z.string().min(1).max(40),

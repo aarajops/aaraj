@@ -4,7 +4,13 @@ import { buttonVariants } from "@/components/ui/button";
 import { formatBdtPrice } from "@/lib/currency";
 import { formatDateTime } from "@/lib/date-time";
 import { OrderInvoicePrintButton } from "./order-invoice-print-button";
-import { getComboBillableRows } from "./orders-format";
+import {
+  getOrderComboBillableRows,
+  getOrderDeliveryAmount,
+  getOrderDiscountForAcceptedMerchandise,
+  getOrderLineAcceptedAmount,
+  getOrderLineAcceptedQuantity,
+} from "./orders-format";
 
 export function OrderInvoice({
   order,
@@ -30,24 +36,26 @@ export function OrderInvoice({
     "delivery_failed",
     "returned",
   ].includes(order.fulfillmentStatus);
-  const standaloneLines =
-    postDispatch &&
-    !["partially_delivered", "delivered"].includes(order.fulfillmentStatus)
-      ? []
-      : order.lines.filter((line) => line.comboGroupId === null);
+  const standaloneLines = order.lines
+    .filter((line) => line.comboGroupId === null)
+    .map((line) => ({
+      ...line,
+      billedQuantity: getOrderLineAcceptedQuantity(order, line),
+      billedAmountBdt: getOrderLineAcceptedAmount(order, line),
+    }))
+    .filter((line) => line.billedQuantity > 0);
   const comboRows = order.comboGroups.flatMap((group) =>
-    getComboBillableRows(group),
+    getOrderComboBillableRows(order, group),
   );
   const invoiceSubtotal =
-    standaloneLines.reduce((total, line) => total + line.grossAmountBdt, 0) +
+    standaloneLines.reduce((total, line) => total + line.billedAmountBdt, 0) +
     comboRows.reduce((total, line) => total + line.grossAmountBdt, 0);
-  const invoiceDelivery =
-    postDispatch && (order.collectedAmountBdt ?? order.codAmountDueBdt) === 0
-      ? 0
-      : order.delivery.grossAmountBdt;
-  const invoiceTotal = postDispatch
-    ? (order.collectedAmountBdt ?? order.codAmountDueBdt)
-    : order.totalBdt;
+  const invoiceDiscountBdt = getOrderDiscountForAcceptedMerchandise(
+    order,
+    invoiceSubtotal,
+  );
+  const invoiceDelivery = getOrderDeliveryAmount(order);
+  const invoiceTotal = postDispatch ? order.codAmountDueBdt : order.totalBdt;
 
   return (
     <>
@@ -137,7 +145,7 @@ export function OrderInvoice({
                     </span>
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums">
-                    {line.quantity}
+                    {line.billedQuantity}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums">
                     <span className="grid justify-items-end">
@@ -148,14 +156,15 @@ export function OrderInvoice({
                         line.compareAtPriceBdt > line.unitPriceBdt && (
                           <del className="text-xs text-muted-foreground print:text-gray-700">
                             {formatBdtPrice({
-                              amountBdt: line.compareAtPriceBdt,
+                              amountBdt:
+                                line.compareAtPriceBdt * line.billedQuantity,
                             })}
                           </del>
                         )}
                     </span>
                   </td>
                   <td className="py-3 pl-3 text-right tabular-nums">
-                    {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                    {formatBdtPrice({ amountBdt: line.billedAmountBdt })}
                   </td>
                 </tr>
               ))}
@@ -194,13 +203,13 @@ export function OrderInvoice({
               {formatBdtPrice({ amountBdt: invoiceSubtotal })}
             </dd>
           </div>
-          {order.manualDiscountBdt > 0 && (
+          {invoiceDiscountBdt > 0 && (
             <div className="flex justify-between gap-4">
               <dt className="text-muted-foreground print:text-gray-700">
                 Discount
               </dt>
               <dd className="tabular-nums">
-                −{formatBdtPrice({ amountBdt: order.manualDiscountBdt })}
+                −{formatBdtPrice({ amountBdt: invoiceDiscountBdt })}
               </dd>
             </div>
           )}
@@ -213,11 +222,24 @@ export function OrderInvoice({
             </dd>
           </div>
           <div className="flex justify-between gap-4 border-t border-border pt-3 text-base font-semibold print:border-black">
-            <dt>{postDispatch ? "COD amount" : "Order total"}</dt>
+            <dt>{postDispatch ? "COD amount due" : "Order total"}</dt>
             <dd className="tabular-nums">
               {formatBdtPrice({ amountBdt: invoiceTotal })}
             </dd>
           </div>
+          {postDispatch && order.collectedAmountBdt !== null && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground print:text-gray-700">
+                Amount collected
+                {order.collectionStatus === "discrepancy"
+                  ? " · under reconciliation"
+                  : ""}
+              </dt>
+              <dd className="tabular-nums">
+                {formatBdtPrice({ amountBdt: order.collectedAmountBdt })}
+              </dd>
+            </div>
+          )}
         </dl>
 
         <p className="mt-8 border-t border-border pt-4 text-sm text-muted-foreground print:border-black print:text-gray-700">

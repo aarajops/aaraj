@@ -20,6 +20,7 @@ import {
 import { Can } from "@nestjs/authorization";
 import { HttpAdapterHost } from "@nestjs/core";
 import { ApiCookieAuth } from "@nestjs/swagger";
+import { minutes, Throttle } from "@nestjs/throttler";
 import {
   OptionalAuth,
   Session,
@@ -69,6 +70,7 @@ export class OrdersController {
   ) {}
 
   @Post("checkout-access")
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   @HttpCode(204)
   @Header("Cache-Control", "no-store")
   async prepareGuestCheckoutAccess(
@@ -97,6 +99,7 @@ export class OrdersController {
   }
 
   @Post("checkout/replay")
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   @HttpCode(200)
   @Header("Cache-Control", "no-store")
   async replayCheckout(
@@ -132,6 +135,7 @@ export class OrdersController {
   }
 
   @Post()
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   @Header("Cache-Control", "no-store")
   async create(
     @Session() session: UserSession | undefined,

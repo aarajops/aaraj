@@ -42,7 +42,10 @@ import {
   comboSelectionInputKey,
   getAcceptedComboQuantity,
   getAcceptedComboSelection,
-  getComboBillableAmount,
+  hasRecordedAcceptedQuantity,
+  getOrderComboBillableAmount,
+  getOrderLineAcceptedAmount,
+  getOrderLineAcceptedQuantity,
   humanize,
   humanizeFulfillmentStatus,
 } from "./orders-format";
@@ -69,6 +72,9 @@ export function OrderReview({
   >({});
   const [comboAcceptedQuantities, setComboAcceptedQuantities] = useState<
     Record<string, Record<string, string>>
+  >({});
+  const [acceptedItemQuantities, setAcceptedItemQuantities] = useState<
+    Record<string, string>
   >({});
   const [collectionReason, setCollectionReason] = useState("");
   const [collectionAmount, setCollectionAmount] = useState("");
@@ -159,6 +165,20 @@ export function OrderReview({
   async function recordOutcome(
     outcome: OrderFulfillmentOutcomeInput["outcome"],
   ) {
+    if (outcome !== "delivered" && !acceptedItemQuantitiesAreValid) return;
+    const acceptedItems = order.lines
+      .filter((line) => line.comboGroupId === null)
+      .flatMap((line) => {
+        const quantity =
+          outcome === "delivered"
+            ? line.quantity
+            : Number(
+                acceptedItemQuantities[line.variantId] ??
+                  line.acceptedQuantity ??
+                  0,
+              ) || 0;
+        return quantity > 0 ? [{ variantId: line.variantId, quantity }] : [];
+      });
     setPending(true);
     setError(null);
     try {
@@ -166,6 +186,7 @@ export function OrderReview({
         await recordOrderFulfillmentOutcome(order.id, {
           outcome,
           reason: outcomeReason,
+          acceptedItems,
         }),
       );
     } catch (reasonError) {
@@ -255,13 +276,25 @@ export function OrderReview({
   }
 
   const availableOutcomes: OrderFulfillmentOutcomeInput["outcome"][] =
-    order.fulfillmentStatus === "dispatched"
-      ? ["partially_delivered", "delivered", "delivery_failed", "returned"]
-      : order.fulfillmentStatus === "delivery_failed"
-        ? ["delivery_failed", "partially_delivered", "delivered", "returned"]
-        : order.fulfillmentStatus === "partially_delivered"
-          ? ["partially_delivered", "delivered", "returned"]
-          : [];
+    order.collectionStatus !== "uncollected"
+      ? []
+      : order.fulfillmentStatus === "dispatched"
+        ? ["partially_delivered", "delivered", "delivery_failed", "returned"]
+        : order.fulfillmentStatus === "delivery_failed"
+          ? ["delivery_failed", "partially_delivered", "delivered", "returned"]
+          : order.fulfillmentStatus === "partially_delivered"
+            ? ["partially_delivered", "delivered", "returned"]
+            : [];
+  const acceptedItemQuantitiesAreValid = order.lines
+    .filter((line) => line.comboGroupId === null)
+    .every((line) => {
+      const value =
+        acceptedItemQuantities[line.variantId] ?? line.acceptedQuantity ?? 0;
+      const quantity = value === "" ? 0 : Number(value);
+      return (
+        Number.isInteger(quantity) && quantity >= 0 && quantity <= line.quantity
+      );
+    });
   const canConfirmOrder = order.availableStatusActions?.includes("confirmed");
   const canPutOnHold = order.availableStatusActions?.includes("on_hold");
   const canMarkNoAnswer = order.availableStatusActions?.includes("no_answer");
@@ -383,14 +416,22 @@ export function OrderReview({
                     <span>
                       {line.productName} · {line.color} · {line.sizeLabel} ×{" "}
                       {line.quantity}
+                      {hasRecordedAcceptedQuantity(line)
+                        ? ` · accepted ${line.acceptedQuantity}`
+                        : ""}
                     </span>
                     <span className="grid justify-items-end text-right">
-                      {formatBdtPrice({ amountBdt: line.grossAmountBdt })}
+                      {formatBdtPrice({
+                        amountBdt: getOrderLineAcceptedAmount(order, line),
+                      })}
                       {line.compareAtPriceBdt !== null &&
-                        line.compareAtPriceBdt > line.unitPriceBdt && (
+                        line.compareAtPriceBdt > line.unitPriceBdt &&
+                        getOrderLineAcceptedQuantity(order, line) > 0 && (
                           <del className="text-xs text-muted-foreground">
                             {formatBdtPrice({
-                              amountBdt: line.compareAtPriceBdt * line.quantity,
+                              amountBdt:
+                                line.compareAtPriceBdt *
+                                getOrderLineAcceptedQuantity(order, line),
                             })}
                           </del>
                         )}
@@ -410,7 +451,7 @@ export function OrderReview({
                     </span>
                     <span className="font-medium">
                       {formatBdtPrice({
-                        amountBdt: getComboBillableAmount(group),
+                        amountBdt: getOrderComboBillableAmount(order, group),
                       })}
                     </span>
                   </div>
@@ -660,6 +701,49 @@ export function OrderReview({
                   received quantities for each Combo.
                 </p>
               )}
+            {order.lines.some((line) => line.comboGroupId === null) && (
+              <div className="mt-4 grid gap-2 rounded-md border border-border p-3">
+                <p className="text-sm font-medium">
+                  Accepted quantities for regular items
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Enter how many items the customer keeps. Use 0 for none.
+                  Recording a full delivery accepts all ordered quantities.
+                </p>
+                {order.lines
+                  .filter((line) => line.comboGroupId === null)
+                  .map((line) => (
+                    <label
+                      className="flex items-center justify-between gap-3 text-sm"
+                      key={line.variantId}
+                    >
+                      <span>
+                        {line.productName} · {line.color} · {line.sizeLabel} ·{" "}
+                        ordered {line.quantity}
+                      </span>
+                      <Input
+                        aria-label={`Accepted quantity for ${line.productName} ${line.color} ${line.sizeLabel}`}
+                        className="w-24"
+                        inputMode="numeric"
+                        max={line.quantity}
+                        min={0}
+                        onChange={(event) =>
+                          setAcceptedItemQuantities((current) => ({
+                            ...current,
+                            [line.variantId]: event.target.value,
+                          }))
+                        }
+                        step={1}
+                        type="number"
+                        value={
+                          acceptedItemQuantities[line.variantId] ??
+                          String(line.acceptedQuantity ?? 0)
+                        }
+                      />
+                    </label>
+                  ))}
+              </div>
+            )}
             <label className="mt-4 grid gap-2 text-sm font-medium">
               Verification note
               <span className="text-xs text-muted-foreground">
@@ -680,7 +764,11 @@ export function OrderReview({
             <div className="mt-4 flex flex-wrap gap-3">
               {availableOutcomes.map((outcome) => (
                 <Button
-                  disabled={pending || outcomeReason.trim().length < 3}
+                  disabled={
+                    pending ||
+                    outcomeReason.trim().length < 3 ||
+                    (outcome !== "delivered" && !acceptedItemQuantitiesAreValid)
+                  }
                   key={outcome}
                   variant={outcome === "returned" ? "destructive" : "default"}
                   onClick={() => void recordOutcome(outcome)}
