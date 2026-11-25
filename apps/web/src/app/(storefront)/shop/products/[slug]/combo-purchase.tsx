@@ -450,45 +450,47 @@ export function ComboPurchase({
                             const canAdd =
                               variant.availableQuantity > quantity &&
                               selectedCount < combo.itemCount;
-                            const optionLabel = (
-                              <span
-                                className={`relative text-sm font-medium ${variant.availableQuantity === 0 && quantity === 0 ? "text-muted-foreground/50" : ""}`}
+                            const unavailable =
+                              variant.availableQuantity === 0 && quantity === 0;
+
+                            return (
+                              <article
+                                aria-label={`${component.productName}, ${activeMixColor}, size ${variant.sizeLabel}${unavailable ? ", unavailable" : ""}`}
+                                className={`relative min-h-10 min-w-0 rounded-md border motion-safe:transition-colors motion-safe:duration-200 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
+                                key={variant.variantId}
                               >
-                                {variant.sizeLabel}
-                                {variant.availableQuantity === 0 &&
-                                  quantity === 0 && (
+                                <span
+                                  className={`pointer-events-none absolute top-1/2 z-10 -translate-y-1/2 whitespace-nowrap text-sm font-medium motion-safe:transition-[left,translate] motion-safe:duration-200 motion-safe:ease-out motion-reduce:transition-none ${quantity > 0 ? "left-1.5 translate-x-0" : "left-1/2 -translate-x-1/2"} ${unavailable || (!canAdd && quantity === 0) ? "text-muted-foreground/50" : ""}`}
+                                >
+                                  {variant.sizeLabel}
+                                  {unavailable && (
                                     <span
                                       aria-hidden="true"
                                       className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
                                     />
                                   )}
-                              </span>
-                            );
-
-                            return quantity === 0 &&
-                              variant.availableQuantity > 0 ? (
-                              <Button
-                                aria-label={`Add one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
-                                className="h-auto min-h-10 w-full min-w-0 justify-between gap-1 border px-1.5 py-1.5 text-foreground shadow-none"
-                                disabled={!canAdd}
-                                key={variant.variantId}
-                                onClick={() => setVariantQuantity(variant, 1)}
-                                size="sm"
-                                type="button"
-                                variant="outline"
-                              >
-                                {optionLabel}
-                                <span className="text-sm font-medium">Add</span>
-                              </Button>
-                            ) : (
-                              <article
-                                aria-label={`${component.productName}, ${activeMixColor}, size ${variant.sizeLabel}${variant.availableQuantity === 0 && quantity === 0 ? ", unavailable" : ""}`}
-                                className={`flex min-h-10 min-w-0 items-center justify-between gap-1 rounded-md border px-1.5 py-1.5 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
-                                key={variant.variantId}
-                              >
-                                {optionLabel}
+                                </span>
+                                {quantity === 0 &&
+                                  variant.availableQuantity > 0 && (
+                                    <Button
+                                      className="absolute inset-0 z-0 h-full min-h-10 w-full rounded-md border-0 bg-transparent p-0 shadow-none hover:bg-muted/50"
+                                      disabled={!canAdd}
+                                      onClick={() =>
+                                        setVariantQuantity(variant, 1)
+                                      }
+                                      size="sm"
+                                      type="button"
+                                      variant="ghost"
+                                    >
+                                      <span className="sr-only">
+                                        Add one {component.productName}{" "}
+                                        {activeMixColor} size{" "}
+                                        {variant.sizeLabel}
+                                      </span>
+                                    </Button>
+                                  )}
                                 {quantity > 0 && (
-                                  <div className="flex shrink-0 items-center gap-0.5">
+                                  <div className="absolute top-1/2 right-1.5 z-20 flex -translate-y-1/2 items-center gap-0.5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-200">
                                     <Button
                                       aria-label={`Remove one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
                                       onClick={() =>
