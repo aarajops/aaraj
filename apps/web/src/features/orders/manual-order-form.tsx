@@ -4,16 +4,20 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BANGLADESH_GEOGRAPHY_VERSION,
+  CheckoutAddressInputSchema,
   MAX_CART_LINES,
   MAX_CART_QUANTITY_PER_VARIANT,
+  ManualOrderCustomerSchema,
   ManualOrderInputSchema,
   type BangladeshGeography,
-  type CheckoutAddressInput,
   type ManualOrderCustomer,
   type ManualOrderInput,
   type ManualOrderPreview,
 } from "@aaraj/contracts";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { X } from "lucide-react";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -31,19 +35,37 @@ import {
   type ManualVariantLine,
 } from "./manual-order-catalog-picker";
 
-type AddressDraft = {
-  recipientName: string;
-  phone: string;
-  divisionId: string;
-  districtId: string;
-  upazilaId: string;
-  doorstepDetails: string;
-};
+const manualVariantLineFormSchema =
+  ManualOrderInputSchema.shape.lines.element.extend({
+    productId: z.uuid(),
+    productName: z.string().min(1),
+    color: z.string().min(1),
+    sizeLabel: z.string().min(1),
+    unitPriceBdt: z.number().int().nonnegative(),
+  });
 
-type ManualComboLine = ManualOrderInput["combos"][number] & {
-  productName: string;
-  unitPriceBdt: number;
-};
+const manualComboLineFormSchema =
+  ManualOrderInputSchema.shape.combos.element.extend({
+    productName: z.string().min(1),
+    unitPriceBdt: z.number().int().nonnegative(),
+  });
+
+const manualOrderFormSchema = z.object({
+  selectedCustomer: ManualOrderCustomerSchema.nullable(),
+  address: z.object({
+    recipientName: CheckoutAddressInputSchema.shape.recipientName,
+    phone: CheckoutAddressInputSchema.shape.phone,
+    divisionId: z.string().min(1, "Choose a division.").pipe(z.uuid()),
+    districtId: z.string().min(1, "Choose a district.").pipe(z.uuid()),
+    upazilaId: z.union([z.literal(""), z.uuid()]),
+    doorstepDetails: CheckoutAddressInputSchema.shape.doorstepDetails,
+  }),
+  lines: z.array(manualVariantLineFormSchema).max(MAX_CART_LINES),
+  combos: z.array(manualComboLineFormSchema).max(MAX_CART_LINES),
+});
+
+type ManualOrderFormValues = z.infer<typeof manualOrderFormSchema>;
+type AddressDraft = ManualOrderFormValues["address"];
 
 type PreviewState = {
   requestKey: string;
@@ -59,24 +81,55 @@ const emptyAddress: AddressDraft = {
   doorstepDetails: "",
 };
 
+const emptyManualOrderForm: ManualOrderFormValues = {
+  selectedCustomer: null,
+  address: emptyAddress,
+  lines: [],
+  combos: [],
+};
+
 export function ManualOrderForm() {
   const router = useRouter();
+  const {
+    control,
+    getValues,
+    handleSubmit,
+    register,
+    setValue,
+    formState: { errors, isValid },
+  } = useForm<ManualOrderFormValues>({
+    resolver: zodResolver(manualOrderFormSchema),
+    defaultValues: emptyManualOrderForm,
+    mode: "onChange",
+  });
+  const {
+    fields: variantLineFields,
+    append: appendVariantLine,
+    update: updateVariantLine,
+    remove: removeVariantLine,
+  } = useFieldArray({ control, name: "lines" });
+  const {
+    fields: comboLineFields,
+    append: appendComboLine,
+    remove: removeComboLine,
+  } = useFieldArray({ control, name: "combos" });
+  const address = useWatch({ control, name: "address" });
+  const selectedCustomer = useWatch({ control, name: "selectedCustomer" });
+  const lines =
+    useWatch({ control, name: "lines" }) ?? emptyManualOrderForm.lines;
+  const combos =
+    useWatch({ control, name: "combos" }) ?? emptyManualOrderForm.combos;
   const [geography, setGeography] = useState<BangladeshGeography | null>(null);
   const [geographyError, setGeographyError] = useState(false);
-  const [address, setAddress] = useState<AddressDraft>(emptyAddress);
-  const [selectedCustomer, setSelectedCustomer] =
-    useState<ManualOrderCustomer | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerResults, setCustomerResults] = useState<ManualOrderCustomer[]>(
     [],
   );
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState(false);
-  const [lines, setLines] = useState<ManualVariantLine[]>([]);
   const [editingLine, setEditingLine] = useState<ManualVariantLine | null>(
     null,
   );
-  const [combos, setCombos] = useState<ManualComboLine[]>([]);
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [agreedRequestKey, setAgreedRequestKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -148,7 +201,7 @@ export function ManualOrderForm() {
 
   const inputResult = useMemo(() => {
     if (!geography) return null;
-    const checkoutAddress: CheckoutAddressInput = {
+    const checkoutAddress = {
       recipientName: address.recipientName,
       phone: address.phone,
       geographyVersion:
@@ -181,71 +234,81 @@ export function ManualOrderForm() {
       : null;
   const agreed = Boolean(preview && agreedRequestKey === requestKey);
 
-  function updateAddress<Key extends keyof AddressDraft>(
-    key: Key,
-    value: AddressDraft[Key],
-  ) {
-    setAddress((current) => ({ ...current, [key]: value }));
-    setErrorMessage(null);
-  }
-
   function chooseCustomer(customer: ManualOrderCustomer) {
-    setSelectedCustomer(customer);
+    setValue("selectedCustomer", customer, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
     setCustomerSearch("");
     setCustomerResults([]);
     setCustomerLoading(false);
     setCustomerError(false);
-    setAddress((current) => ({
-      ...current,
-      recipientName: customer.name,
-    }));
+    setValue("address.recipientName", customer.name, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
     setPreviewState(null);
     setErrorMessage(null);
   }
 
-  function addVariant(line: ManualVariantLine) {
-    setLines((current) => {
-      const existing = current.find(
-        (item) => item.variantId === line.variantId,
-      );
-      if (existing) {
-        return current.map((item) =>
-          item.variantId === line.variantId
-            ? { ...item, quantity: item.quantity + line.quantity }
-            : item,
-        );
-      }
-      return [...current, line];
+  function clearCustomer() {
+    setValue("selectedCustomer", null, {
+      shouldDirty: true,
+      shouldValidate: true,
     });
+    setPreviewState(null);
+    setAgreedRequestKey("");
+  }
+
+  function addVariant(line: ManualVariantLine) {
+    const current = getValues("lines");
+    const existingIndex = current.findIndex(
+      (item) => item.variantId === line.variantId,
+    );
+    if (existingIndex >= 0) {
+      const existing = current[existingIndex];
+      if (existing) {
+        updateVariantLine(existingIndex, {
+          ...line,
+          quantity: Math.min(
+            MAX_CART_QUANTITY_PER_VARIANT,
+            existing.quantity + line.quantity,
+          ),
+        });
+      }
+    } else {
+      appendVariantLine(line);
+    }
+    setPreviewState(null);
+    setAgreedRequestKey("");
     setErrorMessage(null);
   }
 
   function updateVariant(previousVariantId: string, line: ManualVariantLine) {
-    setLines((current) => {
-      const existing = current.find(
-        (item) =>
-          item.variantId === line.variantId &&
-          item.variantId !== previousVariantId,
-      );
-      if (existing) {
-        return current
-          .filter((item) => item.variantId !== previousVariantId)
-          .map((item) =>
-            item.variantId === line.variantId
-              ? {
-                  ...line,
-                  quantity: Math.min(
-                    MAX_CART_QUANTITY_PER_VARIANT,
-                    item.quantity + line.quantity,
-                  ),
-                }
-              : item,
-          );
-      }
-      return current.map((item) =>
-        item.variantId === previousVariantId ? line : item,
-      );
-    });
+    const current = getValues("lines");
+    const previousIndex = current.findIndex(
+      (item) => item.variantId === previousVariantId,
+    );
+    if (previousIndex < 0) return;
+    const existingIndex = current.findIndex(
+      (item) =>
+        item.variantId === line.variantId &&
+        item.variantId !== previousVariantId,
+    );
+    if (existingIndex >= 0) {
+      const existing = current[existingIndex];
+      if (!existing) return;
+      updateVariantLine(existingIndex, {
+        ...line,
+        quantity: Math.min(
+          MAX_CART_QUANTITY_PER_VARIANT,
+          existing.quantity + line.quantity,
+        ),
+      });
+      removeVariantLine(previousIndex);
+    } else {
+      updateVariantLine(previousIndex, line);
+    }
     setEditingLine(null);
     setPreviewState(null);
     setAgreedRequestKey("");
@@ -257,19 +320,20 @@ export function ManualOrderForm() {
     productName: string,
     unitPriceBdt: number,
   ) {
-    setCombos((current) => [
-      ...current,
-      { ...line, productName, unitPriceBdt },
-    ]);
+    appendComboLine({ ...line, productName, unitPriceBdt });
+    setPreviewState(null);
+    setAgreedRequestKey("");
     setErrorMessage(null);
   }
 
   function removeVariant(variantId: string) {
-    setLines((current) =>
-      current.filter((line) => line.variantId !== variantId),
+    const index = getValues("lines").findIndex(
+      (line) => line.variantId === variantId,
     );
+    if (index >= 0) removeVariantLine(index);
     if (editingLine?.variantId === variantId) setEditingLine(null);
     setPreviewState(null);
+    setAgreedRequestKey("");
   }
 
   function editVariant(line: ManualVariantLine) {
@@ -279,8 +343,12 @@ export function ManualOrderForm() {
   }
 
   function removeCombo(lineId: string) {
-    setCombos((current) => current.filter((line) => line.lineId !== lineId));
+    const index = getValues("combos").findIndex(
+      (line) => line.lineId === lineId,
+    );
+    if (index >= 0) removeComboLine(index);
     setPreviewState(null);
+    setAgreedRequestKey("");
   }
 
   async function requestPreview() {
@@ -358,7 +426,11 @@ export function ManualOrderForm() {
   const hasItems = lines.length > 0 || combos.length > 0;
 
   return (
-    <div className="grid gap-6">
+    <form
+      className="grid gap-6"
+      noValidate
+      onSubmit={handleSubmit(() => requestPreview())}
+    >
       <section className="grid gap-4 rounded-xl border border-border bg-card p-4 sm:p-6">
         <div>
           <h2 className="text-lg font-semibold">Customer</h2>
@@ -377,7 +449,7 @@ export function ManualOrderForm() {
             </div>
             <Button
               aria-label="Remove linked customer account"
-              onClick={() => setSelectedCustomer(null)}
+              onClick={clearCustomer}
               size="icon-sm"
               type="button"
               variant="ghost"
@@ -454,39 +526,80 @@ export function ManualOrderForm() {
           <label className="grid gap-2 text-sm font-medium">
             Recipient name
             <Input
-              autoComplete="name"
-              maxLength={120}
-              onChange={(event) =>
-                updateAddress("recipientName", event.target.value)
+              aria-invalid={Boolean(errors.address?.recipientName)}
+              aria-describedby={
+                errors.address?.recipientName
+                  ? "manual-order-recipient-error"
+                  : undefined
               }
-              value={address.recipientName}
+              autoComplete="name"
+              id="manual-order-recipient-name"
+              maxLength={120}
+              {...register("address.recipientName", {
+                onChange: () => setErrorMessage(null),
+              })}
             />
+            {errors.address?.recipientName?.message && (
+              <p
+                className="text-sm text-destructive"
+                id="manual-order-recipient-error"
+                role="alert"
+              >
+                {errors.address.recipientName.message}
+              </p>
+            )}
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Bangladesh mobile number
             <Input
+              aria-invalid={Boolean(errors.address?.phone)}
+              aria-describedby={
+                errors.address?.phone ? "manual-order-phone-error" : undefined
+              }
               autoComplete="tel"
+              id="manual-order-phone"
               maxLength={32}
-              onChange={(event) => updateAddress("phone", event.target.value)}
               placeholder="01XXXXXXXXX"
               type="tel"
-              value={address.phone}
+              {...register("address.phone", {
+                onChange: () => setErrorMessage(null),
+              })}
             />
+            {errors.address?.phone?.message && (
+              <p
+                className="text-sm text-destructive"
+                id="manual-order-phone-error"
+                role="alert"
+              >
+                {errors.address.phone.message}
+              </p>
+            )}
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Division
             <select
+              aria-invalid={Boolean(errors.address?.divisionId)}
+              aria-describedby={
+                errors.address?.divisionId
+                  ? "manual-order-division-error"
+                  : undefined
+              }
               className="h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
               disabled={!geography}
-              onChange={(event) =>
-                setAddress((current) => ({
-                  ...current,
-                  divisionId: event.target.value,
-                  districtId: "",
-                  upazilaId: "",
-                }))
-              }
-              value={address.divisionId}
+              id="manual-order-division"
+              {...register("address.divisionId", {
+                onChange: () => {
+                  setValue("address.districtId", "", {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  setValue("address.upazilaId", "", {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  setErrorMessage(null);
+                },
+              })}
             >
               <option value="">Choose division</option>
               {divisionOptions.map((location) => (
@@ -495,20 +608,37 @@ export function ManualOrderForm() {
                 </option>
               ))}
             </select>
+            {errors.address?.divisionId?.message && (
+              <p
+                className="text-sm text-destructive"
+                id="manual-order-division-error"
+                role="alert"
+              >
+                {errors.address.divisionId.message}
+              </p>
+            )}
           </label>
           <label className="grid gap-2 text-sm font-medium">
             District
             <select
+              aria-invalid={Boolean(errors.address?.districtId)}
+              aria-describedby={
+                errors.address?.districtId
+                  ? "manual-order-district-error"
+                  : undefined
+              }
               className="h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
               disabled={!address.divisionId}
-              onChange={(event) =>
-                setAddress((current) => ({
-                  ...current,
-                  districtId: event.target.value,
-                  upazilaId: "",
-                }))
-              }
-              value={address.districtId}
+              id="manual-order-district"
+              {...register("address.districtId", {
+                onChange: () => {
+                  setValue("address.upazilaId", "", {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  setErrorMessage(null);
+                },
+              })}
             >
               <option value="">Choose district</option>
               {districtOptions.map((location) => (
@@ -517,16 +647,25 @@ export function ManualOrderForm() {
                 </option>
               ))}
             </select>
+            {errors.address?.districtId?.message && (
+              <p
+                className="text-sm text-destructive"
+                id="manual-order-district-error"
+                role="alert"
+              >
+                {errors.address.districtId.message}
+              </p>
+            )}
           </label>
           <label className="grid gap-2 text-sm font-medium">
             Upazila (optional)
             <select
               className="h-9 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
               disabled={!address.districtId || upazilaOptions.length === 0}
-              onChange={(event) =>
-                updateAddress("upazilaId", event.target.value)
-              }
-              value={address.upazilaId}
+              id="manual-order-upazila"
+              {...register("address.upazilaId", {
+                onChange: () => setErrorMessage(null),
+              })}
             >
               <option value="">Choose upazila</option>
               {upazilaOptions.map((location) => (
@@ -539,13 +678,29 @@ export function ManualOrderForm() {
           <label className="grid gap-2 text-sm font-medium sm:col-span-2">
             Street address and delivery instructions
             <Textarea
-              maxLength={400}
-              onChange={(event) =>
-                updateAddress("doorstepDetails", event.target.value)
+              aria-invalid={Boolean(errors.address?.doorstepDetails)}
+              aria-describedby={
+                errors.address?.doorstepDetails
+                  ? "manual-order-address-error"
+                  : undefined
               }
+              autoComplete="street-address"
+              id="manual-order-doorstep-details"
+              maxLength={400}
               placeholder="House, road, area, landmark"
-              value={address.doorstepDetails}
+              {...register("address.doorstepDetails", {
+                onChange: () => setErrorMessage(null),
+              })}
             />
+            {errors.address?.doorstepDetails?.message && (
+              <p
+                className="text-sm text-destructive"
+                id="manual-order-address-error"
+                role="alert"
+              >
+                {errors.address.doorstepDetails.message}
+              </p>
+            )}
           </label>
         </div>
         {geographyError && (
@@ -573,10 +728,10 @@ export function ManualOrderForm() {
         />
         {(lines.length > 0 || combos.length > 0) && (
           <div className="divide-y rounded-lg border border-border">
-            {lines.map((line) => (
+            {lines.map((line, index) => (
               <div
                 className="flex items-center justify-between gap-4 p-3"
-                key={line.variantId}
+                key={variantLineFields[index]?.id ?? line.variantId}
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium">{line.productName}</p>
@@ -611,10 +766,10 @@ export function ManualOrderForm() {
                 </div>
               </div>
             ))}
-            {combos.map((line) => (
+            {combos.map((line, index) => (
               <div
                 className="flex items-center justify-between gap-4 p-3"
-                key={line.lineId}
+                key={comboLineFields[index]?.id ?? line.lineId}
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium">{line.productName}</p>
@@ -653,9 +808,10 @@ export function ManualOrderForm() {
             </p>
           </div>
           <Button
-            disabled={busy || !validInput || !hasItems || geographyError}
-            onClick={() => void requestPreview()}
-            type="button"
+            disabled={
+              busy || !validInput || !hasItems || geographyError || !isValid
+            }
+            type="submit"
             variant="outline"
           >
             {busy ? "Please wait…" : "Preview current total"}
@@ -754,7 +910,7 @@ export function ManualOrderForm() {
           </p>
         )}
       </section>
-    </div>
+    </form>
   );
 }
 
