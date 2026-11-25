@@ -7,6 +7,7 @@ import {
   domMax,
   LazyMotion,
   MotionConfig,
+  useIsPresent,
 } from "motion/react";
 import * as m from "motion/react-m";
 import type {
@@ -30,6 +31,65 @@ import { Trace, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { useCartSheet, useCartStore } from "@/features/cart/cart-provider";
 import { ProductPrice } from "@/features/catalog/product-price";
 import { SizeGuideTable } from "./size-guide-table";
+
+function ComboQuantityControls({
+  componentName,
+  color,
+  size,
+  quantity,
+  canAdd,
+  onRemove,
+  onAdd,
+}: {
+  componentName: string;
+  color: string;
+  size: string;
+  quantity: number;
+  canAdd: boolean;
+  onRemove: () => void;
+  onAdd: () => void;
+}) {
+  const isPresent = useIsPresent();
+
+  return (
+    <m.div
+      aria-hidden={!isPresent}
+      inert={!isPresent}
+      animate={{ opacity: 1, x: 0 }}
+      className="relative z-20 flex shrink-0 items-center gap-0.5"
+      exit={{ opacity: 0, x: 8 }}
+      initial={{ opacity: 0, x: 8 }}
+    >
+      <Button
+        aria-label={`Remove one ${componentName} ${color} size ${size}`}
+        onClick={onRemove}
+        className="h-6 w-6 p-0"
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        −
+      </Button>
+      <span
+        aria-live="polite"
+        className="min-w-4 text-center text-xs tabular-nums"
+      >
+        {quantity}
+      </span>
+      <Button
+        aria-label={`Add one ${componentName} ${color} size ${size}`}
+        disabled={!canAdd}
+        onClick={onAdd}
+        className="h-6 w-6 p-0"
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        +
+      </Button>
+    </m.div>
+  );
+}
 
 export function ComboPurchase({
   productId,
@@ -510,51 +570,26 @@ export function ComboPurchase({
                                       mode="popLayout"
                                     >
                                       {quantity > 0 && (
-                                        <m.div
-                                          animate={{ opacity: 1, x: 0 }}
-                                          className="relative z-20 flex shrink-0 items-center gap-0.5"
-                                          exit={{ opacity: 0, x: 8 }}
-                                          initial={{ opacity: 0, x: 8 }}
+                                        <ComboQuantityControls
+                                          canAdd={canAdd}
+                                          color={activeMixColor}
+                                          componentName={component.productName}
                                           key="quantity-controls"
-                                        >
-                                          <Button
-                                            aria-label={`Remove one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
-                                            onClick={() =>
-                                              setVariantQuantity(
-                                                variant,
-                                                quantity - 1,
-                                              )
-                                            }
-                                            className="h-6 w-6 p-0"
-                                            size="sm"
-                                            type="button"
-                                            variant="ghost"
-                                          >
-                                            −
-                                          </Button>
-                                          <span
-                                            aria-live="polite"
-                                            className="min-w-4 text-center text-xs tabular-nums"
-                                          >
-                                            {quantity}
-                                          </span>
-                                          <Button
-                                            aria-label={`Add one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
-                                            disabled={!canAdd}
-                                            onClick={() =>
-                                              setVariantQuantity(
-                                                variant,
-                                                quantity + 1,
-                                              )
-                                            }
-                                            className="h-6 w-6 p-0"
-                                            size="sm"
-                                            type="button"
-                                            variant="ghost"
-                                          >
-                                            +
-                                          </Button>
-                                        </m.div>
+                                          onAdd={() =>
+                                            setVariantQuantity(
+                                              variant,
+                                              quantity + 1,
+                                            )
+                                          }
+                                          onRemove={() =>
+                                            setVariantQuantity(
+                                              variant,
+                                              quantity - 1,
+                                            )
+                                          }
+                                          quantity={quantity}
+                                          size={variant.sizeLabel}
+                                        />
                                       )}
                                     </AnimatePresence>
                                   </article>
