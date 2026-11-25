@@ -2,6 +2,13 @@
 
 import Image from "next/image";
 import { useMemo, useState } from "react";
+import {
+  AnimatePresence,
+  domMax,
+  LazyMotion,
+  MotionConfig,
+} from "motion/react";
+import * as m from "motion/react-m";
 import type {
   CatalogCombo,
   CatalogComboThumbnail,
@@ -395,151 +402,173 @@ export function ComboPurchase({
           </fieldset>
 
           {activeMixColor && (
-            <div
-              aria-label={`Products available in ${activeMixColor}`}
-              className="divide-y divide-border overflow-hidden rounded-lg border border-border"
-              role="region"
-            >
-              {combo.components.map((component) => {
-                const colorVariants = component.variants.filter((variant) =>
-                  sameOption(variant.color, activeMixColor),
-                );
-                const options = orderedSizes(
-                  colorVariants.map(({ sizeLabel }) => sizeLabel),
-                  sizeOrder,
-                ).flatMap((size) =>
-                  colorVariants.filter((variant) =>
-                    sameOption(variant.sizeLabel, size),
-                  ),
-                );
-                if (options.length === 0) return null;
-                const thumbnail = getComponentThumbnail(
-                  component,
-                  activeMixColor,
-                );
+            <LazyMotion features={domMax} strict>
+              <MotionConfig
+                reducedMotion="user"
+                transition={{ duration: 0.18, ease: "easeOut" }}
+              >
+                <div
+                  aria-label={`Products available in ${activeMixColor}`}
+                  className="divide-y divide-border overflow-hidden rounded-lg border border-border"
+                  role="region"
+                >
+                  {combo.components.map((component) => {
+                    const colorVariants = component.variants.filter((variant) =>
+                      sameOption(variant.color, activeMixColor),
+                    );
+                    const options = orderedSizes(
+                      colorVariants.map(({ sizeLabel }) => sizeLabel),
+                      sizeOrder,
+                    ).flatMap((size) =>
+                      colorVariants.filter((variant) =>
+                        sameOption(variant.sizeLabel, size),
+                      ),
+                    );
+                    if (options.length === 0) return null;
+                    const thumbnail = getComponentThumbnail(
+                      component,
+                      activeMixColor,
+                    );
 
-                return (
-                  <section
-                    aria-label={component.productName}
-                    className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:gap-3"
-                    key={component.id}
-                  >
-                    <div className="flex min-w-0 items-center gap-3 sm:contents">
-                      <ComboComponentThumbnail thumbnail={thumbnail} />
-                      <h3
-                        className="line-clamp-2 min-w-0 flex-1 text-sm font-semibold leading-5 sm:hidden"
-                        title={component.productName}
+                    return (
+                      <section
+                        aria-label={component.productName}
+                        className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:gap-3"
+                        key={component.id}
                       >
-                        {component.productName}
-                      </h3>
-                    </div>
-                    <div className="@container min-w-0 flex-1 space-y-2">
-                      <h3
-                        className="hidden line-clamp-2 text-sm font-semibold leading-5 sm:block"
-                        title={component.productName}
-                      >
-                        {component.productName}
-                      </h3>
-                      <fieldset className="min-w-0">
-                        <legend className="sr-only">
-                          Sizes in {activeMixColor} for {component.productName}
-                        </legend>
-                        <div className="grid grid-cols-2 gap-1.5 @sm:grid-cols-4">
-                          {options.map((variant) => {
-                            const quantity = quantities[variant.variantId] ?? 0;
-                            const canAdd =
-                              variant.availableQuantity > quantity &&
-                              selectedCount < combo.itemCount;
-                            const unavailable =
-                              variant.availableQuantity === 0 && quantity === 0;
-
-                            return (
-                              <article
-                                aria-label={`${component.productName}, ${activeMixColor}, size ${variant.sizeLabel}${unavailable ? ", unavailable" : ""}`}
-                                className={`relative min-h-10 min-w-0 rounded-md border motion-safe:transition-colors motion-safe:duration-200 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
-                                key={variant.variantId}
-                              >
-                                <span
-                                  className={`pointer-events-none absolute top-1/2 z-10 -translate-y-1/2 whitespace-nowrap text-sm font-medium motion-safe:transition-[left,translate] motion-safe:duration-200 motion-safe:ease-out motion-reduce:transition-none ${quantity > 0 ? "left-1.5 translate-x-0" : "left-1/2 -translate-x-1/2"} ${unavailable || (!canAdd && quantity === 0) ? "text-muted-foreground/50" : ""}`}
-                                >
-                                  {variant.sizeLabel}
-                                  {unavailable && (
-                                    <span
-                                      aria-hidden="true"
-                                      className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
-                                    />
-                                  )}
-                                </span>
-                                {quantity === 0 &&
-                                  variant.availableQuantity > 0 && (
-                                    <Button
-                                      className="absolute inset-0 z-0 h-full min-h-10 w-full rounded-md border-0 bg-transparent p-0 shadow-none hover:bg-muted/50"
-                                      disabled={!canAdd}
-                                      onClick={() =>
-                                        setVariantQuantity(variant, 1)
-                                      }
-                                      size="sm"
-                                      type="button"
-                                      variant="ghost"
-                                    >
-                                      <span className="sr-only">
-                                        Add one {component.productName}{" "}
-                                        {activeMixColor} size{" "}
-                                        {variant.sizeLabel}
-                                      </span>
-                                    </Button>
-                                  )}
-                                {quantity > 0 && (
-                                  <div className="absolute top-1/2 right-1.5 z-20 flex -translate-y-1/2 items-center gap-0.5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-200">
-                                    <Button
-                                      aria-label={`Remove one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
-                                      onClick={() =>
-                                        setVariantQuantity(
-                                          variant,
-                                          quantity - 1,
-                                        )
-                                      }
-                                      className="h-6 w-6 p-0"
-                                      size="sm"
-                                      type="button"
-                                      variant="ghost"
-                                    >
-                                      −
-                                    </Button>
-                                    <span
-                                      aria-live="polite"
-                                      className="min-w-4 text-center text-xs tabular-nums"
-                                    >
-                                      {quantity}
-                                    </span>
-                                    <Button
-                                      aria-label={`Add one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
-                                      disabled={!canAdd}
-                                      onClick={() =>
-                                        setVariantQuantity(
-                                          variant,
-                                          quantity + 1,
-                                        )
-                                      }
-                                      className="h-6 w-6 p-0"
-                                      size="sm"
-                                      type="button"
-                                      variant="ghost"
-                                    >
-                                      +
-                                    </Button>
-                                  </div>
-                                )}
-                              </article>
-                            );
-                          })}
+                        <div className="flex min-w-0 items-center gap-3 sm:contents">
+                          <ComboComponentThumbnail thumbnail={thumbnail} />
+                          <h3
+                            className="line-clamp-2 min-w-0 flex-1 text-sm font-semibold leading-5 sm:hidden"
+                            title={component.productName}
+                          >
+                            {component.productName}
+                          </h3>
                         </div>
-                      </fieldset>
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
+                        <div className="@container min-w-0 flex-1 space-y-2">
+                          <h3
+                            className="hidden line-clamp-2 text-sm font-semibold leading-5 sm:block"
+                            title={component.productName}
+                          >
+                            {component.productName}
+                          </h3>
+                          <fieldset className="min-w-0">
+                            <legend className="sr-only">
+                              Sizes in {activeMixColor} for{" "}
+                              {component.productName}
+                            </legend>
+                            <div className="grid grid-cols-2 gap-1.5 @sm:grid-cols-4">
+                              {options.map((variant) => {
+                                const quantity =
+                                  quantities[variant.variantId] ?? 0;
+                                const canAdd =
+                                  variant.availableQuantity > quantity &&
+                                  selectedCount < combo.itemCount;
+                                const unavailable =
+                                  variant.availableQuantity === 0 &&
+                                  quantity === 0;
+
+                                return (
+                                  <article
+                                    aria-label={`${component.productName}, ${activeMixColor}, size ${variant.sizeLabel}${unavailable ? ", unavailable" : ""}`}
+                                    className={`relative flex min-h-10 min-w-0 items-center gap-1 rounded-md border px-1.5 py-1.5 transition-colors ${quantity > 0 ? "justify-between border-primary bg-primary/5" : "justify-center border-border"}`}
+                                    key={variant.variantId}
+                                  >
+                                    <m.span
+                                      layout="position"
+                                      className={`pointer-events-none relative z-10 whitespace-nowrap text-sm font-medium ${unavailable || (!canAdd && quantity === 0) ? "text-muted-foreground/50" : ""}`}
+                                    >
+                                      {variant.sizeLabel}
+                                      {unavailable && (
+                                        <span
+                                          aria-hidden="true"
+                                          className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
+                                        />
+                                      )}
+                                    </m.span>
+                                    {quantity === 0 &&
+                                      variant.availableQuantity > 0 && (
+                                        <Button
+                                          className="absolute inset-0 z-0 h-full min-h-10 w-full rounded-md border-0 bg-transparent p-0 shadow-none hover:bg-muted/50"
+                                          disabled={!canAdd}
+                                          onClick={() =>
+                                            setVariantQuantity(variant, 1)
+                                          }
+                                          size="sm"
+                                          type="button"
+                                          variant="ghost"
+                                        >
+                                          <span className="sr-only">
+                                            Add one {component.productName}{" "}
+                                            {activeMixColor} size{" "}
+                                            {variant.sizeLabel}
+                                          </span>
+                                        </Button>
+                                      )}
+                                    <AnimatePresence
+                                      initial={false}
+                                      mode="popLayout"
+                                    >
+                                      {quantity > 0 && (
+                                        <m.div
+                                          animate={{ opacity: 1, x: 0 }}
+                                          className="relative z-20 flex shrink-0 items-center gap-0.5"
+                                          exit={{ opacity: 0, x: 8 }}
+                                          initial={{ opacity: 0, x: 8 }}
+                                          key="quantity-controls"
+                                        >
+                                          <Button
+                                            aria-label={`Remove one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
+                                            onClick={() =>
+                                              setVariantQuantity(
+                                                variant,
+                                                quantity - 1,
+                                              )
+                                            }
+                                            className="h-6 w-6 p-0"
+                                            size="sm"
+                                            type="button"
+                                            variant="ghost"
+                                          >
+                                            −
+                                          </Button>
+                                          <span
+                                            aria-live="polite"
+                                            className="min-w-4 text-center text-xs tabular-nums"
+                                          >
+                                            {quantity}
+                                          </span>
+                                          <Button
+                                            aria-label={`Add one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
+                                            disabled={!canAdd}
+                                            onClick={() =>
+                                              setVariantQuantity(
+                                                variant,
+                                                quantity + 1,
+                                              )
+                                            }
+                                            className="h-6 w-6 p-0"
+                                            size="sm"
+                                            type="button"
+                                            variant="ghost"
+                                          >
+                                            +
+                                          </Button>
+                                        </m.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </article>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              </MotionConfig>
+            </LazyMotion>
           )}
         </div>
       ) : (
