@@ -2140,12 +2140,13 @@ test("catalog operator configures a product through to storefront visibility", a
   await expect(invoice.getByRole("heading", { name: "Invoice" })).toBeVisible();
   await expect(invoice.getByText("Discount", { exact: true })).toBeVisible();
   await expect(invoice.getByText("−৳100", { exact: true })).toBeVisible();
-  await expect(
-    invoice.getByText(
-      `৳${Number(discountedOrder.totalBdt).toLocaleString("en-BD")}`,
-      { exact: true },
-    ),
-  ).toBeVisible();
+  const invoiceTotal = invoice.getByText(
+    `৳${Number(discountedOrder.totalBdt).toLocaleString("en-BD")}`,
+    { exact: true },
+  );
+  await expect(invoiceTotal).toHaveCount(2);
+  await expect(invoiceTotal.first()).toBeVisible();
+  await expect(invoiceTotal.nth(1)).toBeVisible();
 
   await page.goto("/admin");
   await page.locator("summary[aria-label^='Account menu for']").click();

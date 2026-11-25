@@ -4660,6 +4660,14 @@ async function calculateFulfillmentCodDue(
     ) {
       return sum + BigInt(group.grossAmountBdt);
     }
+    if (
+      group.deliveryOutcome === "pending" &&
+      fulfillmentStatus !== "delivery_failed"
+    ) {
+      // Keep the saved amount visible until staff records the received Combo
+      // quantities. Reconciliation remains blocked while any Combo is pending.
+      return sum + BigInt(group.grossAmountBdt);
+    }
     if (group.acceptedComponents.length === 0) return sum;
     const selections = OrderComboGroupSchema.shape.selections.parse(
       group.selections,

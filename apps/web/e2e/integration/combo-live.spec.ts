@@ -1260,7 +1260,12 @@ test("Combo management to partial COD fulfillment works through the real browser
     const deliveryOutcomeResponse = await deliveryOutcomeResponsePromise;
     expect(deliveryOutcomeResponse.status()).toBe(201);
     await expect(page.getByLabel("Combo delivery note")).toBeVisible();
-    await expect(page.getByText("৳3,500", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(
+        `৳${Number(orderDetails.totalBdt).toLocaleString("en-BD")}`,
+        { exact: true },
+      ),
+    ).toBeVisible();
     await page
       .getByLabel("Combo delivery note")
       .fill("Customer received one item; the other item was unavailable.");
