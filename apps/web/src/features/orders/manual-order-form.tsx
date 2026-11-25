@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   BANGLADESH_GEOGRAPHY_VERSION,
   MAX_CART_LINES,
+  MAX_CART_QUANTITY_PER_VARIANT,
   ManualOrderInputSchema,
   type BangladeshGeography,
   type CheckoutAddressInput,
@@ -25,7 +26,10 @@ import {
   OrderRequestError,
   previewManualOrder,
 } from "./orders-client";
-import { ManualOrderCatalogPicker } from "./manual-order-catalog-picker";
+import {
+  ManualOrderCatalogPicker,
+  type ManualVariantLine,
+} from "./manual-order-catalog-picker";
 
 type AddressDraft = {
   recipientName: string;
@@ -34,16 +38,6 @@ type AddressDraft = {
   districtId: string;
   upazilaId: string;
   doorstepDetails: string;
-};
-
-type ManualVariantLine = {
-  variantId: string;
-  productId: string;
-  productName: string;
-  color: string;
-  sizeLabel: string;
-  unitPriceBdt: number;
-  quantity: number;
 };
 
 type ManualComboLine = ManualOrderInput["combos"][number] & {
@@ -79,6 +73,9 @@ export function ManualOrderForm() {
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState(false);
   const [lines, setLines] = useState<ManualVariantLine[]>([]);
+  const [editingLine, setEditingLine] = useState<ManualVariantLine | null>(
+    null,
+  );
   const [combos, setCombos] = useState<ManualComboLine[]>([]);
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [agreedRequestKey, setAgreedRequestKey] = useState("");
@@ -223,6 +220,38 @@ export function ManualOrderForm() {
     setErrorMessage(null);
   }
 
+  function updateVariant(previousVariantId: string, line: ManualVariantLine) {
+    setLines((current) => {
+      const existing = current.find(
+        (item) =>
+          item.variantId === line.variantId &&
+          item.variantId !== previousVariantId,
+      );
+      if (existing) {
+        return current
+          .filter((item) => item.variantId !== previousVariantId)
+          .map((item) =>
+            item.variantId === line.variantId
+              ? {
+                  ...line,
+                  quantity: Math.min(
+                    MAX_CART_QUANTITY_PER_VARIANT,
+                    item.quantity + line.quantity,
+                  ),
+                }
+              : item,
+          );
+      }
+      return current.map((item) =>
+        item.variantId === previousVariantId ? line : item,
+      );
+    });
+    setEditingLine(null);
+    setPreviewState(null);
+    setAgreedRequestKey("");
+    setErrorMessage(null);
+  }
+
   function addCombo(
     line: ManualOrderInput["combos"][number],
     productName: string,
@@ -239,7 +268,14 @@ export function ManualOrderForm() {
     setLines((current) =>
       current.filter((line) => line.variantId !== variantId),
     );
+    if (editingLine?.variantId === variantId) setEditingLine(null);
     setPreviewState(null);
+  }
+
+  function editVariant(line: ManualVariantLine) {
+    setEditingLine(line);
+    setPreviewState(null);
+    setAgreedRequestKey("");
   }
 
   function removeCombo(lineId: string) {
@@ -527,10 +563,13 @@ export function ManualOrderForm() {
           </p>
         </div>
         <ManualOrderCatalogPicker
+          editingLine={editingLine}
           existingVariantQuantities={variantQuantities}
           lineLimitReached={lineLimitReached}
           onAddCombo={addCombo}
           onAddVariant={addVariant}
+          onCancelEdit={() => setEditingLine(null)}
+          onUpdateVariant={updateVariant}
         />
         {(lines.length > 0 || combos.length > 0) && (
           <div className="divide-y rounded-lg border border-border">
@@ -551,6 +590,15 @@ export function ManualOrderForm() {
                       amountBdt: line.unitPriceBdt * line.quantity,
                     })}
                   </span>
+                  <Button
+                    aria-label={`Edit ${line.productName} ${line.color} ${line.sizeLabel}`}
+                    onClick={() => editVariant(line)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Edit
+                  </Button>
                   <Button
                     aria-label={`Remove ${line.productName}`}
                     onClick={() => removeVariant(line.variantId)}

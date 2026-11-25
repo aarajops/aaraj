@@ -165,6 +165,7 @@ test("manual order confirms the server total before creating a COD order", async
 
   const productId = "00000000-0000-4000-8000-000000000201";
   const variantId = "00000000-0000-4000-8000-000000000202";
+  const replacementVariantId = "00000000-0000-4000-8000-000000000204";
   const createdOrderId = "00000000-0000-4000-8000-000000000203";
   const timestamp = "2026-10-08T12:00:00.000Z";
   const product = {
@@ -221,6 +222,15 @@ test("manual order confirms the server total before creating a COD order", async
             sku: "MANUAL-E2E-01",
             isActive: true,
           },
+          {
+            id: replacementVariantId,
+            color: "Black",
+            sizeLabel: "L",
+            price: { amountBdt: 3000 },
+            compareAtPrice: { amountBdt: 4000 },
+            sku: "MANUAL-E2E-02",
+            isActive: true,
+          },
         ],
         sizeGuide: null,
         combo: null,
@@ -235,11 +245,11 @@ test("manual order confirms the server total before creating a COD order", async
       body: JSON.stringify({
         lines: [
           {
-            variantId,
+            variantId: replacementVariantId,
             comboGroupId: null,
             productName: "Manual E2E Jacket",
             color: "Black",
-            sizeLabel: "M",
+            sizeLabel: "L",
             quantity: 1,
             unitPriceBdt: 3000,
             compareAtPriceBdt: 4000,
@@ -291,6 +301,12 @@ test("manual order confirms the server total before creating a COD order", async
   await page.getByRole("button", { name: "Manual E2E Jacket" }).click();
   await page.getByLabel("Color and size").selectOption(variantId);
   await page.getByRole("button", { name: "Add item" }).click();
+  await page
+    .getByRole("button", { name: "Edit Manual E2E Jacket Black M" })
+    .click();
+  await page.getByLabel("Color and size").selectOption(replacementVariantId);
+  await page.getByRole("button", { name: "Update item" }).click();
+  await expect(page.getByText("Black · L · Qty 1")).toBeVisible();
   await page.getByRole("button", { name: "Preview current total" }).click();
   await expect(
     page.getByRole("heading", { name: "Current COD total" }),
@@ -307,7 +323,7 @@ test("manual order confirms the server total before creating a COD order", async
   await expect(page).toHaveURL(new RegExp(`/admin/orders/${createdOrderId}$`));
   expect(previewRequest).toMatchObject({
     customerId: null,
-    lines: [{ variantId, quantity: 1 }],
+    lines: [{ variantId: replacementVariantId, quantity: 1 }],
   });
   expect(createRequest).toMatchObject({
     acceptedTotalBdt: 3120,

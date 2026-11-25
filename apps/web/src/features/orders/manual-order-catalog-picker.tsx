@@ -17,7 +17,7 @@ import {
   fetchManagedProducts,
 } from "@/features/catalog/catalog-client";
 
-type ManualVariantLine = {
+export type ManualVariantLine = {
   variantId: string;
   productId: string;
   productName: string;
@@ -38,12 +38,8 @@ type ComboOption = {
   availableQuantity: number;
 };
 
-export function ManualOrderCatalogPicker({
-  existingVariantQuantities,
-  lineLimitReached,
-  onAddVariant,
-  onAddCombo,
-}: {
+type ManualOrderCatalogPickerProps = {
+  editingLine: ManualVariantLine | null;
   existingVariantQuantities: Record<string, number>;
   lineLimitReached: boolean;
   onAddVariant: (line: ManualVariantLine) => void;
@@ -52,22 +48,43 @@ export function ManualOrderCatalogPicker({
     productName: string,
     unitPriceBdt: number,
   ) => void;
-}) {
+  onCancelEdit: () => void;
+  onUpdateVariant: (previousVariantId: string, line: ManualVariantLine) => void;
+};
+
+export function ManualOrderCatalogPicker(props: ManualOrderCatalogPickerProps) {
+  const key = props.editingLine
+    ? `edit:${props.editingLine.variantId}:${props.editingLine.quantity}`
+    : "add";
+  return <ManualOrderCatalogPickerContent key={key} {...props} />;
+}
+
+function ManualOrderCatalogPickerContent({
+  editingLine,
+  existingVariantQuantities,
+  lineLimitReached,
+  onAddVariant,
+  onAddCombo,
+  onCancelEdit,
+  onUpdateVariant,
+}: ManualOrderCatalogPickerProps) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{
     query: string;
     products: Array<{ id: string; name: string; priceBdt: number | null }>;
   } | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
-    null,
+    editingLine?.productId ?? null,
   );
   const [product, setProduct] = useState<CatalogManagedProductDetail | null>(
     null,
   );
-  const [loadingProduct, setLoadingProduct] = useState(false);
+  const [loadingProduct, setLoadingProduct] = useState(Boolean(editingLine));
   const [productError, setProductError] = useState(false);
-  const [variantId, setVariantId] = useState("");
-  const [variantQuantity, setVariantQuantity] = useState(1);
+  const [variantId, setVariantId] = useState(editingLine?.variantId ?? "");
+  const [variantQuantity, setVariantQuantity] = useState(
+    editingLine?.quantity ?? 1,
+  );
   const [comboQuantity, setComboQuantity] = useState(1);
   const [comboChoices, setComboChoices] = useState<Array<ComboChoice | null>>(
     [],
@@ -118,12 +135,12 @@ export function ManualOrderCatalogPicker({
     };
   }, [query]);
 
-  function resetProduct() {
+  function resetProduct(preserveVariantQuantity = false) {
     request.current?.abort();
     setSelectedProductId(null);
     setProduct(null);
     setVariantId("");
-    setVariantQuantity(1);
+    if (!preserveVariantQuantity) setVariantQuantity(1);
     setComboQuantity(1);
     setComboChoices([]);
     setQuery("");
@@ -166,6 +183,40 @@ export function ManualOrderCatalogPicker({
     }
   }
 
+  useEffect(() => {
+    if (!editingLine) return;
+    const controller = new AbortController();
+    request.current = controller;
+    void fetchManagedProductDetail(editingLine.productId, controller.signal)
+      .then(async (response) => {
+        if (!response.ok) throw new Error();
+        const result = CatalogManagedProductDetailSchema.safeParse(
+          await response.json(),
+        );
+        if (!result.success) throw new Error();
+        if (!controller.signal.aborted) {
+          setProduct(result.data);
+          if (result.data.combo) {
+            setComboChoices(
+              Array.from({ length: result.data.combo.itemCount }, () => null),
+            );
+          }
+        }
+      })
+      .catch((error: unknown) => {
+        if (
+          !(error instanceof Error && error.name === "AbortError") &&
+          !controller.signal.aborted
+        ) {
+          setProductError(true);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingProduct(false);
+      });
+    return () => controller.abort();
+  }, [editingLine]);
+
   const activeProduct = product?.id === selectedProductId ? product : null;
   const matchingResults =
     searchResults?.query === query.trim() ? searchResults.products : [];
@@ -176,11 +227,15 @@ export function ManualOrderCatalogPicker({
   const selectedVariant = activeProduct?.variants.find(
     (variant) => variant.id === variantId && variant.isActive && variant.price,
   );
-  const alreadySelected = existingVariantQuantities[variantId] ?? 0;
-  const availableLineQuantity = Math.max(
-    0,
-    MAX_CART_QUANTITY_PER_VARIANT - alreadySelected,
-  );
+  function getAvailableQuantity(selectedId: string) {
+    const alreadySelected = Math.max(
+      0,
+      (existingVariantQuantities[selectedId] ?? 0) -
+        (editingLine?.variantId === selectedId ? editingLine.quantity : 0),
+    );
+    return Math.max(0, MAX_CART_QUANTITY_PER_VARIANT - alreadySelected);
+  }
+  const availableLineQuantity = getAvailableQuantity(variantId);
   const combo = activeProduct?.combo ?? null;
   const comboOptions = combo ? getComboOptions(combo) : [];
   const resolvedComboChoices = comboChoices.map((choice) =>
@@ -255,7 +310,7 @@ export function ManualOrderCatalogPicker({
 
   function addVariant() {
     if (!activeProduct || !selectedVariant?.price || !variantId) return;
-    onAddVariant({
+    const line = {
       variantId: selectedVariant.id,
       productId: activeProduct.id,
       productName: activeProduct.name,
@@ -263,12 +318,22 @@ export function ManualOrderCatalogPicker({
       sizeLabel: selectedVariant.sizeLabel,
       unitPriceBdt: selectedVariant.price.amountBdt,
       quantity: Math.min(variantQuantity, availableLineQuantity),
-    });
+    };
+    if (editingLine) {
+      onUpdateVariant(editingLine.variantId, line);
+    } else {
+      onAddVariant(line);
+    }
     resetProduct();
   }
 
+  function cancelEdit() {
+    resetProduct();
+    onCancelEdit();
+  }
+
   function addCombo() {
-    if (!activeProduct || !combo || !comboInStock) return;
+    if (!activeProduct || !combo || !comboInStock || editingLine) return;
     onAddCombo(
       {
         lineId: window.crypto.randomUUID(),
@@ -362,14 +427,26 @@ export function ManualOrderCatalogPicker({
                 </p>
               )}
             </div>
-            <Button
-              onClick={resetProduct}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              Change
-            </Button>
+            <div className="flex gap-1">
+              {editingLine && (
+                <Button
+                  onClick={() => resetProduct(true)}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  Change product
+                </Button>
+              )}
+              <Button
+                onClick={() => (editingLine ? cancelEdit() : resetProduct())}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                {editingLine ? "Cancel edit" : "Change"}
+              </Button>
+            </div>
           </div>
 
           {activeProduct && !activeProduct.combo && (
@@ -382,7 +459,17 @@ export function ManualOrderCatalogPicker({
                 <select
                   className="h-9 rounded-md border border-input bg-background px-3 text-sm"
                   id={variantIdInput}
-                  onChange={(event) => setVariantId(event.target.value)}
+                  onChange={(event) => {
+                    const nextVariantId = event.target.value;
+                    setVariantId(nextVariantId);
+                    const availableQuantity =
+                      getAvailableQuantity(nextVariantId);
+                    if (availableQuantity > 0) {
+                      setVariantQuantity((current) =>
+                        Math.min(current, availableQuantity),
+                      );
+                    }
+                  }}
                   value={variantId}
                 >
                   <option value="">Choose a variant</option>
@@ -404,7 +491,10 @@ export function ManualOrderCatalogPicker({
                   min={1}
                   onChange={(event) =>
                     setVariantQuantity(
-                      Math.max(1, Number(event.target.value) || 1),
+                      Math.min(
+                        availableLineQuantity,
+                        Math.max(1, Number(event.target.value) || 1),
+                      ),
                     )
                   }
                   type="number"
@@ -413,14 +503,14 @@ export function ManualOrderCatalogPicker({
               </label>
               <Button
                 disabled={
-                  lineLimitReached ||
+                  (lineLimitReached && !editingLine) ||
                   !selectedVariant ||
                   availableLineQuantity < 1
                 }
                 onClick={addVariant}
                 type="button"
               >
-                Add item
+                {editingLine ? "Update item" : "Add item"}
               </Button>
               {variantId && availableLineQuantity < 1 && (
                 <p
@@ -433,7 +523,13 @@ export function ManualOrderCatalogPicker({
             </div>
           )}
 
-          {activeProduct && combo && (
+          {activeProduct && combo && editingLine && (
+            <p className="text-sm text-muted-foreground" role="status">
+              Choose a single item product to replace this variant.
+            </p>
+          )}
+
+          {activeProduct && combo && !editingLine && (
             <div className="grid gap-4">
               <p className="text-sm text-muted-foreground">
                 {combo.selectionMode === "fixed_combo"
