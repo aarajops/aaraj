@@ -450,40 +450,44 @@ export function ComboPurchase({
                             const canAdd =
                               variant.availableQuantity > quantity &&
                               selectedCount < combo.itemCount;
-                            return (
+                            const optionLabel = (
+                              <span
+                                className={`relative text-sm font-medium ${variant.availableQuantity === 0 && quantity === 0 ? "text-muted-foreground/50" : ""}`}
+                              >
+                                {variant.sizeLabel}
+                                {variant.availableQuantity === 0 &&
+                                  quantity === 0 && (
+                                    <span
+                                      aria-hidden="true"
+                                      className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
+                                    />
+                                  )}
+                              </span>
+                            );
+
+                            return quantity === 0 &&
+                              variant.availableQuantity > 0 ? (
+                              <Button
+                                aria-label={`Add one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
+                                className="h-auto min-h-10 w-full min-w-0 justify-between gap-1 border px-1.5 py-1.5 text-foreground shadow-none"
+                                disabled={!canAdd}
+                                key={variant.variantId}
+                                onClick={() => setVariantQuantity(variant, 1)}
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                {optionLabel}
+                                <span className="text-sm font-medium">Add</span>
+                              </Button>
+                            ) : (
                               <article
                                 aria-label={`${component.productName}, ${activeMixColor}, size ${variant.sizeLabel}${variant.availableQuantity === 0 && quantity === 0 ? ", unavailable" : ""}`}
                                 className={`flex min-h-10 min-w-0 items-center justify-between gap-1 rounded-md border px-1.5 py-1.5 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
                                 key={variant.variantId}
                               >
-                                <span
-                                  className={`relative text-sm font-medium ${variant.availableQuantity === 0 && quantity === 0 ? "text-muted-foreground/50" : ""}`}
-                                >
-                                  {variant.sizeLabel}
-                                  {variant.availableQuantity === 0 &&
-                                    quantity === 0 && (
-                                      <span
-                                        aria-hidden="true"
-                                        className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
-                                      />
-                                    )}
-                                </span>
-                                {quantity === 0 ? (
-                                  variant.availableQuantity > 0 ? (
-                                    <Button
-                                      aria-label={`Add one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
-                                      disabled={!canAdd}
-                                      onClick={() =>
-                                        setVariantQuantity(variant, 1)
-                                      }
-                                      size="sm"
-                                      type="button"
-                                      variant="ghost"
-                                    >
-                                      Add
-                                    </Button>
-                                  ) : null
-                                ) : (
+                                {optionLabel}
+                                {quantity > 0 && (
                                   <div className="flex shrink-0 items-center gap-0.5">
                                     <Button
                                       aria-label={`Remove one ${component.productName} ${activeMixColor} size ${variant.sizeLabel}`}
@@ -615,41 +619,50 @@ export function ComboPurchase({
                               const canAdd =
                                 variant.availableQuantity > quantity &&
                                 selectedCount < combo.itemCount;
-                              return (
+                              const optionLabel = (
+                                <span
+                                  className={`relative inline-block max-w-full truncate text-sm font-medium ${variant.availableQuantity === 0 && quantity === 0 ? "text-muted-foreground/50" : ""}`}
+                                >
+                                  {variant.color}
+                                  {variant.availableQuantity === 0 &&
+                                    quantity === 0 && (
+                                      <span
+                                        aria-hidden="true"
+                                        className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
+                                      />
+                                    )}
+                                </span>
+                              );
+
+                              return quantity === 0 &&
+                                variant.availableQuantity > 0 ? (
+                                <Button
+                                  aria-label={`Add one ${component.productName} ${variant.color} size ${variant.sizeLabel}`}
+                                  className="h-auto min-h-10 w-full min-w-0 justify-between gap-3 border px-4 py-3 text-foreground shadow-none"
+                                  disabled={!canAdd}
+                                  key={variant.variantId}
+                                  onClick={() => setVariantQuantity(variant, 1)}
+                                  size="sm"
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  <span className="min-w-0 flex-1 text-left">
+                                    {optionLabel}
+                                  </span>
+                                  <span className="shrink-0 text-sm font-medium">
+                                    Add
+                                  </span>
+                                </Button>
+                              ) : (
                                 <article
                                   aria-label={`${component.productName}, ${variant.color}, size ${variant.sizeLabel}${variant.availableQuantity === 0 && quantity === 0 ? ", unavailable" : ""}`}
                                   className={`flex min-w-0 items-center justify-between gap-3 rounded-md border px-4 py-3 ${quantity > 0 ? "border-primary bg-primary/5" : "border-border"}`}
                                   key={variant.variantId}
                                 >
                                   <div className="min-w-0 flex-1">
-                                    <span
-                                      className={`relative inline-block max-w-full truncate text-sm font-medium ${variant.availableQuantity === 0 && quantity === 0 ? "text-muted-foreground/50" : ""}`}
-                                    >
-                                      {variant.color}
-                                      {variant.availableQuantity === 0 &&
-                                        quantity === 0 && (
-                                          <span
-                                            aria-hidden="true"
-                                            className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-muted-foreground/40"
-                                          />
-                                        )}
-                                    </span>
+                                    {optionLabel}
                                   </div>
-                                  {quantity === 0 &&
-                                  variant.availableQuantity > 0 ? (
-                                    <Button
-                                      aria-label={`Add one ${component.productName} ${variant.color} size ${variant.sizeLabel}`}
-                                      disabled={!canAdd}
-                                      onClick={() =>
-                                        setVariantQuantity(variant, 1)
-                                      }
-                                      size="sm"
-                                      type="button"
-                                      variant="ghost"
-                                    >
-                                      Add
-                                    </Button>
-                                  ) : quantity > 0 ? (
+                                  {quantity > 0 ? (
                                     <div className="flex shrink-0 items-center gap-1">
                                       <Button
                                         aria-label={`Remove one ${component.productName} ${variant.color} size ${variant.sizeLabel}`}
