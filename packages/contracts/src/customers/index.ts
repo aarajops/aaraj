@@ -22,6 +22,27 @@ export type CustomerDirectoryQuery = z.infer<
   typeof CustomerDirectoryQuerySchema
 >;
 
+export const ManualOrderCustomerSearchQuerySchema = z.strictObject({
+  search: z.string().trim().min(2).max(254),
+});
+export type ManualOrderCustomerSearchQuery = z.infer<
+  typeof ManualOrderCustomerSearchQuerySchema
+>;
+
+export const ManualOrderCustomerSchema = z.strictObject({
+  id: z.string().min(1).max(128),
+  name: z.string().trim().min(1).max(255),
+  email: z.email().max(254),
+});
+export type ManualOrderCustomer = z.infer<typeof ManualOrderCustomerSchema>;
+
+export const ManualOrderCustomerSearchSchema = z.strictObject({
+  rows: z.array(ManualOrderCustomerSchema).max(8),
+});
+export type ManualOrderCustomerSearch = z.infer<
+  typeof ManualOrderCustomerSearchSchema
+>;
+
 export const CustomerOrdersQuerySchema = OffsetPaginationQuerySchema;
 export type CustomerOrdersQuery = z.infer<typeof CustomerOrdersQuerySchema>;
 

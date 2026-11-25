@@ -182,11 +182,11 @@ export const customerOrder = ordersSchema.table(
     ),
     check(
       "order_owner_check",
-      sql`(${table.customerId} is not null and ${table.guestCartHash} is null and ${table.guestAccessTokenHash} is null and ${table.guestAccessExpiresAt} is null) or (${table.customerId} is null and ${table.guestCartHash} is not null and ${table.guestCartHash} ~ '^[0-9a-f]{64}$' and ((${table.sourceDraftId} is not null and ${table.guestAccessTokenHash} is null and ${table.guestAccessExpiresAt} is null) or (${table.sourceDraftId} is null and ${table.guestAccessTokenHash} is not null and ${table.guestAccessTokenHash} ~ '^[0-9a-f]{64}$' and ${table.guestAccessExpiresAt} is not null and ${table.guestAccessExpiresAt} = ${table.createdAt} + interval '30 days')))`,
+      sql`(${table.customerId} is not null and ${table.guestCartHash} is null and ${table.guestAccessTokenHash} is null and ${table.guestAccessExpiresAt} is null) or (${table.customerId} is null and ${table.guestCartHash} is not null and ${table.guestCartHash} ~ '^[0-9a-f]{64}$' and ((${table.sourceDraftId} is not null and ${table.guestAccessTokenHash} is null and ${table.guestAccessExpiresAt} is null) or (${table.sourceDraftId} is null and ${table.createdByStaffId} is null and ${table.guestAccessTokenHash} is not null and ${table.guestAccessTokenHash} ~ '^[0-9a-f]{64}$' and ${table.guestAccessExpiresAt} is not null and ${table.guestAccessExpiresAt} = ${table.createdAt} + interval '30 days') or (${table.sourceDraftId} is null and ${table.createdByStaffId} is not null and ${table.guestAccessTokenHash} is null and ${table.guestAccessExpiresAt} is null)))`,
     ),
     check(
       "order_staff_source_check",
-      sql`(${table.sourceDraftId} is null and ${table.createdByStaffId} is null) or (${table.sourceDraftId} is not null and ${table.createdByStaffId} is not null)`,
+      sql`${table.sourceDraftId} is null or ${table.createdByStaffId} is not null`,
     ),
     check(
       "order_guest_token_hash_check",

@@ -3,9 +3,28 @@
 import "client-only";
 import {
   API_V1_BASE_PATH,
+  ManualOrderCustomerSearchSchema,
   ManagedCustomerOrdersPageSchema,
+  type ManualOrderCustomerSearch,
   type ManagedCustomerOrdersPage,
 } from "@aaraj/contracts";
+
+export async function searchManualOrderAccounts(
+  search: string,
+  signal?: AbortSignal,
+): Promise<ManualOrderCustomerSearch> {
+  const query = new URLSearchParams({ search });
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/customers/manage/accounts?${query}`,
+    { cache: "no-store", credentials: "same-origin", signal },
+  );
+  if (!response.ok) throw new Error("Customer search is unavailable.");
+  const parsed = ManualOrderCustomerSearchSchema.safeParse(
+    await response.json(),
+  );
+  if (!parsed.success) throw new Error("Customer search is unavailable.");
+  return parsed.data;
+}
 
 export async function fetchManagedCustomerOrders(
   customerId: string,

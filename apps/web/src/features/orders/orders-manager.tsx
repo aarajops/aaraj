@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Copy, Eye, Printer } from "lucide-react";
 import type { OrderListQuery } from "@aaraj/contracts";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenuItem,
   DropdownMenuLinkItem,
@@ -203,6 +204,11 @@ export function OrdersManager({
         <AdminPageHeader
           title="Orders"
           description="Review orders and manage courier handoffs."
+          actions={
+            <Link className={buttonVariants()} href="/admin/orders/create">
+              Create order
+            </Link>
+          }
         />
         <AdminDataTable
           className="mt-6"

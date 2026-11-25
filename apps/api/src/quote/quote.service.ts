@@ -42,6 +42,15 @@ import { GeographyService } from "../geography/geography.service.js";
 import { quoteSnapshot } from "./quote-schema.js";
 
 type QuoteRow = typeof quoteSnapshot.$inferSelect;
+type AssistedComboLine = Pick<
+  CartComboLine,
+  "lineId" | "productId" | "comboRevision" | "quantity"
+> & {
+  selections: readonly Pick<
+    CartComboLine["selections"][number],
+    "componentId" | "variantId"
+  >[];
+};
 const newerQuoteSnapshot = alias(quoteSnapshot, "newer_quote_snapshot");
 
 @Injectable()
@@ -152,7 +161,7 @@ export class QuoteService {
   async previewAssisted(
     lines: readonly { variantId: string; quantity: number }[],
     destination: QuoteDestinationInput,
-    comboLines: readonly CartComboLine[] = [],
+    comboLines: readonly AssistedComboLine[] = [],
   ) {
     return this.priceSelection(
       lines,
@@ -169,7 +178,7 @@ export class QuoteService {
     cartRevision: number,
     selections: readonly { variantId: string; quantity: number }[],
     input: QuoteDestinationInput,
-    comboLines: readonly CartComboLine[] = [],
+    comboLines: readonly AssistedComboLine[] = [],
   ): Promise<AuthoritativeQuote> {
     await lockCartQuoteOwner(transaction, owner);
     const {
@@ -232,7 +241,7 @@ export class QuoteService {
     input: QuoteDestinationInput,
     transaction?: AuditTransaction,
     knownVariants?: readonly PurchasableCatalogVariant[],
-    comboLines: readonly CartComboLine[] = [],
+    comboLines: readonly AssistedComboLine[] = [],
     knownCombos?: readonly PurchasableCatalogCombo[],
   ) {
     if (selections.length === 0 && comboLines.length === 0) {

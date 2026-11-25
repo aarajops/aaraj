@@ -17,8 +17,10 @@ import {
   OrderIdSchema,
   OrderReferenceSchema,
   CheckoutDraftPreviewSchema,
+  ManualOrderPreviewSchema,
   CURRENCY,
   CustomerDirectoryIdSchema,
+  ManualOrderCustomerSearchSchema,
   ManagedCustomerDirectorySchema,
   ManagedCustomerOrdersPageSchema,
   MAX_ORDER_LINES,
@@ -45,6 +47,8 @@ import {
   type OrderStatusAction,
   type CheckoutDraftCreateOrderInput,
   type CheckoutDraftPreviewInput,
+  type ManualOrderInput,
+  type ManualOrderCreateInput,
 } from "@aaraj/contracts";
 import {
   createHash,
@@ -67,6 +71,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { CartService, type CartQuoteOwner } from "../cart/cart.service.js";
+import { user } from "../auth/auth-schema.js";
 import { lockCartOwner } from "../cart/cart-owner-lock.js";
 import {
   CATALOG_CART_PORT,
@@ -450,6 +455,195 @@ export class OrdersService implements OrdersPathaoPort {
     });
   }
 
+  async previewManualOrder(input: ManualOrderInput) {
+    if (input.customerId) {
+      const [customer] = await this.database.db
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.id, input.customerId))
+        .limit(1);
+      if (!customer) {
+        throw new UnprocessableEntityException(
+          "Choose an existing customer account or create this Order as a guest.",
+          { errorCode: "MANUAL_ORDER_CUSTOMER_INVALID" },
+        );
+      }
+    }
+    const address = normalizeCheckoutInput(input.address);
+    const priced = await this.quotes.previewAssisted(
+      input.lines,
+      address,
+      input.combos,
+    );
+    return ManualOrderPreviewSchema.parse({
+      lines: priced.lines,
+      comboGroups: priced.comboGroups,
+      merchandiseGrossBdt: priced.merchandiseGrossBdt,
+      deliveryAmountBdt: priced.tariff.feeBdt,
+      totalBdt: priced.totalBdt,
+      fingerprint: fingerprintManualOrder(input, address, {
+        lines: priced.lines,
+        comboGroups: priced.comboGroups,
+        merchandiseGrossBdt: priced.merchandiseGrossBdt,
+        tariff: priced.tariff,
+        totalBdt: priced.totalBdt,
+      }),
+    });
+  }
+
+  async createManualOrder(
+    staffId: string,
+    input: ManualOrderCreateInput,
+    idempotencyKey: string,
+  ): Promise<OrderCreated> {
+    const addressInput = normalizeCheckoutInput(input.address);
+    const staffOwnerHash = sha256(`manual-order-staff:${staffId}`);
+    const keyHash = sha256(idempotencyKey);
+    const requestFingerprint = sha256(
+      JSON.stringify({
+        version: 1,
+        customerId: input.customerId,
+        address: addressInput,
+        lines: input.lines,
+        combos: input.combos,
+        acceptedTotalBdt: input.acceptedTotalBdt,
+        previewFingerprint: input.previewFingerprint,
+      }),
+    );
+
+    const result = await this.database.db.transaction(async (tx) => {
+      await lockOrderIdempotency(tx, staffOwnerHash, keyHash);
+      const [prior] = await tx
+        .select({
+          orderId: orderIdempotency.orderId,
+          requestFingerprint: orderIdempotency.requestFingerprint,
+        })
+        .from(orderIdempotency)
+        .where(
+          and(
+            eq(orderIdempotency.ownerHash, staffOwnerHash),
+            eq(orderIdempotency.keyHash, keyHash),
+          ),
+        )
+        .limit(1);
+      if (prior) {
+        assertIdempotencyFingerprint(prior, requestFingerprint);
+        const [row] = await tx
+          .select()
+          .from(customerOrder)
+          .where(eq(customerOrder.id, prior.orderId))
+          .limit(1);
+        if (!row) throw new Error("Idempotent Order record is missing.");
+        return { row, replayed: true };
+      }
+
+      const orderId = randomUUID();
+      let owner: CartQuoteOwner;
+      if (input.customerId) {
+        const [customer] = await tx
+          .select({ id: user.id })
+          .from(user)
+          .where(eq(user.id, input.customerId))
+          .limit(1);
+        if (!customer) {
+          throw new UnprocessableEntityException(
+            "The selected customer account no longer exists. Choose another customer or create this Order as a guest.",
+            { errorCode: "MANUAL_ORDER_CUSTOMER_INVALID" },
+          );
+        }
+        owner = { kind: "customer", customerId: customer.id };
+      } else {
+        owner = {
+          kind: "guest",
+          guestCartHash: sha256(`manual-order:${staffId}:${orderId}`),
+        };
+      }
+
+      const quote = await this.quotes.createAssistedWithinTransaction(
+        tx,
+        owner,
+        0,
+        input.lines,
+        addressInput,
+        input.combos,
+      );
+      if (
+        quote.totalBdt !== input.acceptedTotalBdt ||
+        fingerprintManualOrder(input, addressInput, {
+          lines: quote.lines,
+          comboGroups: quote.comboGroups,
+          merchandiseGrossBdt: quote.merchandiseGrossBdt,
+          tariff: {
+            feeBdt: quote.delivery.grossAmountBdt,
+            version: quote.delivery.tariffVersion,
+            effectiveFrom: quote.delivery.effectiveFrom,
+            zone: quote.delivery.zone,
+          },
+          totalBdt: quote.totalBdt,
+        }) !== input.previewFingerprint
+      ) {
+        throw new ConflictException(
+          "The catalog price, stock, or delivery fee changed. Review the updated total with the customer before creating the Order.",
+          { errorCode: "MANUAL_ORDER_PREVIEW_CHANGED" },
+        );
+      }
+
+      const reference = await allocateOrderReference(tx);
+
+      const reservation = await this.inventory.reserveWithinTransaction(tx, {
+        commandId: orderId,
+        lines: quote.lines.map(({ variantId, quantity }) => ({
+          variantId,
+          quantity,
+        })),
+      });
+      const address = this.resolveAddress(addressInput, quote.destination);
+      const row = await persistOrderSnapshot(tx, {
+        id: orderId,
+        reference,
+        owner,
+        quote,
+        cartRevision: 0,
+        reservationId: reservation.id,
+        addressSnapshot: address,
+        status: "confirmed",
+        fulfillmentStatus: "awaiting_dispatch",
+        createdByStaffId: staffId,
+      });
+      await tx.insert(orderIdempotency).values({
+        ownerHash: staffOwnerHash,
+        keyHash,
+        requestFingerprint,
+        orderId,
+      });
+      await this.audit.append(tx, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_created",
+        subjectType: "order",
+        subjectId: orderId,
+        metadata: {
+          source: "manual_admin",
+          totalBdt: quote.totalBdt,
+          quoteId: quote.id,
+          reservationId: reservation.id,
+          customerType: input.customerId ? "account" : "guest",
+          status: "confirmed",
+        },
+      });
+      await this.audit.append(tx, {
+        actorType: "user",
+        actorId: staffId,
+        eventType: "commerce.cod_order_confirmed",
+        subjectType: "order",
+        subjectId: orderId,
+        metadata: { source: "manual_admin", status: "confirmed" },
+      });
+      return { row, replayed: false };
+    });
+    return toCreated(result.row, result.replayed);
+  }
+
   async createFromDraft(
     id: string,
     staffId: string,
@@ -554,27 +748,7 @@ export class OrdersService implements OrdersPathaoPort {
             { errorCode: "DRAFT_PREVIEW_CHANGED" },
           );
         }
-        const [counter] = await tx
-          .insert(orderReferenceCounter)
-          .values({
-            year: sql<number>`extract(year from now() at time zone 'Asia/Dhaka')::integer`,
-            lastNumber: 1,
-          })
-          .onConflictDoUpdate({
-            target: orderReferenceCounter.year,
-            set: { lastNumber: sql`${orderReferenceCounter.lastNumber} + 1` },
-            setWhere: sql`${orderReferenceCounter.lastNumber} < 99999`,
-          })
-          .returning({
-            year: orderReferenceCounter.year,
-            number: orderReferenceCounter.lastNumber,
-          });
-        if (!counter) {
-          throw new ServiceUnavailableException(
-            "This year’s Order reference limit has been reached.",
-            { errorCode: "ORDER_REFERENCE_CAPACITY_REACHED" },
-          );
-        }
+        const reference = await allocateOrderReference(tx);
         const reservation = await this.inventory.reserveWithinTransaction(tx, {
           commandId: orderId,
           lines: quote.lines.map(({ variantId, quantity }) => ({
@@ -584,7 +758,7 @@ export class OrdersService implements OrdersPathaoPort {
         });
         const row = await persistOrderSnapshot(tx, {
           id: orderId,
-          reference: formatOrderReference(counter.year, counter.number),
+          reference,
           owner,
           quote,
           cartRevision: current.cartRevision,
@@ -822,30 +996,7 @@ export class OrdersService implements OrdersPathaoPort {
             })),
           },
         );
-        const [counter] = await transaction
-          .insert(orderReferenceCounter)
-          .values({
-            year: sql<number>`extract(year from now() at time zone 'Asia/Dhaka')::integer`,
-            lastNumber: 1,
-          })
-          .onConflictDoUpdate({
-            target: orderReferenceCounter.year,
-            set: {
-              lastNumber: sql`${orderReferenceCounter.lastNumber} + 1`,
-            },
-            setWhere: sql`${orderReferenceCounter.lastNumber} < 99999`,
-          })
-          .returning({
-            year: orderReferenceCounter.year,
-            number: orderReferenceCounter.lastNumber,
-          });
-        if (!counter) {
-          throw new ServiceUnavailableException(
-            "This year’s Order reference limit has been reached.",
-            { errorCode: "ORDER_REFERENCE_CAPACITY_REACHED" },
-          );
-        }
-        const reference = formatOrderReference(counter.year, counter.number);
+        const reference = await allocateOrderReference(transaction);
 
         const [row] = await transaction
           .insert(customerOrder)
@@ -1359,6 +1510,28 @@ export class OrdersService implements OrdersPathaoPort {
         hasMore && candidateNextOffset <= MAX_LIST_OFFSET
           ? candidateNextOffset
           : null,
+    });
+  }
+
+  async searchManualOrderAccounts(search: string) {
+    const prefix = `${escapeLikeWildcards(search.toLowerCase())}%`;
+    const rows = await this.database.db
+      .select({ id: user.id, name: user.name, email: user.email })
+      .from(user)
+      .where(
+        or(
+          sql`lower(${user.name}) like ${prefix}`,
+          sql`lower(${user.email}) like ${prefix}`,
+        ),
+      )
+      .orderBy(asc(sql`lower(${user.name})`), asc(user.id))
+      .limit(8);
+    return ManualOrderCustomerSearchSchema.parse({
+      rows: rows.map(({ id, name, email }) => ({
+        id,
+        name: name.trim(),
+        email,
+      })),
     });
   }
 
@@ -4014,6 +4187,33 @@ export class OrdersService implements OrdersPathaoPort {
   }
 }
 
+async function allocateOrderReference(
+  transaction: AuditTransaction,
+): Promise<string> {
+  const [counter] = await transaction
+    .insert(orderReferenceCounter)
+    .values({
+      year: sql<number>`extract(year from now() at time zone 'Asia/Dhaka')::integer`,
+      lastNumber: 1,
+    })
+    .onConflictDoUpdate({
+      target: orderReferenceCounter.year,
+      set: { lastNumber: sql`${orderReferenceCounter.lastNumber} + 1` },
+      setWhere: sql`${orderReferenceCounter.lastNumber} < 99999`,
+    })
+    .returning({
+      year: orderReferenceCounter.year,
+      number: orderReferenceCounter.lastNumber,
+    });
+  if (!counter) {
+    throw new ServiceUnavailableException(
+      "This year’s Order reference limit has been reached.",
+      { errorCode: "ORDER_REFERENCE_CAPACITY_REACHED" },
+    );
+  }
+  return formatOrderReference(counter.year, counter.number);
+}
+
 function formatOrderReference(year: number, number: number) {
   return `ORD-${String(year % 1000).padStart(3, "0")}-${String(number).padStart(5, "0")}`;
 }
@@ -4151,6 +4351,43 @@ function fingerprintDraftPreview(
         line.unitPriceBdt,
         line.grossAmountBdt,
       ]),
+      comboGroups: priced.comboGroups,
+      merchandiseGrossBdt: priced.merchandiseGrossBdt,
+      tariff: [
+        priced.tariff.version,
+        priced.tariff.effectiveFrom,
+        priced.tariff.zone,
+        priced.tariff.feeBdt,
+      ],
+      totalBdt: priced.totalBdt,
+    }),
+  );
+}
+
+function fingerprintManualOrder(
+  input: Pick<ManualOrderInput, "customerId" | "lines" | "combos">,
+  address: CheckoutAddressInput,
+  priced: {
+    lines: AuthoritativeQuote["lines"];
+    comboGroups: AuthoritativeQuote["comboGroups"];
+    merchandiseGrossBdt: number;
+    tariff: {
+      feeBdt: number;
+      version: string;
+      effectiveFrom: string;
+      zone: string | null;
+    };
+    totalBdt: number;
+  },
+): string {
+  return sha256(
+    JSON.stringify({
+      version: 1,
+      customerId: input.customerId,
+      address,
+      variants: input.lines,
+      combos: input.combos,
+      lines: priced.lines,
       comboGroups: priced.comboGroups,
       merchandiseGrossBdt: priced.merchandiseGrossBdt,
       tariff: [

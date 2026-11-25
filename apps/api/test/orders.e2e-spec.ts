@@ -1521,6 +1521,206 @@ describe("COD Orders and checkout", () => {
     }
   });
 
+  it("creates a staff-linked account Order only after the current total is accepted and replays safely", async () => {
+    const variantId = await createVariant(2, 250);
+    const accountSearch = await request(app.getHttpServer())
+      .get(
+        `${API_V1_BASE_PATH}/customers/manage/accounts?search=order-customer`,
+      )
+      .set("Cookie", staff.cookie)
+      .expect(200);
+    expect(accountSearch.body.rows).toContainEqual({
+      id: customer.id,
+      name: "order-customer",
+      email: expect.stringMatching(/^order-customer-/),
+    });
+    const input = {
+      customerId: customer.id,
+      address: checkoutBody(randomUUID()).address,
+      lines: [{ variantId, quantity: 1 }],
+      combos: [],
+    };
+    const preview = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual/preview`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send(input)
+      .expect(200);
+    expect(preview.body.lines[0]).toMatchObject({
+      variantId,
+      unitPriceBdt: 250,
+      quantity: 1,
+    });
+
+    await database.db
+      .update(catalogProductVariant)
+      .set({ priceBdt: 300 })
+      .where(eq(catalogProductVariant.id, variantId));
+    const idempotencyKey = randomUUID();
+    const staleCreate = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        ...input,
+        acceptedTotalBdt: preview.body.totalBdt,
+        previewFingerprint: preview.body.fingerprint,
+        customerAgreed: true,
+      })
+      .expect(409);
+    expect(staleCreate.body.errorCode).toBe("MANUAL_ORDER_PREVIEW_CHANGED");
+    expect((await stockFor(variantId)).quantityReserved).toBe(0);
+
+    const currentPreview = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual/preview`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send(input)
+      .expect(200);
+    expect(currentPreview.body.totalBdt).toBe(preview.body.totalBdt + 50);
+    const createInput = {
+      ...input,
+      acceptedTotalBdt: currentPreview.body.totalBdt,
+      previewFingerprint: currentPreview.body.fingerprint,
+      customerAgreed: true,
+    };
+    const created = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", idempotencyKey)
+      .send(createInput)
+      .expect(201);
+    expect(created.body).toMatchObject({
+      totalBdt: currentPreview.body.totalBdt,
+      status: "confirmed",
+      fulfillmentStatus: "awaiting_dispatch",
+      replayed: false,
+      guestAccessExpiresAt: null,
+    });
+    const stored = await orderById(created.body.id as string);
+    expect(stored).toMatchObject({
+      customerId: customer.id,
+      guestCartHash: null,
+      sourceDraftId: null,
+      createdByStaffId: staff.id,
+      cartRevision: 0,
+    });
+    expect((await stockFor(variantId)).quantityReserved).toBe(1);
+
+    const replayed = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", idempotencyKey)
+      .send(createInput)
+      .expect(201);
+    expect(replayed.body.id).toBe(created.body.id);
+    expect(replayed.body.replayed).toBe(true);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        ...createInput,
+        address: {
+          ...input.address,
+          doorstepDetails: "Changed delivery address",
+        },
+      })
+      .expect(409);
+    expect((await stockFor(variantId)).quantityReserved).toBe(1);
+  });
+
+  it("protects manual Order preview with the existing staff permission and origin checks", async () => {
+    const variantId = await createVariant(1);
+    const input = {
+      customerId: null,
+      address: checkoutBody(randomUUID()).address,
+      lines: [{ variantId, quantity: 1 }],
+      combos: [],
+    };
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual/preview`)
+      .set("Origin", origin)
+      .set("Cookie", customer.cookie)
+      .send(input)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual/preview`)
+      .set("Cookie", staff.cookie)
+      .send(input)
+      .expect(403);
+    expect((await stockFor(variantId)).quantityReserved).toBe(0);
+  });
+
+  it("creates a staff-managed guest combo Order and reserves its selected variants", async () => {
+    const combo = await createComboFixture(2, 3, "mix_sizes_and_colors");
+    const input = {
+      customerId: null,
+      address: checkoutBody(randomUUID()).address,
+      lines: [],
+      combos: [
+        {
+          lineId: randomUUID(),
+          productId: combo.productId,
+          comboRevision: 1,
+          quantity: 1,
+          selections: combo.componentSelections,
+        },
+      ],
+    };
+    const preview = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual/preview`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .send(input)
+      .expect(200);
+    expect(preview.body.comboGroups).toHaveLength(1);
+    expect(preview.body.merchandiseGrossBdt).toBe(combo.priceBdt);
+
+    const created = await request(app.getHttpServer())
+      .post(`${API_V1_BASE_PATH}/orders/manage/manual`)
+      .set("Origin", origin)
+      .set("Cookie", staff.cookie)
+      .set("Idempotency-Key", randomUUID())
+      .send({
+        ...input,
+        acceptedTotalBdt: preview.body.totalBdt,
+        previewFingerprint: preview.body.fingerprint,
+        customerAgreed: true,
+      })
+      .expect(201);
+    const stored = await orderById(created.body.id as string);
+    expect(stored).toMatchObject({
+      customerId: null,
+      guestCartHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      guestAccessTokenHash: null,
+      guestAccessExpiresAt: null,
+      sourceDraftId: null,
+      createdByStaffId: staff.id,
+      status: "confirmed",
+      fulfillmentStatus: "awaiting_dispatch",
+    });
+    expect(
+      await database.db
+        .select()
+        .from(orderComboGroup)
+        .where(eq(orderComboGroup.orderId, created.body.id as string)),
+    ).toHaveLength(1);
+    expect(
+      await database.db
+        .select()
+        .from(customerOrderLine)
+        .where(eq(customerOrderLine.orderId, created.body.id as string)),
+    ).toHaveLength(3);
+    for (const variantId of combo.variantIds) {
+      expect((await stockFor(variantId)).quantityReserved).toBe(1);
+    }
+  });
+
   it("prices a combo once, reserves its real variants, and charges accepted partial items individually", async () => {
     const combo = await createComboFixture();
     const cart = await request(app.getHttpServer())

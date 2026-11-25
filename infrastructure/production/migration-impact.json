@@ -46,5 +46,7 @@
   "0070_combo_partial_acceptance_cod.sql": "maintenance",
   "0071_combo_fixed_source_reuse.sql": "compatible",
   "0072_combo_regular_price.sql": "compatible",
-  "0073_catalog_product_create_idempotency.sql": "compatible"
+  "0073_catalog_product_create_idempotency.sql": "compatible",
+  "0074_order_line_accepted_quantity.sql": "compatible",
+  "0075_manual_staff_order_source.sql": "compatible"
 }

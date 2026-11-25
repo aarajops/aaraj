@@ -9,6 +9,16 @@ import {
 } from "../common/pagination.js";
 import { OrderReferenceSchema } from "./order-reference.js";
 import { CheckoutAddressInputSchema } from "./checkout-address.js";
+export {
+  ManualOrderCreateInputSchema,
+  ManualOrderInputSchema,
+  ManualOrderPreviewSchema,
+} from "./manual-order.js";
+export type {
+  ManualOrderCreateInput,
+  ManualOrderInput,
+  ManualOrderPreview,
+} from "./manual-order.js";
 import {
   CatalogComboSelectionModeSchema,
   MAX_COMBO_COMPONENTS,

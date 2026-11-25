@@ -37,6 +37,8 @@ import {
   OrderFulfillmentOutcomeInputSchema,
   OrderComboFulfillmentOutcomeInputSchema,
   OrderIdempotencyKeySchema,
+  ManualOrderCreateInputSchema,
+  ManualOrderInputSchema,
   OrderIdSchema,
   OrderListQuerySchema,
   OrderStatusUpdateInputSchema,
@@ -50,6 +52,8 @@ import {
   type OrderComboFulfillmentOutcomeInput,
   type OrderListQuery,
   type OrderStatusUpdateInput,
+  type ManualOrderCreateInput,
+  type ManualOrderInput,
 } from "@aaraj/contracts";
 import { CART_COOKIE_NAME, getCartCookieOptions } from "../cart/cart-cookie.js";
 import { CookieMutationGuard } from "../platform/authorization/cookie-mutation.guard.js";
@@ -179,6 +183,45 @@ export class OrdersController {
     @Query({ schema: OrderListQuerySchema }) query: OrderListQuery,
   ) {
     return this.orders.listForManagement(query);
+  }
+
+  @Post("manage/manual/preview")
+  @Throttle({ default: { limit: 30, ttl: minutes(1) } })
+  @HttpCode(200)
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  previewManualOrder(
+    @Body({ schema: ManualOrderInputSchema }) input: ManualOrderInput,
+  ) {
+    return this.orders.previewManualOrder(input);
+  }
+
+  @Post("manage/manual")
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
+  @ApiCookieAuth()
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  @UseGuards(CookieMutationGuard)
+  createManualOrder(
+    @Session() session: UserSession,
+    @Headers("idempotency-key") rawIdempotencyKey: string | undefined,
+    @Body({ schema: ManualOrderCreateInputSchema })
+    input: ManualOrderCreateInput,
+  ) {
+    const parsedKey = OrderIdempotencyKeySchema.safeParse(rawIdempotencyKey);
+    if (!parsedKey.success) {
+      throw new BadRequestException(
+        "A UUID Idempotency-Key is required to create a manual Order.",
+        { errorCode: "IDEMPOTENCY_KEY_REQUIRED" },
+      );
+    }
+    return this.orders.createManualOrder(
+      session.user.id,
+      input,
+      parsedKey.data,
+    );
   }
 
   @Get("manage/:orderId")

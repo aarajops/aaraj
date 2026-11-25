@@ -13,8 +13,10 @@ import {
   CustomerDirectoryIdSchema,
   CustomerDirectoryQuerySchema,
   CustomerOrdersQuerySchema,
+  ManualOrderCustomerSearchQuerySchema,
   type CustomerDirectoryQuery,
   type CustomerOrdersQuery,
+  type ManualOrderCustomerSearchQuery,
 } from "@aaraj/contracts";
 import { OrdersPolicy } from "../platform/authorization/orders.policy.js";
 import { OrdersService } from "./orders.service.js";
@@ -33,6 +35,16 @@ export class CustomersController {
     query: CustomerDirectoryQuery,
   ) {
     return this.orders.listCustomerDirectory(query);
+  }
+
+  @Get("manage/accounts")
+  @Header("Cache-Control", "no-store")
+  @Can(OrdersPolicy, "manage")
+  searchManualOrderAccounts(
+    @Query({ schema: ManualOrderCustomerSearchQuerySchema })
+    query: ManualOrderCustomerSearchQuery,
+  ) {
+    return this.orders.searchManualOrderAccounts(query.search);
   }
 
   @Get("manage/:customerKey/orders")

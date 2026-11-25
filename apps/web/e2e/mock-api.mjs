@@ -712,6 +712,39 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (
+    url.pathname === "/api/v1/customers/manage/accounts" &&
+    method === "GET"
+  ) {
+    if (!requireStaff(request, response)) return;
+    const search = url.searchParams.get("search")?.trim() ?? "";
+    if (search.length < 2) {
+      send(response, 400, {
+        statusCode: 400,
+        message: "Invalid manual order customer search",
+      });
+      return;
+    }
+    const rows = managedCustomers
+      .filter(
+        (customer) =>
+          customer.identityType === "account" &&
+          [customer.name, customer.email]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .startsWith(search.toLowerCase()),
+      )
+      .slice(0, 8)
+      .map((customer) => ({
+        id: customer.id.replace(/^account_/, ""),
+        name: customer.name,
+        email: customer.email,
+      }));
+    send(response, 200, { rows });
+    return;
+  }
+
   if (url.pathname === "/api/v1/customers/manage" && method === "GET") {
     if (!requireStaff(request, response)) return;
     const searches = url.searchParams.getAll("search");

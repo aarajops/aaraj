@@ -16,6 +16,9 @@ import {
   OrderManagementDetailSchema,
   OrderSchema,
   OrderStatusUpdateInputSchema,
+  ManualOrderCreateInputSchema,
+  ManualOrderInputSchema,
+  ManualOrderPreviewSchema,
   CheckoutDraftSaveSchema,
   CheckoutDraftSaveResultSchema,
   type CreateOrderInput,
@@ -30,6 +33,9 @@ import {
   type OrderManagementDetail,
   type OrderStatusUpdateInput,
   type CheckoutDraftSave,
+  type ManualOrderCreateInput,
+  type ManualOrderInput,
+  type ManualOrderPreview,
 } from "@aaraj/contracts";
 
 export class OrderRequestError extends Error {
@@ -70,6 +76,41 @@ export async function createCodOrder(
   const validatedInput = CreateOrderInputSchema.parse(input);
   await prepareGuestCheckoutAccess(idempotencyKey);
   const response = await fetch(`${API_V1_BASE_PATH}/orders`, {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify(validatedInput),
+  });
+  return readResponse(response, OrderCreatedSchema);
+}
+
+export async function previewManualOrder(
+  input: ManualOrderInput,
+): Promise<ManualOrderPreview> {
+  const validatedInput = ManualOrderInputSchema.parse(input);
+  const response = await fetch(
+    `${API_V1_BASE_PATH}/orders/manage/manual/preview`,
+    {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validatedInput),
+    },
+  );
+  return readResponse(response, ManualOrderPreviewSchema);
+}
+
+export async function createManualOrder(
+  input: ManualOrderCreateInput,
+  idempotencyKey: string,
+): Promise<OrderCreated> {
+  const validatedInput = ManualOrderCreateInputSchema.parse(input);
+  const response = await fetch(`${API_V1_BASE_PATH}/orders/manage/manual`, {
     method: "POST",
     cache: "no-store",
     credentials: "same-origin",
