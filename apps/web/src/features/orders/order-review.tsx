@@ -318,7 +318,7 @@ export function OrderReview({
 
   return (
     <>
-      <article>
+      <article className="mx-auto max-w-6xl space-y-5">
         <AdminPageHeader
           backLink={
             <Link className={adminPageLinkClassName} href="/admin/orders">
@@ -328,277 +328,308 @@ export function OrderReview({
           title={order.reference}
           description="Review fulfillment, delivery, and COD collection."
         />
-        <section className="mt-6 grid gap-5 rounded-2xl border border-border p-5 sm:grid-cols-2 sm:p-7">
-          <div>
-            <h2 className="font-semibold">Order status</h2>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-              <OrderStatusBadge status={order.status} />
-              <OrderStatusMenu
-                actions={order.availableStatusActions ?? []}
-                currentStatus={order.status}
-                disabled={pending}
-                onSelect={(action) => {
-                  if (action === "cancelled") {
-                    setError(null);
-                    setCancelError(null);
-                    setCancelReason("");
-                    setCancelFormOpen(true);
-                  } else {
-                    void updateStatus({ status: action });
-                  }
-                }}
-              />
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {showFulfillmentStatus
-                ? `${humanizeFulfillmentStatus(order.fulfillmentStatus)} · `
-                : ""}
-              COD {humanize(order.collectionStatus)}
-              {order.collectedAmountBdt !== null
-                ? ` (${formatBdtPrice({ amountBdt: order.collectedAmountBdt })} / ${formatBdtPrice({ amountBdt: order.codAmountDueBdt })})`
-                : ""}
-            </p>
-          </div>
-          <div>
-            <h2 className="font-semibold">COD amount due</h2>
-            <p className="mt-2 text-xl font-semibold">
-              {formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
-            </p>
-            {order.collectionStatus !== "uncollected" && (
-              <p className="text-sm text-muted-foreground">
-                {order.collectionStatus === "collected"
-                  ? `AARAJ recorded ${formatBdtPrice({ amountBdt: order.collectedAmountBdt! })} collected.`
-                  : `AARAJ recorded ${formatBdtPrice({ amountBdt: order.collectedAmountBdt! })}; the amount is under reconciliation.`}
+        <section className="overflow-hidden rounded-2xl border border-border bg-card/70">
+          <div className="grid gap-5 border-b border-border p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-6">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="font-semibold">Order status</h2>
+                <OrderStatusBadge status={order.status} />
+                <OrderStatusMenu
+                  actions={order.availableStatusActions ?? []}
+                  currentStatus={order.status}
+                  disabled={pending}
+                  onSelect={(action) => {
+                    if (action === "cancelled") {
+                      setError(null);
+                      setCancelError(null);
+                      setCancelReason("");
+                      setCancelFormOpen(true);
+                    } else {
+                      void updateStatus({ status: action });
+                    }
+                  }}
+                />
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {showFulfillmentStatus
+                  ? `${humanizeFulfillmentStatus(order.fulfillmentStatus)} · `
+                  : ""}
+                COD {humanize(order.collectionStatus)}
+                {order.collectedAmountBdt !== null
+                  ? ` (${formatBdtPrice({ amountBdt: order.collectedAmountBdt })} / ${formatBdtPrice({ amountBdt: order.codAmountDueBdt })})`
+                  : ""}
               </p>
-            )}
+            </div>
+            <div className="sm:border-l sm:border-border sm:pl-6 sm:text-right">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                COD amount due
+              </h2>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
+                {formatBdtPrice({ amountBdt: order.codAmountDueBdt })}
+              </p>
+              {order.collectionStatus !== "uncollected" && (
+                <p className="mt-1 text-sm text-muted-foreground sm:max-w-xs">
+                  {order.collectionStatus === "collected"
+                    ? `AARAJ recorded ${formatBdtPrice({ amountBdt: order.collectedAmountBdt! })} collected.`
+                    : `AARAJ recorded ${formatBdtPrice({ amountBdt: order.collectedAmountBdt! })}; the amount is under reconciliation.`}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="sm:col-span-2">
-            <h2 className="font-semibold">Recipient and delivery address</h2>
-            <address className="mt-2 not-italic leading-6">
-              {order.address.recipientName} ·{" "}
-              <a
-                aria-label={`Call ${order.address.recipientName} at ${order.address.phone}`}
-                className="underline underline-offset-4"
-                href={`tel:${order.address.phone}`}
-              >
-                {order.address.phone}
-              </a>
-              <br />
-              {[
-                order.address.house,
-                order.address.street,
-                order.address.doorstepDetails,
-                order.address.upazilaName,
-                order.address.districtName,
-                order.address.divisionName,
-                order.address.postalCode,
-              ]
-                .filter(Boolean)
-                .join(", ")}
-              {order.address.instructions ? (
-                <>
-                  <br />
-                  Instructions: {order.address.instructions}
-                </>
-              ) : null}
-            </address>
-          </div>
-          <div className="sm:col-span-2">
-            <h2 className="font-semibold">Items</h2>
-            <ul className="mt-2 divide-y divide-border">
-              {order.lines
-                .filter((line) => line.comboGroupId === null)
-                .map((line) => (
-                  <li
-                    className="flex justify-between gap-4 py-2"
-                    key={line.variantId}
-                  >
-                    <span>
-                      {line.productName} · {line.color} · {line.sizeLabel} ×{" "}
-                      {line.quantity}
-                      {hasRecordedAcceptedQuantity(line)
-                        ? ` · accepted ${line.acceptedQuantity}`
-                        : ""}
-                    </span>
-                    <span className="grid justify-items-end text-right">
-                      {formatBdtPrice({
-                        amountBdt: getOrderLineAcceptedAmount(order, line),
-                      })}
-                      {line.compareAtPriceBdt !== null &&
-                        line.compareAtPriceBdt > line.unitPriceBdt &&
-                        getOrderLineAcceptedQuantity(order, line) > 0 && (
-                          <del className="text-xs text-muted-foreground">
-                            {formatBdtPrice({
-                              amountBdt:
-                                line.compareAtPriceBdt *
-                                getOrderLineAcceptedQuantity(order, line),
-                            })}
-                          </del>
-                        )}
-                    </span>
-                  </li>
-                ))}
-              {order.comboGroups.map((group) => (
-                <li className="grid gap-2 py-3" key={group.id}>
-                  <div className="flex justify-between gap-4">
-                    <span>
-                      <span className="block font-medium">
-                        {group.comboName}
+          <div className="grid min-w-0 gap-6 p-5 sm:p-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <section
+              className="min-w-0"
+              aria-labelledby="order-recipient-heading"
+            >
+              <h2 className="font-semibold" id="order-recipient-heading">
+                Recipient and delivery address
+              </h2>
+              <address className="mt-2 break-words not-italic leading-6">
+                <span className="font-medium">
+                  {order.address.recipientName}
+                </span>
+                <br />
+                <a
+                  aria-label={`Call ${order.address.recipientName} at ${order.address.phone}`}
+                  className="underline underline-offset-4"
+                  href={`tel:${order.address.phone}`}
+                >
+                  {order.address.phone}
+                </a>
+                <br />
+                {[
+                  order.address.house,
+                  order.address.street,
+                  order.address.doorstepDetails,
+                  order.address.upazilaName,
+                  order.address.districtName,
+                  order.address.divisionName,
+                  order.address.postalCode,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+                {order.address.instructions ? (
+                  <>
+                    <br />
+                    <span className="text-muted-foreground">
+                      Instructions:
+                    </span>{" "}
+                    {order.address.instructions}
+                  </>
+                ) : null}
+              </address>
+            </section>
+            <section className="min-w-0" aria-labelledby="order-items-heading">
+              <h2 className="font-semibold" id="order-items-heading">
+                Items
+              </h2>
+              <ul className="mt-2 divide-y divide-border">
+                {order.lines
+                  .filter((line) => line.comboGroupId === null)
+                  .map((line) => (
+                    <li
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-2 sm:gap-4"
+                      key={line.variantId}
+                    >
+                      <span className="min-w-0 break-words">
+                        {line.productName} · {line.color} · {line.sizeLabel} ×{" "}
+                        {line.quantity}
+                        {hasRecordedAcceptedQuantity(line)
+                          ? ` · accepted ${line.acceptedQuantity}`
+                          : ""}
                       </span>
-                      <span className="text-sm text-muted-foreground">
-                        Sold as a complete set. · Qty {group.quantity}
+                      <span className="grid shrink-0 justify-items-end text-right tabular-nums">
+                        {formatBdtPrice({
+                          amountBdt: getOrderLineAcceptedAmount(order, line),
+                        })}
+                        {line.compareAtPriceBdt !== null &&
+                          line.compareAtPriceBdt > line.unitPriceBdt &&
+                          getOrderLineAcceptedQuantity(order, line) > 0 && (
+                            <del className="text-xs text-muted-foreground">
+                              {formatBdtPrice({
+                                amountBdt:
+                                  line.compareAtPriceBdt *
+                                  getOrderLineAcceptedQuantity(order, line),
+                              })}
+                            </del>
+                          )}
                       </span>
-                    </span>
-                    <span className="font-medium">
-                      {formatBdtPrice({
-                        amountBdt: getOrderComboBillableAmount(order, group),
-                      })}
-                    </span>
-                  </div>
-                  <ul className="ml-3 list-disc text-sm text-muted-foreground">
-                    {group.selections.map((selection) => (
-                      <li
-                        key={selection.selectionIndex ?? selection.componentId}
-                      >
-                        {selection.productName} · {selection.color} ·{" "}
-                        {selection.sizeLabel}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-sm">
-                    Delivery status: {humanize(group.deliveryOutcome)}
-                  </p>
-                  {group.outcomeReason && (
-                    <p className="text-xs text-muted-foreground">
-                      Note: {group.outcomeReason}
-                    </p>
-                  )}
-                  {group.acceptedComponents.length > 0 && (
+                    </li>
+                  ))}
+                {order.comboGroups.map((group) => (
+                  <li className="grid gap-2 py-3" key={group.id}>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+                      <span>
+                        <span className="block font-medium">
+                          {group.comboName}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          Sold as a complete set. · Qty {group.quantity}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-medium tabular-nums">
+                        {formatBdtPrice({
+                          amountBdt: getOrderComboBillableAmount(order, group),
+                        })}
+                      </span>
+                    </div>
+                    <ul className="ml-3 list-disc text-sm text-muted-foreground">
+                      {group.selections.map((selection) => (
+                        <li
+                          key={
+                            selection.selectionIndex ?? selection.componentId
+                          }
+                        >
+                          {selection.productName} · {selection.color} ·{" "}
+                          {selection.sizeLabel}
+                        </li>
+                      ))}
+                    </ul>
                     <p className="text-sm">
-                      Received items:{" "}
-                      {group.acceptedComponents
-                        .map((accepted) => {
-                          const selection = getAcceptedComboSelection(
-                            group,
-                            accepted,
-                          );
-                          return selection
-                            ? `${selection.productName} · ${selection.color} · ${selection.sizeLabel} × ${accepted.quantity}`
-                            : null;
-                        })
-                        .filter(Boolean)
-                        .join(", ")}
+                      Delivery status: {humanize(group.deliveryOutcome)}
                     </p>
-                  )}
-                  {order.status === "confirmed" &&
-                    ["partially_delivered", "delivered", "returned"].includes(
-                      order.fulfillmentStatus,
-                    ) &&
-                    order.collectionStatus === "uncollected" &&
-                    !["complete", "redelivered_complete", "declined"].includes(
-                      group.deliveryOutcome,
-                    ) && (
-                      <div className="grid gap-2 rounded-md border border-border p-3">
-                        <label className="grid gap-2 text-sm font-medium">
-                          Combo delivery note
-                          <Textarea
-                            maxLength={500}
-                            minLength={3}
-                            value={comboOutcomeReasons[group.id] ?? ""}
-                            onChange={(event) =>
-                              setComboOutcomeReasons((current) => ({
-                                ...current,
-                                [group.id]: event.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                        <p className="text-xs text-muted-foreground">
-                          Record the quantity received for each selected item.
-                          Complete sets use the combo price; accepted items from
-                          incomplete sets use their individual prices.
-                        </p>
-                        <div className="grid gap-2">
-                          {group.selections.map((selection, index) => {
-                            const key = comboSelectionInputKey(selection);
-                            const itemLabel = `Combo item ${index + 1}`;
-                            const acceptedQuantity = getAcceptedComboQuantity(
+                    {group.outcomeReason && (
+                      <p className="text-xs text-muted-foreground">
+                        Note: {group.outcomeReason}
+                      </p>
+                    )}
+                    {group.acceptedComponents.length > 0 && (
+                      <p className="text-sm">
+                        Received items:{" "}
+                        {group.acceptedComponents
+                          .map((accepted) => {
+                            const selection = getAcceptedComboSelection(
                               group,
-                              selection,
+                              accepted,
                             );
-                            return (
-                              <label
-                                className="flex items-center justify-between gap-3 text-sm"
-                                key={key}
-                              >
-                                <span>
-                                  {itemLabel}: {selection.productName} ·{" "}
-                                  {selection.color} · {selection.sizeLabel}
-                                </span>
-                                <Input
-                                  aria-label={`Received quantity for ${itemLabel}: ${selection.productName} ${selection.color} ${selection.sizeLabel}`}
-                                  className="w-24"
-                                  inputMode="numeric"
-                                  max={group.quantity}
-                                  min={0}
-                                  onChange={(event) =>
-                                    setComboAcceptedQuantities((current) => ({
-                                      ...current,
-                                      [group.id]: {
-                                        ...current[group.id],
-                                        [key]: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  type="number"
-                                  value={
-                                    comboAcceptedQuantities[group.id]?.[key] ??
-                                    String(acceptedQuantity)
-                                  }
-                                />
-                              </label>
-                            );
-                          })}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {(group.deliveryOutcome === "pending"
-                            ? (["complete", "incomplete", "declined"] as const)
-                            : group.deliveryOutcome === "incomplete"
+                            return selection
+                              ? `${selection.productName} · ${selection.color} · ${selection.sizeLabel} × ${accepted.quantity}`
+                              : null;
+                          })
+                          .filter(Boolean)
+                          .join(", ")}
+                      </p>
+                    )}
+                    {order.status === "confirmed" &&
+                      ["partially_delivered", "delivered", "returned"].includes(
+                        order.fulfillmentStatus,
+                      ) &&
+                      order.collectionStatus === "uncollected" &&
+                      ![
+                        "complete",
+                        "redelivered_complete",
+                        "declined",
+                      ].includes(group.deliveryOutcome) && (
+                        <div className="grid gap-2 rounded-md border border-border p-3">
+                          <label className="grid gap-2 text-sm font-medium">
+                            Combo delivery note
+                            <Textarea
+                              maxLength={500}
+                              minLength={3}
+                              value={comboOutcomeReasons[group.id] ?? ""}
+                              onChange={(event) =>
+                                setComboOutcomeReasons((current) => ({
+                                  ...current,
+                                  [group.id]: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+                          <p className="text-xs text-muted-foreground">
+                            Record the quantity received for each selected item.
+                            Complete sets use the combo price; accepted items
+                            from incomplete sets use their individual prices.
+                          </p>
+                          <div className="grid gap-2">
+                            {group.selections.map((selection, index) => {
+                              const key = comboSelectionInputKey(selection);
+                              const itemLabel = `Combo item ${index + 1}`;
+                              const acceptedQuantity = getAcceptedComboQuantity(
+                                group,
+                                selection,
+                              );
+                              return (
+                                <label
+                                  className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 text-sm"
+                                  key={key}
+                                >
+                                  <span className="min-w-0 break-words">
+                                    {itemLabel}: {selection.productName} ·{" "}
+                                    {selection.color} · {selection.sizeLabel}
+                                  </span>
+                                  <Input
+                                    aria-label={`Received quantity for ${itemLabel}: ${selection.productName} ${selection.color} ${selection.sizeLabel}`}
+                                    className="w-full"
+                                    inputMode="numeric"
+                                    max={group.quantity}
+                                    min={0}
+                                    onChange={(event) =>
+                                      setComboAcceptedQuantities((current) => ({
+                                        ...current,
+                                        [group.id]: {
+                                          ...current[group.id],
+                                          [key]: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    type="number"
+                                    value={
+                                      comboAcceptedQuantities[group.id]?.[
+                                        key
+                                      ] ?? String(acceptedQuantity)
+                                    }
+                                  />
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {(group.deliveryOutcome === "pending"
                               ? ([
+                                  "complete",
                                   "incomplete",
-                                  "redelivered_complete",
                                   "declined",
                                 ] as const)
-                              : (["redelivered_complete", "declined"] as const)
-                          ).map((outcome) => (
-                            <Button
-                              key={outcome}
-                              disabled={
-                                pending ||
-                                (comboOutcomeReasons[group.id] ?? "").trim()
-                                  .length < 3
-                              }
-                              onClick={() =>
-                                void recordComboOutcome(group.id, outcome)
-                              }
-                              type="button"
-                              variant={
-                                outcome === "declined"
-                                  ? "destructive"
-                                  : "outline"
-                              }
-                            >
-                              {pending
-                                ? "Saving…"
-                                : `Record ${humanize(outcome)}`}
-                            </Button>
-                          ))}
+                              : group.deliveryOutcome === "incomplete"
+                                ? ([
+                                    "incomplete",
+                                    "redelivered_complete",
+                                    "declined",
+                                  ] as const)
+                                : ([
+                                    "redelivered_complete",
+                                    "declined",
+                                  ] as const)
+                            ).map((outcome) => (
+                              <Button
+                                key={outcome}
+                                disabled={
+                                  pending ||
+                                  (comboOutcomeReasons[group.id] ?? "").trim()
+                                    .length < 3
+                                }
+                                onClick={() =>
+                                  void recordComboOutcome(group.id, outcome)
+                                }
+                                type="button"
+                                variant={
+                                  outcome === "declined"
+                                    ? "destructive"
+                                    : "outline"
+                                }
+                              >
+                                {pending
+                                  ? "Saving…"
+                                  : `Record ${humanize(outcome)}`}
+                              </Button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                </li>
-              ))}
-            </ul>
+                      )}
+                  </li>
+                ))}
+              </ul>
+            </section>
           </div>
         </section>
         <AlertDialog
@@ -649,7 +680,7 @@ export function OrderReview({
           </AlertDialogContent>
         </AlertDialog>
         {order.status === "cancelled" && (
-          <p className="mt-6 rounded-xl border border-border p-5 text-sm">
+          <p className="rounded-xl border border-border p-5 text-sm">
             Cancelled by authorized staff before courier pickup. The stock
             reservation was released.
           </p>
@@ -661,7 +692,7 @@ export function OrderReview({
           order={order}
         />
         {canManageCustomerDecision && (
-          <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
+          <section className="rounded-2xl border border-border bg-card/70 p-5 sm:p-6">
             <h2 className="text-xl font-semibold">
               {order.status === "on_hold"
                 ? "Order on hold"
@@ -688,7 +719,7 @@ export function OrderReview({
           </section>
         )}
         {availableOutcomes.length > 0 && (
-          <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
+          <section className="rounded-2xl border border-border bg-card/70 p-5 sm:p-6">
             <h2 className="text-xl font-semibold">Record delivery outcome</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Verify the delivery result before saving. This updates the Order
@@ -714,16 +745,16 @@ export function OrderReview({
                   .filter((line) => line.comboGroupId === null)
                   .map((line) => (
                     <label
-                      className="flex items-center justify-between gap-3 text-sm"
+                      className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 text-sm"
                       key={line.variantId}
                     >
-                      <span>
+                      <span className="min-w-0 break-words">
                         {line.productName} · {line.color} · {line.sizeLabel} ·{" "}
                         ordered {line.quantity}
                       </span>
                       <Input
                         aria-label={`Accepted quantity for ${line.productName} ${line.color} ${line.sizeLabel}`}
-                        className="w-24"
+                        className="w-full"
                         inputMode="numeric"
                         max={line.quantity}
                         min={0}
@@ -784,7 +815,7 @@ export function OrderReview({
             order.fulfillmentStatus,
           ) && (
             <p
-              className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
+              className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm"
               role="status"
             >
               Record a final delivery outcome for every Combo before reconciling
@@ -796,7 +827,7 @@ export function OrderReview({
             order.fulfillmentStatus,
           ) &&
           order.codAmountDueBdt > 0 && (
-            <section className="mt-6 rounded-2xl border border-border p-5 sm:p-7">
+            <section className="rounded-2xl border border-border bg-card/70 p-5 sm:p-6">
               <h2 className="text-xl font-semibold">
                 Reconcile COD collection
               </h2>

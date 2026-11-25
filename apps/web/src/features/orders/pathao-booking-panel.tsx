@@ -211,7 +211,7 @@ export function PathaoBookingPanel({
     <section
       aria-label="Pathao courier booking"
       aria-busy={loading}
-      className="grid gap-3 border-t border-border pt-4"
+      className="grid min-w-0 gap-3 rounded-2xl border border-border bg-card/70 p-5 sm:p-6"
     >
       <h2 className="font-semibold">Pathao booking</h2>
 
@@ -316,7 +316,11 @@ export function PathaoBookingPanel({
               {itemQuantity} {itemQuantity === 1 ? "item" : "items"} ·{" "}
               {PATHAO_MINIMUM_ITEM_WEIGHT_KG} kg minimum
             </p>
-            <Button disabled={pending} onClick={() => void book()}>
+            <Button
+              className="w-full sm:w-fit"
+              disabled={pending}
+              onClick={() => void book()}
+            >
               <Truck aria-hidden="true" className="size-4" />
               {pending ? "Booking with Pathao…" : "Book order in Pathao"}
             </Button>
@@ -388,7 +392,7 @@ function DataRow({ label, value }: { label: string; value: string }) {
   return (
     <p className="mt-2 flex flex-wrap justify-between gap-3 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span>{value}</span>
+      <span className="break-all text-right">{value}</span>
     </p>
   );
 }
