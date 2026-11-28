@@ -144,7 +144,11 @@
 }
 
 @layer components {
-  /* Keep Base UI's sibling input hidden when strict CSP blocks its inline style. */
+  /* Keep Base UI's hidden inputs concealed when strict CSP blocks inline styles. */
+  input[aria-hidden="true"][tabindex="-1"] {
+    @apply sr-only;
+  }
+
   [data-slot="checkbox"] + input[aria-hidden="true"][type="checkbox"] {
     @apply sr-only;
   }
