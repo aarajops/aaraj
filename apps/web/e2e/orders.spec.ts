@@ -65,9 +65,15 @@ test("Orders uses shared pagination, order previews, and stable URL history", as
   const table = page.getByRole("table", { name: "Orders" });
   await expect(table).toBeVisible();
   await expect(table.locator("tbody tr")).toHaveCount(DEFAULT_LIST_PAGE_SIZE);
+  await expect(
+    table.getByRole("columnheader", { name: "Customer orders" }),
+  ).toBeVisible();
   await expect(table.getByText("Uncollected", { exact: true })).toHaveCount(0);
   await expect(table.getByText("Not payable", { exact: true })).toHaveCount(0);
   await expect(table.getByText("ORD-026-00001", { exact: true })).toBeVisible();
+  await expect(table.getByRole("row", { name: /ORD-026-00001/ })).toContainText(
+    "73",
+  );
   await expect(
     table.getByRole("button", { name: "ORD-026-00001", exact: true }),
   ).toHaveAttribute("aria-haspopup", "dialog");

@@ -91,7 +91,8 @@ const sizeGuides = Array.from({ length: 100 }, (_, index) =>
     new Date(Date.UTC(2020, 0, index + 1)).toISOString(),
   ),
 );
-const managedOrders = Array.from({ length: 73 }, (_, index) => {
+const managedOrderCount = 73;
+const managedOrders = Array.from({ length: managedOrderCount }, (_, index) => {
   const sequence = index + 1;
   const status = ["pending", "no_answer", "confirmed", "cancelled"][index % 4];
   return {
@@ -99,6 +100,7 @@ const managedOrders = Array.from({ length: 73 }, (_, index) => {
     reference: `ORD-026-${String(sequence).padStart(5, "0")}`,
     customerName: "E2E Order Customer",
     customerPhone: "+8801712345678",
+    customerOrderCount: managedOrderCount,
     deliveryZone: ["inside_dhaka", "suburban", "outside_dhaka"][index % 3],
     items: [
       {

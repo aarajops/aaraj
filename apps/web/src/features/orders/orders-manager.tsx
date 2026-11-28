@@ -129,6 +129,12 @@ export function OrdersManager({
         ),
       }),
       columnHelper.display({
+        id: "customerOrderCount",
+        header: "Customer orders",
+        meta: { align: "right", numeric: true },
+        cell: ({ row }) => row.original.customerOrderCount,
+      }),
+      columnHelper.display({
         id: "items",
         header: "Items",
         meta: { className: "min-w-52 max-w-64 whitespace-normal" },

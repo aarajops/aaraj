@@ -2572,6 +2572,30 @@ describe("COD Orders and checkout", () => {
       matchingGuests.map((row: { orderCount: number }) => row.orderCount),
     ).toEqual([1, 1]);
 
+    const managedAccountOrders = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage`)
+      .set("Cookie", staff.cookie)
+      .query({ limit: 10, search: "01711112222" })
+      .expect(200);
+    expect(managedAccountOrders.body.rows).toHaveLength(2);
+    expect(
+      managedAccountOrders.body.rows.map(
+        (row: { customerOrderCount: number }) => row.customerOrderCount,
+      ),
+    ).toEqual([2, 2]);
+
+    const managedGuestOrders = await request(app.getHttpServer())
+      .get(`${API_V1_BASE_PATH}/orders/manage`)
+      .set("Cookie", staff.cookie)
+      .query({ limit: 10, search: "01799887766" })
+      .expect(200);
+    expect(managedGuestOrders.body.rows).toHaveLength(2);
+    expect(
+      managedGuestOrders.body.rows.map(
+        (row: { customerOrderCount: number }) => row.customerOrderCount,
+      ),
+    ).toEqual([2, 2]);
+
     const recipientSearch = await request(app.getHttpServer())
       .get(
         `${API_V1_BASE_PATH}/customers/manage?search=Directory%20Receiver%20Two`,

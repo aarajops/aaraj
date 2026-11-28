@@ -190,6 +190,7 @@ type ManagedOrderListRecord = Pick<
   OrderRow,
   | "id"
   | "reference"
+  | "customerId"
   | "addressSnapshot"
   | "deliverySnapshot"
   | "status"
@@ -215,6 +216,7 @@ type CustomerDirectoryRecord = {
 const MANAGED_ORDER_LIST_SELECTION = {
   id: customerOrder.id,
   reference: customerOrder.reference,
+  customerId: customerOrder.customerId,
   addressSnapshot: customerOrder.addressSnapshot,
   deliverySnapshot: customerOrder.deliverySnapshot,
   status: customerOrder.status,
@@ -1423,6 +1425,16 @@ export class OrdersService implements OrdersPathaoPort {
     const pageRows = rows.slice(0, query.limit);
     const hasMore = rows.length > query.limit;
     const candidateNextOffset = query.offset + query.limit;
+    const addressesByOrderId = new Map(
+      pageRows.map((row) => [
+        row.id,
+        parseStoredOrderAddress(row.id, row.addressSnapshot),
+      ]),
+    );
+    const customerOrderCounts = await this.getManagedOrderCustomerCounts(
+      pageRows,
+      addressesByOrderId,
+    );
     const pageOrderIds = pageRows.map((row) => row.id);
     const lineRows =
       pageOrderIds.length > 0
@@ -1467,12 +1479,13 @@ export class OrdersService implements OrdersPathaoPort {
     }
     return OrderManagementListSchema.parse({
       rows: pageRows.map((row) => {
-        const address = parseStoredOrderAddress(row.id, row.addressSnapshot);
+        const address = addressesByOrderId.get(row.id)!;
         return {
           id: row.id,
           reference: row.reference,
           customerName: address.recipientName,
           customerPhone: address.phone,
+          customerOrderCount: customerOrderCounts.get(row.id) ?? 1,
           deliveryZone: parseDeliveryZone(row.deliverySnapshot),
           items: [
             ...(linesByOrderId.get(row.id) ?? [])
@@ -1820,6 +1833,87 @@ export class OrdersService implements OrdersPathaoPort {
               ) ?? 0,
           }
         : record,
+    );
+  }
+
+  private async getManagedOrderCustomerCounts(
+    records: ManagedOrderListRecord[],
+    addressesByOrderId: Map<string, OrderAddress>,
+  ): Promise<Map<string, number>> {
+    const accountIds = [
+      ...new Set(
+        records
+          .map((record) => record.customerId)
+          .filter((customerId): customerId is string => customerId !== null),
+      ),
+    ];
+    const guestTokensByOrderId = new Map(
+      records
+        .filter((record) => record.customerId === null)
+        .map((record) => {
+          const address = addressesByOrderId.get(record.id)!;
+          const phone = normalizeAddressPhoneDigits(address.phone);
+          return [record.id, orderAddressSearchToken("phone", phone)] as const;
+        }),
+    );
+    const guestPhoneTokens = [...new Set(guestTokensByOrderId.values())];
+
+    const [accountCounts, guestCountRows] = await Promise.all([
+      accountIds.length > 0
+        ? this.database.db
+            .select({
+              customerId: customerOrder.customerId,
+              orderCount: count(),
+            })
+            .from(customerOrder)
+            .where(inArray(customerOrder.customerId, accountIds))
+            .groupBy(customerOrder.customerId)
+        : Promise.resolve([]),
+      guestPhoneTokens.length > 0
+        ? this.database.db
+            .execute(
+              sql`
+              with requested_tokens(phone_token) as (
+                values ${sql.join(
+                  guestPhoneTokens.map((token) => sql`(${token})`),
+                  sql`, `,
+                )}
+              )
+              select requested_tokens.phone_token,
+                count(*)::int as order_count
+              from requested_tokens
+              join ${customerOrder}
+                on ${customerOrder.addressSearchTokens}
+                  @> ARRAY[requested_tokens.phone_token]::text[]
+              where ${customerOrder.customerId} is null
+              group by requested_tokens.phone_token
+            `,
+            )
+            .then(
+              (result) =>
+                result.rows as {
+                  phone_token: string;
+                  order_count: number | string;
+                }[],
+            )
+        : Promise.resolve([]),
+    ]);
+
+    const accountCountsById = new Map(
+      accountCounts.map((row) => [row.customerId, row.orderCount]),
+    );
+    const guestCountsByPhoneToken = new Map(
+      guestCountRows.map((row) => [row.phone_token, Number(row.order_count)]),
+    );
+    return new Map(
+      records.map((record) => [
+        record.id,
+        record.customerId
+          ? (accountCountsById.get(record.customerId) ?? 1)
+          : (guestCountsByPhoneToken.get(
+              guestTokensByOrderId.get(record.id)!,
+            ) ?? 1),
+      ]),
     );
   }
 

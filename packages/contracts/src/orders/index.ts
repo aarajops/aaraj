@@ -400,6 +400,7 @@ export const OrderManagementListSchema = z.strictObject({
       reference: OrderReferenceSchema,
       customerName: z.string().min(2).max(120),
       customerPhone: z.string().regex(/^\+8801[3-9]\d{8}$/),
+      customerOrderCount: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
       deliveryZone: DeliveryZoneSchema.nullable(),
       items: z
         .array(

@@ -109,7 +109,7 @@ const adminListSkeletons: Record<
   },
   orders: {
     label: "orders",
-    columnCount: 10,
+    columnCount: 11,
     filterCount: 1,
   },
   customers: {
